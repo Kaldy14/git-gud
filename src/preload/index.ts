@@ -15,6 +15,7 @@ const api: RendererApi = {
   openRepositoryAtPath: (repoPath) => invoke('repo:open-path', repoPath),
   activateTab: (tabId) => invoke('tabs:activate', tabId),
   closeTab: (tabId) => invoke('tabs:close', tabId),
+  selectCommit: (tabId, selectedCommit) => invoke('tabs:select-commit', tabId, selectedCommit),
   setSidebarCollapsed: (collapsed) => invoke('workspace:set-sidebar-collapsed', collapsed),
   getRepositoryOverview: (repoPath) => invoke('repo:overview', repoPath),
   getCommitGraph: (repoPath, limit) => invoke('repo:graph', repoPath, limit),

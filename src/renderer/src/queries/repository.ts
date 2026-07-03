@@ -41,7 +41,8 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
       return window.api.getCommitGraph(repoPath, limit);
     },
     enabled: Boolean(repoPath),
-    staleTime: 1500
+    staleTime: 1500,
+    placeholderData: (previousData) => previousData
   });
 }
 

@@ -13,6 +13,7 @@ import {
   closeWorkspaceTab,
   getWorkspace,
   openWorkspaceRepository,
+  selectWorkspaceCommit,
   updateSidebarCollapsed
 } from './store';
 
@@ -49,6 +50,7 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
 
   handle('tabs:activate', (_event, tabId) => activateWorkspaceTab(tabId));
   handle('tabs:close', (_event, tabId) => syncWorkspaceWatchers(closeWorkspaceTab(tabId), repoWatchers));
+  handle('tabs:select-commit', (_event, tabId, selectedCommit) => selectWorkspaceCommit(tabId, selectedCommit));
   handle('workspace:set-sidebar-collapsed', (_event, collapsed) => updateSidebarCollapsed(collapsed));
   handle('repo:overview', async (_event, repoPath) => {
     const tab = getWorkspace().tabs.find((candidate) => candidate.path === repoPath);

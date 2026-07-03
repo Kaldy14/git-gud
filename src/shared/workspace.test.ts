@@ -6,6 +6,7 @@ import {
   closeRepositoryTab,
   createDefaultWorkspaceState,
   createRepoTabId,
+  selectRepositoryCommit,
   upsertRepositoryTab
 } from './workspace';
 
@@ -54,5 +55,12 @@ describe('workspace state', () => {
     const assigned = assignRepositoryProfile(state, alphaRepo.path, 'profile:kaldy');
 
     expect(assigned.tabs[0]?.assignedProfileId).toBe('profile:kaldy');
+  });
+
+  it('persists the selected commit on the tab', () => {
+    const state = upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z');
+    const selected = selectRepositoryCommit(state, createRepoTabId(alphaRepo.path), 'abc123');
+
+    expect(selected.tabs[0]?.selectedCommit).toBe('abc123');
   });
 });

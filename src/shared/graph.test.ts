@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildCommitGraphRows } from './graph';
 import type { GraphCommitInput } from './graph';
+import type { CommitGraphRow, GraphRailSegment } from './types';
 
 const AUTHOR = {
   authorName: 'Graph Tester',
@@ -51,6 +52,65 @@ describe('buildCommitGraphRows', () => {
     expect(rows[3]?.rails).toContainEqual({ type: 'curveIn', from: 1, to: 0 });
   });
 
+  it('fans out and collapses octopus merge parents', () => {
+    const rows = buildCommitGraphRows([
+      commit('octopus', ['main-parent', 'feature-parent', 'release-parent']),
+      commit('main-parent', ['base']),
+      commit('feature-parent', ['base']),
+      commit('release-parent', ['base']),
+      commit('base')
+    ]);
+
+    expectValidGraphRows(rows);
+    expect(rows[0]?.node).toEqual({ lane: 0, kind: 'merge' });
+    expect(rows[0]?.rails).toEqual(
+      expect.arrayContaining([
+        { type: 'curveOut', from: 0, to: 1 },
+        { type: 'curveOut', from: 0, to: 2 }
+      ])
+    );
+    expect(rows[4]?.rails).toEqual(
+      expect.arrayContaining([
+        { type: 'curveIn', from: 1, to: 0 },
+        { type: 'curveIn', from: 2, to: 0 }
+      ])
+    );
+  });
+
+  it('keeps criss-cross merges structurally valid until shared parents collapse', () => {
+    const rows = buildCommitGraphRows([
+      commit('merge-b', ['b2', 'a1']),
+      commit('merge-a', ['a2', 'b1']),
+      commit('b2', ['b1']),
+      commit('a2', ['a1']),
+      commit('b1', ['base']),
+      commit('a1', ['base']),
+      commit('base')
+    ]);
+
+    expectValidGraphRows(rows);
+    expect(rows.map((row) => row.sha)).toEqual(['merge-b', 'merge-a', 'b2', 'a2', 'b1', 'a1', 'base']);
+    expect(rows[4]?.rails).toContainEqual({ type: 'curveIn', from: 3, to: 0 });
+    expect(rows[5]?.rails).toContainEqual({ type: 'curveIn', from: 2, to: 1 });
+    expect(rows[6]?.rails).toContainEqual({ type: 'curveIn', from: 1, to: 0 });
+  });
+
+  it('preserves remote-only refs and tags on graph rows', () => {
+    const rows = buildCommitGraphRows([
+      commit('remote-tip', [], {
+        refs: [
+          { label: 'origin/feature', kind: 'remote' },
+          { label: 'v1.0.0', kind: 'tag' }
+        ]
+      })
+    ]);
+
+    expect(rows[0]?.refs).toEqual([
+      { label: 'origin/feature', kind: 'remote' },
+      { label: 'v1.0.0', kind: 'tag' }
+    ]);
+  });
+
   it('renders synthetic WIP and stash tips against their base commits', () => {
     const rows = buildCommitGraphRows([
       commit('wip', ['head'], { kind: 'wip', refs: [{ label: 'WIP', kind: 'wip' }] }),
@@ -64,6 +124,24 @@ describe('buildCommitGraphRows', () => {
     expect(rows[1]?.node.kind).toBe('stash');
     expect(rows[1]?.node.lane).toBe(1);
     expect(rows[3]?.rails).toContainEqual({ type: 'curveIn', from: 1, to: 0 });
+  });
+
+  it('collapses multiple stash tips that share the same base commit', () => {
+    const rows = buildCommitGraphRows([
+      commit('stash-0', ['base'], { kind: 'stash', refs: [{ label: 'stash@{0}', kind: 'stash' }] }),
+      commit('stash-1', ['base'], { kind: 'stash', refs: [{ label: 'stash@{1}', kind: 'stash' }] }),
+      commit('head', ['base']),
+      commit('base')
+    ]);
+
+    expectValidGraphRows(rows);
+    expect(rows.map((row) => row.node.kind)).toEqual(['stash', 'stash', 'commit', 'commit']);
+    expect(rows[3]?.rails).toEqual(
+      expect.arrayContaining([
+        { type: 'curveIn', from: 1, to: 0 },
+        { type: 'curveIn', from: 2, to: 0 }
+      ])
+    );
   });
 });
 
@@ -79,4 +157,26 @@ function commit(
     subject: sha,
     ...overrides
   };
+}
+
+function expectValidGraphRows(rows: CommitGraphRow[]): void {
+  expect(new Set(rows.map((row) => row.sha)).size).toBe(rows.length);
+
+  for (const row of rows) {
+    expect(row.node.lane).toBeGreaterThanOrEqual(0);
+
+    for (const lane of railLanes(row.rails)) {
+      expect(lane).toBeGreaterThanOrEqual(0);
+    }
+  }
+}
+
+function railLanes(rails: GraphRailSegment[]): number[] {
+  return rails.flatMap((rail) => {
+    if ('lane' in rail) {
+      return [rail.lane];
+    }
+
+    return [rail.from, rail.to];
+  });
 }

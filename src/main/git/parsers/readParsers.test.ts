@@ -82,6 +82,7 @@ describe('git read parsers', () => {
       '/repos/git-gud'
     );
     const stashes = parseStashList(['aaa', 'bbb ccc', 'stash@{0}', '2026-07-02T10:00:00+02:00', 'WIP on main'].join('\0'));
+    const emptyFieldStashes = parseStashList(['ddd', 'eee', 'stash@{1}', '', ''].join('\0'));
     const commits = parseGitLog(
       ['abc', 'def ghi', 'Kaldy', 'kaldy@example.com', '2026-07-02T10:00:00+02:00', '2026-07-02T10:01:00+02:00', 'HEAD -> main, tag: v1', 'subject'].join(
         '\0'
@@ -107,6 +108,13 @@ describe('git read parsers', () => {
       }
     ]);
     expect(stashes[0]).toMatchObject({ selector: 'stash@{0}', parentShas: ['bbb', 'ccc'], subject: 'WIP on main' });
+    expect(emptyFieldStashes[0]).toEqual({
+      sha: 'ddd',
+      parentShas: ['eee'],
+      selector: 'stash@{1}',
+      date: undefined,
+      subject: ''
+    });
     expect(commits[0]).toMatchObject({
       sha: 'abc',
       parentShas: ['def', 'ghi'],

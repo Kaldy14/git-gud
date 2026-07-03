@@ -10,6 +10,9 @@ const ROW_HEIGHT = 32;
 const LANE_X0 = 14;
 const LANE_GAP = 18;
 const MIN_GRAPH_CELL_WIDTH = 96;
+const CONTEXT_MENU_WIDTH = 240;
+const CONTEXT_MENU_HEIGHT = 360;
+const CONTEXT_MENU_MARGIN = 8;
 
 type GraphViewProps = {
   rows: CommitGraphRow[];
@@ -77,10 +80,12 @@ export function GraphView({
   function handleContextMenu(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
     event.preventDefault();
     onSelectRow(row.sha);
+    const position = clampContextMenuPosition(event.clientX, event.clientY);
+
     setContextMenu({
       row,
-      x: event.clientX,
-      y: event.clientY
+      x: position.x,
+      y: position.y
     });
   }
 
@@ -417,56 +422,69 @@ function GraphContextMenu({ state, onClose }: { state: ContextMenuState; onClose
 
   return (
     <div
-      className="fixed z-50 w-60 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      className="fixed z-50 max-h-[calc(100vh-16px)] w-60 overflow-y-auto rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
       style={{ left: state.x, top: state.y }}
       onClick={(event) => event.stopPropagation()}
     >
       {!isWip ? (
-        <button className="menu-row" type="button" onClick={() => void copySha()}>
-          <Copy size={14} />
-          <span>Copy SHA</span>
-        </button>
+        <MenuButton icon={<Copy size={14} />} label="Copy SHA" onClick={() => void copySha()} />
       ) : null}
       {isWip ? (
         <>
-          <button className="menu-row" type="button" disabled title="File staging lands in M3">
-            <Pencil size={14} />
-            <span>Stage all files</span>
-          </button>
-          <button className="menu-row" type="button" disabled title="Committing lands in M3">
-            <GitCommit size={14} />
-            <span>Commit changes</span>
-          </button>
+          <MenuButton icon={<Pencil size={14} />} label="Stage all files" disabled title="File staging lands in M3" />
+          <MenuButton icon={<GitCommit size={14} />} label="Commit changes" disabled title="Committing lands in M3" />
         </>
       ) : isStash ? (
         <>
-          <button className="menu-row" type="button" disabled title="Stash apply lands in M4">
-            <Archive size={14} />
-            <span>Apply stash</span>
-          </button>
-          <button className="menu-row" type="button" disabled title="Stash pop lands in M4">
-            <Archive size={14} />
-            <span>Pop stash</span>
-          </button>
+          <MenuButton icon={<Archive size={14} />} label="Apply stash" disabled title="Stash apply lands in M4" />
+          <MenuButton icon={<Archive size={14} />} label="Pop stash" disabled title="Stash pop lands in M4" />
+          <MenuButton icon={<Archive size={14} />} label="Drop stash" disabled title="Stash drop lands in M4" />
         </>
       ) : (
         <>
-          <button className="menu-row" type="button" disabled title="Checkout lands in M4">
-            <GitBranch size={14} />
-            <span>Checkout commit</span>
-          </button>
-          <button className="menu-row" type="button" disabled title="Merge lands in M4">
-            <GitMerge size={14} />
-            <span>Merge into current</span>
-          </button>
-          <button className="menu-row" type="button" disabled title="Interactive rebase lands in M5">
-            <Workflow size={14} />
-            <span>Interactive rebase from here</span>
-          </button>
+          <MenuButton icon={<GitBranch size={14} />} label="Checkout commit" disabled title="Checkout lands in M4" />
+          <MenuButton icon={<GitBranch size={14} />} label="Create branch here" disabled title="Branch creation lands in M4" />
+          <MenuButton icon={<GitMerge size={14} />} label="Merge into current" disabled title="Merge lands in M4" />
+          <MenuButton icon={<Workflow size={14} />} label="Rebase current onto this" disabled title="Rebase lands in M5" />
+          <MenuButton icon={<RefreshCw size={14} />} label="Reset soft to this" disabled title="Reset lands in M4" />
+          <MenuButton icon={<RefreshCw size={14} />} label="Reset mixed to this" disabled title="Reset lands in M4" />
+          <MenuButton icon={<RefreshCw size={14} />} label="Reset hard to this" disabled title="Reset lands in M4" />
+          <MenuButton icon={<RefreshCw size={14} />} label="Revert commit" disabled title="Revert lands in M4" />
+          <MenuButton icon={<GitCommit size={14} />} label="Cherry-pick commit" disabled title="Cherry-pick lands in M4" />
+          <MenuButton icon={<Tag size={14} />} label="Tag commit" disabled title="Tag creation lands in M4" />
+          <MenuButton icon={<Workflow size={14} />} label="Interactive rebase from here" disabled title="Interactive rebase lands in M5" />
         </>
       )}
     </div>
   );
+}
+
+function MenuButton({
+  icon,
+  label,
+  title,
+  disabled,
+  onClick
+}: {
+  icon: ReactElement;
+  label: string;
+  title?: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}): ReactElement {
+  return (
+    <button className="menu-row" type="button" disabled={disabled} title={title} onClick={onClick}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function clampContextMenuPosition(x: number, y: number): { x: number; y: number } {
+  return {
+    x: Math.max(CONTEXT_MENU_MARGIN, Math.min(x, window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN)),
+    y: Math.max(CONTEXT_MENU_MARGIN, Math.min(y, window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN))
+  };
 }
 
 function graphCellWidth(rows: CommitGraphRow[]): number {

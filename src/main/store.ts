@@ -6,6 +6,7 @@ import {
   assignRepositoryProfile,
   closeRepositoryTab,
   createDefaultWorkspaceState,
+  selectRepositoryCommit,
   setSidebarCollapsed,
   upsertRepositoryTab
 } from '@shared/workspace';
@@ -36,6 +37,10 @@ export function activateWorkspaceTab(tabId: string): WorkspaceState {
 
 export function closeWorkspaceTab(tabId: string): WorkspaceState {
   return saveWorkspace(closeRepositoryTab(getWorkspace(), tabId));
+}
+
+export function selectWorkspaceCommit(tabId: string, selectedCommit: string | undefined): WorkspaceState {
+  return saveWorkspace(selectRepositoryCommit(getWorkspace(), tabId, selectedCommit));
 }
 
 export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {

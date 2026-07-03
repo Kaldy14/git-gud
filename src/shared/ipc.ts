@@ -21,6 +21,10 @@ export type IpcChannelMap = {
     args: [tabId: string];
     result: WorkspaceState;
   };
+  'tabs:select-commit': {
+    args: [tabId: string, selectedCommit: string | undefined];
+    result: WorkspaceState;
+  };
   'workspace:set-sidebar-collapsed': {
     args: [collapsed: boolean];
     result: WorkspaceState;
@@ -61,6 +65,7 @@ export type RendererApi = {
   openRepositoryAtPath: (repoPath: string) => Promise<WorkspaceState>;
   activateTab: (tabId: string) => Promise<WorkspaceState>;
   closeTab: (tabId: string) => Promise<WorkspaceState>;
+  selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<WorkspaceState>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;

@@ -24,11 +24,11 @@ export function WorkspaceShell(): ReactElement {
     openRepositoryAtPath,
     activateTab,
     closeTab,
+    selectCommit,
     setSidebarCollapsed,
     assignProfile,
     clearError
   } = useWorkspaceStore();
-  const [selectionByTab, setSelectionByTab] = useState<Record<string, string>>({});
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
 
   const activeTab = useMemo(
@@ -42,7 +42,7 @@ export function WorkspaceShell(): ReactElement {
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
   const graphRows = graphQuery.data?.rows ?? [];
-  const selectedSha = activeTab ? selectionByTab[activeTab.id] : undefined;
+  const selectedSha = activeTab?.selectedCommit;
   const selectedRow = graphRows.find((row) => row.sha === selectedSha) ?? graphRows[0];
   const parentSha = selectedRow?.parentShas[0];
 
@@ -54,7 +54,7 @@ export function WorkspaceShell(): ReactElement {
 
   function handleSelectRow(sha: string): void {
     if (activeTab) {
-      setSelectionByTab((value) => ({ ...value, [activeTab.id]: sha }));
+      void selectCommit(activeTab.id, sha);
     }
   }
 

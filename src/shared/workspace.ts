@@ -85,6 +85,28 @@ export function closeRepositoryTab(state: WorkspaceState, tabId: string): Worksp
   };
 }
 
+export function selectRepositoryCommit(
+  state: WorkspaceState,
+  tabId: string,
+  selectedCommit: string | undefined
+): WorkspaceState {
+  const tabs = state.tabs.map((tab) => {
+    if (tab.id !== tabId) {
+      return tab;
+    }
+
+    return {
+      ...tab,
+      selectedCommit
+    };
+  });
+
+  return {
+    ...state,
+    tabs
+  };
+}
+
 export function setSidebarCollapsed(state: WorkspaceState, sidebarCollapsed: boolean): WorkspaceState {
   return {
     ...state,
