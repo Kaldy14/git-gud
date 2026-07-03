@@ -3,6 +3,7 @@ import Store from 'electron-store';
 import type { WorkspaceState } from '@shared/types';
 import {
   activateRepositoryTab,
+  assignRepositoryProfile,
   closeRepositoryTab,
   createDefaultWorkspaceState,
   setSidebarCollapsed,
@@ -39,6 +40,10 @@ export function closeWorkspaceTab(tabId: string): WorkspaceState {
 
 export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {
   return saveWorkspace(setSidebarCollapsed(getWorkspace(), collapsed));
+}
+
+export function assignWorkspaceProfile(repoPath: string, profileId: string | undefined): WorkspaceState {
+  return saveWorkspace(assignRepositoryProfile(getWorkspace(), repoPath, profileId));
 }
 
 function saveWorkspace(workspace: WorkspaceState): WorkspaceState {

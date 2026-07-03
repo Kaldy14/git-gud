@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activateRepositoryTab,
+  assignRepositoryProfile,
   closeRepositoryTab,
   createDefaultWorkspaceState,
   createRepoTabId,
@@ -46,5 +47,12 @@ describe('workspace state', () => {
     expect(closed.tabs.map((tab) => tab.path)).toEqual([betaRepo.path]);
     expect(closed.activeTabId).toBe(createRepoTabId(betaRepo.path));
     expect(closed.recentRepos.map((repo) => repo.path)).toEqual([betaRepo.path, alphaRepo.path]);
+  });
+
+  it('persists a repo profile assignment on the tab', () => {
+    const state = upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z');
+    const assigned = assignRepositoryProfile(state, alphaRepo.path, 'profile:kaldy');
+
+    expect(assigned.tabs[0]?.assignedProfileId).toBe('profile:kaldy');
   });
 });

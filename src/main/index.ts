@@ -3,7 +3,15 @@ import { join } from 'node:path';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { app, BrowserWindow, shell } from 'electron';
 
+import { RepoWatcherRegistry } from './git/watcher';
 import { registerIpcHandlers } from './ipc';
+import { getWorkspace } from './store';
+
+const repoWatchers = new RepoWatcherRegistry((event) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('repo:changed', event);
+  }
+});
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -13,11 +21,11 @@ function createWindow(): void {
     minHeight: 720,
     show: false,
     title: 'git-gud',
-    backgroundColor: '#141312',
+    backgroundColor: '#0e1218',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {
-      x: 14,
-      y: 14
+      x: 16,
+      y: 12
     },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -47,7 +55,8 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.kaldy.git-gud');
-  registerIpcHandlers();
+  registerIpcHandlers(repoWatchers);
+  repoWatchers.sync(getWorkspace().tabs);
 
   app.on('browser-window-created', (_event, window) => {
     optimizer.watchWindowShortcuts(window);
@@ -66,4 +75,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  repoWatchers.closeAll();
 });

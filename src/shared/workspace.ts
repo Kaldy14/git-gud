@@ -92,6 +92,28 @@ export function setSidebarCollapsed(state: WorkspaceState, sidebarCollapsed: boo
   };
 }
 
+export function assignRepositoryProfile(
+  state: WorkspaceState,
+  repoPath: string,
+  assignedProfileId: string | undefined
+): WorkspaceState {
+  const tabs = state.tabs.map((tab) => {
+    if (tab.path !== repoPath) {
+      return tab;
+    }
+
+    return {
+      ...tab,
+      assignedProfileId
+    };
+  });
+
+  return {
+    ...state,
+    tabs
+  };
+}
+
 function upsertRecentRepository(
   recentRepos: RecentRepository[],
   repository: RepositorySummary,

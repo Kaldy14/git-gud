@@ -1,4 +1,4 @@
-import type { WorkspaceState } from './types';
+import type { GitProfile, GitRepositoryOverview, RepoChangedEvent, WorkspaceState } from './types';
 
 export type IpcChannelMap = {
   'workspace:get': {
@@ -25,9 +25,31 @@ export type IpcChannelMap = {
     args: [collapsed: boolean];
     result: WorkspaceState;
   };
+  'repo:overview': {
+    args: [repoPath: string];
+    result: GitRepositoryOverview;
+  };
+  'profiles:list': {
+    args: [];
+    result: GitProfile[];
+  };
+  'profiles:save': {
+    args: [profile: GitProfile];
+    result: GitProfile[];
+  };
+  'repo:assign-profile': {
+    args: [repoPath: string, profileId: string | undefined];
+    result: WorkspaceState;
+  };
 };
 
 export type IpcChannelName = keyof IpcChannelMap;
+
+export type RendererEventMap = {
+  'repo:changed': RepoChangedEvent;
+};
+
+export type RendererEventName = keyof RendererEventMap;
 
 export type RendererApi = {
   getWorkspace: () => Promise<WorkspaceState>;
@@ -36,4 +58,9 @@ export type RendererApi = {
   activateTab: (tabId: string) => Promise<WorkspaceState>;
   closeTab: (tabId: string) => Promise<WorkspaceState>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
+  getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
+  listProfiles: () => Promise<GitProfile[]>;
+  saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
+  assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;
+  onRepositoryChanged: (listener: (event: RepoChangedEvent) => void) => () => void;
 };

@@ -1,8 +1,12 @@
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 
 import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
+import type { WorkspaceState } from '@shared/types';
 
+import { loadRepositoryOverview } from './git/repositoryOverview';
 import { validateRepository } from './git/repoInspector';
+import type { RepoWatcherRegistry } from './git/watcher';
+import { assignProfileToRepository, listProfiles, saveProfile } from './profiles';
 import {
   activateWorkspaceTab,
   closeWorkspaceTab,
@@ -16,7 +20,7 @@ type IpcHandler<TChannel extends IpcChannelName> = (
   ...args: IpcChannelMap[TChannel]['args']
 ) => Promise<IpcChannelMap[TChannel]['result']> | IpcChannelMap[TChannel]['result'];
 
-export function registerIpcHandlers(): void {
+export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('workspace:get', () => getWorkspace());
 
   handle('repo:open-dialog', async (event) => {
@@ -34,19 +38,36 @@ export function registerIpcHandlers(): void {
     }
 
     const repository = await validateRepository(result.filePaths[0]);
-    return openWorkspaceRepository(repository);
+    return syncWorkspaceWatchers(openWorkspaceRepository(repository), repoWatchers);
   });
 
   handle('repo:open-path', async (_event, repoPath) => {
     const repository = await validateRepository(repoPath);
-    return openWorkspaceRepository(repository);
+    return syncWorkspaceWatchers(openWorkspaceRepository(repository), repoWatchers);
   });
 
   handle('tabs:activate', (_event, tabId) => activateWorkspaceTab(tabId));
-  handle('tabs:close', (_event, tabId) => closeWorkspaceTab(tabId));
+  handle('tabs:close', (_event, tabId) => syncWorkspaceWatchers(closeWorkspaceTab(tabId), repoWatchers));
   handle('workspace:set-sidebar-collapsed', (_event, collapsed) => updateSidebarCollapsed(collapsed));
+  handle('repo:overview', async (_event, repoPath) => {
+    const tab = getWorkspace().tabs.find((candidate) => candidate.path === repoPath);
+
+    if (!tab) {
+      throw new Error('Repository is not open in this workspace.');
+    }
+
+    return loadRepositoryOverview(tab);
+  });
+  handle('profiles:list', () => listProfiles());
+  handle('profiles:save', (_event, profile) => saveProfile(profile));
+  handle('repo:assign-profile', async (_event, repoPath, profileId) => assignProfileToRepository(repoPath, profileId));
 }
 
 function handle<TChannel extends IpcChannelName>(channel: TChannel, handler: IpcHandler<TChannel>): void {
   ipcMain.handle(channel, (event, ...args: unknown[]) => handler(event, ...(args as IpcChannelMap[TChannel]['args'])));
+}
+
+function syncWorkspaceWatchers(workspace: WorkspaceState, repoWatchers: RepoWatcherRegistry): WorkspaceState {
+  repoWatchers.sync(workspace.tabs);
+  return workspace;
 }
