@@ -85,7 +85,7 @@ export function GraphView({
   }
 
   return (
-    <section className="relative flex min-w-0 flex-col overflow-hidden bg-[var(--bg-graph)]">
+    <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-graph)]">
       <div
         className="grid h-8 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] pr-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
@@ -214,7 +214,7 @@ function GraphRowView({
         >
           {row.subject}
         </span>
-        <span className="ml-auto shrink-0 text-[11px] text-[var(--text-3)]">{row.dateLabel}</span>
+        <span className="ml-auto hidden shrink-0 text-[11px] text-[var(--text-3)] xl:inline">{row.dateLabel}</span>
         {row.dateMarker ? (
           <span className="pointer-events-none absolute -top-2 right-3 z-10 rounded border border-[var(--border)] bg-[var(--bg-graph)] px-1.5 py-px text-[10px] leading-4 text-[var(--text-3)]">
             {row.dateMarker}
