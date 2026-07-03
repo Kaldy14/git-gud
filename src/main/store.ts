@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import Store from 'electron-store';
 
 import type { WorkspaceState } from '@shared/types';
@@ -7,6 +10,7 @@ import {
   closeRepositoryTab,
   createDefaultWorkspaceState,
   selectRepositoryCommit,
+  selectRepositoryFile,
   setSidebarCollapsed,
   upsertRepositoryTab
 } from '@shared/workspace';
@@ -18,6 +22,7 @@ type StoreShape = {
 
 const store = new Store<StoreShape>({
   name: 'git-gud-workspace',
+  ...testStoreDirectory('workspace'),
   defaults: {
     workspace: createDefaultWorkspaceState()
   }
@@ -43,6 +48,10 @@ export function selectWorkspaceCommit(tabId: string, selectedCommit: string | un
   return saveWorkspace(selectRepositoryCommit(getWorkspace(), tabId, selectedCommit));
 }
 
+export function selectWorkspaceFile(tabId: string, selectedFile: string | undefined): WorkspaceState {
+  return saveWorkspace(selectRepositoryFile(getWorkspace(), tabId, selectedFile));
+}
+
 export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {
   return saveWorkspace(setSidebarCollapsed(getWorkspace(), collapsed));
 }
@@ -54,4 +63,14 @@ export function assignWorkspaceProfile(repoPath: string, profileId: string | und
 function saveWorkspace(workspace: WorkspaceState): WorkspaceState {
   store.set('workspace', workspace);
   return workspace;
+}
+
+function testStoreDirectory(name: string): { cwd: string } | Record<string, never> {
+  if (process.env.NODE_ENV !== 'test') {
+    return {};
+  }
+
+  return {
+    cwd: join(tmpdir(), 'git-gud-vitest-store', name)
+  };
 }

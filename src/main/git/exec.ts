@@ -7,6 +7,7 @@ export type GitCommandOptions = {
   kind?: GitCommandKind;
   env?: NodeJS.ProcessEnv;
   input?: string;
+  allowedExitCodes?: readonly number[];
 };
 
 export type GitCommandResult = {
@@ -38,8 +39,41 @@ export class GitCommandError extends Error {
 }
 
 export class GitExecutor {
+  private readonly mutationQueues = new Map<string, Promise<void>>();
+
   async run(args: string[], options: GitCommandOptions): Promise<GitCommandResult> {
     const kind = options.kind ?? 'read';
+
+    if (kind === 'mutation') {
+      return this.enqueueMutation(args, options, kind);
+    }
+
+    return this.spawnGit(args, options, kind);
+  }
+
+  private enqueueMutation(
+    args: string[],
+    options: GitCommandOptions,
+    kind: GitCommandKind
+  ): Promise<GitCommandResult> {
+    const previous = this.mutationQueues.get(options.cwd) ?? Promise.resolve();
+    const runAfterPrevious = previous.catch(() => undefined).then(() => this.spawnGit(args, options, kind));
+    const queueTail = runAfterPrevious.then(
+      () => undefined,
+      () => undefined
+    );
+
+    this.mutationQueues.set(options.cwd, queueTail);
+    queueTail.finally(() => {
+      if (this.mutationQueues.get(options.cwd) === queueTail) {
+        this.mutationQueues.delete(options.cwd);
+      }
+    });
+
+    return runAfterPrevious;
+  }
+
+  private spawnGit(args: string[], options: GitCommandOptions, kind: GitCommandKind): Promise<GitCommandResult> {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...options.env
@@ -74,7 +108,7 @@ export class GitExecutor {
           exitCode: exitCode ?? 1
         };
 
-        if (result.exitCode === 0) {
+        if (result.exitCode === 0 || options.allowedExitCodes?.includes(result.exitCode)) {
           resolve(result);
           return;
         }

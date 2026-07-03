@@ -63,6 +63,93 @@ export type GitFileChange = {
   conflicted: boolean;
 };
 
+export type GitFileChangeDetail = {
+  path: string;
+  originalPath?: string;
+  status: GitStatusCode;
+  staged: boolean;
+  unstaged: boolean;
+  conflicted: boolean;
+};
+
+export type GitCommitPerson = {
+  name: string;
+  email?: string;
+  date?: string;
+};
+
+export type GitCommitStats = {
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+};
+
+export type GitCommitDetail = {
+  kind: 'commit';
+  repoPath: string;
+  sha: string;
+  shortSha: string;
+  parentShas: string[];
+  subject: string;
+  body: string;
+  message: string;
+  author: GitCommitPerson;
+  committer: GitCommitPerson;
+  stats: GitCommitStats;
+  files: GitFileChangeDetail[];
+  loadedAt: string;
+};
+
+export type GitWipDetail = {
+  kind: 'wip';
+  repoPath: string;
+  branch: GitBranchState;
+  files: GitFileChangeDetail[];
+  stagedCount: number;
+  unstagedCount: number;
+  untrackedCount: number;
+  conflictedCount: number;
+  dirtyCount: number;
+  loadedAt: string;
+};
+
+export type GitRepositoryDetail = GitCommitDetail | GitWipDetail;
+
+export type GitFileDiffMode = 'commit' | 'wip-staged' | 'wip-unstaged';
+
+export type GitFileDiffRequest =
+  | {
+      kind: 'commit';
+      sha: string;
+      path: string;
+      originalPath?: string;
+    }
+  | {
+      kind: 'wip';
+      path: string;
+      staged: boolean;
+    };
+
+export type GitFileDiff = {
+  repoPath: string;
+  path: string;
+  originalPath?: string;
+  mode: GitFileDiffMode;
+  patch: string;
+  isBinary: boolean;
+  loadedAt: string;
+};
+
+export type GitCommitInput = {
+  message: string;
+  amend: boolean;
+};
+
+export type GitOperationResult = {
+  repoPath: string;
+  happenedAt: string;
+};
+
 export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
 
 export type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
@@ -70,14 +157,22 @@ export type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
 export type GraphRefChip = {
   label: string;
   kind: RefChipKind;
+  current?: boolean;
 };
 
-export type GraphRailSegment =
-  | { type: 'through'; lane: number }
-  | { type: 'stopTop'; lane: number }
-  | { type: 'startBottom'; lane: number }
-  | { type: 'curveIn'; from: number; to: number }
-  | { type: 'curveOut'; from: number; to: number };
+export type GraphRailStyle = {
+  color?: string;
+  dashed?: boolean;
+};
+
+export type GraphRailSegment = GraphRailStyle &
+  (
+    | { type: 'through'; lane: number }
+    | { type: 'stopTop'; lane: number }
+    | { type: 'startBottom'; lane: number }
+    | { type: 'curveIn'; from: number; to: number }
+    | { type: 'curveOut'; from: number; to: number }
+  );
 
 export type GraphFileStatus = 'modified' | 'added' | 'deleted';
 

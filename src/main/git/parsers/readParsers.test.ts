@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { GitCommandError, gitExecutor } from '../exec';
+import { parseNameStatus, parseShortStat } from './details';
 import { parseGitLog } from './log';
 import { parseForEachRef, parseRemoteVerbose } from './refs';
 import { parseStashList } from './stash';
@@ -58,6 +59,7 @@ describe('git read parsers', () => {
           '*',
           '2026-07-02T10:00:00+02:00'
         ].join('\0'),
+        ['refs/remotes/origin/HEAD', 'origin', 'bbb', '', '', '', '2026-07-02T09:00:00+02:00'].join('\0'),
         ['refs/remotes/origin/main', 'origin/main', 'bbb', '', '', '', '2026-07-02T09:00:00+02:00'].join('\0'),
         ['refs/tags/v0.1.0', 'v0.1.0', 'ccc', '', '', '', '2026-07-01T09:00:00+02:00'].join('\0')
       ].join('\n')
@@ -65,6 +67,7 @@ describe('git read parsers', () => {
     const remotes = parseRemoteVerbose('origin\tgit@github.com:kaldy/git-gud.git (fetch)\norigin\tgit@github.com:kaldy/git-gud.git (push)\n');
 
     expect(refs.localBranches[0]).toMatchObject({ name: 'main', current: true, ahead: 1, behind: 2 });
+    expect(refs.remoteBranches).toHaveLength(1);
     expect(refs.remoteBranches[0]).toMatchObject({ name: 'origin/main', remote: 'origin' });
     expect(refs.tags[0]).toMatchObject({ name: 'v0.1.0', sha: 'ccc' });
     expect(remotes).toEqual([
@@ -120,6 +123,78 @@ describe('git read parsers', () => {
       parentShas: ['def', 'ghi'],
       refs: ['HEAD -> main', 'tag: v1'],
       subject: 'subject'
+    });
+  });
+
+  it('parses commit detail file lists and short stats', () => {
+    const files = parseNameStatus(
+      [
+        'M',
+        'src/app.ts',
+        'A',
+        'src/new file.ts',
+        'D',
+        'old.txt',
+        'R100',
+        'src/old-name.ts',
+        'src/new-name.ts',
+        'C085',
+        'src/source.ts',
+        'src/copy.ts'
+      ].join('\0')
+    );
+
+    expect(files).toEqual([
+      {
+        path: 'old.txt',
+        originalPath: undefined,
+        status: 'deleted',
+        staged: false,
+        unstaged: false,
+        conflicted: false
+      },
+      {
+        path: 'src/app.ts',
+        originalPath: undefined,
+        status: 'modified',
+        staged: false,
+        unstaged: false,
+        conflicted: false
+      },
+      {
+        path: 'src/copy.ts',
+        originalPath: 'src/source.ts',
+        status: 'copied',
+        staged: false,
+        unstaged: false,
+        conflicted: false
+      },
+      {
+        path: 'src/new file.ts',
+        originalPath: undefined,
+        status: 'added',
+        staged: false,
+        unstaged: false,
+        conflicted: false
+      },
+      {
+        path: 'src/new-name.ts',
+        originalPath: 'src/old-name.ts',
+        status: 'renamed',
+        staged: false,
+        unstaged: false,
+        conflicted: false
+      }
+    ]);
+    expect(parseShortStat(' 3 files changed, 12 insertions(+), 4 deletions(-)\n')).toEqual({
+      filesChanged: 3,
+      additions: 12,
+      deletions: 4
+    });
+    expect(parseShortStat(' 1 file changed, 2 deletions(-)\n')).toEqual({
+      filesChanged: 1,
+      additions: 0,
+      deletions: 2
     });
   });
 

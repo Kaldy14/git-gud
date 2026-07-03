@@ -15,6 +15,8 @@
   "dependencies": {
     "@electron-toolkit/preload": "3.0.2",
     "@electron-toolkit/utils": "4.0.0",
+    "@pierre/diffs": "1.2.12",
+    "@pierre/trees": "1.0.0-beta.5",
     "@tanstack/react-query": "5.101.2",
     "@tanstack/react-router": "1.170.16",
     "@tanstack/react-virtual": "3.14.5",

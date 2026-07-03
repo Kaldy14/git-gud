@@ -95,9 +95,32 @@ export function selectRepositoryCommit(
       return tab;
     }
 
+      return {
+        ...tab,
+        selectedCommit,
+        selectedFile: undefined
+      };
+    });
+
+  return {
+    ...state,
+    tabs
+  };
+}
+
+export function selectRepositoryFile(
+  state: WorkspaceState,
+  tabId: string,
+  selectedFile: string | undefined
+): WorkspaceState {
+  const tabs = state.tabs.map((tab) => {
+    if (tab.id !== tabId) {
+      return tab;
+    }
+
     return {
       ...tab,
-      selectedCommit
+      selectedFile
     };
   });
 

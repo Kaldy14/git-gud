@@ -1,10 +1,24 @@
-import type { CommitGraphRow, GraphFile, GraphNodeKind, GraphRefChip, GraphRailSegment } from './types';
+import type {
+  CommitGraphRow,
+  GraphFile,
+  GraphFileStatus,
+  GraphNodeKind,
+  GraphRefChip,
+  GraphRailSegment,
+  GraphRailStyle
+} from './types';
 
 export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
 export const COMMIT_GRAPH_LIMIT_STEP = 1500;
 
 export const LANE_COLORS = ['#4c9df3', '#b46bf5', '#2ec8a6', '#f0a13f', '#ef5b9c', '#e8615a'] as const;
 const AUTHOR_COLORS = ['#38bdf8', '#c084fc', '#4ade80', '#fbbf24', '#fb7185', '#a78bfa', '#2dd4bf'] as const;
+
+export const FILE_STATUS_COLORS: Record<GraphFileStatus, string> = {
+  added: '#4cc38a',
+  modified: '#f0b35f',
+  deleted: '#ef6a6a'
+};
 
 export type GraphCommitInput = {
   sha: string;
@@ -23,36 +37,45 @@ export type GraphCommitInput = {
 
 export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRow[] {
   const expectedByLane: Array<string | undefined> = [];
+  const styleByLane: Array<GraphRailStyle | undefined> = [];
   const rows: CommitGraphRow[] = [];
   let previousDay: string | undefined;
 
   for (const commit of commits) {
     const matchingLanes = findMatchingLanes(expectedByLane, commit.sha);
     const lane = matchingLanes[0] ?? firstFreeLane(expectedByLane);
-    const rails = buildIncomingRails(expectedByLane, matchingLanes, lane);
+    const rails = buildIncomingRails(expectedByLane, styleByLane, matchingLanes, lane);
 
     for (const matchingLane of matchingLanes) {
+      styleByLane[matchingLane] = undefined;
+
       if (matchingLane !== lane) {
         expectedByLane[matchingLane] = undefined;
       }
     }
 
     const [firstParent, ...additionalParents] = uniqueParents(commit.parentShas);
+    const isSyntheticTip = commit.kind === 'wip' || commit.kind === 'stash';
 
     if (firstParent) {
       expectedByLane[lane] = firstParent;
-      rails.push({ type: 'startBottom', lane });
+      styleByLane[lane] = isSyntheticTip
+        ? { color: commit.colorOverride ?? laneColor(lane), dashed: true }
+        : undefined;
+      rails.push({ type: 'startBottom', lane, ...styleByLane[lane] });
     } else {
       expectedByLane[lane] = undefined;
+      styleByLane[lane] = undefined;
     }
 
     for (const parentSha of additionalParents) {
       const parentLane = laneForParent(expectedByLane, parentSha, lane);
       expectedByLane[parentLane] = parentSha;
+      styleByLane[parentLane] = undefined;
       rails.push({ type: 'curveOut', from: lane, to: parentLane });
     }
 
-    trimTrailingFreeLanes(expectedByLane);
+    trimTrailingFreeLanes(expectedByLane, styleByLane);
 
     const day = dayKey(commit.authoredAt ?? commit.committedAt);
     const dateMarker = day && day !== previousDay ? formatDateMarker(commit.authoredAt ?? commit.committedAt) : undefined;
@@ -95,6 +118,7 @@ export function laneColor(lane: number): string {
 
 function buildIncomingRails(
   expectedByLane: Array<string | undefined>,
+  styleByLane: Array<GraphRailStyle | undefined>,
   matchingLanes: number[],
   nodeLane: number
 ): GraphRailSegment[] {
@@ -108,12 +132,18 @@ function buildIncomingRails(
       continue;
     }
 
+    const style = styleByLane[lane];
+
     if (matchingSet.has(lane)) {
-      rails.push(lane === nodeLane ? { type: 'stopTop', lane } : { type: 'curveIn', from: lane, to: nodeLane });
+      rails.push(
+        lane === nodeLane
+          ? { type: 'stopTop', lane, ...style }
+          : { type: 'curveIn', from: lane, to: nodeLane, ...style }
+      );
       continue;
     }
 
-    rails.push({ type: 'through', lane });
+    rails.push({ type: 'through', lane, ...style });
   }
 
   return rails;
@@ -163,10 +193,15 @@ function uniqueParents(parentShas: string[]): string[] {
   return [...new Set(parentShas.filter(Boolean))];
 }
 
-function trimTrailingFreeLanes(expectedByLane: Array<string | undefined>): void {
+function trimTrailingFreeLanes(
+  expectedByLane: Array<string | undefined>,
+  styleByLane: Array<GraphRailStyle | undefined>
+): void {
   while (expectedByLane.length > 0 && expectedByLane[expectedByLane.length - 1] === undefined) {
     expectedByLane.pop();
   }
+
+  styleByLane.length = expectedByLane.length;
 }
 
 function initials(value: string): string {

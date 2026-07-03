@@ -2,7 +2,15 @@ import { useEffect } from 'react';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { CommitGraphPage, GitRepositoryOverview, RepoChangedEvent } from '@shared/types';
+import type {
+  CommitGraphPage,
+  GitCommitDetail,
+  GitFileDiff,
+  GitFileDiffRequest,
+  GitRepositoryOverview,
+  GitWipDetail,
+  RepoChangedEvent
+} from '@shared/types';
 
 export const repositoryOverviewQueryKey = (repoPath: string): readonly ['repository-overview', string] => [
   'repository-overview',
@@ -13,6 +21,26 @@ export const commitGraphQueryKey = (repoPath: string, limit: number): readonly [
   'commit-graph',
   repoPath,
   limit
+];
+
+export const commitDetailQueryKey = (repoPath: string, sha: string): readonly ['commit-detail', string, string] => [
+  'commit-detail',
+  repoPath,
+  sha
+];
+
+export const wipDetailQueryKey = (repoPath: string): readonly ['wip-detail', string] => ['wip-detail', repoPath];
+
+export const fileDiffQueryKey = (
+  repoPath: string,
+  request: GitFileDiffRequest
+): readonly ['file-diff', string, string, string, string | undefined, boolean | undefined] => [
+  'file-diff',
+  repoPath,
+  request.kind,
+  request.path,
+  request.kind === 'commit' ? request.sha : undefined,
+  request.kind === 'wip' ? request.staged : undefined
 ];
 
 export function useRepositoryOverview(repoPath: string | undefined) {
@@ -42,7 +70,54 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
     },
     enabled: Boolean(repoPath),
     staleTime: 1500,
-    placeholderData: (previousData) => previousData
+    // Keep current rows on screen while load-more fetches a larger page, but never
+    // carry one repository's graph over into another tab.
+    placeholderData: (previousData) => (previousData?.repoPath === repoPath ? previousData : undefined)
+  });
+}
+
+export function useCommitDetail(repoPath: string | undefined, sha: string | undefined) {
+  return useQuery({
+    queryKey: repoPath && sha ? commitDetailQueryKey(repoPath, sha) : ['commit-detail', 'none', 'none'],
+    queryFn: async (): Promise<GitCommitDetail> => {
+      if (!repoPath || !sha) {
+        throw new Error('Repository path and commit sha are required.');
+      }
+
+      return window.api.getCommitDetail(repoPath, sha);
+    },
+    enabled: Boolean(repoPath && sha),
+    staleTime: 1500
+  });
+}
+
+export function useWipDetail(repoPath: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: repoPath ? wipDetailQueryKey(repoPath) : ['wip-detail', 'none'],
+    queryFn: async (): Promise<GitWipDetail> => {
+      if (!repoPath) {
+        throw new Error('Repository path is required.');
+      }
+
+      return window.api.getWipDetail(repoPath);
+    },
+    enabled: Boolean(repoPath) && enabled,
+    staleTime: 1000
+  });
+}
+
+export function useFileDiff(repoPath: string | undefined, request: GitFileDiffRequest | undefined) {
+  return useQuery({
+    queryKey: repoPath && request ? fileDiffQueryKey(repoPath, request) : ['file-diff', 'none', 'none', 'none', undefined, undefined],
+    queryFn: async (): Promise<GitFileDiff> => {
+      if (!repoPath || !request) {
+        throw new Error('Repository path and file diff request are required.');
+      }
+
+      return window.api.getFileDiff(repoPath, request);
+    },
+    enabled: Boolean(repoPath && request),
+    staleTime: 1000
   });
 }
 
@@ -56,6 +131,15 @@ export function useRepositoryChangeInvalidation(): void {
       });
       void queryClient.invalidateQueries({
         queryKey: ['commit-graph', event.repoPath]
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['commit-detail', event.repoPath]
+      });
+      void queryClient.invalidateQueries({
+        queryKey: wipDetailQueryKey(event.repoPath)
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['file-diff', event.repoPath]
       });
     });
   }, [queryClient]);

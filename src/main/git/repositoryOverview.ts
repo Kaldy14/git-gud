@@ -1,6 +1,6 @@
 import type { GitRepositoryOverview, RepoTab } from '@shared/types';
 
-import { getRepoProfileState } from '../profiles';
+import { createProfileCommandEnv, getRepoProfileState } from '../profiles';
 import { gitExecutor } from './exec';
 import { parseForEachRef, parseRemoteVerbose } from './parsers/refs';
 import { parseStashList } from './parsers/stash';
@@ -8,12 +8,13 @@ import { parseStatusPorcelainV2 } from './parsers/status';
 import { parseWorktreeList } from './parsers/worktree';
 
 export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assignedProfileId'>): Promise<GitRepositoryOverview> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
   const [status, refs, remotes, worktrees, stashes, profileState] = await Promise.all([
-    loadStatus(tab.path),
-    loadRefs(tab.path),
-    loadRemotes(tab.path),
-    loadWorktrees(tab.path),
-    loadStashes(tab.path),
+    loadStatus(tab.path, env),
+    loadRefs(tab.path, env),
+    loadRemotes(tab.path, env),
+    loadWorktrees(tab.path, env),
+    loadStashes(tab.path, env),
     getRepoProfileState(tab.path, tab.assignedProfileId)
   ]);
 
@@ -29,12 +30,15 @@ export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assign
   };
 }
 
-export async function loadStatus(repoPath: string): Promise<GitRepositoryOverview['status']> {
-  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath });
+export async function loadStatus(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv
+): Promise<GitRepositoryOverview['status']> {
+  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath, env });
   return parseStatusPorcelainV2(result.stdout);
 }
 
-export async function loadRefs(repoPath: string): Promise<GitRepositoryOverview['refs']> {
+export async function loadRefs(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['refs']> {
   const result = await gitExecutor.run(
     [
       'for-each-ref',
@@ -43,25 +47,26 @@ export async function loadRefs(repoPath: string): Promise<GitRepositoryOverview[
       'refs/remotes',
       'refs/tags'
     ],
-    { cwd: repoPath }
+    { cwd: repoPath, env }
   );
 
   return parseForEachRef(result.stdout);
 }
 
-export async function loadRemotes(repoPath: string): Promise<GitRepositoryOverview['remotes']> {
-  const result = await gitExecutor.run(['remote', '-v'], { cwd: repoPath });
+export async function loadRemotes(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['remotes']> {
+  const result = await gitExecutor.run(['remote', '-v'], { cwd: repoPath, env });
   return parseRemoteVerbose(result.stdout);
 }
 
-export async function loadWorktrees(repoPath: string): Promise<GitRepositoryOverview['worktrees']> {
-  const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath });
+export async function loadWorktrees(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['worktrees']> {
+  const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath, env });
   return parseWorktreeList(result.stdout, repoPath);
 }
 
-export async function loadStashes(repoPath: string): Promise<GitRepositoryOverview['stashes']> {
+export async function loadStashes(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['stashes']> {
   const result = await gitExecutor.run(['stash', 'list', '--format=%H%x00%P%x00%gd%x00%aI%x00%s%x00'], {
-    cwd: repoPath
+    cwd: repoPath,
+    env
   });
   return parseStashList(result.stdout);
 }

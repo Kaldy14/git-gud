@@ -54,6 +54,24 @@ The UI can reserve small sidebar placeholders only if useful for matching the sc
 - Profiles can be created, assigned per repo tab, persisted, and applied to repo-local Git config before commits.
 - `pnpm typecheck`, `pnpm lint`, and `pnpm test` pass at every milestone.
 
+## Progress Tracker
+
+Last updated: 2026-07-03.
+
+| Milestone | Status | Notes |
+|---|---|---|
+| M0 - Scaffold and Shell | Done | Electron shell, tabs, repo open/validation, recent repos, and persisted workspace state are implemented. |
+| M1 - Git Kernel, Reads, Watchers, Profiles | Done | Typed IPC, Git executor, read parsers, watchers, sidebar data, profile assignment, profile env, and repo-local profile config are implemented. |
+| M2 - Commit Graph | Done | Real Git graph, lane engine, virtualized rows, WIP/stash nodes, ref chips, context menus, selection, and load-more are implemented. |
+| M3 - Details, Trees, Diffs, Commit Flow | Done | Commit/WIP details, `@pierre/trees`, `@pierre/diffs`, file/all stage and unstage, commit, amend, rename unstage coverage, and graph/detail refresh are implemented. |
+| M4 - Everyday Branch Operations | Next | Fetch, pull, push, branch actions, checkout, merge, tags, stash operations, conflict banner, progress UI, and safe undo still need implementation. |
+| M5 - Rebase and Interactive Rebase | Pending | Standard and interactive rebase flows, controlled editors, conflict handling, and temp-repo integration tests remain. |
+| M6 - Polish and Power Features | Pending | Hunk/line staging, shortcuts, Terminal button, settings, and large-repo performance pass remain. |
+
+Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after the M1-M3 review fixes on 2026-07-03.
+
+Tracking rule: update this table whenever a milestone is started, completed, reopened, or materially rescoped; keep `docs/README.md` status in sync with this table.
+
 ## Stack
 
 | Concern | Choice | Why |

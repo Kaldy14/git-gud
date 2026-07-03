@@ -1,9 +1,11 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import Store from 'electron-store';
 
 import type { GitIdentity, GitProfile, RepoProfileState, WorkspaceState } from '@shared/types';
 
 import { gitExecutor } from './git/exec';
-import { assignWorkspaceProfile } from './store';
 
 type ProfileStoreShape = {
   profiles: GitProfile[];
@@ -11,6 +13,7 @@ type ProfileStoreShape = {
 
 const profileStore = new Store<ProfileStoreShape>({
   name: 'git-gud-profiles',
+  ...testStoreDirectory('profiles'),
   defaults: {
     profiles: []
   }
@@ -35,9 +38,13 @@ export function saveProfile(profile: GitProfile): GitProfile[] {
 
 export async function assignProfileToRepository(
   repoPath: string,
-  profileId: string | undefined
+  profileId: string | undefined,
+  previouslyAssignedProfileId?: string
 ): Promise<WorkspaceState> {
+  const { assignWorkspaceProfile } = await import('./store');
+
   if (!profileId) {
+    await clearAssignedProfileFromRepository(repoPath, previouslyAssignedProfileId);
     return assignWorkspaceProfile(repoPath, undefined);
   }
 
@@ -81,6 +88,22 @@ export function suggestProfileForRepository(repoPath: string, remoteUrls: string
   });
 }
 
+export function createProfileCommandEnv(assignedProfileId: string | undefined): NodeJS.ProcessEnv | undefined {
+  if (!assignedProfileId) {
+    return undefined;
+  }
+
+  const profile = listProfiles().find((candidate) => candidate.id === assignedProfileId);
+
+  if (!profile?.ghConfigDir) {
+    return undefined;
+  }
+
+  return {
+    GH_CONFIG_DIR: profile.ghConfigDir
+  };
+}
+
 async function applyProfileToRepository(repoPath: string, profile: GitProfile): Promise<void> {
   await gitExecutor.run(['config', 'user.name', profile.name], { cwd: repoPath, kind: 'mutation' });
   await gitExecutor.run(['config', 'user.email', profile.email], { cwd: repoPath, kind: 'mutation' });
@@ -90,10 +113,34 @@ async function applyProfileToRepository(repoPath: string, profile: GitProfile): 
   }
 
   if (profile.sshKeyPath) {
-    await gitExecutor.run(['config', 'core.sshCommand', `ssh -i ${quoteShellArg(profile.sshKeyPath)}`], {
+    await gitExecutor.run(['config', 'core.sshCommand', createSshCommand(profile.sshKeyPath)], {
       cwd: repoPath,
       kind: 'mutation'
     });
+  }
+}
+
+async function clearAssignedProfileFromRepository(
+  repoPath: string,
+  previouslyAssignedProfileId: string | undefined
+): Promise<void> {
+  const profile = previouslyAssignedProfileId
+    ? listProfiles().find((candidate) => candidate.id === previouslyAssignedProfileId)
+    : undefined;
+
+  if (!profile) {
+    return;
+  }
+
+  await unsetLocalConfigIfProfileValue(repoPath, 'user.name', profile.name);
+  await unsetLocalConfigIfProfileValue(repoPath, 'user.email', profile.email);
+
+  if (profile.signingKey) {
+    await unsetLocalConfigIfProfileValue(repoPath, 'user.signingkey', profile.signingKey);
+  }
+
+  if (profile.sshKeyPath) {
+    await unsetLocalConfigIfProfileValue(repoPath, 'core.sshCommand', createSshCommand(profile.sshKeyPath));
   }
 }
 
@@ -133,6 +180,29 @@ async function readScopedConfig(repoPath: string, key: string): Promise<{ scope:
   }
 }
 
+async function readLocalConfig(repoPath: string, key: string): Promise<string | undefined> {
+  try {
+    const result = await gitExecutor.run(['config', '--local', '--get', key], { cwd: repoPath });
+    return result.stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function unsetLocalConfigIfProfileValue(repoPath: string, key: string, profileValue: string): Promise<void> {
+  const currentValue = await readLocalConfig(repoPath, key);
+
+  if (currentValue !== profileValue) {
+    return;
+  }
+
+  await gitExecutor.run(['config', '--local', '--unset-all', key], {
+    cwd: repoPath,
+    kind: 'mutation',
+    allowedExitCodes: [5]
+  });
+}
+
 function selectIdentitySource(scope: string | undefined): GitIdentity['source'] {
   return scope === 'local' || scope === 'worktree' || scope === 'command' ? 'repo-config' : 'global-config';
 }
@@ -161,4 +231,18 @@ function normalizeProfile(profile: GitProfile): GitProfile {
 
 function quoteShellArg(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function createSshCommand(sshKeyPath: string): string {
+  return `ssh -i ${quoteShellArg(sshKeyPath)}`;
+}
+
+function testStoreDirectory(name: string): { cwd: string } | Record<string, never> {
+  if (process.env.NODE_ENV !== 'test') {
+    return {};
+  }
+
+  return {
+    cwd: join(tmpdir(), 'git-gud-vitest-store', name)
+  };
 }

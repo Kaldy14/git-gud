@@ -13,6 +13,7 @@ type WorkspaceStore = {
   activateTab: (tabId: string) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<void>;
+  selectFile: (tabId: string, selectedFile: string | undefined) => Promise<void>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
@@ -38,6 +39,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   },
   async selectCommit(tabId, selectedCommit) {
     await runWorkspaceAction(set, () => window.api.selectCommit(tabId, selectedCommit));
+  },
+  async selectFile(tabId, selectedFile) {
+    await runWorkspaceAction(set, () => window.api.selectFile(tabId, selectedFile));
   },
   async setSidebarCollapsed(collapsed) {
     await runWorkspaceAction(set, () => window.api.setSidebarCollapsed(collapsed));

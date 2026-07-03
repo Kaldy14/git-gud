@@ -31,7 +31,7 @@ export function parseForEachRef(output: string): GitRefsSummary {
     }
 
     if (fullName.startsWith('refs/remotes/')) {
-      if (name.endsWith('/HEAD')) {
+      if (fullName.endsWith('/HEAD')) {
         continue;
       }
 

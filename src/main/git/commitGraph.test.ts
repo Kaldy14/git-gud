@@ -43,11 +43,12 @@ describe('loadCommitGraph', () => {
       expect(page.rows[2]?.subject).toBe('second');
       expect(page.rows[2]?.refs).toEqual(
         expect.arrayContaining([
-          { label: 'main', kind: 'branch' },
+          { label: 'main', kind: 'branch', current: true },
           { label: 'origin/main', kind: 'remote' },
           { label: 'v-graph', kind: 'tag' }
         ])
       );
+      expect(page.rows[2]?.refs?.[0]).toMatchObject({ label: 'main', current: true });
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

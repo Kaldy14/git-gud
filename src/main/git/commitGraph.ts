@@ -10,6 +10,7 @@ import type {
   RepoTab
 } from '@shared/types';
 
+import { createProfileCommandEnv } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import { parseGitLog, type GitLogCommit } from './parsers/log';
 import { parseForEachRef } from './parsers/refs';
@@ -19,15 +20,16 @@ import { parseStatusPorcelainV2 } from './parsers/status';
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
 
 export async function loadCommitGraph(
-  tab: Pick<RepoTab, 'path'>,
+  tab: Pick<RepoTab, 'path' | 'assignedProfileId'>,
   requestedLimit = DEFAULT_COMMIT_GRAPH_LIMIT
 ): Promise<CommitGraphPage> {
   const limit = normalizeLimit(requestedLimit);
+  const env = createProfileCommandEnv(tab.assignedProfileId);
   const [logCommits, refs, status, stashes] = await Promise.all([
-    loadLogCommits(tab.path, limit + 1),
-    loadRefs(tab.path),
-    loadStatus(tab.path),
-    loadStashes(tab.path)
+    loadLogCommits(tab.path, limit + 1, env),
+    loadRefs(tab.path, env),
+    loadStatus(tab.path, env),
+    loadStashes(tab.path, env)
   ]);
   const hasMore = logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
@@ -77,12 +79,12 @@ export async function loadCommitGraph(
   };
 }
 
-async function loadStatus(repoPath: string) {
-  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath });
+async function loadStatus(repoPath: string, env: NodeJS.ProcessEnv | undefined) {
+  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath, env });
   return parseStatusPorcelainV2(result.stdout);
 }
 
-async function loadRefs(repoPath: string): Promise<GitRefsSummary> {
+async function loadRefs(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<GitRefsSummary> {
   const result = await gitExecutor.run(
     [
       'for-each-ref',
@@ -91,20 +93,25 @@ async function loadRefs(repoPath: string): Promise<GitRefsSummary> {
       'refs/remotes',
       'refs/tags'
     ],
-    { cwd: repoPath }
+    { cwd: repoPath, env }
   );
 
   return parseForEachRef(result.stdout);
 }
 
-async function loadStashes(repoPath: string) {
+async function loadStashes(repoPath: string, env: NodeJS.ProcessEnv | undefined) {
   const result = await gitExecutor.run(['stash', 'list', '--format=%H%x00%P%x00%gd%x00%aI%x00%s%x00'], {
-    cwd: repoPath
+    cwd: repoPath,
+    env
   });
   return parseStashList(result.stdout);
 }
 
-async function loadLogCommits(repoPath: string, limit: number): Promise<GitLogCommit[]> {
+async function loadLogCommits(
+  repoPath: string,
+  limit: number,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitLogCommit[]> {
   try {
     const result = await gitExecutor.run(
       [
@@ -119,7 +126,7 @@ async function loadLogCommits(repoPath: string, limit: number): Promise<GitLogCo
         '--date=iso-strict',
         '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%D%x00%s'
       ],
-      { cwd: repoPath }
+      { cwd: repoPath, env }
     );
 
     return parseGitLog(result.stdout);
@@ -149,7 +156,7 @@ function createRefMap(refs: GitRefsSummary): Map<string, GraphRefChip[]> {
   const refMap = new Map<string, GraphRefChip[]>();
 
   for (const branch of refs.localBranches) {
-    addRef(refMap, branch.sha, { label: branch.name, kind: 'branch' });
+    addRef(refMap, branch.sha, { label: branch.name, kind: 'branch', ...(branch.current ? { current: true } : {}) });
   }
 
   for (const branch of refs.remoteBranches) {
@@ -158,6 +165,10 @@ function createRefMap(refs: GitRefsSummary): Map<string, GraphRefChip[]> {
 
   for (const tag of refs.tags) {
     addRef(refMap, tag.sha, { label: tag.name, kind: 'tag' });
+  }
+
+  for (const chips of refMap.values()) {
+    chips.sort((a, b) => Number(b.current ?? false) - Number(a.current ?? false));
   }
 
   return refMap;

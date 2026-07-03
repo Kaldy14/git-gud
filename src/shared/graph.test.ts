@@ -123,7 +123,20 @@ describe('buildCommitGraphRows', () => {
     expect(rows[0]?.refs?.[0]).toEqual({ label: 'WIP', kind: 'wip' });
     expect(rows[1]?.node.kind).toBe('stash');
     expect(rows[1]?.node.lane).toBe(1);
-    expect(rows[3]?.rails).toContainEqual({ type: 'curveIn', from: 1, to: 0 });
+    expect(rows[3]?.rails).toContainEqual(expect.objectContaining({ type: 'curveIn', from: 1, to: 0, dashed: true }));
+  });
+
+  it('keeps synthetic tip rails dashed and colored down to their base commit', () => {
+    const rows = buildCommitGraphRows([
+      commit('wip', ['c1'], { kind: 'wip', colorOverride: '#8b95a5' }),
+      commit('c2', ['c1']),
+      commit('c1')
+    ]);
+
+    expect(rows[0]?.rails).toContainEqual({ type: 'startBottom', lane: 0, color: '#8b95a5', dashed: true });
+    expect(rows[1]?.rails).toContainEqual({ type: 'through', lane: 0, color: '#8b95a5', dashed: true });
+    expect(rows[2]?.rails).toContainEqual({ type: 'stopTop', lane: 0, color: '#8b95a5', dashed: true });
+    expect(rows[2]?.rails).toContainEqual({ type: 'curveIn', from: 1, to: 0 });
   });
 
   it('collapses multiple stash tips that share the same base commit', () => {
@@ -138,7 +151,7 @@ describe('buildCommitGraphRows', () => {
     expect(rows.map((row) => row.node.kind)).toEqual(['stash', 'stash', 'commit', 'commit']);
     expect(rows[3]?.rails).toEqual(
       expect.arrayContaining([
-        { type: 'curveIn', from: 1, to: 0 },
+        expect.objectContaining({ type: 'curveIn', from: 1, to: 0, dashed: true }),
         { type: 'curveIn', from: 2, to: 0 }
       ])
     );

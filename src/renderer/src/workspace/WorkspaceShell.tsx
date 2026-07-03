@@ -1,15 +1,24 @@
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
+import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
+import { FileFocusView } from '@renderer/components/diff/FileFocusView';
 import { GraphView } from '@renderer/components/graph/GraphView';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { StartPage } from '@renderer/components/start/StartPage';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
-import { useCommitGraph, useRepositoryChangeInvalidation, useRepositoryOverview } from '@renderer/queries/repository';
+import {
+  repositoryOverviewQueryKey,
+  useCommitGraph,
+  useRepositoryChangeInvalidation,
+  useRepositoryOverview,
+  wipDetailQueryKey
+} from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { COMMIT_GRAPH_LIMIT_STEP, DEFAULT_COMMIT_GRAPH_LIMIT } from '@shared/graph';
 import type { GitProfile } from '@shared/types';
@@ -25,11 +34,16 @@ export function WorkspaceShell(): ReactElement {
     activateTab,
     closeTab,
     selectCommit,
+    selectFile,
     setSidebarCollapsed,
     assignProfile,
     clearError
   } = useWorkspaceStore();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
+  const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
+  const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
+  const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
+  const queryClient = useQueryClient();
 
   const activeTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId),
@@ -45,6 +59,8 @@ export function WorkspaceShell(): ReactElement {
   const selectedSha = activeTab?.selectedCommit;
   const selectedRow = graphRows.find((row) => row.sha === selectedSha) ?? graphRows[0];
   const parentSha = selectedRow?.parentShas[0];
+  const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? 'unified') : 'unified';
+  const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
 
   useRepositoryChangeInvalidation();
 
@@ -90,6 +106,49 @@ export function WorkspaceShell(): ReactElement {
     await handleAssignProfile(profile.id);
   }
 
+  function handleSetDiffStyle(style: DiffStyle): void {
+    if (!activeTab) {
+      return;
+    }
+
+    setDiffStyleByTab((value) => ({ ...value, [activeTab.id]: style }));
+  }
+
+  function handleChangeWipScope(path: string, scope: WipDiffScope): void {
+    if (!activeTab) {
+      return;
+    }
+
+    setWipScopeByTab((value) => ({
+      ...value,
+      [activeTab.id]: {
+        ...(value[activeTab.id] ?? {}),
+        [path]: scope
+      }
+    }));
+  }
+
+  async function handleStageAllWip(): Promise<void> {
+    if (!activeTab) {
+      return;
+    }
+
+    const result = await window.api.stageAll(activeTab.path);
+    await invalidateRepositoryQueries(queryClient, result.repoPath);
+  }
+
+  function handleOpenWipCommitComposer(): void {
+    if (!activeTab) {
+      return;
+    }
+
+    void selectCommit(activeTab.id, 'wip');
+    setCommitComposerFocusByTab((value) => ({
+      ...value,
+      [activeTab.id]: (value[activeTab.id] ?? 0) + 1
+    }));
+  }
+
   return (
     <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
       <TabStrip
@@ -128,17 +187,40 @@ export function WorkspaceShell(): ReactElement {
               isCollapsed={workspace.sidebarCollapsed}
               onToggleCollapsed={() => void setSidebarCollapsed(!workspace.sidebarCollapsed)}
             />
-            <GraphView
-              rows={graphRows}
-              selectedSha={selectedRow?.sha}
-              isLoading={graphQuery.isLoading}
-              isFetching={graphQuery.isFetching}
-              errorMessage={graphError}
-              hasMore={graphQuery.data?.hasMore ?? false}
-              onSelectRow={handleSelectRow}
-              onLoadMore={handleLoadMoreGraphRows}
+            {activeTab.selectedFile ? (
+              <FileFocusView
+                repoPath={activeTab.path}
+                row={selectedRow}
+                selectedFile={activeTab.selectedFile}
+                diffStyle={activeDiffStyle}
+                wipScopeByPath={activeWipScopeByPath}
+                onSetDiffStyle={handleSetDiffStyle}
+                onChangeWipScope={handleChangeWipScope}
+                onClose={() => void selectFile(activeTab.id, undefined)}
+              />
+            ) : (
+              <GraphView
+                rows={graphRows}
+                selectedSha={selectedRow?.sha}
+                isLoading={graphQuery.isLoading}
+                isFetching={graphQuery.isFetching}
+                errorMessage={graphError}
+                hasMore={graphQuery.data?.hasMore ?? false}
+                onSelectRow={handleSelectRow}
+                onLoadMore={handleLoadMoreGraphRows}
+                onStageAllWip={handleStageAllWip}
+                onOpenWipCommitComposer={handleOpenWipCommitComposer}
+              />
+            )}
+            <CommitDetailPanel
+              repoPath={activeTab.path}
+              row={selectedRow}
+              parentSha={parentSha}
+              selectedFile={activeTab.selectedFile}
+              profileState={repositoryQuery.data?.profileState}
+              commitFocusSignal={commitComposerFocusByTab[activeTab.id] ?? 0}
+              onSelectFile={(path) => void selectFile(activeTab.id, path)}
             />
-            <CommitDetailPanel row={selectedRow} parentSha={parentSha} />
           </>
         ) : (
           <StartPage
@@ -157,4 +239,16 @@ export function WorkspaceShell(): ReactElement {
       />
     </main>
   );
+}
+
+async function invalidateRepositoryQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  repoPath: string
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }),
+    queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }),
+    queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }),
+    queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath] })
+  ]);
 }
