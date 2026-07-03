@@ -13,6 +13,7 @@ type WorkspaceStore = {
   activateTab: (tabId: string) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
+  assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
 };
 
@@ -37,6 +38,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   async setSidebarCollapsed(collapsed) {
     await runWorkspaceAction(set, () => window.api.setSidebarCollapsed(collapsed));
   },
+  async assignProfile(repoPath, profileId) {
+    await runWorkspaceAction(set, () => window.api.assignProfile(repoPath, profileId), false, true);
+  },
   clearError() {
     set({ errorMessage: undefined });
   }
@@ -45,7 +49,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 async function runWorkspaceAction(
   set: (partial: Partial<WorkspaceStore>) => void,
   action: () => Promise<WorkspaceState | null>,
-  keepLoading = false
+  keepLoading = false,
+  rethrow = false
 ): Promise<void> {
   set({ isLoading: true, errorMessage: undefined });
 
@@ -59,9 +64,15 @@ async function runWorkspaceAction(
 
     set({ isLoading: false });
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'The requested workspace action failed.';
+
     set({
       isLoading: false,
-      errorMessage: error instanceof Error ? error.message : 'The requested workspace action failed.'
+      errorMessage
     });
+
+    if (rethrow) {
+      throw new Error(errorMessage, { cause: error });
+    }
   }
 }

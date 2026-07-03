@@ -43,7 +43,7 @@ export function parseStatusPorcelainV2(output: string): GitStatusSummary {
       const status = fields[1] ?? '..';
       const path = fields.slice(9).join(' ');
       const nextToken = tokens[index + 1];
-      const originalPath = nextToken && !isStatusRecord(nextToken) ? nextToken : undefined;
+      const originalPath = nextToken;
 
       if (originalPath) {
         index += 1;
@@ -176,15 +176,4 @@ function statusCharToCode(value: string | undefined): GitStatusCode {
     default:
       return 'modified';
   }
-}
-
-function isStatusRecord(token: string): boolean {
-  return (
-    token.startsWith('# ') ||
-    token.startsWith('1 ') ||
-    token.startsWith('2 ') ||
-    token.startsWith('u ') ||
-    token.startsWith('? ') ||
-    token.startsWith('! ')
-  );
 }

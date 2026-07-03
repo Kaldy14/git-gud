@@ -5,7 +5,7 @@ A personal macOS Git client (Electron + React), visually modeled on GitKraken. P
 ## Status
 
 - **M0 (scaffold + shell): done.** Tabs, repo open/validate, workspace persistence, and the full GitKraken-style UI shell.
-- **M1 (Git kernel, reads, watchers, profiles): done for the read path.** The shell now uses typed IPC for live status, refs, remotes, worktrees, stashes, repository watchers, and effective profile identity.
+- **M1 (Git kernel, reads, watchers, profiles): done.** The shell now uses typed IPC for live status, refs, remotes, worktrees, stashes, repository watchers, effective identity, and per-repo profile assignment.
 - **M2 (commit graph): next.** The graph and commit detail panel still render a hand-authored preview dataset until real graph rows and commit details land.
 
 ## Renderer UI structure
@@ -17,6 +17,7 @@ src/renderer/src/
   state/workspace.ts                  Zustand store bridging window.api workspace IPC
   components/
     tabs/TabStrip.tsx                 title-bar repo tabs, + menu (open/recent), profile & settings buttons
+    profile/ProfileMenu.tsx           profile create/assign popover backed by typed IPC
     toolbar/Toolbar.tsx               repository/branch selectors + stacked action buttons (inert until M4)
     sidebar/Sidebar.tsx               Local/Remote/Worktrees/Tags sections, filter input, collapse rail
     graph/sampleGraph.ts              preview graph dataset + lane colors + rail segment types

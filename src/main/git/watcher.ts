@@ -15,7 +15,8 @@ type ActiveRepoWatch = {
   repoPath: string;
   watchers: FSWatcher[];
   pendingTimer?: NodeJS.Timeout;
-  pendingEvent?: RepoChangedEvent;
+  pendingReasons: Set<WatchReason>;
+  pendingPaths: Set<string>;
 };
 
 export class RepoWatcherRegistry {
@@ -71,7 +72,9 @@ export class RepoWatcherRegistry {
     ]);
     const activeWatch: ActiveRepoWatch = {
       repoPath: repository.path,
-      watchers: []
+      watchers: [],
+      pendingReasons: new Set(),
+      pendingPaths: new Set()
     };
 
     for (const target of targets) {
@@ -90,24 +93,32 @@ export class RepoWatcherRegistry {
   }
 
   private enqueueChange(activeWatch: ActiveRepoWatch, reason: WatchReason, changedPath: string | undefined): void {
-    activeWatch.pendingEvent = {
-      repoPath: activeWatch.repoPath,
-      reason,
-      path: changedPath,
-      happenedAt: new Date().toISOString()
-    };
+    activeWatch.pendingReasons.add(reason);
+
+    if (changedPath) {
+      activeWatch.pendingPaths.add(changedPath);
+    }
 
     if (activeWatch.pendingTimer) {
       clearTimeout(activeWatch.pendingTimer);
     }
 
     activeWatch.pendingTimer = setTimeout(() => {
-      const event = activeWatch.pendingEvent;
-      activeWatch.pendingEvent = undefined;
+      const reasons = [...activeWatch.pendingReasons];
+      const paths = [...activeWatch.pendingPaths];
+      activeWatch.pendingReasons.clear();
+      activeWatch.pendingPaths.clear();
       activeWatch.pendingTimer = undefined;
 
-      if (event) {
-        this.onChange(event);
+      if (reasons.length > 0) {
+        this.onChange({
+          repoPath: activeWatch.repoPath,
+          reason: reasons[0] ?? 'worktree',
+          reasons,
+          path: paths[0],
+          paths,
+          happenedAt: new Date().toISOString()
+        });
       }
     }, 180);
   }

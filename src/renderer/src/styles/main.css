@@ -161,6 +161,16 @@ input {
   color: var(--text-1);
 }
 
+.icon-btn:disabled {
+  color: var(--text-3);
+  opacity: 0.6;
+}
+
+.icon-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-3);
+}
+
 /* --- Toolbar --------------------------------------------------------- */
 
 .tb-action {
@@ -267,6 +277,16 @@ input {
 .menu-row:hover {
   background: var(--bg-hover);
   color: var(--text-1);
+}
+
+.menu-row:disabled {
+  color: var(--text-3);
+  opacity: 0.68;
+}
+
+.menu-row:disabled:hover {
+  background: transparent;
+  color: var(--text-3);
 }
 
 /* --- Graph ref chips -------------------------------------------------- */

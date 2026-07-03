@@ -1,5 +1,10 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
+import { GitCommandError, gitExecutor } from '../exec';
 import { parseGitLog } from './log';
 import { parseForEachRef, parseRemoteVerbose } from './refs';
 import { parseStashList } from './stash';
@@ -109,4 +114,123 @@ describe('git read parsers', () => {
       subject: 'subject'
     });
   });
+
+  it('parses porcelain v2 output from real repositories with edge-case paths and conflicts', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-parser-'));
+
+    try {
+      const dirtyRepoPath = join(rootPath, 'dirty');
+      const remotePath = join(rootPath, 'remote.git');
+      const remoteClonePath = join(rootPath, 'remote-clone');
+      await mkdir(dirtyRepoPath);
+
+      await git(dirtyRepoPath, ['init']);
+      await git(dirtyRepoPath, ['config', 'user.name', 'Parser Test']);
+      await git(dirtyRepoPath, ['config', 'user.email', 'parser@example.test']);
+      await writeRepoFile(dirtyRepoPath, '1 notes.txt', 'rename source\n');
+      await writeRepoFile(dirtyRepoPath, 'delete me.txt', 'delete source\n');
+      await writeRepoFile(dirtyRepoPath, 'conflict.txt', 'base\n');
+      await git(dirtyRepoPath, ['add', '.']);
+      await git(dirtyRepoPath, ['commit', '-m', 'base']);
+      await git(dirtyRepoPath, ['checkout', '-B', 'main']);
+
+      await git(rootPath, ['init', '--bare', remotePath]);
+      await git(dirtyRepoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(dirtyRepoPath, ['push', '-u', 'origin', 'main']);
+
+      await writeRepoFile(dirtyRepoPath, 'local ahead.txt', 'ahead\n');
+      await git(dirtyRepoPath, ['add', 'local ahead.txt']);
+      await git(dirtyRepoPath, ['commit', '-m', 'local ahead']);
+
+      await git(rootPath, ['clone', '--branch', 'main', remotePath, remoteClonePath]);
+      await git(remoteClonePath, ['config', 'user.name', 'Parser Test']);
+      await git(remoteClonePath, ['config', 'user.email', 'parser@example.test']);
+      await writeRepoFile(remoteClonePath, 'remote behind.txt', 'behind\n');
+      await git(remoteClonePath, ['add', 'remote behind.txt']);
+      await git(remoteClonePath, ['commit', '-m', 'remote behind']);
+      await git(remoteClonePath, ['push', 'origin', 'main']);
+      await git(dirtyRepoPath, ['fetch', 'origin']);
+
+      await git(dirtyRepoPath, ['mv', '1 notes.txt', 'renamed one.txt']);
+      await git(dirtyRepoPath, ['rm', 'delete me.txt']);
+      await writeRepoFile(dirtyRepoPath, 'odd name @!.txt', 'untracked\n');
+
+      const dirtyStatus = parseStatusPorcelainV2(
+        (await git(dirtyRepoPath, ['status', '--porcelain=v2', '--branch', '-z'])).stdout
+      );
+
+      expect(dirtyStatus.branch).toMatchObject({
+        head: 'main',
+        upstream: 'origin/main',
+        ahead: 1,
+        behind: 1
+      });
+      expect(dirtyStatus.files.find((file) => file.path === 'renamed one.txt')).toMatchObject({
+        originalPath: '1 notes.txt',
+        status: 'renamed',
+        staged: true
+      });
+      expect(dirtyStatus.files.find((file) => file.path === 'delete me.txt')).toMatchObject({
+        status: 'deleted',
+        staged: true
+      });
+      expect(dirtyStatus.files.find((file) => file.path === 'odd name @!.txt')).toMatchObject({
+        status: 'untracked',
+        unstaged: true
+      });
+
+      const conflictRepoPath = join(rootPath, 'conflict');
+      await mkdir(conflictRepoPath);
+      await git(conflictRepoPath, ['init']);
+      await git(conflictRepoPath, ['config', 'user.name', 'Parser Test']);
+      await git(conflictRepoPath, ['config', 'user.email', 'parser@example.test']);
+      await writeRepoFile(conflictRepoPath, 'conflict.txt', 'base\n');
+      await git(conflictRepoPath, ['add', '.']);
+      await git(conflictRepoPath, ['commit', '-m', 'base']);
+      await git(conflictRepoPath, ['checkout', '-B', 'main']);
+      await git(conflictRepoPath, ['checkout', '-b', 'feature']);
+      await writeRepoFile(conflictRepoPath, 'conflict.txt', 'feature\n');
+      await git(conflictRepoPath, ['commit', '-am', 'feature edit']);
+      await git(conflictRepoPath, ['checkout', 'main']);
+      await writeRepoFile(conflictRepoPath, 'conflict.txt', 'main\n');
+      await git(conflictRepoPath, ['commit', '-am', 'main edit']);
+      await expectGitFailure(conflictRepoPath, ['merge', 'feature']);
+
+      const conflictStatus = parseStatusPorcelainV2(
+        (await git(conflictRepoPath, ['status', '--porcelain=v2', '--branch', '-z'])).stdout
+      );
+
+      expect(conflictStatus.files.find((file) => file.path === 'conflict.txt')).toMatchObject({
+        status: 'conflicted',
+        conflicted: true
+      });
+      expect(conflictStatus.conflictedCount).toBe(1);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
 });
+
+async function writeRepoFile(repoPath: string, relativePath: string, contents: string): Promise<void> {
+  const filePath = join(repoPath, relativePath);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, contents);
+}
+
+async function git(cwd: string, args: string[]) {
+  return gitExecutor.run(args, { cwd, kind: 'mutation' });
+}
+
+async function expectGitFailure(cwd: string, args: string[]): Promise<void> {
+  try {
+    await git(cwd, args);
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return;
+    }
+
+    throw error;
+  }
+
+  throw new Error(`git ${args.join(' ')} unexpectedly succeeded`);
+}

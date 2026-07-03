@@ -12,6 +12,7 @@ import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import { useRepositoryChangeInvalidation, useRepositoryOverview } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
+import type { GitProfile } from '@shared/types';
 
 const DEFAULT_SELECTED_SHA = SAMPLE_GRAPH_ROWS[1]?.sha;
 
@@ -26,6 +27,7 @@ export function WorkspaceShell(): ReactElement {
     activateTab,
     closeTab,
     setSidebarCollapsed,
+    assignProfile,
     clearError
   } = useWorkspaceStore();
   const [selectionByTab, setSelectionByTab] = useState<Record<string, string>>({});
@@ -65,17 +67,34 @@ export function WorkspaceShell(): ReactElement {
     void repositoryQuery.refetch();
   }
 
+  async function handleAssignProfile(profileId: string | undefined): Promise<void> {
+    if (!activeTab) {
+      return;
+    }
+
+    await assignProfile(activeTab.path, profileId);
+    await repositoryQuery.refetch();
+  }
+
+  async function handleSaveAndAssignProfile(profile: GitProfile): Promise<void> {
+    await window.api.saveProfile(profile);
+    await handleAssignProfile(profile.id);
+  }
+
   return (
     <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
       <TabStrip
         tabs={workspace.tabs}
         activeTabId={workspace.activeTabId}
+        activeRepoPath={activeTab?.path}
         recentRepos={workspace.recentRepos}
         profileState={repositoryQuery.data?.profileState}
         onActivateTab={(tabId) => void activateTab(tabId)}
         onCloseTab={(tabId) => void closeTab(tabId)}
         onOpenRepository={() => void openRepository()}
         onOpenRecentRepository={(repoPath) => void openRepositoryAtPath(repoPath)}
+        onAssignProfile={handleAssignProfile}
+        onSaveAndAssignProfile={handleSaveAndAssignProfile}
       />
 
       <Toolbar activeTab={activeTab} repositoryOverview={repositoryQuery.data} />

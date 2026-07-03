@@ -166,6 +166,8 @@ export type GitRepositoryOverview = {
 export type RepoChangedEvent = {
   repoPath: string;
   reason: 'git-dir' | 'common-dir' | 'worktree';
+  reasons: Array<'git-dir' | 'common-dir' | 'worktree'>;
   path?: string;
+  paths: string[];
   happenedAt: string;
 };

@@ -98,25 +98,14 @@ async function applyProfileToRepository(repoPath: string, profile: GitProfile): 
 }
 
 async function readEffectiveIdentity(repoPath: string): Promise<GitIdentity> {
-  const repoName = await readConfig(repoPath, ['config', '--local', '--get', 'user.name']);
-  const repoEmail = await readConfig(repoPath, ['config', '--local', '--get', 'user.email']);
+  const name = await readScopedConfig(repoPath, 'user.name');
+  const email = await readScopedConfig(repoPath, 'user.email');
 
-  if (repoName || repoEmail) {
+  if (name || email) {
     return {
-      name: repoName,
-      email: repoEmail,
-      source: 'repo-config'
-    };
-  }
-
-  const globalName = await readConfig(repoPath, ['config', '--global', '--get', 'user.name']);
-  const globalEmail = await readConfig(repoPath, ['config', '--global', '--get', 'user.email']);
-
-  if (globalName || globalEmail) {
-    return {
-      name: globalName,
-      email: globalEmail,
-      source: 'global-config'
+      name: name?.value,
+      email: email?.value,
+      source: selectIdentitySource(name?.scope ?? email?.scope)
     };
   }
 
@@ -125,14 +114,27 @@ async function readEffectiveIdentity(repoPath: string): Promise<GitIdentity> {
   };
 }
 
-async function readConfig(repoPath: string, args: string[]): Promise<string | undefined> {
+async function readScopedConfig(repoPath: string, key: string): Promise<{ scope: string; value: string } | undefined> {
   try {
-    const result = await gitExecutor.run(args, { cwd: repoPath });
+    const result = await gitExecutor.run(['config', '--show-scope', '--get', key], { cwd: repoPath });
     const value = result.stdout.trim();
-    return value || undefined;
+    const [scope, configValue] = value.split('\t', 2);
+
+    if (!scope || !configValue) {
+      return undefined;
+    }
+
+    return {
+      scope,
+      value: configValue
+    };
   } catch {
     return undefined;
   }
+}
+
+function selectIdentitySource(scope: string | undefined): GitIdentity['source'] {
+  return scope === 'local' || scope === 'worktree' || scope === 'command' ? 'repo-config' : 'global-config';
 }
 
 function normalizeProfile(profile: GitProfile): GitProfile {

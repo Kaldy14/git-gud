@@ -1,35 +1,39 @@
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, FolderOpen, GitBranch, History, Plus, Settings, X } from 'lucide-react';
+import { Bell, FolderOpen, GitBranch, History, Plus, Settings, X } from 'lucide-react';
 
-import type { RecentRepository, RepoProfileState, RepoTab } from '@shared/types';
+import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
+import type { GitProfile, RecentRepository, RepoProfileState, RepoTab } from '@shared/types';
 
 type TabStripProps = {
   tabs: RepoTab[];
   activeTabId?: string;
+  activeRepoPath?: string;
   recentRepos: RecentRepository[];
   profileState?: RepoProfileState;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onOpenRepository: () => void;
   onOpenRecentRepository: (repoPath: string) => void;
+  onAssignProfile: (profileId: string | undefined) => Promise<void>;
+  onSaveAndAssignProfile: (profile: GitProfile) => Promise<void>;
 };
 
 export function TabStrip({
   tabs,
   activeTabId,
+  activeRepoPath,
   recentRepos,
   profileState,
   onActivateTab,
   onCloseTab,
   onOpenRepository,
-  onOpenRecentRepository
+  onOpenRecentRepository,
+  onAssignProfile,
+  onSaveAndAssignProfile
 }: TabStripProps): ReactElement {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const profileLabel = profileState?.activeProfile?.name ?? profileState?.effectiveIdentity.name ?? 'Profile';
-  const profileEmail = profileState?.activeProfile?.email ?? profileState?.effectiveIdentity.email;
-  const profileColor = profileState?.activeProfile?.avatarColor ?? 'var(--accent)';
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -134,36 +138,19 @@ export function TabStrip({
       </div>
 
       <div className="no-drag flex shrink-0 items-center gap-0.5 px-2">
-        <button className="icon-btn" type="button" aria-label="Notifications" title="Notifications">
+        <button className="icon-btn" type="button" aria-label="Notifications" title="Notifications - coming in M6" disabled>
           <Bell size={15} />
         </button>
-        <button className="icon-btn" type="button" aria-label="Settings" title="Settings — coming in M6">
+        <button className="icon-btn" type="button" aria-label="Settings" title="Settings - coming in M6" disabled>
           <Settings size={15} />
         </button>
-        <button
-          className="ml-1 flex h-7 items-center gap-2 rounded-full py-0.5 pl-1 pr-2 text-xs text-[var(--text-2)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
-          type="button"
-          title={profileEmail ? `${profileLabel} <${profileEmail}>` : 'No Git identity configured'}
-        >
-          <span
-            className="grid h-5.5 w-5.5 place-items-center rounded-full text-[10px] font-bold text-[var(--bg-field)]"
-            style={{ background: profileColor }}
-          >
-            {initials(profileLabel)}
-          </span>
-          <span className="max-w-28 truncate">{profileLabel}</span>
-          <ChevronDown size={12} />
-        </button>
+        <ProfileMenu
+          repoPath={activeRepoPath}
+          profileState={profileState}
+          onAssignProfile={onAssignProfile}
+          onSaveAndAssignProfile={onSaveAndAssignProfile}
+        />
       </div>
     </div>
   );
-}
-
-function initials(value: string): string {
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('') || 'P';
 }

@@ -14,14 +14,23 @@ export class RepositoryValidationError extends Error {
 export async function validateRepository(repoPath: string): Promise<RepositorySummary> {
   try {
     const selectedPath = resolve(repoPath);
-    const topLevel = trimGitOutput((await gitExecutor.run(['rev-parse', '--show-toplevel'], { cwd: selectedPath })).stdout);
-    const insideWorkTree = trimGitOutput((await gitExecutor.run(['rev-parse', '--is-inside-work-tree'], { cwd: topLevel })).stdout);
-    const isBare = trimGitOutput((await gitExecutor.run(['rev-parse', '--is-bare-repository'], { cwd: topLevel })).stdout);
+    const isBare = trimGitOutput(
+      (await gitExecutor.run(['rev-parse', '--is-bare-repository'], { cwd: selectedPath })).stdout
+    );
 
-    if (insideWorkTree !== 'true' || isBare === 'true') {
+    if (isBare === 'true') {
       throw new RepositoryValidationError('Bare repositories are not supported in this first build.');
     }
 
+    const insideWorkTree = trimGitOutput(
+      (await gitExecutor.run(['rev-parse', '--is-inside-work-tree'], { cwd: selectedPath })).stdout
+    );
+
+    if (insideWorkTree !== 'true') {
+      throw new RepositoryValidationError('Select a Git worktree folder. Bare repositories are not supported in this first build.');
+    }
+
+    const topLevel = trimGitOutput((await gitExecutor.run(['rev-parse', '--show-toplevel'], { cwd: selectedPath })).stdout);
     const gitDir = trimGitOutput((await gitExecutor.run(['rev-parse', '--git-dir'], { cwd: topLevel })).stdout);
     const commonDir = trimGitOutput((await gitExecutor.run(['rev-parse', '--git-common-dir'], { cwd: topLevel })).stdout);
 
