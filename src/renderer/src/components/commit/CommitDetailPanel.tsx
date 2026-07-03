@@ -2,10 +2,10 @@ import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
 import { FilePen, FolderClosed, FolderTree, List, Minus, Pencil, Plus } from 'lucide-react';
 
-import type { GraphRow, SampleFile, SampleFileStatus } from '@renderer/components/graph/sampleGraph';
+import type { CommitGraphRow, GraphFile, GraphFileStatus } from '@shared/types';
 
 type CommitDetailPanelProps = {
-  row?: GraphRow;
+  row?: CommitGraphRow;
   parentSha?: string;
 };
 
@@ -117,16 +117,24 @@ export function CommitDetailPanel({ row, parentSha }: CommitDetailPanelProps): R
 
         <div className="px-2 pb-4 pt-1">
           {fileView === 'path' ? (
-            row.files.map((file) => (
-              <FileRow
-                key={file.path}
-                file={file}
-                isSelected={selectedFile === file.path}
-                onSelect={() => setSelectedFile(file.path)}
-              />
-            ))
+            row.files.length > 0 ? (
+              row.files.map((file) => (
+                <FileRow
+                  key={file.path}
+                  file={file}
+                  isSelected={selectedFile === file.path}
+                  onSelect={() => setSelectedFile(file.path)}
+                />
+              ))
+            ) : (
+              <EmptyFiles />
+            )
           ) : (
-            <FileTreeView files={row.files} selectedFile={selectedFile} onSelectFile={setSelectedFile} />
+            row.files.length > 0 ? (
+              <FileTreeView files={row.files} selectedFile={selectedFile} onSelectFile={setSelectedFile} />
+            ) : (
+              <EmptyFiles />
+            )
           )}
         </div>
       </div>
@@ -134,8 +142,8 @@ export function CommitDetailPanel({ row, parentSha }: CommitDetailPanelProps): R
   );
 }
 
-function countByStatus(files: SampleFile[]): Record<SampleFileStatus, number> {
-  const counts: Record<SampleFileStatus, number> = { modified: 0, added: 0, deleted: 0 };
+function countByStatus(files: GraphFile[]): Record<GraphFileStatus, number> {
+  const counts: Record<GraphFileStatus, number> = { modified: 0, added: 0, deleted: 0 };
 
   for (const file of files) {
     counts[file.status] += 1;
@@ -144,7 +152,7 @@ function countByStatus(files: SampleFile[]): Record<SampleFileStatus, number> {
   return counts;
 }
 
-function StatusIcon({ status }: { status: SampleFileStatus }): ReactElement {
+function StatusIcon({ status }: { status: GraphFileStatus }): ReactElement {
   if (status === 'modified') {
     return <Pencil size={12} className="shrink-0 text-[#f0b35f]" />;
   }
@@ -157,7 +165,7 @@ function StatusIcon({ status }: { status: SampleFileStatus }): ReactElement {
 }
 
 type FileRowProps = {
-  file: SampleFile;
+  file: GraphFile;
   isSelected: boolean;
   onSelect: () => void;
   indent?: boolean;
@@ -188,14 +196,14 @@ function FileRow({ file, isSelected, onSelect, indent = false, hideDirectory = f
 }
 
 type FileTreeViewProps = {
-  files: SampleFile[];
+  files: GraphFile[];
   selectedFile?: string;
   onSelectFile: (path: string) => void;
 };
 
 function FileTreeView({ files, selectedFile, onSelectFile }: FileTreeViewProps): ReactElement {
   const groups = useMemo(() => {
-    const byDirectory = new Map<string, SampleFile[]>();
+    const byDirectory = new Map<string, GraphFile[]>();
 
     for (const file of files) {
       const separatorIndex = file.path.lastIndexOf('/');
@@ -230,6 +238,14 @@ function FileTreeView({ files, selectedFile, onSelectFile }: FileTreeViewProps):
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+function EmptyFiles(): ReactElement {
+  return (
+    <div className="px-2 py-3 text-xs text-[var(--text-3)]">
+      No files to display.
     </div>
   );
 }

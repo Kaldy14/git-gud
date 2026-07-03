@@ -29,12 +29,12 @@ export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assign
   };
 }
 
-async function loadStatus(repoPath: string): Promise<GitRepositoryOverview['status']> {
+export async function loadStatus(repoPath: string): Promise<GitRepositoryOverview['status']> {
   const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath });
   return parseStatusPorcelainV2(result.stdout);
 }
 
-async function loadRefs(repoPath: string): Promise<GitRepositoryOverview['refs']> {
+export async function loadRefs(repoPath: string): Promise<GitRepositoryOverview['refs']> {
   const result = await gitExecutor.run(
     [
       'for-each-ref',
@@ -49,17 +49,17 @@ async function loadRefs(repoPath: string): Promise<GitRepositoryOverview['refs']
   return parseForEachRef(result.stdout);
 }
 
-async function loadRemotes(repoPath: string): Promise<GitRepositoryOverview['remotes']> {
+export async function loadRemotes(repoPath: string): Promise<GitRepositoryOverview['remotes']> {
   const result = await gitExecutor.run(['remote', '-v'], { cwd: repoPath });
   return parseRemoteVerbose(result.stdout);
 }
 
-async function loadWorktrees(repoPath: string): Promise<GitRepositoryOverview['worktrees']> {
+export async function loadWorktrees(repoPath: string): Promise<GitRepositoryOverview['worktrees']> {
   const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath });
   return parseWorktreeList(result.stdout, repoPath);
 }
 
-async function loadStashes(repoPath: string): Promise<GitRepositoryOverview['stashes']> {
+export async function loadStashes(repoPath: string): Promise<GitRepositoryOverview['stashes']> {
   const result = await gitExecutor.run(['stash', 'list', '--format=%H%x00%P%x00%gd%x00%aI%x00%s%x00'], {
     cwd: repoPath
   });

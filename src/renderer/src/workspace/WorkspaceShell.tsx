@@ -4,17 +4,15 @@ import { X } from 'lucide-react';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
 import { GraphView } from '@renderer/components/graph/GraphView';
-import { SAMPLE_GRAPH_ROWS, findGraphRow } from '@renderer/components/graph/sampleGraph';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { StartPage } from '@renderer/components/start/StartPage';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
-import { useRepositoryChangeInvalidation, useRepositoryOverview } from '@renderer/queries/repository';
+import { useCommitGraph, useRepositoryChangeInvalidation, useRepositoryOverview } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
+import { COMMIT_GRAPH_LIMIT_STEP, DEFAULT_COMMIT_GRAPH_LIMIT } from '@shared/graph';
 import type { GitProfile } from '@shared/types';
-
-const DEFAULT_SELECTED_SHA = SAMPLE_GRAPH_ROWS[1]?.sha;
 
 export function WorkspaceShell(): ReactElement {
   const {
@@ -31,20 +29,22 @@ export function WorkspaceShell(): ReactElement {
     clearError
   } = useWorkspaceStore();
   const [selectionByTab, setSelectionByTab] = useState<Record<string, string>>({});
+  const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
 
   const activeTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId),
     [workspace.activeTabId, workspace.tabs]
   );
+  const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? DEFAULT_COMMIT_GRAPH_LIMIT) : DEFAULT_COMMIT_GRAPH_LIMIT;
   const repositoryQuery = useRepositoryOverview(activeTab?.path);
+  const graphQuery = useCommitGraph(activeTab?.path, graphLimit);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
-  const selectedSha = activeTab ? (selectionByTab[activeTab.id] ?? DEFAULT_SELECTED_SHA) : undefined;
-  const selectedRow = findGraphRow(selectedSha);
-  const parentSha = useMemo(() => {
-    const index = SAMPLE_GRAPH_ROWS.findIndex((row) => row.sha === selectedSha);
-    return index === -1 ? undefined : SAMPLE_GRAPH_ROWS[index + 1]?.sha;
-  }, [selectedSha]);
+  const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
+  const graphRows = graphQuery.data?.rows ?? [];
+  const selectedSha = activeTab ? selectionByTab[activeTab.id] : undefined;
+  const selectedRow = graphRows.find((row) => row.sha === selectedSha) ?? graphRows[0];
+  const parentSha = selectedRow?.parentShas[0];
 
   useRepositoryChangeInvalidation();
 
@@ -56,6 +56,15 @@ export function WorkspaceShell(): ReactElement {
     if (activeTab) {
       setSelectionByTab((value) => ({ ...value, [activeTab.id]: sha }));
     }
+  }
+
+  function handleLoadMoreGraphRows(): void {
+    if (!activeTab) {
+      return;
+    }
+
+    const nextLimit = graphQuery.data?.nextLimit ?? graphLimit + COMMIT_GRAPH_LIMIT_STEP;
+    setGraphLimitByTab((value) => ({ ...value, [activeTab.id]: nextLimit }));
   }
 
   function handleErrorAction(): void {
@@ -119,7 +128,16 @@ export function WorkspaceShell(): ReactElement {
               isCollapsed={workspace.sidebarCollapsed}
               onToggleCollapsed={() => void setSidebarCollapsed(!workspace.sidebarCollapsed)}
             />
-            <GraphView rows={SAMPLE_GRAPH_ROWS} selectedSha={selectedSha} onSelectRow={handleSelectRow} />
+            <GraphView
+              rows={graphRows}
+              selectedSha={selectedRow?.sha}
+              isLoading={graphQuery.isLoading}
+              isFetching={graphQuery.isFetching}
+              errorMessage={graphError}
+              hasMore={graphQuery.data?.hasMore ?? false}
+              onSelectRow={handleSelectRow}
+              onLoadMore={handleLoadMoreGraphRows}
+            />
             <CommitDetailPanel row={selectedRow} parentSha={parentSha} />
           </>
         ) : (

@@ -63,6 +63,63 @@ export type GitFileChange = {
   conflicted: boolean;
 };
 
+export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
+
+export type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
+
+export type GraphRefChip = {
+  label: string;
+  kind: RefChipKind;
+};
+
+export type GraphRailSegment =
+  | { type: 'through'; lane: number }
+  | { type: 'stopTop'; lane: number }
+  | { type: 'startBottom'; lane: number }
+  | { type: 'curveIn'; from: number; to: number }
+  | { type: 'curveOut'; from: number; to: number };
+
+export type GraphFileStatus = 'modified' | 'added' | 'deleted';
+
+export type GraphFile = {
+  path: string;
+  status: GraphFileStatus;
+};
+
+export type GraphAuthor = {
+  name: string;
+  email?: string;
+  initials: string;
+  color: string;
+};
+
+export type CommitGraphRow = {
+  sha: string;
+  parentShas: string[];
+  subject: string;
+  body?: string;
+  author: GraphAuthor;
+  authoredAt?: string;
+  committedAt?: string;
+  dateLabel: string;
+  node: { lane: number; kind: GraphNodeKind };
+  colorOverride?: string;
+  rails: GraphRailSegment[];
+  refs?: GraphRefChip[];
+  dateMarker?: string;
+  files: GraphFile[];
+};
+
+export type CommitGraphPage = {
+  repoPath: string;
+  loadedAt: string;
+  rows: CommitGraphRow[];
+  limit: number;
+  loadedCommitCount: number;
+  hasMore: boolean;
+  nextLimit: number;
+};
+
 export type GitStatusSummary = {
   branch: GitBranchState;
   files: GitFileChange[];

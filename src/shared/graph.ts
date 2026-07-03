@@ -1,0 +1,248 @@
+import type { CommitGraphRow, GraphFile, GraphNodeKind, GraphRefChip, GraphRailSegment } from './types';
+
+export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
+export const COMMIT_GRAPH_LIMIT_STEP = 1500;
+
+export const LANE_COLORS = ['#4c9df3', '#b46bf5', '#2ec8a6', '#f0a13f', '#ef5b9c', '#e8615a'] as const;
+const AUTHOR_COLORS = ['#38bdf8', '#c084fc', '#4ade80', '#fbbf24', '#fb7185', '#a78bfa', '#2dd4bf'] as const;
+
+export type GraphCommitInput = {
+  sha: string;
+  parentShas: string[];
+  subject: string;
+  authorName: string;
+  authorEmail?: string;
+  authoredAt?: string;
+  committedAt?: string;
+  dateLabel?: string;
+  kind?: GraphNodeKind;
+  refs?: GraphRefChip[];
+  colorOverride?: string;
+  files?: GraphFile[];
+};
+
+export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRow[] {
+  const expectedByLane: Array<string | undefined> = [];
+  const rows: CommitGraphRow[] = [];
+  let previousDay: string | undefined;
+
+  for (const commit of commits) {
+    const matchingLanes = findMatchingLanes(expectedByLane, commit.sha);
+    const lane = matchingLanes[0] ?? firstFreeLane(expectedByLane);
+    const rails = buildIncomingRails(expectedByLane, matchingLanes, lane);
+
+    for (const matchingLane of matchingLanes) {
+      if (matchingLane !== lane) {
+        expectedByLane[matchingLane] = undefined;
+      }
+    }
+
+    const [firstParent, ...additionalParents] = uniqueParents(commit.parentShas);
+
+    if (firstParent) {
+      expectedByLane[lane] = firstParent;
+      rails.push({ type: 'startBottom', lane });
+    } else {
+      expectedByLane[lane] = undefined;
+    }
+
+    for (const parentSha of additionalParents) {
+      const parentLane = laneForParent(expectedByLane, parentSha, lane);
+      expectedByLane[parentLane] = parentSha;
+      rails.push({ type: 'curveOut', from: lane, to: parentLane });
+    }
+
+    trimTrailingFreeLanes(expectedByLane);
+
+    const day = dayKey(commit.authoredAt ?? commit.committedAt);
+    const dateMarker = day && day !== previousDay ? formatDateMarker(commit.authoredAt ?? commit.committedAt) : undefined;
+
+    if (day) {
+      previousDay = day;
+    }
+
+    rows.push({
+      sha: commit.sha,
+      parentShas: commit.parentShas,
+      subject: commit.subject,
+      author: {
+        name: commit.authorName,
+        email: commit.authorEmail,
+        initials: initials(commit.authorName || commit.authorEmail || commit.sha),
+        color: authorColor(commit.authorEmail ?? commit.authorName)
+      },
+      authoredAt: commit.authoredAt,
+      committedAt: commit.committedAt,
+      dateLabel: commit.dateLabel ?? formatDateLabel(commit.authoredAt ?? commit.committedAt),
+      node: {
+        lane,
+        kind: commit.kind ?? (commit.parentShas.length > 1 ? 'merge' : 'commit')
+      },
+      colorOverride: commit.colorOverride,
+      rails,
+      refs: commit.refs,
+      dateMarker,
+      files: commit.files ?? []
+    });
+  }
+
+  return rows;
+}
+
+export function laneColor(lane: number): string {
+  return LANE_COLORS[lane % LANE_COLORS.length];
+}
+
+function buildIncomingRails(
+  expectedByLane: Array<string | undefined>,
+  matchingLanes: number[],
+  nodeLane: number
+): GraphRailSegment[] {
+  const matchingSet = new Set(matchingLanes);
+  const rails: GraphRailSegment[] = [];
+
+  for (let lane = 0; lane < expectedByLane.length; lane += 1) {
+    const expectedSha = expectedByLane[lane];
+
+    if (!expectedSha) {
+      continue;
+    }
+
+    if (matchingSet.has(lane)) {
+      rails.push(lane === nodeLane ? { type: 'stopTop', lane } : { type: 'curveIn', from: lane, to: nodeLane });
+      continue;
+    }
+
+    rails.push({ type: 'through', lane });
+  }
+
+  return rails;
+}
+
+function findMatchingLanes(expectedByLane: Array<string | undefined>, sha: string): number[] {
+  const lanes: number[] = [];
+
+  for (let lane = 0; lane < expectedByLane.length; lane += 1) {
+    if (expectedByLane[lane] === sha) {
+      lanes.push(lane);
+    }
+  }
+
+  return lanes;
+}
+
+function firstFreeLane(expectedByLane: Array<string | undefined>): number {
+  const lane = expectedByLane.findIndex((expectedSha) => expectedSha === undefined);
+
+  if (lane !== -1) {
+    return lane;
+  }
+
+  expectedByLane.push(undefined);
+  return expectedByLane.length - 1;
+}
+
+function laneForParent(expectedByLane: Array<string | undefined>, parentSha: string, avoidLane: number): number {
+  const existingLane = expectedByLane.findIndex((expectedSha, lane) => lane !== avoidLane && expectedSha === parentSha);
+
+  if (existingLane !== -1) {
+    return existingLane;
+  }
+
+  const freeLane = expectedByLane.findIndex((expectedSha, lane) => lane !== avoidLane && expectedSha === undefined);
+
+  if (freeLane !== -1) {
+    return freeLane;
+  }
+
+  expectedByLane.push(undefined);
+  return expectedByLane.length - 1;
+}
+
+function uniqueParents(parentShas: string[]): string[] {
+  return [...new Set(parentShas.filter(Boolean))];
+}
+
+function trimTrailingFreeLanes(expectedByLane: Array<string | undefined>): void {
+  while (expectedByLane.length > 0 && expectedByLane[expectedByLane.length - 1] === undefined) {
+    expectedByLane.pop();
+  }
+}
+
+function initials(value: string): string {
+  return (
+    value
+      .split(/[^A-Za-z0-9]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || 'G'
+  );
+}
+
+function authorColor(identity: string): string {
+  return AUTHOR_COLORS[Math.abs(hashString(identity)) % AUTHOR_COLORS.length];
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+
+  return hash;
+}
+
+function dayKey(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateLabel(value: string | undefined): string {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function formatDateMarker(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(date);
+}

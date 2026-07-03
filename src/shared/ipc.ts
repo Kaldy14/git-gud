@@ -1,4 +1,4 @@
-import type { GitProfile, GitRepositoryOverview, RepoChangedEvent, WorkspaceState } from './types';
+import type { CommitGraphPage, GitProfile, GitRepositoryOverview, RepoChangedEvent, WorkspaceState } from './types';
 
 export type IpcChannelMap = {
   'workspace:get': {
@@ -28,6 +28,10 @@ export type IpcChannelMap = {
   'repo:overview': {
     args: [repoPath: string];
     result: GitRepositoryOverview;
+  };
+  'repo:graph': {
+    args: [repoPath: string, limit?: number];
+    result: CommitGraphPage;
   };
   'profiles:list': {
     args: [];
@@ -59,6 +63,7 @@ export type RendererApi = {
   closeTab: (tabId: string) => Promise<WorkspaceState>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
+  getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
   listProfiles: () => Promise<GitProfile[]>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;

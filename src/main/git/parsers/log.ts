@@ -12,14 +12,22 @@ export type GitLogCommit = {
 const LOG_FIELD_COUNT = 8;
 
 export function parseGitLog(output: string): GitLogCommit[] {
-  const tokens = output.split('\0').filter((token) => token.length > 0);
+  const tokens = output.split('\0');
   const commits: GitLogCommit[] = [];
+
+  if (tokens[tokens.length - 1] === '') {
+    tokens.pop();
+  }
 
   for (let index = 0; index + LOG_FIELD_COUNT - 1 < tokens.length; index += LOG_FIELD_COUNT) {
     const [sha, parents, authorName, authorEmail, authoredAt, committedAt, refs, subject] = tokens.slice(
       index,
       index + LOG_FIELD_COUNT
     );
+
+    if (!sha) {
+      continue;
+    }
 
     commits.push({
       sha,

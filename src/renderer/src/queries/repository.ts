@@ -2,11 +2,17 @@ import { useEffect } from 'react';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { GitRepositoryOverview, RepoChangedEvent } from '@shared/types';
+import type { CommitGraphPage, GitRepositoryOverview, RepoChangedEvent } from '@shared/types';
 
 export const repositoryOverviewQueryKey = (repoPath: string): readonly ['repository-overview', string] => [
   'repository-overview',
   repoPath
+];
+
+export const commitGraphQueryKey = (repoPath: string, limit: number): readonly ['commit-graph', string, number] => [
+  'commit-graph',
+  repoPath,
+  limit
 ];
 
 export function useRepositoryOverview(repoPath: string | undefined) {
@@ -24,6 +30,21 @@ export function useRepositoryOverview(repoPath: string | undefined) {
   });
 }
 
+export function useCommitGraph(repoPath: string | undefined, limit: number) {
+  return useQuery({
+    queryKey: repoPath ? commitGraphQueryKey(repoPath, limit) : ['commit-graph', 'none', limit],
+    queryFn: async (): Promise<CommitGraphPage> => {
+      if (!repoPath) {
+        throw new Error('Repository path is required.');
+      }
+
+      return window.api.getCommitGraph(repoPath, limit);
+    },
+    enabled: Boolean(repoPath),
+    staleTime: 1500
+  });
+}
+
 export function useRepositoryChangeInvalidation(): void {
   const queryClient = useQueryClient();
 
@@ -31,6 +52,9 @@ export function useRepositoryChangeInvalidation(): void {
     return window.api.onRepositoryChanged((event: RepoChangedEvent) => {
       void queryClient.invalidateQueries({
         queryKey: repositoryOverviewQueryKey(event.repoPath)
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['commit-graph', event.repoPath]
       });
     });
   }, [queryClient]);

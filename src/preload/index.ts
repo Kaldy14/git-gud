@@ -17,6 +17,7 @@ const api: RendererApi = {
   closeTab: (tabId) => invoke('tabs:close', tabId),
   setSidebarCollapsed: (collapsed) => invoke('workspace:set-sidebar-collapsed', collapsed),
   getRepositoryOverview: (repoPath) => invoke('repo:overview', repoPath),
+  getCommitGraph: (repoPath, limit) => invoke('repo:graph', repoPath, limit),
   listProfiles: () => invoke('profiles:list'),
   saveProfile: (profile) => invoke('profiles:save', profile),
   assignProfile: (repoPath, profileId) => invoke('repo:assign-profile', repoPath, profileId),

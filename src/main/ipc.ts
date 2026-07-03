@@ -3,6 +3,7 @@ import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialo
 import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
 import type { WorkspaceState } from '@shared/types';
 
+import { loadCommitGraph } from './git/commitGraph';
 import { loadRepositoryOverview } from './git/repositoryOverview';
 import { validateRepository } from './git/repoInspector';
 import type { RepoWatcherRegistry } from './git/watcher';
@@ -57,6 +58,15 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     }
 
     return loadRepositoryOverview(tab);
+  });
+  handle('repo:graph', async (_event, repoPath, limit) => {
+    const tab = getWorkspace().tabs.find((candidate) => candidate.path === repoPath);
+
+    if (!tab) {
+      throw new Error('Repository is not open in this workspace.');
+    }
+
+    return loadCommitGraph(tab, limit);
   });
   handle('profiles:list', () => listProfiles());
   handle('profiles:save', (_event, profile) => saveProfile(profile));
