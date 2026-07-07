@@ -20,8 +20,11 @@ export function StartPage({
     <section className="grid min-w-0 flex-1 place-items-center overflow-y-auto bg-[var(--bg-graph)] px-8 py-10">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center text-center">
-          <div className="mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-[#2cc5ae] to-[#155e6b] shadow-lg shadow-black/40">
-            <GitCommitVertical size={32} className="text-[#04211c]" />
+          <div
+            className="mb-5 grid h-16 w-16 place-items-center rounded-2xl shadow-lg shadow-black/40"
+            style={{ background: 'linear-gradient(135deg, var(--accent-2), var(--accent))' }}
+          >
+            <GitCommitVertical size={32} className="text-[var(--avatar-fg)]" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-1)]">git-gud</h1>
           <p className="mt-1.5 text-[13px] text-[var(--text-2)]">

@@ -208,7 +208,6 @@ function renderDiffContent({
         className="gg-diff gg-diff-main"
         patch={diffQuery.data.patch}
         options={diffOptions}
-        disableWorkerPool
       />
     );
   }

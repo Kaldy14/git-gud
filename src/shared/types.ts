@@ -145,9 +145,166 @@ export type GitCommitInput = {
   amend: boolean;
 };
 
+export type GitPullInput = {
+  mode: 'ff-only' | 'rebase';
+};
+
+export type GitPushInput = {
+  forceWithLease: boolean;
+};
+
+export type GitCreateBranchInput = {
+  name: string;
+  startPoint?: string;
+  checkout: boolean;
+};
+
+export type GitRenameBranchInput = {
+  oldName: string;
+  newName: string;
+};
+
+export type GitDeleteBranchInput = {
+  name: string;
+  force: boolean;
+};
+
+export type GitCheckoutTarget =
+  | {
+      kind: 'local';
+      name: string;
+    }
+  | {
+      kind: 'remote';
+      name: string;
+      localName?: string;
+    }
+  | {
+      kind: 'commit';
+      sha: string;
+    };
+
+export type GitMergeInput = {
+  ref: string;
+};
+
+export type GitTagCreateInput = {
+  name: string;
+  targetSha?: string;
+};
+
+export type GitTagDeleteInput = {
+  name: string;
+};
+
+export type GitStashPushInput = {
+  message?: string;
+  includeUntracked: boolean;
+};
+
+export type GitStashRefInput = {
+  selector: string;
+};
+
+export type GitResetInput = {
+  target: string;
+  mode: 'soft' | 'mixed' | 'hard';
+};
+
+export type GitRebaseInput = {
+  target: string;
+};
+
+export type GitInteractiveRebaseAction = 'pick' | 'reword' | 'squash' | 'fixup' | 'drop';
+
+export type GitInteractiveRebaseCommit = {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  message: string;
+};
+
+export type GitInteractiveRebasePlan = {
+  repoPath: string;
+  base: string;
+  baseShortSha: string;
+  branchName: string;
+  headSha: string;
+  commits: GitInteractiveRebaseCommit[];
+  loadedAt: string;
+};
+
+export type GitInteractiveRebaseTodoItem = {
+  sha: string;
+  action: GitInteractiveRebaseAction;
+  message?: string;
+};
+
+export type GitInteractiveRebaseInput = {
+  base: string;
+  commits: GitInteractiveRebaseTodoItem[];
+};
+
+export type GitConflictActionInput = {
+  action: 'continue' | 'skip' | 'abort';
+};
+
+export type GitConflictOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'unknown';
+
+export type GitConflictState = {
+  isActive: boolean;
+  operation?: GitConflictOperation;
+  files: GitFileChangeDetail[];
+  canContinue: boolean;
+  canSkip: boolean;
+  canAbort: boolean;
+  message?: string;
+};
+
+export type GitOperationSummary = {
+  id: string;
+  label: string;
+  status: 'completed' | 'conflicted';
+  message?: string;
+};
+
+export type GitUndoOperation =
+  | 'commit'
+  | 'amend'
+  | 'branch-create'
+  | 'branch-delete'
+  | 'branch-rename'
+  | 'checkout'
+  | 'merge'
+  | 'reset'
+  | 'tag-create'
+  | 'tag-delete';
+
+export type GitUndoEntry = {
+  id: string;
+  repoPath: string;
+  operation: GitUndoOperation;
+  label: string;
+  createdAt: string;
+  requiresConfirmation: boolean;
+  staleReason?: string;
+  refName?: string;
+  refNameAfter?: string;
+  upstream?: string;
+  targetSha?: string;
+  headBefore?: string;
+  headAfter?: string;
+  branchBefore?: string;
+  branchAfter?: string;
+  resetMode?: GitResetInput['mode'];
+};
+
 export type GitOperationResult = {
   repoPath: string;
   happenedAt: string;
+  operation?: GitOperationSummary;
+  undoEntry?: GitUndoEntry;
+  conflictState?: GitConflictState;
 };
 
 export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
@@ -308,11 +465,13 @@ export type GitRepositoryOverview = {
   repoPath: string;
   loadedAt: string;
   status: GitStatusSummary;
+  conflictState: GitConflictState;
   refs: GitRefsSummary;
   remotes: GitRemote[];
   worktrees: GitWorktree[];
   stashes: GitStashEntry[];
   profileState: RepoProfileState;
+  latestUndo?: GitUndoEntry;
 };
 
 export type RepoChangedEvent = {

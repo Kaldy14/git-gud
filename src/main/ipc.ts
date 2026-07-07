@@ -4,6 +4,28 @@ import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
 import type { WorkspaceState } from '@shared/types';
 
 import { loadCommitGraph } from './git/commitGraph';
+import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
+import {
+  checkoutRef,
+  cherryPickCommit,
+  createBranch,
+  createTag,
+  deleteBranch,
+  deleteTag,
+  fetchRepository,
+  mergeRef,
+  pullRepository,
+  pushRepository,
+  renameBranch,
+  resetToCommit,
+  resolveConflict,
+  revertCommit,
+  stashApply,
+  stashDrop,
+  stashPop,
+  stashPush,
+  undoOperation
+} from './git/operations';
 import {
   commitChanges,
   loadCommitDetail,
@@ -17,6 +39,7 @@ import {
 import { loadRemotes, loadRepositoryOverview } from './git/repositoryOverview';
 import { validateRepository } from './git/repoInspector';
 import type { RepoWatcherRegistry } from './git/watcher';
+import { validateIpcArgs } from './ipcValidation';
 import { assignProfileToRepository, listProfiles, saveProfile, suggestProfileForRepository } from './profiles';
 import {
   activateWorkspaceTab,
@@ -92,6 +115,30 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('repo:stage-all', async (_event, repoPath) => stageAll(getOpenRepositoryTab(repoPath)));
   handle('repo:unstage-all', async (_event, repoPath) => unstageAll(getOpenRepositoryTab(repoPath)));
   handle('repo:commit', async (_event, repoPath, input) => commitChanges(getOpenRepositoryTab(repoPath), input));
+  handle('repo:fetch', async (_event, repoPath) => fetchRepository(getOpenRepositoryTab(repoPath)));
+  handle('repo:pull', async (_event, repoPath, input) => pullRepository(getOpenRepositoryTab(repoPath), input));
+  handle('repo:push', async (_event, repoPath, input) => pushRepository(getOpenRepositoryTab(repoPath), input));
+  handle('repo:create-branch', async (_event, repoPath, input) => createBranch(getOpenRepositoryTab(repoPath), input));
+  handle('repo:rename-branch', async (_event, repoPath, input) => renameBranch(getOpenRepositoryTab(repoPath), input));
+  handle('repo:delete-branch', async (_event, repoPath, input) => deleteBranch(getOpenRepositoryTab(repoPath), input));
+  handle('repo:checkout', async (_event, repoPath, target) => checkoutRef(getOpenRepositoryTab(repoPath), target));
+  handle('repo:merge', async (_event, repoPath, input) => mergeRef(getOpenRepositoryTab(repoPath), input));
+  handle('repo:create-tag', async (_event, repoPath, input) => createTag(getOpenRepositoryTab(repoPath), input));
+  handle('repo:delete-tag', async (_event, repoPath, input) => deleteTag(getOpenRepositoryTab(repoPath), input));
+  handle('repo:stash-push', async (_event, repoPath, input) => stashPush(getOpenRepositoryTab(repoPath), input));
+  handle('repo:stash-apply', async (_event, repoPath, input) => stashApply(getOpenRepositoryTab(repoPath), input));
+  handle('repo:stash-pop', async (_event, repoPath, input) => stashPop(getOpenRepositoryTab(repoPath), input));
+  handle('repo:stash-drop', async (_event, repoPath, input) => stashDrop(getOpenRepositoryTab(repoPath), input));
+  handle('repo:cherry-pick', async (_event, repoPath, sha) => cherryPickCommit(getOpenRepositoryTab(repoPath), sha));
+  handle('repo:revert', async (_event, repoPath, sha) => revertCommit(getOpenRepositoryTab(repoPath), sha));
+  handle('repo:reset', async (_event, repoPath, input) => resetToCommit(getOpenRepositoryTab(repoPath), input));
+  handle('repo:rebase', async (_event, repoPath, input) => rebaseOnto(getOpenRepositoryTab(repoPath), input));
+  handle('repo:interactive-rebase-plan', async (_event, repoPath, base) =>
+    prepareInteractiveRebasePlan(getOpenRepositoryTab(repoPath), base)
+  );
+  handle('repo:interactive-rebase', async (_event, repoPath, input) => runInteractiveRebase(getOpenRepositoryTab(repoPath), input));
+  handle('repo:resolve-conflict', async (_event, repoPath, input) => resolveConflict(getOpenRepositoryTab(repoPath), input));
+  handle('repo:undo', async (_event, repoPath, undoId) => undoOperation(getOpenRepositoryTab(repoPath), undoId));
   handle('profiles:list', () => listProfiles());
   handle('profiles:save', (_event, profile) => saveProfile(profile));
   handle('repo:assign-profile', async (_event, repoPath, profileId) => {
@@ -101,7 +148,41 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
 }
 
 function handle<TChannel extends IpcChannelName>(channel: TChannel, handler: IpcHandler<TChannel>): void {
-  ipcMain.handle(channel, (event, ...args: unknown[]) => handler(event, ...(args as IpcChannelMap[TChannel]['args'])));
+  ipcMain.handle(channel, (event, ...args: unknown[]) => {
+    assertTrustedIpcSender(event);
+    const validatedArgs = validateIpcArgs(channel, args);
+    return handler(event, ...validatedArgs);
+  });
+}
+
+function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
+  const senderUrl = event.senderFrame?.url || event.sender.getURL();
+
+  if (isTrustedRendererUrl(senderUrl)) {
+    return;
+  }
+
+  throw new Error('Blocked IPC call from an untrusted renderer.');
+}
+
+function isTrustedRendererUrl(senderUrl: string): boolean {
+  try {
+    const url = new URL(senderUrl);
+
+    if (url.protocol === 'file:') {
+      return true;
+    }
+
+    const devRendererUrl = process.env.ELECTRON_RENDERER_URL;
+
+    if (!devRendererUrl) {
+      return false;
+    }
+
+    return url.origin === new URL(devRendererUrl).origin;
+  } catch {
+    return false;
+  }
 }
 
 function syncWorkspaceWatchers(workspace: WorkspaceState, repoWatchers: RepoWatcherRegistry): WorkspaceState {

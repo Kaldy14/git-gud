@@ -6,12 +6,14 @@ import type {
   GitFileDiff,
   GitFileDiffRequest,
   GitOperationResult,
+  GitUndoEntry,
   GitWipDetail,
   RepoTab
 } from '@shared/types';
 
 import { createProfileCommandEnv } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
+import { createUndoEntryForCommit, getCurrentHead } from './operations';
 import { parseNameStatus, parseShortStat } from './parsers/details';
 import { loadStatus } from './repositoryOverview';
 
@@ -121,14 +123,24 @@ export async function commitChanges(tab: DetailTab, input: GitCommitInput): Prom
     throw new Error('Commit message is required.');
   }
 
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const headBefore = await getCurrentHead(tab.path, env);
   const args = input.amend ? ['commit', '--amend', '-m', message] : ['commit', '-m', message];
   await gitExecutor.run(args, {
     cwd: tab.path,
     kind: 'mutation',
-    env: createProfileCommandEnv(tab.assignedProfileId)
+    env
   });
+  const headAfter = await getCurrentHead(tab.path, env);
+  const undoEntry = createUndoEntryForCommit(
+    tab,
+    input.amend ? 'amend' : 'commit',
+    input.amend ? 'Undo amend' : 'Undo commit',
+    headBefore,
+    headAfter
+  );
 
-  return createOperationResult(tab.path);
+  return createOperationResult(tab.path, undoEntry);
 }
 
 type CommitMetadata = Pick<
@@ -325,9 +337,10 @@ function isBinaryPatch(patch: string): boolean {
   return /^(Binary files |Binary file |GIT binary patch)/m.test(patch);
 }
 
-function createOperationResult(repoPath: string): GitOperationResult {
+function createOperationResult(repoPath: string, undoEntry?: GitUndoEntry): GitOperationResult {
   return {
     repoPath,
-    happenedAt: new Date().toISOString()
+    happenedAt: new Date().toISOString(),
+    undoEntry
   };
 }

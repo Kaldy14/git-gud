@@ -8,9 +8,13 @@ A personal macOS Git client (Electron + React), visually modeled on GitKraken. P
 - **M1 (Git kernel, reads, watchers, profiles): done.** The shell now uses typed IPC for live status, refs, remotes, worktrees, stashes, repository watchers, effective identity, and per-repo profile assignment.
 - **M2 (commit graph): done.** The graph renders real Git history through a typed IPC query, shared lane engine, virtualized rows, WIP/stash nodes, refs, context menu placeholders, and load-more.
 - **M3 (details, trees, diffs, commit flow): done.** Commit metadata, `@pierre/trees` changed-file views, `@pierre/diffs` patch rendering, WIP staging, commit, and amend are wired through typed IPC.
-- **M4 (everyday branch operations): next.** Fetch, pull, push, branch actions, checkout, merge, tags, stash operations, conflict banner, progress UI, and safe undo are the next implementation target.
+- **M4 (everyday branch operations): done.** Fetch, pull, push, branch create/delete/rename, checkout, merge, tags, stash operations, cherry-pick, revert, reset, conflict banner, operation log, and safe local undo are wired through typed IPC.
+- **M5 (rebase and interactive rebase): done.** Standard rebase, interactive todo planning, reorder/reword/squash/fixup/drop, controlled editor scripts, rebase conflict continuation, and temp-repo integration tests are wired through typed IPC.
+- **M6 (polish and power features): next.** Hunk/line staging, shortcuts, Terminal button, settings, and a large-repo performance pass are the next implementation target.
 
 The canonical milestone tracker is the **Progress Tracker** section in [PLAN.md](../PLAN.md); update it whenever milestone scope or status changes.
+
+M4 follow-up debt is tracked in [PLAN.md](../PLAN.md): replace remaining prompt/confirm operation flows with app-native dialogs, and finish splitting the centralized operations module into per-command implementations.
 
 ## Renderer UI structure
 
@@ -22,12 +26,15 @@ src/renderer/src/
   components/
     tabs/TabStrip.tsx                 title-bar repo tabs, + menu (open/recent), profile & settings buttons
     profile/ProfileMenu.tsx           profile create/assign popover backed by typed IPC
-    toolbar/Toolbar.tsx               repository/branch selectors + stacked action buttons (inert until M4)
+    toolbar/Toolbar.tsx               repository/branch selectors + stacked fetch/pull/push/branch/stash/undo actions
     sidebar/Sidebar.tsx               Local/Remote/Worktrees/Tags sections, filter input, collapse rail
     graph/GraphView.tsx               virtualized commit graph: ref chips, per-row SVG rails, nodes, date markers,
                                       arrow-key row navigation, viewport-clamped context menus, WIP status counts
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer
     diff/FileFocusView.tsx            selected-file patch view with unified/split diff modes
+    operations/ConflictBanner.tsx     merge/rebase/cherry-pick/revert conflict action banner
+    operations/OperationLog.tsx       compact pending/success/conflict/error operation log
+    rebase/InteractiveRebaseDialog.tsx interactive rebase todo modal
     start/StartPage.tsx               empty-state start page with recent repositories
     statusbar/StatusBar.tsx           repo path + preview notice + version
 ```

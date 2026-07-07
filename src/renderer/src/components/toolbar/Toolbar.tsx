@@ -8,6 +8,8 @@ import {
   ChevronRight,
   FolderGit2,
   GitBranch,
+  GitPullRequestArrow,
+  Loader2,
   Redo2,
   Search,
   Terminal,
@@ -15,17 +17,40 @@ import {
   Zap
 } from 'lucide-react';
 
-import type { GitRepositoryOverview, RepoTab } from '@shared/types';
+import type { GitRepositoryOverview, GitUndoEntry, RepoTab } from '@shared/types';
 
 type ToolbarProps = {
   activeTab?: RepoTab;
   repositoryOverview?: GitRepositoryOverview;
+  isBusy: boolean;
+  latestUndo?: GitUndoEntry;
+  onFetch: () => void;
+  onPull: () => void;
+  onPush: () => void;
+  onCreateBranch: () => void;
+  onStashPush: () => void;
+  onStashPop: () => void;
+  onUndo: () => void;
 };
 
-export function Toolbar({ activeTab, repositoryOverview }: ToolbarProps): ReactElement {
+export function Toolbar({
+  activeTab,
+  repositoryOverview,
+  isBusy,
+  latestUndo,
+  onFetch,
+  onPull,
+  onPush,
+  onCreateBranch,
+  onStashPush,
+  onStashPop,
+  onUndo
+}: ToolbarProps): ReactElement {
   const hasRepo = Boolean(activeTab);
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : '—';
   const dirtyCount = repositoryOverview?.status.dirtyCount ?? 0;
+  const hasStashes = (repositoryOverview?.stashes.length ?? 0) > 0;
+  const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
 
   return (
     <div className="flex h-[54px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
@@ -39,7 +64,7 @@ export function Toolbar({ activeTab, repositoryOverview }: ToolbarProps): ReactE
           </span>
         </button>
         <ChevronRight size={14} className="mx-0.5 shrink-0 text-[var(--text-3)]" />
-        <button className="tb-select" type="button" disabled title="Checkout and branch switching land in M4">
+        <button className="tb-select" type="button" disabled title="Use the sidebar or graph context menu to switch branches">
           <span className="tb-select-label">branch</span>
           <span className="tb-select-value">
             <GitBranch size={13} className="shrink-0 text-[var(--text-3)]" />
@@ -57,20 +82,67 @@ export function Toolbar({ activeTab, repositoryOverview }: ToolbarProps): ReactE
       </div>
 
       <div className="flex flex-1 items-center justify-center">
-        <ToolbarAction label="Undo" icon={<Undo2 size={17} />} hint="Undo — lands in M4" />
-        <ToolbarAction label="Redo" icon={<Redo2 size={17} />} hint="Redo — lands in M4" />
+        <ToolbarAction
+          label="Undo"
+          icon={isBusy ? <Loader2 size={17} className="animate-spin" /> : <Undo2 size={17} />}
+          hint={undoTitle}
+          disabled={!latestUndo || Boolean(latestUndo.staleReason) || isBusy}
+          onClick={onUndo}
+        />
+        <ToolbarAction label="Redo" icon={<Redo2 size={17} />} hint="Redo is not implemented yet" />
         <div className="tb-divider" />
-        <ToolbarAction label="Fetch" icon={<ArrowDownToLine size={17} />} hint="Fetch — lands in M4" emphasized={hasRepo} />
-        <ToolbarAction label="Push" icon={<ArrowUpFromLine size={17} />} hint="Push — lands in M4" emphasized={hasRepo} />
-        <ToolbarAction label="Branch" icon={<GitBranch size={17} />} hint="Create branch — lands in M4" emphasized={hasRepo} />
-        <ToolbarAction label="Stash" icon={<Archive size={17} />} hint="Stash — lands in M4" />
-        <ToolbarAction label="Pop" icon={<ArchiveRestore size={17} />} hint="Pop stash — lands in M4" />
+        <ToolbarAction
+          label="Fetch"
+          icon={<ArrowDownToLine size={17} />}
+          hint="Fetch and prune all remotes"
+          disabled={!hasRepo || isBusy}
+          onClick={onFetch}
+          emphasized={hasRepo}
+        />
+        <ToolbarAction
+          label="Pull"
+          icon={<GitPullRequestArrow size={17} />}
+          hint="Pull with fast-forward only"
+          disabled={!hasRepo || isBusy}
+          onClick={onPull}
+          emphasized={hasRepo}
+        />
+        <ToolbarAction
+          label="Push"
+          icon={<ArrowUpFromLine size={17} />}
+          hint="Push current branch"
+          disabled={!hasRepo || isBusy}
+          onClick={onPush}
+          emphasized={hasRepo}
+        />
+        <ToolbarAction
+          label="Branch"
+          icon={<GitBranch size={17} />}
+          hint="Create branch"
+          disabled={!hasRepo || isBusy}
+          onClick={onCreateBranch}
+          emphasized={hasRepo}
+        />
+        <ToolbarAction
+          label="Stash"
+          icon={<Archive size={17} />}
+          hint="Stash changes"
+          disabled={!hasRepo || dirtyCount === 0 || isBusy}
+          onClick={onStashPush}
+        />
+        <ToolbarAction
+          label="Pop"
+          icon={<ArchiveRestore size={17} />}
+          hint="Pop latest stash"
+          disabled={!hasRepo || !hasStashes || isBusy}
+          onClick={onStashPop}
+        />
         <div className="tb-divider" />
         <ToolbarAction label="Terminal" icon={<Terminal size={17} />} hint="Open Terminal.app — lands in M6" emphasized={hasRepo} />
       </div>
 
       <div className="flex shrink-0 items-center">
-        <ToolbarAction label="Actions" icon={<Zap size={17} />} hint="Quick actions — lands in M4" />
+        <ToolbarAction label="Actions" icon={<Zap size={17} />} hint="Quick actions are not implemented yet" />
         <ToolbarAction label="Search" icon={<Search size={17} />} hint="Search — lands in M6" />
       </div>
     </div>
@@ -92,11 +164,20 @@ type ToolbarActionProps = {
   icon: ReactNode;
   hint: string;
   emphasized?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
 };
 
-function ToolbarAction({ label, icon, hint, emphasized = false }: ToolbarActionProps): ReactElement {
+function ToolbarAction({ label, icon, hint, emphasized = false, disabled = true, onClick }: ToolbarActionProps): ReactElement {
   return (
-    <button className="tb-action" type="button" disabled title={hint} style={emphasized ? { opacity: 1, color: 'var(--text-2)' } : undefined}>
+    <button
+      className="tb-action"
+      type="button"
+      disabled={disabled}
+      title={hint}
+      onClick={onClick}
+      style={emphasized && !disabled ? { opacity: 1, color: 'var(--text-2)' } : undefined}
+    >
       <span className="text-[11px] leading-none">{label}</span>
       {icon}
     </button>

@@ -30,6 +30,9 @@ export default defineConfig({
         '@shared': sharedAlias
       }
     },
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss()],
+    worker: {
+      format: 'es'
+    }
   }
 });

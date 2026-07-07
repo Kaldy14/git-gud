@@ -1,6 +1,7 @@
-import type { ReactElement, ReactNode } from 'react';
-import { useState } from 'react';
+import type { MouseEvent, ReactElement, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -13,10 +14,12 @@ import {
   Pencil,
   Plus,
   Search,
-  Tag
+  Tag,
+  Trash2
 } from 'lucide-react';
 
-import type { GitRepositoryOverview, GitStatusCode, RepoTab } from '@shared/types';
+import { FILE_STATUS_COLORS } from '@shared/graph';
+import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStatusCode, GitTagRef, RepoTab } from '@shared/types';
 
 type SidebarProps = {
   activeTab?: RepoTab;
@@ -25,9 +28,34 @@ type SidebarProps = {
   errorMessage?: string;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
+  isOperationBusy: boolean;
+  onCheckoutBranch: (name: string) => void;
+  onCheckoutRemoteBranch: (name: string) => void;
+  onRenameBranch: (name: string) => void;
+  onDeleteBranch: (name: string) => void;
+  onDeleteTag: (name: string) => void;
 };
 
 type SectionId = 'local' | 'remote' | 'worktrees' | 'tags';
+
+type SidebarContextMenuTarget =
+  | {
+      kind: 'local';
+      branch: GitBranchRef;
+    }
+  | {
+      kind: 'remote';
+      branch: GitRemoteBranchRef;
+    }
+  | {
+      kind: 'tag';
+      tag: GitTagRef;
+    };
+
+type SidebarContextMenuState = SidebarContextMenuTarget & {
+  x: number;
+  y: number;
+};
 
 const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
   { id: 'local', title: 'Local', icon: <Laptop size={14} /> },
@@ -42,7 +70,13 @@ export function Sidebar({
   isLoading,
   errorMessage,
   isCollapsed,
-  onToggleCollapsed
+  onToggleCollapsed,
+  isOperationBusy,
+  onCheckoutBranch,
+  onCheckoutRemoteBranch,
+  onRenameBranch,
+  onDeleteBranch,
+  onDeleteTag
 }: SidebarProps): ReactElement {
   const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
     local: true,
@@ -51,12 +85,45 @@ export function Sidebar({
     tags: false
   });
   const [filter, setFilter] = useState('');
+  const [contextMenu, setContextMenu] = useState<SidebarContextMenuState>();
   const counts = {
     local: repositoryOverview?.refs.localBranches.length ?? 0,
     remote: repositoryOverview?.refs.remoteBranches.length ?? 0,
     worktrees: repositoryOverview?.worktrees.length ?? 0,
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        setContextMenu(undefined);
+      }
+    }
+
+    function handleClick(): void {
+      setContextMenu(undefined);
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('click', handleClick);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', handleClick);
+    };
+  }, [contextMenu]);
+
+  function handleRowContextMenu(event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget): void {
+    event.preventDefault();
+    setContextMenu({
+      ...state,
+      x: event.clientX,
+      y: event.clientY
+    });
+  }
 
   if (isCollapsed) {
     return (
@@ -121,6 +188,9 @@ export function Sidebar({
                   filter={filter}
                   isLoading={isLoading}
                   errorMessage={errorMessage}
+                  onContextMenu={handleRowContextMenu}
+                  onCheckoutBranch={onCheckoutBranch}
+                  onCheckoutRemoteBranch={onCheckoutRemoteBranch}
                 />
               ) : null}
             </section>
@@ -138,6 +208,18 @@ export function Sidebar({
           </p>
         </div>
       ) : null}
+      {contextMenu ? (
+        <SidebarContextMenu
+          state={contextMenu}
+          isOperationBusy={isOperationBusy}
+          onClose={() => setContextMenu(undefined)}
+          onCheckoutBranch={onCheckoutBranch}
+          onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+          onRenameBranch={onRenameBranch}
+          onDeleteBranch={onDeleteBranch}
+          onDeleteTag={onDeleteTag}
+        />
+      ) : null}
     </aside>
   );
 }
@@ -148,6 +230,9 @@ type SectionRowsProps = {
   filter: string;
   isLoading: boolean;
   errorMessage?: string;
+  onContextMenu: (event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget) => void;
+  onCheckoutBranch: (name: string) => void;
+  onCheckoutRemoteBranch: (name: string) => void;
 };
 
 function SectionRows({
@@ -155,7 +240,10 @@ function SectionRows({
   repositoryOverview,
   filter,
   isLoading,
-  errorMessage
+  errorMessage,
+  onContextMenu,
+  onCheckoutBranch,
+  onCheckoutRemoteBranch
 }: SectionRowsProps): ReactElement {
   if (errorMessage) {
     return <EmptySection label="Could not load Git data." />;
@@ -182,6 +270,12 @@ function SectionRows({
             label={branch.name}
             meta={formatAheadBehind(branch.ahead, branch.behind)}
             isActive={branch.current}
+            onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
+            onDoubleClick={() => {
+              if (!branch.current) {
+                onCheckoutBranch(branch.name);
+              }
+            }}
           />
         ))}
       </div>
@@ -200,6 +294,8 @@ function SectionRows({
             icon={<Cloud size={12} />}
             label={branch.name}
             meta={branch.sha.slice(0, 7)}
+            onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
+            onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
           />
         ))}
       </div>
@@ -234,7 +330,13 @@ function SectionRows({
   return rows.length > 0 ? (
     <div className="space-y-0.5 py-0.5">
       {rows.map((tag) => (
-        <SidebarRow key={tag.fullName} icon={<Tag size={12} />} label={tag.name} meta={tag.sha.slice(0, 7)} />
+        <SidebarRow
+          key={tag.fullName}
+          icon={<Tag size={12} />}
+          label={tag.name}
+          meta={tag.sha.slice(0, 7)}
+          onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
+        />
       ))}
     </div>
   ) : (
@@ -247,23 +349,142 @@ function SidebarRow({
   label,
   meta,
   isActive = false,
-  title
+  title,
+  onContextMenu,
+  onDoubleClick
 }: {
   icon: ReactNode;
   label: string;
   meta?: string;
   isActive?: boolean;
   title?: string;
+  onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: () => void;
 }): ReactElement {
   return (
     <div
       className="flex h-7 min-w-0 items-center gap-2 rounded-md px-3 pl-9 text-xs text-[var(--text-2)]"
       style={{ background: isActive ? 'var(--select-bg)' : undefined }}
       title={title ?? label}
+      onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
     >
       <span className={isActive ? 'text-[var(--accent-2)]' : 'text-[var(--text-3)]'}>{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {meta ? <span className="shrink-0 text-[10.5px] text-[var(--text-3)]">{meta}</span> : null}
+    </div>
+  );
+}
+
+function SidebarContextMenu({
+  state,
+  isOperationBusy,
+  onClose,
+  onCheckoutBranch,
+  onCheckoutRemoteBranch,
+  onRenameBranch,
+  onDeleteBranch,
+  onDeleteTag
+}: {
+  state: SidebarContextMenuState;
+  isOperationBusy: boolean;
+  onClose: () => void;
+  onCheckoutBranch: (name: string) => void;
+  onCheckoutRemoteBranch: (name: string) => void;
+  onRenameBranch: (name: string) => void;
+  onDeleteBranch: (name: string) => void;
+  onDeleteTag: (name: string) => void;
+}): ReactElement {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: state.x, top: state.y });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+
+    if (!menu) {
+      return;
+    }
+
+    const rect = menu.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
+    });
+  }, [state]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 w-56 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      style={{ left: position.left, top: position.top }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {state.kind === 'local' ? (
+        <>
+          <button
+            className="menu-row"
+            type="button"
+            disabled={state.branch.current || isOperationBusy}
+            onClick={() => {
+              onCheckoutBranch(state.branch.name);
+              onClose();
+            }}
+          >
+            <Check size={14} />
+            <span>Checkout branch</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onRenameBranch(state.branch.name);
+              onClose();
+            }}
+          >
+            <Pencil size={14} />
+            <span>Rename branch</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            disabled={state.branch.current || isOperationBusy}
+            onClick={() => {
+              onDeleteBranch(state.branch.name);
+              onClose();
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Delete branch</span>
+          </button>
+        </>
+      ) : state.kind === 'remote' ? (
+        <button
+          className="menu-row"
+          type="button"
+          disabled={isOperationBusy}
+          onClick={() => {
+            onCheckoutRemoteBranch(state.branch.name);
+            onClose();
+          }}
+        >
+          <GitBranch size={14} />
+          <span>Checkout tracking branch</span>
+        </button>
+      ) : (
+        <button
+          className="menu-row"
+          type="button"
+          disabled={isOperationBusy}
+          onClick={() => {
+            onDeleteTag(state.tag.name);
+            onClose();
+          }}
+        >
+          <Trash2 size={14} />
+          <span>Delete tag</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -333,20 +554,20 @@ function StatusCount({
 }): ReactElement {
   return (
     <span className="flex items-center gap-1.5">
-      <span className={statusTextClass(status)}>{icon}</span>
+      <span style={{ color: statusColor(status) }}>{icon}</span>
       {count} {label}
     </span>
   );
 }
 
-function statusTextClass(status: GitStatusCode): string {
+function statusColor(status: GitStatusCode): string {
   if (status === 'added') {
-    return 'text-[#4cc38a]';
+    return FILE_STATUS_COLORS.added;
   }
 
   if (status === 'deleted') {
-    return 'text-[#ef6a6a]';
+    return FILE_STATUS_COLORS.deleted;
   }
 
-  return 'text-[#f0b35f]';
+  return FILE_STATUS_COLORS.modified;
 }

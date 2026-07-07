@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import type {
   CommitGraphPage,
@@ -126,21 +126,23 @@ export function useRepositoryChangeInvalidation(): void {
 
   useEffect(() => {
     return window.api.onRepositoryChanged((event: RepoChangedEvent) => {
-      void queryClient.invalidateQueries({
-        queryKey: repositoryOverviewQueryKey(event.repoPath)
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['commit-graph', event.repoPath]
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['commit-detail', event.repoPath]
-      });
-      void queryClient.invalidateQueries({
-        queryKey: wipDetailQueryKey(event.repoPath)
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['file-diff', event.repoPath]
-      });
+      void invalidateRepositoryQueries(queryClient, event.repoPath);
     });
   }, [queryClient]);
+}
+
+export async function invalidateRepositoryQueries(
+  queryClient: QueryClient,
+  repoPath: string,
+  selectedSha?: string
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }),
+    queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }),
+    queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }),
+    queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath] }),
+    selectedSha && selectedSha !== 'wip'
+      ? queryClient.invalidateQueries({ queryKey: commitDetailQueryKey(repoPath, selectedSha) })
+      : queryClient.invalidateQueries({ queryKey: ['commit-detail', repoPath] })
+  ]);
 }

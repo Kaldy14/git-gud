@@ -1,11 +1,13 @@
 import type { GitRepositoryOverview, RepoTab } from '@shared/types';
 
 import { createProfileCommandEnv, getRepoProfileState } from '../profiles';
+import { loadConflictState } from './conflicts';
 import { gitExecutor } from './exec';
 import { parseForEachRef, parseRemoteVerbose } from './parsers/refs';
 import { parseStashList } from './parsers/stash';
 import { parseStatusPorcelainV2 } from './parsers/status';
 import { parseWorktreeList } from './parsers/worktree';
+import { loadLatestUndoEntry } from './undo';
 
 export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assignedProfileId'>): Promise<GitRepositoryOverview> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
@@ -17,16 +19,22 @@ export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assign
     loadStashes(tab.path, env),
     getRepoProfileState(tab.path, tab.assignedProfileId)
   ]);
+  const [conflictState, latestUndo] = await Promise.all([
+    loadConflictState(tab.path, env, status),
+    loadLatestUndoEntry(tab.path, env)
+  ]);
 
   return {
     repoPath: tab.path,
     loadedAt: new Date().toISOString(),
     status,
+    conflictState,
     refs,
     remotes,
     worktrees,
     stashes,
-    profileState
+    profileState,
+    latestUndo
   };
 }
 

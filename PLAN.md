@@ -56,7 +56,7 @@ The UI can reserve small sidebar placeholders only if useful for matching the sc
 
 ## Progress Tracker
 
-Last updated: 2026-07-03.
+Last updated: 2026-07-07.
 
 | Milestone | Status | Notes |
 |---|---|---|
@@ -64,13 +64,20 @@ Last updated: 2026-07-03.
 | M1 - Git Kernel, Reads, Watchers, Profiles | Done | Typed IPC, Git executor, read parsers, watchers, sidebar data, profile assignment, profile env, and repo-local profile config are implemented. |
 | M2 - Commit Graph | Done | Real Git graph, lane engine, virtualized rows, WIP/stash nodes, ref chips, context menus, selection, and load-more are implemented. |
 | M3 - Details, Trees, Diffs, Commit Flow | Done | Commit/WIP details, `@pierre/trees`, `@pierre/diffs`, file/all stage and unstage, commit, amend, rename unstage coverage, and graph/detail refresh are implemented. |
-| M4 - Everyday Branch Operations | Next | Fetch, pull, push, branch actions, checkout, merge, tags, stash operations, conflict banner, progress UI, and safe undo still need implementation. |
-| M5 - Rebase and Interactive Rebase | Pending | Standard and interactive rebase flows, controlled editors, conflict handling, and temp-repo integration tests remain. |
-| M6 - Polish and Power Features | Pending | Hunk/line staging, shortcuts, Terminal button, settings, and large-repo performance pass remain. |
+| M4 - Everyday Branch Operations | Done | Fetch, pull, push, branch create/delete/rename, checkout, merge, tags, stash operations, cherry-pick, revert, reset, conflict banner, operation log, and safe local undo are implemented. |
+| M5 - Rebase and Interactive Rebase | Done | Standard rebase, interactive todo planning, reorder/reword/squash/fixup/drop, controlled editor scripts, rebase conflict continuation, and temp-repo integration tests are implemented. |
+| M6 - Polish and Power Features | Next | Hunk/line staging, shortcuts, Terminal button, settings, and large-repo performance pass remain. |
 
-Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after the M1-M3 review fixes on 2026-07-03.
+Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after M5 implementation on 2026-07-07.
 
 Tracking rule: update this table whenever a milestone is started, completed, reopened, or materially rescoped; keep `docs/README.md` status in sync with this table.
+
+### M4 Follow-Up Debt
+
+These items were intentionally deferred during the M4 hardening pass so the current branch operation work stayed stable. Revisit them during M6 polish or when they start blocking conflict/operation UX work:
+
+- Replace remaining `window.prompt` / `window.confirm` operation flows with app-native dialogs or modals. Priority flows: branch create/rename/delete, remote checkout, stash push/apply/pop/drop, merge, cherry-pick, revert, reset, and undo confirmation. Main-process validation and safety checks must remain authoritative even after the renderer UI improves.
+- Finish splitting `src/main/git/operations.ts` into per-command modules under `src/main/git/commands/`. The command registry now records labels, mutation scope, undo strategy, conflict behavior, and invalidation scope; the M5 rebase command lives in `src/main/git/commands/rebase.ts`, while most earlier operation implementations are still centralized.
 
 ## Stack
 

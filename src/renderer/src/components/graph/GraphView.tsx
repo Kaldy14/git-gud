@@ -43,6 +43,20 @@ type GraphViewProps = {
   onLoadMore: () => void;
   onStageAllWip?: () => Promise<void> | void;
   onOpenWipCommitComposer?: () => void;
+  onStashPush?: () => Promise<void> | void;
+  onStashApply?: (selector: string) => Promise<void> | void;
+  onStashPop?: (selector: string) => Promise<void> | void;
+  onStashDrop?: (selector: string) => Promise<void> | void;
+  onCheckoutCommit?: (sha: string) => Promise<void> | void;
+  onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
+  onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
+  onMergeCommit?: (sha: string) => Promise<void> | void;
+  onRebaseOntoCommit?: (sha: string) => Promise<void> | void;
+  onInteractiveRebaseFromCommit?: (sha: string) => Promise<void> | void;
+  onCherryPickCommit?: (sha: string) => Promise<void> | void;
+  onRevertCommit?: (sha: string) => Promise<void> | void;
+  onResetToCommit?: (sha: string) => Promise<void> | void;
+  isOperationBusy?: boolean;
 };
 
 type ContextMenuState = {
@@ -61,7 +75,21 @@ export function GraphView({
   onSelectRow,
   onLoadMore,
   onStageAllWip,
-  onOpenWipCommitComposer
+  onOpenWipCommitComposer,
+  onStashPush,
+  onStashApply,
+  onStashPop,
+  onStashDrop,
+  onCheckoutCommit,
+  onCreateBranchAtCommit,
+  onCreateTagAtCommit,
+  onMergeCommit,
+  onRebaseOntoCommit,
+  onInteractiveRebaseFromCommit,
+  onCherryPickCommit,
+  onRevertCommit,
+  onResetToCommit,
+  isOperationBusy = false
 }: GraphViewProps): ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
@@ -210,6 +238,20 @@ export function GraphView({
           onClose={() => setContextMenu(undefined)}
           onStageAllWip={onStageAllWip}
           onOpenWipCommitComposer={onOpenWipCommitComposer}
+          onStashPush={onStashPush}
+          onStashApply={onStashApply}
+          onStashPop={onStashPop}
+          onStashDrop={onStashDrop}
+          onCheckoutCommit={onCheckoutCommit}
+          onCreateBranchAtCommit={onCreateBranchAtCommit}
+          onCreateTagAtCommit={onCreateTagAtCommit}
+          onMergeCommit={onMergeCommit}
+          onRebaseOntoCommit={onRebaseOntoCommit}
+          onInteractiveRebaseFromCommit={onInteractiveRebaseFromCommit}
+          onCherryPickCommit={onCherryPickCommit}
+          onRevertCommit={onRevertCommit}
+          onResetToCommit={onResetToCommit}
+          isOperationBusy={isOperationBusy}
         />
       ) : null}
     </section>
@@ -627,17 +669,46 @@ function GraphContextMenu({
   state,
   onClose,
   onStageAllWip,
-  onOpenWipCommitComposer
+  onOpenWipCommitComposer,
+  onStashPush,
+  onStashApply,
+  onStashPop,
+  onStashDrop,
+  onCheckoutCommit,
+  onCreateBranchAtCommit,
+  onCreateTagAtCommit,
+  onMergeCommit,
+  onRebaseOntoCommit,
+  onInteractiveRebaseFromCommit,
+  onCherryPickCommit,
+  onRevertCommit,
+  onResetToCommit,
+  isOperationBusy
 }: {
   state: ContextMenuState;
   onClose: () => void;
   onStageAllWip?: () => Promise<void> | void;
   onOpenWipCommitComposer?: () => void;
+  onStashPush?: () => Promise<void> | void;
+  onStashApply?: (selector: string) => Promise<void> | void;
+  onStashPop?: (selector: string) => Promise<void> | void;
+  onStashDrop?: (selector: string) => Promise<void> | void;
+  onCheckoutCommit?: (sha: string) => Promise<void> | void;
+  onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
+  onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
+  onMergeCommit?: (sha: string) => Promise<void> | void;
+  onRebaseOntoCommit?: (sha: string) => Promise<void> | void;
+  onInteractiveRebaseFromCommit?: (sha: string) => Promise<void> | void;
+  onCherryPickCommit?: (sha: string) => Promise<void> | void;
+  onRevertCommit?: (sha: string) => Promise<void> | void;
+  onResetToCommit?: (sha: string) => Promise<void> | void;
+  isOperationBusy: boolean;
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
   const isWip = state.row.node.kind === 'wip';
   const isStash = state.row.node.kind === 'stash';
+  const stashSelector = stashSelectorForRow(state.row);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -693,22 +764,63 @@ function GraphContextMenu({
             <GitCommit size={14} />
             <span>Commit changes</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Stash push lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onStashPush || isOperationBusy}
+            onClick={() => {
+              void onStashPush?.();
+              onClose();
+            }}
+          >
             <Archive size={14} />
             <span>Stash all changes</span>
           </button>
         </>
       ) : isStash ? (
         <>
-          <button className="menu-row" type="button" disabled title="Stash apply lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onStashApply || !stashSelector || isOperationBusy}
+            onClick={() => {
+              if (stashSelector) {
+                void onStashApply?.(stashSelector);
+              }
+
+              onClose();
+            }}
+          >
             <Archive size={14} />
             <span>Apply stash</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Stash pop lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onStashPop || !stashSelector || isOperationBusy}
+            onClick={() => {
+              if (stashSelector) {
+                void onStashPop?.(stashSelector);
+              }
+
+              onClose();
+            }}
+          >
             <Archive size={14} />
             <span>Pop stash</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Stash drop lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onStashDrop || !stashSelector || isOperationBusy}
+            onClick={() => {
+              if (stashSelector) {
+                void onStashDrop?.(stashSelector);
+              }
+
+              onClose();
+            }}
+          >
             <Trash2 size={14} />
             <span>Drop stash</span>
           </button>
@@ -720,41 +832,113 @@ function GraphContextMenu({
         </>
       ) : (
         <>
-          <button className="menu-row" type="button" disabled title="Checkout lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onCheckoutCommit || isOperationBusy}
+            onClick={() => {
+              void onCheckoutCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <GitBranch size={14} />
             <span>Checkout commit</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Branch create lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onCreateBranchAtCommit || isOperationBusy}
+            onClick={() => {
+              void onCreateBranchAtCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <GitBranchPlus size={14} />
             <span>Create branch here</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Tag create lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onCreateTagAtCommit || isOperationBusy}
+            onClick={() => {
+              void onCreateTagAtCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <Tag size={14} />
             <span>Tag this commit</span>
           </button>
           <MenuSeparator />
-          <button className="menu-row" type="button" disabled title="Merge lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onMergeCommit || isOperationBusy}
+            onClick={() => {
+              void onMergeCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <GitMerge size={14} />
             <span>Merge into current</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Rebase lands in M5">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onRebaseOntoCommit || isOperationBusy}
+            onClick={() => {
+              void onRebaseOntoCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <RefreshCw size={14} />
             <span>Rebase current onto here</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Interactive rebase lands in M5">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onInteractiveRebaseFromCommit || isOperationBusy}
+            onClick={() => {
+              void onInteractiveRebaseFromCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <Workflow size={14} />
             <span>Interactive rebase from here</span>
           </button>
           <MenuSeparator />
-          <button className="menu-row" type="button" disabled title="Cherry-pick lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onCherryPickCommit || isOperationBusy}
+            onClick={() => {
+              void onCherryPickCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <Cherry size={14} />
             <span>Cherry-pick commit</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Revert lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onRevertCommit || isOperationBusy}
+            onClick={() => {
+              void onRevertCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <Undo2 size={14} />
             <span>Revert commit</span>
           </button>
-          <button className="menu-row" type="button" disabled title="Reset lands in M4">
+          <button
+            className="menu-row"
+            type="button"
+            disabled={!onResetToCommit || isOperationBusy}
+            onClick={() => {
+              void onResetToCommit?.(state.row.sha);
+              onClose();
+            }}
+          >
             <RotateCcw size={14} />
             <span>Reset current branch here</span>
           </button>
@@ -815,4 +999,8 @@ function refChipWidth(ref: RefChipDisplay): number {
   const trailingIconWidth = ref.kind === 'branch' ? 18 : 0;
   const remotePeerIconWidth = (ref.remotePeerLabels?.length ?? 0) > 0 ? 18 : 0;
   return 31 + trailingIconWidth + remotePeerIconWidth + ref.label.length * 6.2;
+}
+
+function stashSelectorForRow(row: CommitGraphRow): string | undefined {
+  return row.refs?.find((ref) => ref.kind === 'stash')?.label;
 }

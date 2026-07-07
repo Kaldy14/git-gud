@@ -17,11 +17,9 @@ import {
 } from 'lucide-react';
 
 import {
-  commitDetailQueryKey,
-  repositoryOverviewQueryKey,
+  invalidateRepositoryQueries,
   useCommitDetail,
-  useWipDetail,
-  wipDetailQueryKey
+  useWipDetail
 } from '@renderer/queries/repository';
 import {
   countByStatus,
@@ -76,7 +74,7 @@ export function CommitDetailPanel({
       return window.api.stageFile(repoPath, path);
     },
     onSuccess: (result) => {
-      void invalidateRepository(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
     }
   });
   const unstageFileMutation = useMutation({
@@ -88,7 +86,7 @@ export function CommitDetailPanel({
       return window.api.unstageFile(repoPath, path);
     },
     onSuccess: (result) => {
-      void invalidateRepository(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
     }
   });
   const stageAllMutation = useMutation({
@@ -100,7 +98,7 @@ export function CommitDetailPanel({
       return window.api.stageAll(repoPath);
     },
     onSuccess: (result) => {
-      void invalidateRepository(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
     }
   });
   const unstageAllMutation = useMutation({
@@ -112,7 +110,7 @@ export function CommitDetailPanel({
       return window.api.unstageAll(repoPath);
     },
     onSuccess: (result) => {
-      void invalidateRepository(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
     }
   });
   const commitMutation = useMutation({
@@ -128,7 +126,7 @@ export function CommitDetailPanel({
         setCommitMessage('');
       }
 
-      void invalidateRepository(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
     }
   });
 
@@ -614,20 +612,4 @@ function avatarColor(value: string): string {
   }
 
   return colors[hash] ?? colors[0];
-}
-
-async function invalidateRepository(
-  queryClient: ReturnType<typeof useQueryClient>,
-  repoPath: string,
-  selectedSha: string | undefined
-): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }),
-    queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }),
-    queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }),
-    queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath] }),
-    selectedSha && selectedSha !== 'wip'
-      ? queryClient.invalidateQueries({ queryKey: commitDetailQueryKey(repoPath, selectedSha) })
-      : Promise.resolve()
-  ]);
 }

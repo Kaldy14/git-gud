@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { FolderGit2, GitBranch, UserCircle } from 'lucide-react';
 
+import { FILE_STATUS_COLORS } from '@shared/graph';
 import type { GitRepositoryOverview, RepoTab } from '@shared/types';
 
 type StatusBarProps = {
@@ -35,7 +36,7 @@ export function StatusBar({ activeTab, repositoryOverview, isRepositoryLoading }
           <span className="flex items-center gap-1.5">
             <span
               className="h-1.5 w-1.5 rounded-full"
-              style={{ background: repositoryOverview?.status.isDirty ? '#f0b35f' : 'var(--accent)' }}
+              style={{ background: repositoryOverview?.status.isDirty ? FILE_STATUS_COLORS.modified : 'var(--accent)' }}
             />
             {statusLabel}
           </span>
