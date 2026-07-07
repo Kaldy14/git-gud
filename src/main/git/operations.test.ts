@@ -240,6 +240,44 @@ describe('git operations', () => {
     }
   });
 
+  it('skips a conflicting commit during standard rebase', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const base = (await git(repoPath, ['rev-parse', '--verify', 'HEAD'])).stdout.trim();
+
+      await git(repoPath, ['checkout', '-b', 'feature/rebase-skip']);
+      await writeRepoFile(repoPath, 'conflict.txt', 'feature\n');
+      await git(repoPath, ['commit', '-am', 'feature edit']);
+
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'conflict.txt', 'main\n');
+      await git(repoPath, ['commit', '-am', 'main edit']);
+      await git(repoPath, ['checkout', 'feature/rebase-skip']);
+
+      const result = await rebaseOnto(tab, { target: 'main' });
+
+      expect(result.operation).toMatchObject({ status: 'conflicted' });
+      expect(result.conflictState).toMatchObject({
+        isActive: true,
+        operation: 'rebase',
+        canSkip: true
+      });
+
+      const skipped = await resolveConflict(tab, { action: 'skip' });
+
+      expect(skipped.operation).toMatchObject({ status: 'completed' });
+      expect(await currentBranch(repoPath)).toBe('feature/rebase-skip');
+      expect(await logSubjects(repoPath, base)).toEqual(['main edit']);
+      expect(await readFile(join(repoPath, 'conflict.txt'), 'utf8')).toBe('main\n');
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('runs an interactive rebase with reorder, reword, and drop', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 
@@ -382,6 +420,65 @@ describe('git operations', () => {
       await resolveConflict(tab, { action: 'abort' });
 
       expect((await git(repoPath, ['rev-parse', '--verify', 'HEAD'])).stdout.trim()).toBe(headBefore);
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('continues an interactive rebase conflict and preserves reword editor state', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const base = (await git(repoPath, ['rev-parse', '--verify', 'HEAD'])).stdout.trim();
+
+      await writeRepoFile(repoPath, 'conflict.txt', 'A\n');
+      await git(repoPath, ['commit', '-am', 'A']);
+      await writeRepoFile(repoPath, 'conflict.txt', 'B\n');
+      await git(repoPath, ['commit', '-am', 'B']);
+
+      const plan = await prepareInteractiveRebasePlan(tab, base);
+      const [aCommit, bCommit] = plan.commits;
+
+      if (!aCommit || !bCommit) {
+        throw new Error('Expected two commits in the interactive rebase plan.');
+      }
+
+      const result = await runInteractiveRebase(tab, {
+        base: plan.base,
+        commits: [
+          {
+            sha: bCommit.sha,
+            action: 'reword',
+            message: 'B rewritten\n\ncontinued body'
+          },
+          {
+            sha: aCommit.sha,
+            action: 'drop'
+          }
+        ]
+      });
+
+      expect(result.operation).toMatchObject({ status: 'conflicted' });
+      expect(result.conflictState).toMatchObject({
+        isActive: true,
+        operation: 'rebase',
+        canAbort: true,
+        canSkip: true
+      });
+      expect(result.conflictState?.files.map((file) => file.path)).toContain('conflict.txt');
+
+      await writeRepoFile(repoPath, 'conflict.txt', 'B resolved\n');
+      await git(repoPath, ['add', 'conflict.txt']);
+
+      const continued = await resolveConflict(tab, { action: 'continue' });
+
+      expect(continued.operation).toMatchObject({ status: 'completed' });
+      expect(await logSubjects(repoPath, base)).toEqual(['B rewritten']);
+      expect((await git(repoPath, ['log', '-1', '--format=%B'])).stdout.trim()).toBe('B rewritten\n\ncontinued body');
+      expect(await readFile(join(repoPath, 'conflict.txt'), 'utf8')).toBe('B resolved\n');
       expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('');
     } finally {
       await rm(rootPath, { recursive: true, force: true });

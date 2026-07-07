@@ -62,7 +62,7 @@ Last updated: 2026-07-07.
 |---|---|---|
 | M0 - Scaffold and Shell | Done | Electron shell, tabs, repo open/validation, recent repos, and persisted workspace state are implemented. |
 | M1 - Git Kernel, Reads, Watchers, Profiles | Done | Typed IPC, Git executor, read parsers, watchers, sidebar data, profile assignment, profile env, and repo-local profile config are implemented. |
-| M2 - Commit Graph | Done | Real Git graph, lane engine, virtualized rows, WIP/stash nodes, ref chips, context menus, selection, and load-more are implemented. |
+| M2 - Commit Graph | Done | Real Git graph, lane engine, virtualized rows, WIP/stash nodes, ref chips, context menus, selection, and load-more are implemented. Current load-more grows the log limit and re-fetches, with cursor pagination still deferred. |
 | M3 - Details, Trees, Diffs, Commit Flow | Done | Commit/WIP details, `@pierre/trees`, `@pierre/diffs`, file/all stage and unstage, commit, amend, rename unstage coverage, and graph/detail refresh are implemented. |
 | M4 - Everyday Branch Operations | Done | Fetch, pull, push, branch create/delete/rename, checkout, merge, tags, stash operations, cherry-pick, revert, reset, conflict banner, operation log, and safe local undo are implemented. |
 | M5 - Rebase and Interactive Rebase | Done | Standard rebase, interactive todo planning, reorder/reword/squash/fixup/drop, controlled editor scripts, rebase conflict continuation, and temp-repo integration tests are implemented. |
@@ -78,6 +78,9 @@ These items were intentionally deferred during the M4 hardening pass so the curr
 
 - Replace remaining `window.prompt` / `window.confirm` operation flows with app-native dialogs or modals. Priority flows: branch create/rename/delete, remote checkout, stash push/apply/pop/drop, merge, cherry-pick, revert, reset, and undo confirmation. Main-process validation and safety checks must remain authoritative even after the renderer UI improves.
 - Finish splitting `src/main/git/operations.ts` into per-command modules under `src/main/git/commands/`. The command registry now records labels, mutation scope, undo strategy, conflict behavior, and invalidation scope; the M5 rebase command lives in `src/main/git/commands/rebase.ts`, while most earlier operation implementations are still centralized.
+- Add the remaining WIP file context actions from the M3 plan: discard with confirmation, open in editor, and reveal in Finder.
+- Add operation progress streaming for long-running/network mutations. The current OperationLog records settled results; it does not yet receive incremental progress events.
+- Add executor-level cancellation and streaming helpers: cancellable reads, explicit cancellation blocking for unsafe mutation phases, and streamed output for long-running Git commands.
 
 ## Stack
 
@@ -220,7 +223,7 @@ Input command:
 git log --branches --remotes --tags HEAD --topo-order -z --date=iso-strict --format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%D%x00%s
 ```
 
-Initial page size: 1,500 commits. Add "Load more" via cursor/skip pagination once the first page is stable.
+Initial page size: 1,500 commits. Current "Load more" behavior increases the log limit and re-fetches the full graph page in 1,500-commit steps, capped at 12,000 commits. Cursor/skip pagination remains deferred until large-repo performance work.
 
 Parsing and message handling:
 
