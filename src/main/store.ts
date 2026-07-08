@@ -10,9 +10,11 @@ import {
   assignRepositoryProfile,
   closeRepositoryTab,
   createDefaultWorkspaceState,
+  normalizeSidebarWidth,
   selectRepositoryCommit,
   selectRepositoryFile,
   setSidebarCollapsed,
+  setSidebarWidth,
   upsertRepositoryTab
 } from '@shared/workspace';
 import type { RepositorySummary } from '@shared/types';
@@ -32,7 +34,15 @@ const store = new Store<StoreShape>({
 });
 
 export function getWorkspace(): WorkspaceState {
-  return store.get('workspace', createDefaultWorkspaceState());
+  const defaults = createDefaultWorkspaceState();
+  const workspace = store.get('workspace', defaults);
+
+  return {
+    ...defaults,
+    ...workspace,
+    sidebarWidth: normalizeSidebarWidth(workspace.sidebarWidth),
+    detailPanelWidth: workspace.detailPanelWidth ?? defaults.detailPanelWidth
+  };
 }
 
 export function openWorkspaceRepository(repository: RepositorySummary): WorkspaceState {
@@ -57,6 +67,10 @@ export function selectWorkspaceFile(tabId: string, selectedFile: string | undefi
 
 export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {
   return saveWorkspace(setSidebarCollapsed(getWorkspace(), collapsed));
+}
+
+export function updateSidebarWidth(width: number): WorkspaceState {
+  return saveWorkspace(setSidebarWidth(getWorkspace(), width));
 }
 
 export function assignWorkspaceProfile(repoPath: string, profileId: string | undefined): WorkspaceState {

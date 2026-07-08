@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { WorkspaceState } from '@shared/types';
-import { createDefaultWorkspaceState } from '@shared/workspace';
+import { createDefaultWorkspaceState, normalizeSidebarWidth } from '@shared/workspace';
 
 type WorkspaceStore = {
   workspace: WorkspaceState;
@@ -15,6 +15,7 @@ type WorkspaceStore = {
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<void>;
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<void>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
+  setSidebarWidth: (width: number) => Promise<void>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
 };
@@ -46,6 +47,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   async setSidebarCollapsed(collapsed) {
     await runWorkspaceAction(set, () => window.api.setSidebarCollapsed(collapsed));
   },
+  async setSidebarWidth(width) {
+    const sidebarWidth = normalizeSidebarWidth(width);
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        sidebarWidth
+      },
+      errorMessage: undefined
+    }));
+
+    try {
+      const workspace = await window.api.setSidebarWidth(sidebarWidth);
+      set({ workspace });
+    } catch (error) {
+      set({ errorMessage: workspaceActionErrorMessage(error) });
+    }
+  },
   async assignProfile(repoPath, profileId) {
     await runWorkspaceAction(set, () => window.api.assignProfile(repoPath, profileId), false, true);
   },
@@ -72,7 +90,7 @@ async function runWorkspaceAction(
 
     set({ isLoading: false });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'The requested workspace action failed.';
+    const errorMessage = workspaceActionErrorMessage(error);
 
     set({
       isLoading: false,
@@ -83,4 +101,8 @@ async function runWorkspaceAction(
       throw new Error(errorMessage, { cause: error });
     }
   }
+}
+
+function workspaceActionErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'The requested workspace action failed.';
 }

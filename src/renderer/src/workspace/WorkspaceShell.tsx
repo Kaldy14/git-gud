@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -70,6 +70,7 @@ export function WorkspaceShell(): ReactElement {
     selectCommit,
     selectFile,
     setSidebarCollapsed,
+    setSidebarWidth,
     assignProfile,
     clearError
   } = useWorkspaceStore();
@@ -77,6 +78,7 @@ export function WorkspaceShell(): ReactElement {
   const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
   const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
   const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
+  const [fileFocusByTab, setFileFocusByTab] = useState<Record<string, number>>({});
   const [operationLogEntries, setOperationLogEntries] = useState<OperationLogEntry[]>([]);
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogState>();
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
@@ -85,6 +87,7 @@ export function WorkspaceShell(): ReactElement {
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
   const [isQuickJumpOpen, setIsQuickJumpOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidthDraft] = useState(workspace.sidebarWidth);
   const shortcutStateRef = useRef<ShortcutState>({
     isBlocked: false,
     onFetch: () => {},
@@ -120,6 +123,10 @@ export function WorkspaceShell(): ReactElement {
   useEffect(() => {
     void initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    setSidebarWidthDraft(workspace.sidebarWidth);
+  }, [workspace.sidebarWidth]);
 
   useEffect(() => {
     window.api
@@ -183,6 +190,17 @@ export function WorkspaceShell(): ReactElement {
       void selectCommit(activeTab.id, sha);
     }
   }
+
+  const handleSidebarResize = useCallback((width: number): void => {
+    setSidebarWidthDraft(width);
+  }, []);
+
+  const handleSidebarResizeCommit = useCallback(
+    (width: number): void => {
+      void setSidebarWidth(width);
+    },
+    [setSidebarWidth]
+  );
 
   function handleLoadMoreGraphRows(): void {
     if (!activeTab) {
@@ -277,6 +295,21 @@ export function WorkspaceShell(): ReactElement {
 
     void selectFile(activeTab.id, undefined);
     void selectCommit(activeTab.id, 'wip');
+  }
+
+  function handleSelectFile(path: string | undefined): void {
+    if (!activeTab) {
+      return;
+    }
+
+    if (path) {
+      setFileFocusByTab((value) => ({
+        ...value,
+        [activeTab.id]: (value[activeTab.id] ?? 0) + 1
+      }));
+    }
+
+    void selectFile(activeTab.id, path);
   }
 
   async function runRepositoryOperation(
@@ -880,7 +913,10 @@ export function WorkspaceShell(): ReactElement {
                 isLoading={repositoryQuery.isLoading}
                 errorMessage={repositoryError}
                 isCollapsed={workspace.sidebarCollapsed}
+                width={sidebarWidth}
                 onToggleCollapsed={() => void setSidebarCollapsed(!workspace.sidebarCollapsed)}
+                onResize={handleSidebarResize}
+                onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}
                 onCheckoutBranch={handleCheckoutBranch}
                 onCheckoutRemoteBranch={handleCheckoutRemoteBranch}
@@ -898,9 +934,11 @@ export function WorkspaceShell(): ReactElement {
                   selectedFile={activeTab.selectedFile}
                   diffStyle={activeDiffStyle}
                   wipScopeByPath={activeWipScopeByPath}
+                  focusSignal={fileFocusByTab[activeTab.id] ?? 0}
                   onSetDiffStyle={handleSetDiffStyle}
                   onChangeWipScope={handleChangeWipScope}
-                  onClose={() => void selectFile(activeTab.id, undefined)}
+                  onSelectFile={handleSelectFile}
+                  onClose={() => handleSelectFile(undefined)}
                 />
               ) : (
                 <GraphView
@@ -940,7 +978,7 @@ export function WorkspaceShell(): ReactElement {
                 profileState={repositoryQuery.data?.profileState}
                 commitFocusSignal={commitComposerFocusByTab[activeTab.id] ?? 0}
                 isOperationBusy={isOperationBusy}
-                onSelectFile={(path) => void selectFile(activeTab.id, path)}
+                onSelectFile={handleSelectFile}
                 onOpenWipChanges={handleOpenWipChanges}
                 onDiscardWipFile={handleDiscardWipFile}
                 onOpenWipFile={handleOpenWipFile}

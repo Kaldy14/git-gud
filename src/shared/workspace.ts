@@ -1,15 +1,26 @@
 import type { RecentRepository, RepoTab, RepositorySummary, WorkspaceState } from './types';
 
 const MAX_RECENT_REPOS = 12;
+export const DEFAULT_SIDEBAR_WIDTH = 382;
+export const MIN_SIDEBAR_WIDTH = 220;
+export const MAX_SIDEBAR_WIDTH = 560;
 
 export function createDefaultWorkspaceState(): WorkspaceState {
   return {
     tabs: [],
     recentRepos: [],
     sidebarCollapsed: false,
-    sidebarWidth: 282,
+    sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     detailPanelWidth: 382
   };
+}
+
+export function normalizeSidebarWidth(width: number | undefined): number {
+  if (typeof width !== 'number' || !Number.isFinite(width)) {
+    return DEFAULT_SIDEBAR_WIDTH;
+  }
+
+  return Math.round(Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width)));
 }
 
 export function createRepoTabId(repoPath: string): string {
@@ -134,6 +145,13 @@ export function setSidebarCollapsed(state: WorkspaceState, sidebarCollapsed: boo
   return {
     ...state,
     sidebarCollapsed
+  };
+}
+
+export function setSidebarWidth(state: WorkspaceState, sidebarWidth: number): WorkspaceState {
+  return {
+    ...state,
+    sidebarWidth: normalizeSidebarWidth(sidebarWidth)
   };
 }
 

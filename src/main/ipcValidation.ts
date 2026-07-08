@@ -41,6 +41,7 @@ const validators = {
   'tabs:select-file': (args) => readStringWithOptionalString(args, 'tabs:select-file', 'tabId', 'selectedFile'),
   'workspace:set-sidebar-collapsed': (args) =>
     readOnlyArg(args, 'workspace:set-sidebar-collapsed', 'collapsed', readBoolean),
+  'workspace:set-sidebar-width': (args) => readOnlyArg(args, 'workspace:set-sidebar-width', 'width', readPositiveInteger),
   'repo:overview': (args) => readOnlyArg(args, 'repo:overview', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
@@ -455,6 +456,10 @@ function readOptionalPositiveInteger(value: unknown, label: string): number | un
     return undefined;
   }
 
+  return readPositiveInteger(value, label);
+}
+
+function readPositiveInteger(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive integer.`);
   }

@@ -7,6 +7,7 @@ import {
   createDefaultWorkspaceState,
   createRepoTabId,
   selectRepositoryCommit,
+  setSidebarWidth,
   upsertRepositoryTab
 } from './workspace';
 
@@ -62,5 +63,13 @@ describe('workspace state', () => {
     const selected = selectRepositoryCommit(state, createRepoTabId(alphaRepo.path), 'abc123');
 
     expect(selected.tabs[0]?.selectedCommit).toBe('abc123');
+  });
+
+  it('persists sidebar width within supported bounds', () => {
+    const state = createDefaultWorkspaceState();
+
+    expect(setSidebarWidth(state, 420).sidebarWidth).toBe(420);
+    expect(setSidebarWidth(state, 120).sidebarWidth).toBe(220);
+    expect(setSidebarWidth(state, 900).sidebarWidth).toBe(560);
   });
 });

@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
-import { useMemo } from 'react';
+import type { KeyboardEvent, ReactElement } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { FileDiffOptions } from '@pierre/diffs';
 import { PatchDiff } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ import { invalidateRepositoryQueries, useCommitDetail, useFileDiff, useWipDetail
 import {
   createDiffRequest,
   DIFF_OPTIONS_BASE,
+  findAdjacentFilePath,
   findFile,
   graphFileStatus,
   selectWipScope,
@@ -36,8 +37,10 @@ type FileFocusViewProps = {
   selectedFile?: string;
   diffStyle: DiffStyle;
   wipScopeByPath: Record<string, WipDiffScope>;
+  focusSignal: number;
   onSetDiffStyle: (style: DiffStyle) => void;
   onChangeWipScope: (path: string, scope: WipDiffScope) => void;
+  onSelectFile: (path: string) => void;
   onClose: () => void;
 };
 
@@ -47,10 +50,13 @@ export function FileFocusView({
   selectedFile,
   diffStyle,
   wipScopeByPath,
+  focusSignal,
   onSetDiffStyle,
   onChangeWipScope,
+  onSelectFile,
   onClose
 }: FileFocusViewProps): ReactElement {
+  const sectionRef = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
   const isWip = row?.node.kind === 'wip';
   const commitQuery = useCommitDetail(repoPath, row && !isWip ? row.sha : undefined);
@@ -95,8 +101,40 @@ export function FileFocusView({
   const { directory, basename } = splitPath(headerPath);
   const detailErrorMessage = detailError instanceof Error ? detailError.message : undefined;
 
+  useEffect(() => {
+    sectionRef.current?.focus({ preventScroll: true });
+  }, [focusSignal, selectedFile]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      isEditableTarget(event.target)
+    ) {
+      return;
+    }
+
+    const direction = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : undefined;
+
+    if (!direction) {
+      return;
+    }
+
+    const nextPath = findAdjacentFilePath(files, selectedFileDetail?.path ?? selectedFile, direction);
+
+    if (!nextPath) {
+      return;
+    }
+
+    event.preventDefault();
+    onSelectFile(nextPath);
+  }
+
   return (
-    <section className="file-focus">
+    <section ref={sectionRef} className="file-focus" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="file-focus-pathbar">
         <div className="flex min-w-0 items-center gap-2">
           {selectedFileDetail ? <StatusIcon status={selectedFileDetail.status} /> : <FileText size={13} className="text-[var(--text-3)]" />}
@@ -435,4 +473,12 @@ function splitPath(path: string): { directory: string; basename: string } {
     directory: path.slice(0, separatorIndex + 1),
     basename: path.slice(separatorIndex + 1)
   };
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 }

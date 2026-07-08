@@ -52,7 +52,8 @@ import {
   selectWorkspaceCommit,
   selectWorkspaceFile,
   updateAppSettings,
-  updateSidebarCollapsed
+  updateSidebarCollapsed,
+  updateSidebarWidth
 } from './store';
 import { openRepositoryFileInEditor, openTerminalAtRepository, revealRepositoryFileInFinder } from './system';
 
@@ -94,6 +95,7 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('tabs:select-commit', (_event, tabId, selectedCommit) => selectWorkspaceCommit(tabId, selectedCommit));
   handle('tabs:select-file', (_event, tabId, selectedFile) => selectWorkspaceFile(tabId, selectedFile));
   handle('workspace:set-sidebar-collapsed', (_event, collapsed) => updateSidebarCollapsed(collapsed));
+  handle('workspace:set-sidebar-width', (_event, width) => updateSidebarWidth(width));
   handle('repo:overview', async (_event, repoPath) => {
     const tab = getWorkspace().tabs.find((candidate) => candidate.path === repoPath);
 

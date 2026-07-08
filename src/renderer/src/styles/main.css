@@ -303,6 +303,39 @@ input {
   border-top: 0;
 }
 
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  z-index: 30;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.sidebar-resizer::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: '';
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.sidebar-resizer:hover::before,
+.sidebar-resizer:focus-visible::before,
+.sidebar-resizer[data-active='true']::before {
+  background: var(--accent-2);
+  box-shadow: 0 0 0 1px rgba(95, 214, 195, 0.22);
+}
+
 .side-row {
   display: flex;
   min-width: 0;
@@ -768,6 +801,14 @@ input {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-graph);
+}
+
+.file-focus:focus {
+  outline: none;
+}
+
+.file-focus:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .file-focus-pathbar {

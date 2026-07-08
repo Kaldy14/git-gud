@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { MouseEvent, PointerEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileTree, useFileTree } from '@pierre/trees/react';
 import { prepareFileTreeInput, type GitStatusEntry } from '@pierre/trees';
@@ -845,12 +845,33 @@ function FileRow({
   const canOpen = canOpenWorktreeFile(file);
   const canDiscard = canDiscardWipFile(file);
 
+  function handleSelectPointerDown(event: PointerEvent<HTMLButtonElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    onSelect();
+  }
+
+  function handleSelectClick(event: MouseEvent<HTMLButtonElement>): void {
+    if (event.detail === 0) {
+      onSelect();
+    }
+  }
+
   return (
     <div
       className="group grid h-8 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded px-2 text-xs transition hover:bg-[var(--bg-hover)]"
       style={{ background: isSelected ? 'var(--select-bg)' : undefined }}
     >
-      <button className="flex min-w-0 items-center gap-2 overflow-hidden text-left" type="button" title={file.path} onClick={onSelect}>
+      <button
+        className="flex h-full min-w-0 items-center gap-2 overflow-hidden text-left"
+        type="button"
+        title={file.path}
+        onPointerDown={handleSelectPointerDown}
+        onClick={handleSelectClick}
+      >
         <StatusIcon status={file.status} />
         {directory ? <span className="min-w-0 truncate text-[var(--text-3)]">{directory}</span> : null}
         <span className="min-w-0 truncate text-[var(--text-2)]">{basename}</span>

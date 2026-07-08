@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactElement, ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Archive,
@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitTagRef, RepoTab } from '@shared/types';
+import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 type SidebarProps = {
   activeTab?: RepoTab;
@@ -29,7 +30,10 @@ type SidebarProps = {
   isLoading: boolean;
   errorMessage?: string;
   isCollapsed: boolean;
+  width: number;
   onToggleCollapsed: () => void;
+  onResize: (width: number) => void;
+  onResizeCommit: (width: number) => void;
   isOperationBusy: boolean;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
@@ -66,6 +70,12 @@ type SidebarContextMenuState = SidebarContextMenuTarget & {
   y: number;
 };
 
+type SidebarResizeState = {
+  startX: number;
+  startWidth: number;
+  width: number;
+};
+
 const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode; placeholder?: boolean }> = [
   { id: 'local', title: 'Local', icon: <Laptop size={14} /> },
   { id: 'remote', title: 'Remote', icon: <Cloud size={14} /> },
@@ -84,7 +94,10 @@ export function Sidebar({
   isLoading,
   errorMessage,
   isCollapsed,
+  width,
   onToggleCollapsed,
+  onResize,
+  onResizeCommit,
   isOperationBusy,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
@@ -95,6 +108,7 @@ export function Sidebar({
   onStashPop,
   onStashDrop
 }: SidebarProps): ReactElement {
+  const resizeStateRef = useRef<SidebarResizeState | undefined>(undefined);
   const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
     local: true,
     remote: false,
@@ -108,6 +122,7 @@ export function Sidebar({
   });
   const [filter, setFilter] = useState('');
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState>();
+  const [isResizing, setIsResizing] = useState(false);
   const counts = {
     local: repositoryOverview?.refs.localBranches.length ?? 0,
     remote: repositoryOverview?.refs.remoteBranches.length ?? 0,
@@ -140,6 +155,51 @@ export function Sidebar({
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function handlePointerMove(event: PointerEvent): void {
+      const state = resizeStateRef.current;
+
+      if (!state) {
+        return;
+      }
+
+      const nextWidth = normalizeSidebarWidth(state.startWidth + event.clientX - state.startX);
+      state.width = nextWidth;
+      onResize(nextWidth);
+    }
+
+    function stopResize(): void {
+      const nextWidth = resizeStateRef.current?.width;
+      resizeStateRef.current = undefined;
+      setIsResizing(false);
+
+      if (typeof nextWidth === 'number') {
+        onResizeCommit(nextWidth);
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizing, onResize, onResizeCommit]);
+
   function handleRowContextMenu(event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget): void {
     event.preventDefault();
     setContextMenu({
@@ -147,6 +207,32 @@ export function Sidebar({
       x: event.clientX,
       y: event.clientY
     });
+  }
+
+  function handleResizeStart(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: width,
+      width
+    };
+    setIsResizing(true);
+  }
+
+  function handleResizeNudge(delta: number): void {
+    const nextWidth = normalizeSidebarWidth(width + delta);
+    onResize(nextWidth);
+    onResizeCommit(nextWidth);
+  }
+
+  function handleResizeReset(): void {
+    onResize(DEFAULT_SIDEBAR_WIDTH);
+    onResizeCommit(DEFAULT_SIDEBAR_WIDTH);
   }
 
   if (isCollapsed) {
@@ -167,7 +253,17 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-[382px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
+    <aside
+      className="relative flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]"
+      style={{ width: normalizeSidebarWidth(width) }}
+    >
+      <SidebarResizeHandle
+        value={width}
+        isActive={isResizing}
+        onPointerDown={handleResizeStart}
+        onNudge={handleResizeNudge}
+        onReset={handleResizeReset}
+      />
       <div className="border-b border-[var(--border)] px-3 pb-2 pt-2">
         <div className="flex items-center gap-2">
           <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse sidebar">
@@ -266,6 +362,74 @@ export function Sidebar({
         />
       ) : null}
     </aside>
+  );
+}
+
+function SidebarResizeHandle({
+  value,
+  isActive,
+  onPointerDown,
+  onNudge,
+  onReset
+}: {
+  value: number;
+  isActive: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onNudge: (delta: number) => void;
+  onReset: () => void;
+}): ReactElement {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step = event.shiftKey ? 48 : 16;
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      onNudge(-step);
+      return;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      onNudge(step);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      onNudge(MIN_SIDEBAR_WIDTH - value);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      onNudge(MAX_SIDEBAR_WIDTH - value);
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onReset();
+    }
+  }
+
+  return (
+    <div
+      className="sidebar-resizer"
+      role="separator"
+      tabIndex={0}
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuemin={MIN_SIDEBAR_WIDTH}
+      aria-valuemax={MAX_SIDEBAR_WIDTH}
+      aria-valuenow={Math.round(value)}
+      data-active={isActive ? 'true' : undefined}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={onPointerDown}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onReset();
+      }}
+      onKeyDown={handleKeyDown}
+    />
   );
 }
 

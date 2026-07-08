@@ -22,6 +22,24 @@ export function findFile(files: GitFileChangeDetail[], selectedFile: string | un
   return selectedFile ? files.find((file) => file.path === selectedFile) : undefined;
 }
 
+export function findAdjacentFilePath(
+  files: GitFileChangeDetail[],
+  selectedFile: string | undefined,
+  direction: -1 | 1
+): string | undefined {
+  if (files.length === 0) {
+    return undefined;
+  }
+
+  const selectedIndex = selectedFile ? files.findIndex((file) => file.path === selectedFile) : -1;
+
+  if (selectedIndex === -1) {
+    return direction === 1 ? files[0]?.path : files[files.length - 1]?.path;
+  }
+
+  return files[selectedIndex + direction]?.path;
+}
+
 export function selectWipScope(file: GitFileChangeDetail, storedScope: WipDiffScope | undefined): WipDiffScope {
   if (file.staged && !file.unstaged) {
     return 'staged';

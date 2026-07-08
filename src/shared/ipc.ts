@@ -64,6 +64,10 @@ export type IpcChannelMap = {
     args: [collapsed: boolean];
     result: WorkspaceState;
   };
+  'workspace:set-sidebar-width': {
+    args: [width: number];
+    result: WorkspaceState;
+  };
   'repo:overview': {
     args: [repoPath: string];
     result: GitRepositoryOverview;
@@ -251,6 +255,7 @@ export type RendererApi = {
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<WorkspaceState>;
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<WorkspaceState>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
+  setSidebarWidth: (width: number) => Promise<WorkspaceState>;
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;

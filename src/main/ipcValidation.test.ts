@@ -28,6 +28,7 @@ describe('IPC argument validation', () => {
       mode: 'mixed'
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
+    expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
     expect(
       validateIpcArgs('repo:apply-patch', [
         '/repo',
@@ -91,5 +92,6 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('staged must be a boolean.');
+    expect(() => validateIpcArgs('workspace:set-sidebar-width', [420.5])).toThrow('width must be a positive integer.');
   });
 });

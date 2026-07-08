@@ -18,6 +18,7 @@ const api: RendererApi = {
   selectCommit: (tabId, selectedCommit) => invoke('tabs:select-commit', tabId, selectedCommit),
   selectFile: (tabId, selectedFile) => invoke('tabs:select-file', tabId, selectedFile),
   setSidebarCollapsed: (collapsed) => invoke('workspace:set-sidebar-collapsed', collapsed),
+  setSidebarWidth: (width) => invoke('workspace:set-sidebar-width', width),
   getRepositoryOverview: (repoPath) => invoke('repo:overview', repoPath),
   getCommitGraph: (repoPath, limit) => invoke('repo:graph', repoPath, limit),
   getCommitDetail: (repoPath, sha) => invoke('repo:commit-detail', repoPath, sha),
