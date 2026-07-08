@@ -35,6 +35,7 @@ import type { CommitGraphRow, GraphFile, GraphRailSegment, GraphRefChip } from '
 const ROW_HEIGHT = 34;
 const LANE_X0 = 48;
 const LANE_GAP = 28;
+const GRAPH_NODE_EDGE_INSET = 18;
 const DEFAULT_REF_CELL_WIDTH = 166;
 const DEFAULT_GRAPH_VIEWPORT_WIDTH = 188;
 const MIN_MESSAGE_CELL_WIDTH = 220;
@@ -48,6 +49,11 @@ type ColumnResizeState = {
   column: ResizableGraphColumn;
   startX: number;
   startWidth: number;
+};
+
+type GraphViewport = {
+  width: number;
+  scrollLeft: number;
 };
 
 type GraphColumnLimit = {
@@ -1002,6 +1008,10 @@ function RailCell({
   const h = ROW_HEIGHT;
   const mid = h / 2;
   const nodeTitle = row.node.kind === 'wip' ? 'Uncommitted changes' : `${row.author.name} · ${row.sha.slice(0, 7)}`;
+  const viewport: GraphViewport = {
+    width: graphWidth,
+    scrollLeft: graphScrollLeft
+  };
 
   return (
     <div className="graph-cell-viewport" style={{ width: graphWidth, height: h }}>
@@ -1014,12 +1024,12 @@ function RailCell({
         aria-hidden="true"
       >
         {row.rails.map((segment, index) => (
-          <RailSegmentPath key={index} segment={segment} height={h} />
+          <RailSegmentPath key={index} segment={segment} height={h} viewport={viewport} />
         ))}
         <GraphNode
           nodeId={row.sha}
           kind={row.node.kind}
-          cx={laneX(row.node.lane)}
+          cx={visibleLaneX(row.node.lane, viewport)}
           cy={mid}
           color={nodeColor}
           authorColor={row.author.color}
@@ -1035,7 +1045,25 @@ function laneX(lane: number): number {
   return LANE_X0 + lane * LANE_GAP;
 }
 
-function RailSegmentPath({ segment, height }: { segment: GraphRailSegment; height: number }): ReactElement {
+function visibleLaneX(lane: number, viewport: GraphViewport): number {
+  return clampViewportX(laneX(lane), viewport);
+}
+
+function clampViewportX(x: number, viewport: GraphViewport): number {
+  const minX = viewport.scrollLeft + GRAPH_NODE_EDGE_INSET;
+  const maxX = viewport.scrollLeft + Math.max(GRAPH_NODE_EDGE_INSET, viewport.width - GRAPH_NODE_EDGE_INSET);
+  return Math.min(maxX, Math.max(minX, x));
+}
+
+function RailSegmentPath({
+  segment,
+  height,
+  viewport
+}: {
+  segment: GraphRailSegment;
+  height: number;
+  viewport: GraphViewport;
+}): ReactElement {
   const mid = height / 2;
 
   let d: string;
@@ -1043,33 +1071,33 @@ function RailSegmentPath({ segment, height }: { segment: GraphRailSegment; heigh
 
   switch (segment.type) {
     case 'through': {
-      const x = laneX(segment.lane);
+      const x = visibleLaneX(segment.lane, viewport);
       d = `M ${x} 0 V ${height}`;
       fallbackColor = laneColor(segment.lane);
       break;
     }
     case 'stopTop': {
-      const x = laneX(segment.lane);
+      const x = visibleLaneX(segment.lane, viewport);
       d = `M ${x} 0 V ${mid}`;
       fallbackColor = laneColor(segment.lane);
       break;
     }
     case 'startBottom': {
-      const x = laneX(segment.lane);
+      const x = visibleLaneX(segment.lane, viewport);
       d = `M ${x} ${mid} V ${height}`;
       fallbackColor = laneColor(segment.lane);
       break;
     }
     case 'curveIn': {
-      const xf = laneX(segment.from);
-      const xt = laneX(segment.to);
+      const xf = visibleLaneX(segment.from, viewport);
+      const xt = visibleLaneX(segment.to, viewport);
       d = `M ${xf} 0 C ${xf} ${mid / 2} ${xt} ${mid / 2} ${xt} ${mid}`;
       fallbackColor = laneColor(segment.from);
       break;
     }
     case 'curveOut': {
-      const xf = laneX(segment.from);
-      const xt = laneX(segment.to);
+      const xf = visibleLaneX(segment.from, viewport);
+      const xt = visibleLaneX(segment.to, viewport);
       d = `M ${xf} ${mid} C ${xf} ${mid + mid / 2} ${xt} ${mid + mid / 2} ${xt} ${height}`;
       fallbackColor = laneColor(segment.to);
       break;

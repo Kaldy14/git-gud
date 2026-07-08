@@ -19,12 +19,14 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const packageJson = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
-const productName = 'git-gud';
+const productName = packageJson.productName ?? 'Git Gud';
 const bundleId = 'dev.kaldy.git-gud';
+const iconFileName = 'icon.icns';
 const electronBinary = require('electron');
 const electronAppPath = findAncestorAppBundle(electronBinary);
 const distDir = join(repoRoot, 'dist', 'mac');
 const appPath = join(distDir, `${productName}.app`);
+const legacyAppPath = join(distDir, `${packageJson.name}.app`);
 const contentsPath = join(appPath, 'Contents');
 const resourcesPath = join(contentsPath, 'Resources');
 const bundledAppPath = join(resourcesPath, 'app');
@@ -37,6 +39,7 @@ assertExists(join(repoRoot, 'build', 'icon.icns'), 'build/icon.icns is missing.'
 assertExists(join(repoRoot, 'build', 'icon.png'), 'build/icon.png is missing.');
 
 rmSync(appPath, { force: true, recursive: true });
+rmSync(legacyAppPath, { force: true, recursive: true });
 mkdirSync(distDir, { recursive: true });
 execFileSync('ditto', [electronAppPath, appPath]);
 
@@ -75,7 +78,7 @@ function installAppPayload() {
     join(bundledAppPath, 'package.json'),
     `${JSON.stringify(
       {
-        name: productName,
+        name: packageJson.name,
         productName,
         version: packageJson.version,
         main: './out/main/index.js'
@@ -87,7 +90,7 @@ function installAppPayload() {
 }
 
 function installIcons() {
-  copyFileSync(join(repoRoot, 'build', 'icon.icns'), join(resourcesPath, `${productName}.icns`));
+  copyFileSync(join(repoRoot, 'build', 'icon.icns'), join(resourcesPath, iconFileName));
   copyFileSync(join(repoRoot, 'build', 'icon.png'), join(resourcesPath, 'icon.png'));
 }
 
@@ -96,7 +99,7 @@ function updateInfoPlist() {
   setPlistValue('CFBundleIdentifier', 'string', bundleId);
   setPlistValue('CFBundleName', 'string', productName);
   setPlistValue('CFBundleDisplayName', 'string', productName);
-  setPlistValue('CFBundleIconFile', 'string', `${productName}.icns`);
+  setPlistValue('CFBundleIconFile', 'string', iconFileName);
   setPlistValue('CFBundleShortVersionString', 'string', packageJson.version);
   setPlistValue('CFBundleVersion', 'string', packageJson.version);
   setPlistValue('LSApplicationCategoryType', 'string', 'public.app-category.developer-tools');

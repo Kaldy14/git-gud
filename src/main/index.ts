@@ -9,6 +9,7 @@ import { registerIpcHandlers } from './ipc';
 import { getWorkspace } from './store';
 
 const quitCleanupTimeoutMs = 1500;
+const appDisplayName = 'Git Gud';
 let isQuitting = false;
 
 const repoWatchers = new RepoWatcherRegistry((event) => {
@@ -25,7 +26,7 @@ function createWindow(): void {
     minWidth: 1100,
     minHeight: 720,
     show: false,
-    title: 'git-gud',
+    title: appDisplayName,
     backgroundColor: '#0e1218',
     icon: iconPath,
     titleBarStyle: 'hiddenInset',
@@ -82,6 +83,7 @@ function isSafeExternalUrl(value: string): boolean {
 }
 
 app.whenReady().then(() => {
+  app.setName(appDisplayName);
   electronApp.setAppUserModelId('dev.kaldy.git-gud');
   const iconPath = resolveAppIconPath();
 

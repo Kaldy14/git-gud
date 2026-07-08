@@ -1,5 +1,6 @@
 {
   "name": "git-gud",
+  "productName": "Git Gud",
   "version": "0.0.0",
   "description": "A personal macOS Git client focused on fast local workflows.",
   "main": "./out/main/index.js",

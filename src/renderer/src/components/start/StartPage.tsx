@@ -26,7 +26,7 @@ export function StartPage({
           >
             <GitCommitVertical size={32} className="text-[var(--avatar-fg)]" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-1)]">git-gud</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-1)]">Git Gud</h1>
           <p className="mt-1.5 text-[13px] text-[var(--text-2)]">
             {isLoading ? 'Restoring your workspace…' : 'A fast, local-first Git client for macOS.'}
           </p>
