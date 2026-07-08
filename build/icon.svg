@@ -23,6 +23,16 @@
       <stop offset="0" stop-color="#171d24"/>
       <stop offset="1" stop-color="#06090d"/>
     </linearGradient>
+    <linearGradient id="cigar" x1="560" y1="588" x2="742" y2="622" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8a4d2a"/>
+      <stop offset="0.48" stop-color="#5f321c"/>
+      <stop offset="1" stop-color="#2f1a12"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="0" cy="0" r="1" gradientTransform="translate(738 606) rotate(90) scale(28 22)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe19a"/>
+      <stop offset="0.48" stop-color="#ff7a3d"/>
+      <stop offset="1" stop-color="#7b241d"/>
+    </radialGradient>
     <filter id="app-shadow" x="-10%" y="-8%" width="120%" height="124%" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#000000" flood-opacity="0.32"/>
     </filter>
@@ -74,5 +84,21 @@
   <g filter="url(#line-shadow)">
     <path d="M430 594C470 628 540 640 592 598" fill="none" stroke="#7b241d" stroke-width="28" stroke-linecap="round"/>
     <path d="M430 588C472 620 540 629 590 592" fill="none" stroke="#ffd6a7" stroke-width="10" stroke-linecap="round" opacity="0.88"/>
+  </g>
+
+  <g transform="rotate(16 596 606)" filter="url(#line-shadow)">
+    <rect x="564" y="588" width="176" height="36" rx="18" fill="url(#cigar)"/>
+    <rect x="594" y="588" width="20" height="36" fill="#d7b46f" opacity="0.95"/>
+    <rect x="599" y="588" width="6" height="36" fill="#7b241d" opacity="0.42"/>
+    <path d="M582 600H708" fill="none" stroke="#c4854d" stroke-width="6" stroke-linecap="round" opacity="0.46"/>
+    <ellipse cx="740" cy="606" rx="18" ry="18" fill="url(#ember)"/>
+    <ellipse cx="746" cy="602" rx="6" ry="7" fill="#ffd37b" opacity="0.85"/>
+    <ellipse cx="564" cy="606" rx="18" ry="18" fill="#3b2116"/>
+  </g>
+
+  <g fill="none" stroke="#d7f6f1" stroke-linecap="round" opacity="0.34">
+    <path d="M748 564C788 548 792 516 762 494" stroke-width="13"/>
+    <path d="M798 592C842 570 840 536 808 518" stroke-width="10" opacity="0.72"/>
+    <path d="M710 536C736 520 732 494 704 482" stroke-width="9" opacity="0.58"/>
   </g>
 </svg>
