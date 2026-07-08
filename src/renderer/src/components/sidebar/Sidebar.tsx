@@ -1,25 +1,27 @@
 import type { MouseEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  Archive,
   Check,
   ChevronDown,
   ChevronRight,
+  CircleDot,
   Cloud,
   FolderGit2,
   GitBranch,
+  GitPullRequest,
   Laptop,
-  Minus,
+  List,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
-  Plus,
   Search,
   Tag,
-  Trash2
+  Trash2,
+  Users
 } from 'lucide-react';
 
-import { FILE_STATUS_COLORS } from '@shared/graph';
-import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStatusCode, GitTagRef, RepoTab } from '@shared/types';
+import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitTagRef, RepoTab } from '@shared/types';
 
 type SidebarProps = {
   activeTab?: RepoTab;
@@ -34,9 +36,12 @@ type SidebarProps = {
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteTag: (name: string) => void;
+  onStashApply: (selector: string) => void;
+  onStashPop: (selector: string) => void;
+  onStashDrop: (selector: string) => void;
 };
 
-type SectionId = 'local' | 'remote' | 'worktrees' | 'tags';
+type SectionId = 'local' | 'remote' | 'worktrees' | 'stashes' | 'cloudPatches' | 'pullRequests' | 'issues' | 'teams' | 'tags';
 
 type SidebarContextMenuTarget =
   | {
@@ -50,6 +55,10 @@ type SidebarContextMenuTarget =
   | {
       kind: 'tag';
       tag: GitTagRef;
+    }
+  | {
+      kind: 'stash';
+      stash: GitStashEntry;
     };
 
 type SidebarContextMenuState = SidebarContextMenuTarget & {
@@ -57,10 +66,15 @@ type SidebarContextMenuState = SidebarContextMenuTarget & {
   y: number;
 };
 
-const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
+const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode; placeholder?: boolean }> = [
   { id: 'local', title: 'Local', icon: <Laptop size={14} /> },
   { id: 'remote', title: 'Remote', icon: <Cloud size={14} /> },
   { id: 'worktrees', title: 'Worktrees', icon: <FolderGit2 size={14} /> },
+  { id: 'stashes', title: 'Stashes', icon: <Archive size={14} /> },
+  { id: 'cloudPatches', title: 'Cloud Patches', icon: <Cloud size={14} />, placeholder: true },
+  { id: 'pullRequests', title: 'Pull Requests', icon: <GitPullRequest size={14} />, placeholder: true },
+  { id: 'issues', title: 'Issues', icon: <CircleDot size={14} />, placeholder: true },
+  { id: 'teams', title: 'Teams', icon: <Users size={14} />, placeholder: true },
   { id: 'tags', title: 'Tags', icon: <Tag size={14} /> }
 ];
 
@@ -76,12 +90,20 @@ export function Sidebar({
   onCheckoutRemoteBranch,
   onRenameBranch,
   onDeleteBranch,
-  onDeleteTag
+  onDeleteTag,
+  onStashApply,
+  onStashPop,
+  onStashDrop
 }: SidebarProps): ReactElement {
   const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
     local: true,
     remote: false,
     worktrees: false,
+    stashes: false,
+    cloudPatches: false,
+    pullRequests: false,
+    issues: false,
+    teams: false,
     tags: false
   });
   const [filter, setFilter] = useState('');
@@ -90,8 +112,10 @@ export function Sidebar({
     local: repositoryOverview?.refs.localBranches.length ?? 0,
     remote: repositoryOverview?.refs.remoteBranches.length ?? 0,
     worktrees: repositoryOverview?.worktrees.length ?? 0,
+    stashes: repositoryOverview?.stashes.length ?? 0,
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
+  const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
 
   useEffect(() => {
     if (!contextMenu) {
@@ -127,7 +151,7 @@ export function Sidebar({
 
   if (isCollapsed) {
     return (
-      <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--bg-sidebar)] py-2">
+      <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--bg-sidebar)] py-2">
         <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand sidebar">
           <PanelLeftOpen size={15} />
         </button>
@@ -143,30 +167,46 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-[264px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
-      <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
-        <div className="relative min-w-0 flex-1">
+    <aside className="flex w-[382px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
+      <div className="border-b border-[var(--border)] px-3 pb-2 pt-2">
+        <div className="flex items-center gap-2">
+          <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse sidebar">
+            <PanelLeftClose size={14} />
+          </button>
+          <div className="segmented grid flex-1 grid-cols-2">
+            <button type="button" data-active="true" title="List view">
+              <List size={12} />
+              List
+            </button>
+            <button type="button" disabled title="Agents are not part of the local Git client scope.">
+              <Users size={12} />
+              Agents
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-[var(--text-2)]">
+          <span>
+            Viewing <span className="font-semibold text-[var(--text-1)]">{viewingCount}</span>
+          </span>
+        </div>
+        <div className="relative mt-1.5 min-w-0 flex-1">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-3)]" />
           <input
             className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] pl-7 pr-2 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
-            placeholder="Filter refs"
+            placeholder="Filter (⌘ + Option + f)"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
         </div>
-        <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse sidebar">
-          <PanelLeftClose size={14} />
-        </button>
       </div>
 
-      <StatusSummary repositoryOverview={repositoryOverview} />
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {SECTIONS.map((section) => {
           const isExpanded = expanded[section.id];
+          const sectionCount = counts[section.id as keyof typeof counts];
 
           return (
-            <section key={section.id} className="mb-0.5">
+            <section key={section.id} className="sidebar-section m-0">
               <button
                 className="side-section"
                 type="button"
@@ -179,7 +219,9 @@ export function Sidebar({
                 )}
                 <span className="shrink-0 text-[var(--text-3)]">{section.icon}</span>
                 <span className="min-w-0 flex-1 truncate text-left uppercase">{section.title}</span>
-                <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{counts[section.id]}</span>
+                {typeof sectionCount === 'number' ? (
+                  <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{sectionCount}</span>
+                ) : null}
               </button>
               {isExpanded ? (
                 <SectionRows
@@ -218,6 +260,9 @@ export function Sidebar({
           onRenameBranch={onRenameBranch}
           onDeleteBranch={onDeleteBranch}
           onDeleteTag={onDeleteTag}
+          onStashApply={onStashApply}
+          onStashPop={onStashPop}
+          onStashDrop={onStashDrop}
         />
       ) : null}
     </aside>
@@ -262,7 +307,7 @@ function SectionRows({
   if (sectionId === 'local') {
     const rows = repositoryOverview.refs.localBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
     return rows.length > 0 ? (
-      <div className="space-y-0.5 py-0.5">
+      <div className="py-1">
         {rows.map((branch) => (
           <SidebarRow
             key={branch.fullName}
@@ -287,7 +332,7 @@ function SectionRows({
   if (sectionId === 'remote') {
     const rows = repositoryOverview.refs.remoteBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
     return rows.length > 0 ? (
-      <div className="space-y-0.5 py-0.5">
+      <div className="py-1">
         {rows.map((branch) => (
           <SidebarRow
             key={branch.fullName}
@@ -309,7 +354,7 @@ function SectionRows({
       matchesFilter(`${worktree.branch ?? worktree.path} ${worktree.path}`, normalizedFilter)
     );
     return rows.length > 0 ? (
-      <div className="space-y-0.5 py-0.5">
+      <div className="py-1">
         {rows.map((worktree) => (
           <SidebarRow
             key={worktree.path}
@@ -326,9 +371,36 @@ function SectionRows({
     );
   }
 
+  if (sectionId === 'stashes') {
+    const rows = repositoryOverview.stashes.filter((stash) =>
+      matchesFilter(`${stash.selector} ${stash.subject}`, normalizedFilter)
+    );
+
+    return rows.length > 0 ? (
+      <div className="py-1">
+        {rows.map((stash) => (
+          <SidebarRow
+            key={stash.selector}
+            icon={<Archive size={12} />}
+            label={formatStashSubject(stash.subject)}
+            meta={stash.selector}
+            title={`${stash.selector} ${stash.subject}`}
+            onContextMenu={(event) => onContextMenu(event, { kind: 'stash', stash })}
+          />
+        ))}
+      </div>
+    ) : (
+      <EmptySection label="No stashes." />
+    );
+  }
+
+  if (sectionId !== 'tags') {
+    return <EmptySection label="Not available in the local build." />;
+  }
+
   const rows = repositoryOverview.refs.tags.filter((tag) => matchesFilter(tag.name, normalizedFilter));
   return rows.length > 0 ? (
-    <div className="space-y-0.5 py-0.5">
+    <div className="py-1">
       {rows.map((tag) => (
         <SidebarRow
           key={tag.fullName}
@@ -363,15 +435,15 @@ function SidebarRow({
 }): ReactElement {
   return (
     <div
-      className="flex h-7 min-w-0 items-center gap-2 rounded-md px-3 pl-9 text-xs text-[var(--text-2)]"
-      style={{ background: isActive ? 'var(--select-bg)' : undefined }}
+      className="side-row"
+      data-active={isActive}
       title={title ?? label}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
     >
-      <span className={isActive ? 'text-[var(--accent-2)]' : 'text-[var(--text-3)]'}>{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {meta ? <span className="shrink-0 text-[10.5px] text-[var(--text-3)]">{meta}</span> : null}
+      <span className="side-row-icon">{isActive ? <Check size={12} /> : icon}</span>
+      <span className="side-row-label">{label}</span>
+      {meta ? <span className="side-row-meta">{meta}</span> : null}
     </div>
   );
 }
@@ -384,7 +456,10 @@ function SidebarContextMenu({
   onCheckoutRemoteBranch,
   onRenameBranch,
   onDeleteBranch,
-  onDeleteTag
+  onDeleteTag,
+  onStashApply,
+  onStashPop,
+  onStashDrop
 }: {
   state: SidebarContextMenuState;
   isOperationBusy: boolean;
@@ -394,6 +469,9 @@ function SidebarContextMenu({
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteTag: (name: string) => void;
+  onStashApply: (selector: string) => void;
+  onStashPop: (selector: string) => void;
+  onStashDrop: (selector: string) => void;
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
@@ -471,7 +549,7 @@ function SidebarContextMenu({
           <GitBranch size={14} />
           <span>Checkout tracking branch</span>
         </button>
-      ) : (
+      ) : state.kind === 'tag' ? (
         <button
           className="menu-row"
           type="button"
@@ -484,6 +562,45 @@ function SidebarContextMenu({
           <Trash2 size={14} />
           <span>Delete tag</span>
         </button>
+      ) : (
+        <>
+          <button
+            className="menu-row"
+            type="button"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onStashApply(state.stash.selector);
+              onClose();
+            }}
+          >
+            <Archive size={14} />
+            <span>Apply stash</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onStashPop(state.stash.selector);
+              onClose();
+            }}
+          >
+            <Archive size={14} />
+            <span>Pop stash</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onStashDrop(state.stash.selector);
+              onClose();
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Drop stash</span>
+          </button>
+        </>
       )}
     </div>
   );
@@ -513,61 +630,6 @@ function formatAheadBehind(ahead: number, behind: number): string | undefined {
   return undefined;
 }
 
-function StatusSummary({
-  repositoryOverview
-}: {
-  repositoryOverview?: GitRepositoryOverview;
-}): ReactElement | null {
-  if (!repositoryOverview) {
-    return null;
-  }
-
-  const status = repositoryOverview.status;
-
-  return (
-    <div className="border-b border-[var(--border)] px-3 pb-2 pt-1.5">
-      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2">
-        <div className="mb-1.5 flex items-center justify-between text-[11px] uppercase tracking-[0.08em] text-[var(--text-3)]">
-          <span>Working Tree</span>
-          <span>{status.isDirty ? `${status.dirtyCount} changed` : 'clean'}</span>
-        </div>
-        <div className="flex flex-wrap gap-2 text-[11px] text-[var(--text-2)]">
-          <StatusCount icon={<Pencil size={11} />} label="staged" count={status.stagedCount} status="modified" />
-          <StatusCount icon={<Plus size={12} />} label="unstaged" count={status.unstagedCount} status="added" />
-          <StatusCount icon={<Minus size={12} />} label="conflicts" count={status.conflictedCount} status="deleted" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusCount({
-  icon,
-  label,
-  count,
-  status
-}: {
-  icon: ReactNode;
-  label: string;
-  count: number;
-  status: GitStatusCode;
-}): ReactElement {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span style={{ color: statusColor(status) }}>{icon}</span>
-      {count} {label}
-    </span>
-  );
-}
-
-function statusColor(status: GitStatusCode): string {
-  if (status === 'added') {
-    return FILE_STATUS_COLORS.added;
-  }
-
-  if (status === 'deleted') {
-    return FILE_STATUS_COLORS.deleted;
-  }
-
-  return FILE_STATUS_COLORS.modified;
+function formatStashSubject(subject: string): string {
+  return subject.replace(/^(WIP|On) on [^:]+:\s*/, '') || subject;
 }

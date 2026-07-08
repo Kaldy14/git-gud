@@ -1,0 +1,137 @@
+import type { FormEvent, ReactElement } from 'react';
+import { useState } from 'react';
+import { Gauge, GitGraph, Rows3, Settings, SplitSquareHorizontal, Terminal, X } from 'lucide-react';
+
+import { MAX_GRAPH_PAGE_SIZE, MIN_GRAPH_PAGE_SIZE, clampGraphPageSize } from '@shared/settings';
+import type { AppSettings } from '@shared/types';
+
+type SettingsPanelProps = {
+  settings: AppSettings;
+  isSaving: boolean;
+  errorMessage?: string;
+  onClose: () => void;
+  onSave: (settings: AppSettings) => Promise<void> | void;
+};
+
+export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSave }: SettingsPanelProps): ReactElement {
+  const [draft, setDraft] = useState<AppSettings>(settings);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void onSave({
+      ...draft,
+      graphPageSize: clampGraphPageSize(draft.graphPageSize)
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/45">
+      <form
+        className="flex h-full w-full max-w-[460px] flex-col border-l border-[var(--border-strong)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
+        onSubmit={handleSubmit}
+      >
+        <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
+          <Settings size={17} className="text-[var(--accent-2)]" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-[var(--text-1)]">Settings</h2>
+            <p className="mt-0.5 text-[11px] text-[var(--text-3)]">Local workflow defaults</p>
+          </div>
+          <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close settings">
+            <X size={14} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <section className="space-y-3 border-b border-[var(--border)] pb-4">
+            <SettingHeading icon={<Rows3 size={15} />} label="Diffs" />
+            <div className="segmented">
+              <button
+                type="button"
+                data-active={draft.defaultDiffStyle === 'unified'}
+                onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'unified' }))}
+              >
+                <Rows3 size={12} />
+                Unified
+              </button>
+              <button
+                type="button"
+                data-active={draft.defaultDiffStyle === 'split'}
+                onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'split' }))}
+              >
+                <SplitSquareHorizontal size={12} />
+                Split
+              </button>
+            </div>
+          </section>
+
+          <section className="space-y-3 border-b border-[var(--border)] py-4">
+            <SettingHeading icon={<GitGraph size={15} />} label="Graph" />
+            <label className="block text-xs text-[var(--text-2)]">
+              <span className="mb-1.5 block font-semibold text-[var(--text-1)]">Initial commit rows</span>
+              <input
+                className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+                type="number"
+                min={MIN_GRAPH_PAGE_SIZE}
+                max={MAX_GRAPH_PAGE_SIZE}
+                step={250}
+                value={draft.graphPageSize}
+                onChange={(event) =>
+                  setDraft((value) => ({
+                    ...value,
+                    graphPageSize: Number.parseInt(event.target.value, 10) || MIN_GRAPH_PAGE_SIZE
+                  }))
+                }
+              />
+              <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
+                Load more remains available after the initial page.
+              </span>
+            </label>
+            <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+              <input
+                className="mt-0.5"
+                type="checkbox"
+                checked={draft.largeRepoMode}
+                onChange={(event) => setDraft((value) => ({ ...value, largeRepoMode: event.target.checked }))}
+              />
+              <span className="min-w-0">
+                <span className="block font-semibold text-[var(--text-1)]">Large-repo mode</span>
+                <span className="mt-1 block leading-5 text-[var(--text-3)]">
+                  Reduces graph overscan for very large histories.
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <section className="space-y-3 py-4">
+            <SettingHeading icon={<Terminal size={15} />} label="Terminal" />
+            <div className="rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+              <span className="block font-semibold text-[var(--text-1)]">{draft.terminalApp}.app</span>
+              <span className="mt-1 block leading-5 text-[var(--text-3)]">The toolbar Terminal button opens at the active repository.</span>
+            </div>
+          </section>
+
+          {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]">{errorMessage}</p> : null}
+        </div>
+
+        <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
+          <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-accent h-8 text-xs" type="submit" disabled={isSaving}>
+            <Gauge size={13} />
+            Save Settings
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function SettingHeading({ icon, label }: { icon: ReactElement; label: string }): ReactElement {
+  return (
+    <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
+      {icon}
+      {label}
+    </h3>
+  );
+}

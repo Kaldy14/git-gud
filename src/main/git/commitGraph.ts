@@ -3,6 +3,7 @@ import type {
   CommitGraphPage,
   GitFileChange,
   GitRefsSummary,
+  GitStashEntry,
   GitStatusCode,
   GraphFile,
   GraphFileStatus,
@@ -16,6 +17,7 @@ import { parseGitLog, type GitLogCommit } from './parsers/log';
 import { parseForEachRef } from './parsers/refs';
 import { parseStashList } from './parsers/stash';
 import { parseStatusPorcelainV2 } from './parsers/status';
+import { gravatarUrlForEmail } from './gravatar';
 
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
 
@@ -34,6 +36,8 @@ export async function loadCommitGraph(
   const hasMore = logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
   const refMap = createRefMap(refs);
+  const groupedStashInputsByBase = createGroupedStashInputsByBase(stashes);
+  const attachedStashBases = new Set<string>();
   const inputs: GraphCommitInput[] = [];
 
   if (status.isDirty) {
@@ -51,21 +55,21 @@ export async function loadCommitGraph(
     });
   }
 
-  for (const stash of stashes) {
-    inputs.push({
-      sha: stash.sha,
-      parentShas: stash.parentShas[0] ? [stash.parentShas[0]] : [],
-      subject: stash.subject,
-      authorName: 'Stash',
-      authoredAt: stash.date,
-      kind: 'stash',
-      colorOverride: '#f0a13f',
-      refs: [{ label: stash.selector, kind: 'stash' }]
-    });
+  for (const commit of commits) {
+    const stashInput = groupedStashInputsByBase.get(commit.sha);
+
+    if (stashInput) {
+      inputs.push(stashInput);
+      attachedStashBases.add(commit.sha);
+    }
+
+    inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha)));
   }
 
-  for (const commit of commits) {
-    inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha)));
+  for (const [baseSha, stashInput] of groupedStashInputsByBase.entries()) {
+    if (!attachedStashBases.has(baseSha)) {
+      inputs.push(stashInput);
+    }
   }
 
   return {
@@ -79,8 +83,52 @@ export async function loadCommitGraph(
   };
 }
 
+function createGroupedStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCommitInput> {
+  const stashesByBase = new Map<string, GitStashEntry[]>();
+
+  for (const stash of stashes) {
+    const baseSha = stash.parentShas[0] ?? '';
+    const group = stashesByBase.get(baseSha) ?? [];
+    group.push(stash);
+    stashesByBase.set(baseSha, group);
+  }
+
+  const inputsByBase = new Map<string, GraphCommitInput>();
+
+  for (const [baseSha, group] of stashesByBase.entries()) {
+    const primaryStash = group[0];
+
+    if (!primaryStash) {
+      continue;
+    }
+
+    inputsByBase.set(baseSha, {
+      sha: primaryStash.sha,
+      parentShas: baseSha ? [baseSha] : [],
+      subject: formatStashSubject(primaryStash, group.length),
+      authorName: 'Stash',
+      authoredAt: primaryStash.date,
+      kind: 'stash',
+      colorOverride: '#d726e7',
+      refs: group.map((stash) => ({ label: stash.selector, kind: 'stash' }))
+    });
+  }
+
+  return inputsByBase;
+}
+
+function formatStashSubject(primaryStash: GitStashEntry, groupSize: number): string {
+  const subject = primaryStash.subject || primaryStash.selector;
+  const extraCount = groupSize - 1;
+
+  return extraCount > 0 ? `${subject} (+${extraCount} stashes)` : subject;
+}
+
 async function loadStatus(repoPath: string, env: NodeJS.ProcessEnv | undefined) {
-  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath, env });
+  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'], {
+    cwd: repoPath,
+    env
+  });
   return parseStatusPorcelainV2(result.stdout);
 }
 
@@ -146,6 +194,7 @@ function logCommitToGraphInput(commit: GitLogCommit, refs: GraphRefChip[] | unde
     subject: commit.subject,
     authorName: commit.authorName,
     authorEmail: commit.authorEmail,
+    authorAvatarUrl: gravatarUrlForEmail(commit.authorEmail, 64),
     authoredAt: commit.authoredAt,
     committedAt: commit.committedAt,
     refs

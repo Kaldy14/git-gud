@@ -66,9 +66,9 @@ Last updated: 2026-07-07.
 | M3 - Details, Trees, Diffs, Commit Flow | Done | Commit/WIP details, `@pierre/trees`, `@pierre/diffs`, file/all stage and unstage, commit, amend, rename unstage coverage, and graph/detail refresh are implemented. |
 | M4 - Everyday Branch Operations | Done | Fetch, pull, push, branch create/delete/rename, checkout, merge, tags, stash operations, cherry-pick, revert, reset, conflict banner, operation log, and safe local undo are implemented. |
 | M5 - Rebase and Interactive Rebase | Done | Standard rebase, interactive todo planning, reorder/reword/squash/fixup/drop, controlled editor scripts, rebase conflict continuation, and temp-repo integration tests are implemented. |
-| M6 - Polish and Power Features | Next | Hunk/line staging, shortcuts, Terminal button, settings, and large-repo performance pass remain. |
+| M6 - Polish and Power Features | Done | Hunk/line-group staging, WIP file actions, shortcuts, Terminal button, settings, command dialogs, and large-repo graph defaults are implemented. |
 
-Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after M5 implementation on 2026-07-07.
+Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after M6/WIP file action hardening on 2026-07-07.
 
 Tracking rule: update this table whenever a milestone is started, completed, reopened, or materially rescoped; keep `docs/README.md` status in sync with this table.
 
@@ -76,9 +76,7 @@ Tracking rule: update this table whenever a milestone is started, completed, reo
 
 These items were intentionally deferred during the M4 hardening pass so the current branch operation work stayed stable. Revisit them during M6 polish or when they start blocking conflict/operation UX work:
 
-- Replace remaining `window.prompt` / `window.confirm` operation flows with app-native dialogs or modals. Priority flows: branch create/rename/delete, remote checkout, stash push/apply/pop/drop, merge, cherry-pick, revert, reset, and undo confirmation. Main-process validation and safety checks must remain authoritative even after the renderer UI improves.
 - Finish splitting `src/main/git/operations.ts` into per-command modules under `src/main/git/commands/`. The command registry now records labels, mutation scope, undo strategy, conflict behavior, and invalidation scope; the M5 rebase command lives in `src/main/git/commands/rebase.ts`, while most earlier operation implementations are still centralized.
-- Add the remaining WIP file context actions from the M3 plan: discard with confirmation, open in editor, and reveal in Finder.
 - Add operation progress streaming for long-running/network mutations. The current OperationLog records settled results; it does not yet receive incremental progress events.
 - Add executor-level cancellation and streaming helpers: cancellable reads, explicit cancellation blocking for unsafe mutation phases, and streamed output for long-running Git commands.
 
@@ -459,11 +457,11 @@ Exit: reorder/squash/reword/drop workflows work on real temp repos and update th
 
 ### M6 - Polish and Power Features
 
-- Hunk/line staging.
+- Hunk/line-group staging.
 - Keyboard shortcuts: repo/branch fuzzy jump, commit submit, fetch, push, toggle tree/path, toggle unified/split.
 - Terminal button opens Terminal.app at repo.
-- Settings page.
-- Performance pass on large repos.
+- Settings page for default diff style, graph page size, and large-repo mode.
+- Performance pass on large repos through persisted graph page-size defaults and reduced virtualized overscan.
 - Optional `pnpm dist` local `.app` build.
 
 Exit: the app is comfortable as the user's daily local Git client.

@@ -1,5 +1,6 @@
 import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
 import type {
+  AppSettingsInput,
   GitCheckoutTarget,
   GitCommitInput,
   GitConflictActionInput,
@@ -9,6 +10,7 @@ import type {
   GitInteractiveRebaseAction,
   GitInteractiveRebaseInput,
   GitMergeInput,
+  GitPatchApplyInput,
   GitProfile,
   GitPullInput,
   GitPushInput,
@@ -44,8 +46,12 @@ const validators = {
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
+  'repo:apply-patch': (args) => readRepoPathWithObject(args, 'repo:apply-patch', readPatchApplyInput),
   'repo:stage-file': (args) => readStringPair(args, 'repo:stage-file', 'repoPath', 'path'),
   'repo:unstage-file': (args) => readStringPair(args, 'repo:unstage-file', 'repoPath', 'path'),
+  'repo:discard-file': (args) => readStringPair(args, 'repo:discard-file', 'repoPath', 'path'),
+  'repo:open-file': (args) => readStringPair(args, 'repo:open-file', 'repoPath', 'path'),
+  'repo:reveal-file': (args) => readStringPair(args, 'repo:reveal-file', 'repoPath', 'path'),
   'repo:stage-all': (args) => readOnlyArg(args, 'repo:stage-all', 'repoPath', readString),
   'repo:unstage-all': (args) => readOnlyArg(args, 'repo:unstage-all', 'repoPath', readString),
   'repo:commit': (args) => readRepoPathWithObject(args, 'repo:commit', readCommitInput),
@@ -71,6 +77,9 @@ const validators = {
   'repo:interactive-rebase': (args) => readRepoPathWithObject(args, 'repo:interactive-rebase', readInteractiveRebaseInput),
   'repo:resolve-conflict': (args) => readRepoPathWithObject(args, 'repo:resolve-conflict', readConflictActionInput),
   'repo:undo': (args) => readStringPair(args, 'repo:undo', 'repoPath', 'undoId'),
+  'repo:open-terminal': (args) => readOnlyArg(args, 'repo:open-terminal', 'repoPath', readString),
+  'settings:get': (args) => noArgs('settings:get', args),
+  'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
   'profiles:list': (args) => noArgs('profiles:list', args),
   'profiles:save': (args) => readOnlyArg(args, 'profiles:save', 'profile', readProfile),
   'repo:assign-profile': (args) => readStringWithOptionalString(args, 'repo:assign-profile', 'repoPath', 'profileId')
@@ -306,6 +315,25 @@ function readFileDiffRequest(value: unknown): GitFileDiffRequest {
   };
 }
 
+function readPatchApplyInput(value: unknown): GitPatchApplyInput {
+  const record = readRecord(value, 'patch apply input');
+  return {
+    path: readStringProperty(record, 'path'),
+    mode: readEnumProperty(record, 'mode', ['stage', 'unstage']),
+    patch: readStringProperty(record, 'patch')
+  };
+}
+
+function readSettingsInput(value: unknown): AppSettingsInput {
+  const record = readRecord(value, 'settings');
+  return {
+    defaultDiffStyle: readOptionalEnumProperty(record, 'defaultDiffStyle', ['unified', 'split']),
+    graphPageSize: readOptionalPositiveIntegerProperty(record, 'graphPageSize'),
+    largeRepoMode: readOptionalBooleanProperty(record, 'largeRepoMode'),
+    terminalApp: readOptionalEnumProperty(record, 'terminalApp', ['Terminal'])
+  };
+}
+
 function readProfile(value: unknown): GitProfile {
   const record = readRecord(value, 'profile');
   return {
@@ -352,12 +380,36 @@ function readBooleanProperty(record: Record<string, unknown>, property: string):
   return readBoolean(record[property], property);
 }
 
+function readOptionalBooleanProperty(record: Record<string, unknown>, property: string): boolean | undefined {
+  if (record[property] === undefined) {
+    return undefined;
+  }
+
+  return readBoolean(record[property], property);
+}
+
 function readEnumProperty<TValue extends string>(
   record: Record<string, unknown>,
   property: string,
   values: readonly TValue[]
 ): TValue {
   return readEnum(record[property], property, values);
+}
+
+function readOptionalEnumProperty<TValue extends string>(
+  record: Record<string, unknown>,
+  property: string,
+  values: readonly TValue[]
+): TValue | undefined {
+  if (record[property] === undefined) {
+    return undefined;
+  }
+
+  return readEnum(record[property], property, values);
+}
+
+function readOptionalPositiveIntegerProperty(record: Record<string, unknown>, property: string): number | undefined {
+  return readOptionalPositiveInteger(record[property], property);
 }
 
 function readOptionalStringArrayProperty(record: Record<string, unknown>, property: string): string[] | undefined {

@@ -31,6 +31,8 @@ type ToolbarProps = {
   onStashPush: () => void;
   onStashPop: () => void;
   onUndo: () => void;
+  onOpenTerminal: () => void;
+  onOpenQuickJump: () => void;
 };
 
 export function Toolbar({
@@ -44,7 +46,9 @@ export function Toolbar({
   onCreateBranch,
   onStashPush,
   onStashPop,
-  onUndo
+  onUndo,
+  onOpenTerminal,
+  onOpenQuickJump
 }: ToolbarProps): ReactElement {
   const hasRepo = Boolean(activeTab);
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : '—';
@@ -53,8 +57,8 @@ export function Toolbar({
   const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
 
   return (
-    <div className="flex h-[54px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
-      <div className="flex min-w-0 items-center">
+    <div className="flex h-[56px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
+      <div className="flex h-full min-w-0 items-center">
         <button className="tb-select" type="button" disabled={!hasRepo} title={activeTab?.path}>
           <span className="tb-select-label">repository</span>
           <span className="tb-select-value">
@@ -81,7 +85,7 @@ export function Toolbar({
         </button>
       </div>
 
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex h-full flex-1 items-center justify-center">
         <ToolbarAction
           label="Undo"
           icon={isBusy ? <Loader2 size={17} className="animate-spin" /> : <Undo2 size={17} />}
@@ -138,12 +142,25 @@ export function Toolbar({
           onClick={onStashPop}
         />
         <div className="tb-divider" />
-        <ToolbarAction label="Terminal" icon={<Terminal size={17} />} hint="Open Terminal.app — lands in M6" emphasized={hasRepo} />
+        <ToolbarAction
+          label="Terminal"
+          icon={<Terminal size={17} />}
+          hint="Open Terminal.app at this repository"
+          disabled={!hasRepo || isBusy}
+          onClick={onOpenTerminal}
+          emphasized={hasRepo}
+        />
       </div>
 
-      <div className="flex shrink-0 items-center">
+      <div className="flex h-full shrink-0 items-center">
         <ToolbarAction label="Actions" icon={<Zap size={17} />} hint="Quick actions are not implemented yet" />
-        <ToolbarAction label="Search" icon={<Search size={17} />} hint="Search — lands in M6" />
+        <ToolbarAction
+          label="Search"
+          icon={<Search size={17} />}
+          hint="Jump to repository or branch"
+          disabled={!hasRepo}
+          onClick={onOpenQuickJump}
+        />
       </div>
     </div>
   );
@@ -178,8 +195,8 @@ function ToolbarAction({ label, icon, hint, emphasized = false, disabled = true,
       onClick={onClick}
       style={emphasized && !disabled ? { opacity: 1, color: 'var(--text-2)' } : undefined}
     >
-      <span className="text-[11px] leading-none">{label}</span>
-      {icon}
+      <span className="tb-action-label">{label}</span>
+      <span className="tb-action-icon">{icon}</span>
     </button>
   );
 }

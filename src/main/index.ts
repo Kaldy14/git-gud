@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { app, BrowserWindow, shell } from 'electron';
@@ -7,6 +8,9 @@ import { RepoWatcherRegistry } from './git/watcher';
 import { registerIpcHandlers } from './ipc';
 import { getWorkspace } from './store';
 
+const quitCleanupTimeoutMs = 1500;
+let isQuitting = false;
+
 const repoWatchers = new RepoWatcherRegistry((event) => {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send('repo:changed', event);
@@ -14,6 +18,7 @@ const repoWatchers = new RepoWatcherRegistry((event) => {
 });
 
 function createWindow(): void {
+  const iconPath = resolveAppIconPath();
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -22,6 +27,7 @@ function createWindow(): void {
     show: false,
     title: 'git-gud',
     backgroundColor: '#0e1218',
+    icon: iconPath,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {
       x: 16,
@@ -56,6 +62,16 @@ function createWindow(): void {
   }
 }
 
+function resolveAppIconPath(): string | undefined {
+  const candidatePaths = [
+    join(process.resourcesPath, 'icon.png'),
+    join(app.getAppPath(), 'build/icon.png'),
+    join(process.cwd(), 'build/icon.png')
+  ];
+
+  return candidatePaths.find((candidatePath) => existsSync(candidatePath));
+}
+
 function isSafeExternalUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -67,6 +83,12 @@ function isSafeExternalUrl(value: string): boolean {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.kaldy.git-gud');
+  const iconPath = resolveAppIconPath();
+
+  if (iconPath && process.platform === 'darwin') {
+    app.dock?.setIcon(iconPath);
+  }
+
   registerIpcHandlers(repoWatchers);
   repoWatchers.sync(getWorkspace().tabs);
 
@@ -84,11 +106,26 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });
 
-app.on('before-quit', () => {
-  repoWatchers.closeAll();
+app.on('before-quit', (event) => {
+  if (isQuitting) {
+    return;
+  }
+
+  event.preventDefault();
+  isQuitting = true;
+  void quitAfterCleanup();
 });
+
+async function quitAfterCleanup(): Promise<void> {
+  await Promise.race([repoWatchers.closeAll(), wait(quitCleanupTimeoutMs)]);
+  app.exit(0);
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}

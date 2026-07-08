@@ -32,14 +32,33 @@ describe('loadCommitGraph', () => {
 
       await writeRepoFile(repoPath, 'README.md', 'stashed\n');
       await git(repoPath, ['stash', 'push', '-m', 'graph stash']);
+      await writeRepoFile(repoPath, 'README.md', 'stashed again\n');
+      await git(repoPath, ['stash', 'push', '-m', 'newer graph stash']);
       await writeRepoFile(repoPath, 'README.md', 'dirty\n');
+      await writeRepoFile(repoPath, '.kiosk-dev/design_handoff_vosime/bee.png', 'bee\n');
+      await writeRepoFile(repoPath, '.kiosk-dev/design_handoff_vosime/logo-full.png', 'logo\n');
 
       const page = await loadCommitGraph({ path: repoPath }, 1);
+      const wipFiles = page.rows[0]?.files.map((file) => file.path) ?? [];
 
       expect(page.loadedCommitCount).toBe(1);
       expect(page.hasMore).toBe(true);
       expect(page.rows[0]).toMatchObject({ sha: 'wip', node: { kind: 'wip' } });
-      expect(page.rows[1]).toMatchObject({ node: { kind: 'stash' }, refs: [{ label: 'stash@{0}', kind: 'stash' }] });
+      expect(wipFiles).toEqual(
+        expect.arrayContaining([
+          '.kiosk-dev/design_handoff_vosime/bee.png',
+          '.kiosk-dev/design_handoff_vosime/logo-full.png'
+        ])
+      );
+      expect(wipFiles).not.toContain('.kiosk-dev/');
+      expect(page.rows[1]).toMatchObject({
+        node: { kind: 'stash' },
+        refs: [
+          { label: 'stash@{0}', kind: 'stash' },
+          { label: 'stash@{1}', kind: 'stash' }
+        ]
+      });
+      expect(page.rows[1]?.subject).toBe('On main: newer graph stash (+1 stashes)');
       expect(page.rows[2]?.subject).toBe('second');
       expect(page.rows[2]?.refs).toEqual(
         expect.arrayContaining([

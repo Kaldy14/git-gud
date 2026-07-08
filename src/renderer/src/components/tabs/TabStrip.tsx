@@ -15,6 +15,7 @@ type TabStripProps = {
   onCloseTab: (tabId: string) => void;
   onOpenRepository: () => void;
   onOpenRecentRepository: (repoPath: string) => void;
+  onOpenSettings: () => void;
   onAssignProfile: (profileId: string | undefined) => Promise<void>;
   onSaveAndAssignProfile: (profile: GitProfile) => Promise<void>;
 };
@@ -29,6 +30,7 @@ export function TabStrip({
   onCloseTab,
   onOpenRepository,
   onOpenRecentRepository,
+  onOpenSettings,
   onAssignProfile,
   onSaveAndAssignProfile
 }: TabStripProps): ReactElement {
@@ -51,7 +53,7 @@ export function TabStrip({
   }, [isMenuOpen]);
 
   return (
-    <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[78px]">
+    <div className="drag-region flex h-[48px] shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
       <div className="no-drag relative flex min-w-0 flex-1 items-stretch">
         <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map((tab) => {
@@ -86,7 +88,7 @@ export function TabStrip({
         </div>
 
         <button
-          className="grid w-9 shrink-0 place-items-center rounded-none text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+          className="grid w-10 shrink-0 place-items-center rounded-none text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
           type="button"
           aria-label="Open repository"
           onClick={() => setIsMenuOpen((value) => !value)}
@@ -97,7 +99,7 @@ export function TabStrip({
         {isMenuOpen ? (
           <div
             ref={menuRef}
-            className="absolute left-1 top-[42px] z-50 w-80 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+            className="absolute left-1 top-[50px] z-50 w-80 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
           >
             <button
               className="menu-row"
@@ -138,10 +140,10 @@ export function TabStrip({
       </div>
 
       <div className="no-drag flex shrink-0 items-center gap-0.5 px-2">
-        <button className="icon-btn" type="button" aria-label="Notifications" title="Notifications - coming in M6" disabled>
+        <button className="icon-btn" type="button" aria-label="Notifications" title="Notifications - not implemented" disabled>
           <Bell size={15} />
         </button>
-        <button className="icon-btn" type="button" aria-label="Settings" title="Settings - coming in M6" disabled>
+        <button className="icon-btn" type="button" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
           <Settings size={15} />
         </button>
         <ProfileMenu

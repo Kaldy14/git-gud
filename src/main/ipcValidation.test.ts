@@ -27,6 +27,34 @@ describe('IPC argument validation', () => {
       target: 'HEAD~1',
       mode: 'mixed'
     });
+    expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
+    expect(
+      validateIpcArgs('repo:apply-patch', [
+        '/repo',
+        {
+          path: 'README.md',
+          mode: 'stage',
+          patch: 'diff --git a/README.md b/README.md\n@@ -1,0 +1 @@\n+hello\n'
+        }
+      ])[1]
+    ).toMatchObject({
+      path: 'README.md',
+      mode: 'stage'
+    });
+    expect(
+      validateIpcArgs('settings:update', [
+        {
+          defaultDiffStyle: 'split',
+          graphPageSize: 750,
+          largeRepoMode: true,
+          terminalApp: 'Terminal'
+        }
+      ])[0]
+    ).toMatchObject({
+      defaultDiffStyle: 'split',
+      graphPageSize: 750,
+      largeRepoMode: true
+    });
   });
 
   it('accepts optional arguments when they are omitted or undefined', () => {
@@ -43,6 +71,13 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('mode must be one of: ff-only, rebase.');
+    expect(() =>
+      validateIpcArgs('settings:update', [
+        {
+          defaultDiffStyle: 'stacked'
+        }
+      ])
+    ).toThrow('defaultDiffStyle must be one of: unified, split.');
   });
 
   it('rejects malformed nested payloads', () => {

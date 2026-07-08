@@ -1,5 +1,11 @@
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, ReactElement } from 'react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+  UIEvent as ReactUIEvent
+} from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Archive,
   Cherry,
@@ -15,6 +21,7 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
+  Settings,
   Tag,
   Trash2,
   Undo2,
@@ -23,14 +30,43 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
-import type { CommitGraphRow, GraphFile, GraphFileStatus, GraphRailSegment, GraphRefChip } from '@shared/types';
+import type { CommitGraphRow, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
-const ROW_HEIGHT = 32;
-const LANE_X0 = 14;
-const LANE_GAP = 18;
-const MIN_REF_CELL_WIDTH = 178;
-const MAX_REF_CELL_WIDTH = 320;
-const MIN_GRAPH_CELL_WIDTH = 96;
+const ROW_HEIGHT = 34;
+const LANE_X0 = 48;
+const LANE_GAP = 28;
+const DEFAULT_REF_CELL_WIDTH = 166;
+const DEFAULT_GRAPH_VIEWPORT_WIDTH = 188;
+const GRAPH_COLUMN_WIDTH_STORAGE_KEY = 'git-gud:graph-column-widths';
+
+type ResizableGraphColumn = 'refs' | 'graph';
+
+type GraphColumnWidths = Record<ResizableGraphColumn, number>;
+
+type ColumnResizeState = {
+  column: ResizableGraphColumn;
+  startX: number;
+  startWidth: number;
+};
+
+type GraphColumnLimit = {
+  min: number;
+  max: number;
+  defaultValue: number;
+};
+
+const GRAPH_COLUMN_LIMITS: Record<ResizableGraphColumn, GraphColumnLimit> = {
+  refs: {
+    min: 124,
+    max: 360,
+    defaultValue: DEFAULT_REF_CELL_WIDTH
+  },
+  graph: {
+    min: 96,
+    max: 520,
+    defaultValue: DEFAULT_GRAPH_VIEWPORT_WIDTH
+  }
+};
 
 type GraphViewProps = {
   rows: CommitGraphRow[];
@@ -57,6 +93,7 @@ type GraphViewProps = {
   onRevertCommit?: (sha: string) => Promise<void> | void;
   onResetToCommit?: (sha: string) => Promise<void> | void;
   isOperationBusy?: boolean;
+  largeRepoMode?: boolean;
 };
 
 type ContextMenuState = {
@@ -89,12 +126,19 @@ export function GraphView({
   onCherryPickCommit,
   onRevertCommit,
   onResetToCommit,
-  isOperationBusy = false
+  isOperationBusy = false,
+  largeRepoMode = false
 }: GraphViewProps): ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const graphScrollerRef = useRef<HTMLDivElement>(null);
+  const resizeStateRef = useRef<ColumnResizeState | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
-  const graphWidth = useMemo(() => graphCellWidth(rows), [rows]);
-  const refCellWidth = useMemo(() => refCellWidthForRows(rows), [rows]);
+  const [columnWidths, setColumnWidths] = useState<GraphColumnWidths>(loadStoredGraphColumnWidths);
+  const [resizingColumn, setResizingColumn] = useState<ResizableGraphColumn>();
+  const [graphScrollLeft, setGraphScrollLeft] = useState(0);
+  const graphWidth = columnWidths.graph;
+  const graphContentWidth = graphContentWidthForRows(rows, graphWidth);
+  const refCellWidth = columnWidths.refs;
   const gridTemplateColumns = `${refCellWidth}px ${graphWidth}px minmax(0, 1fr)`;
   // TanStack Virtual is the row windowing layer for M2; the virtualizer stays local to this component.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -102,7 +146,7 @@ export function GraphView({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
-    overscan: 24
+    overscan: largeRepoMode ? 8 : 24
   });
 
   useEffect(() => {
@@ -127,6 +171,63 @@ export function GraphView({
       window.removeEventListener('click', handleClick);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    saveStoredGraphColumnWidths(columnWidths);
+  }, [columnWidths]);
+
+  useEffect(() => {
+    if (!resizingColumn) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function handlePointerMove(event: PointerEvent): void {
+      const state = resizeStateRef.current;
+
+      if (!state) {
+        return;
+      }
+
+      const nextWidth = state.startWidth + event.clientX - state.startX;
+      setColumnWidths((current) => resizeGraphColumn(current, state.column, nextWidth));
+    }
+
+    function stopResize(): void {
+      resizeStateRef.current = undefined;
+      setResizingColumn(undefined);
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [resizingColumn]);
+
+  useEffect(() => {
+    const maxScrollLeft = Math.max(0, graphContentWidth - graphWidth);
+
+    if (graphScrollLeft <= maxScrollLeft) {
+      return;
+    }
+
+    setGraphScrollLeft(maxScrollLeft);
+
+    if (graphScrollerRef.current) {
+      graphScrollerRef.current.scrollLeft = maxScrollLeft;
+    }
+  }, [graphContentWidth, graphScrollLeft, graphWidth]);
 
   function handleContextMenu(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
     event.preventDefault();
@@ -162,19 +263,68 @@ export function GraphView({
     }
   }
 
+  function handleGraphScroll(event: ReactUIEvent<HTMLDivElement>): void {
+    setGraphScrollLeft(event.currentTarget.scrollLeft);
+  }
+
+  function handleColumnResizeStart(event: ReactPointerEvent<HTMLDivElement>, column: ResizableGraphColumn): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    resizeStateRef.current = {
+      column,
+      startX: event.clientX,
+      startWidth: columnWidths[column]
+    };
+    setResizingColumn(column);
+  }
+
+  function handleColumnResizeNudge(column: ResizableGraphColumn, delta: number): void {
+    setColumnWidths((current) => resizeGraphColumn(current, column, current[column] + delta));
+  }
+
+  function handleColumnResizeReset(column: ResizableGraphColumn): void {
+    setColumnWidths((current) => resizeGraphColumn(current, column, GRAPH_COLUMN_LIMITS[column].defaultValue));
+  }
+
   return (
     <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-graph)]">
       <div
-        className="grid h-8 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] pr-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]"
+        className="grid h-8 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-semibold uppercase text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
       >
-        <span className="pl-3">Branch / Tag</span>
-        <span className="pl-1">Graph</span>
-        <span className="flex items-center justify-between">
-          <span>Commit message</span>
+        <div className="graph-column-header flex h-full items-center border-r border-[var(--border)] pl-5 leading-none tracking-[0.02em]">
+          <span className="truncate">Branch / Tag</span>
+          <GraphColumnResizeHandle
+            column="refs"
+            label="Branch / Tag"
+            value={refCellWidth}
+            isActive={resizingColumn === 'refs'}
+            onPointerDown={handleColumnResizeStart}
+            onNudge={handleColumnResizeNudge}
+            onReset={handleColumnResizeReset}
+          />
+        </div>
+        <div className="graph-column-header flex h-full items-center border-r border-[var(--border)] pl-4 leading-none tracking-[0.02em]">
+          <span className="truncate">Graph</span>
+          <GraphColumnResizeHandle
+            column="graph"
+            label="Graph"
+            value={graphWidth}
+            isActive={resizingColumn === 'graph'}
+            onPointerDown={handleColumnResizeStart}
+            onNudge={handleColumnResizeNudge}
+            onReset={handleColumnResizeReset}
+          />
+        </div>
+        <span className="flex h-full items-center justify-between pl-4 pr-3">
+          <span className="leading-none tracking-[0.02em]">Commit message</span>
           <span className="flex items-center gap-2">
             {isFetching && rows.length > 0 ? <Loader2 size={13} className="animate-spin text-[var(--text-3)]" /> : null}
-            <Workflow size={13} className="text-[var(--text-3)]" />
+            <Settings size={15} className="text-[var(--text-3)]" />
           </span>
         </span>
       </div>
@@ -183,7 +333,7 @@ export function GraphView({
         ref={scrollRef}
         tabIndex={0}
         onKeyDown={handleListKeyDown}
-        className="min-h-0 flex-1 overflow-y-auto outline-none"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
       >
         {isLoading && rows.length === 0 ? (
           <GraphMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading commit graph..." />
@@ -210,8 +360,12 @@ export function GraphView({
                     <GraphRowView
                       row={row}
                       graphWidth={graphWidth}
+                      graphContentWidth={graphContentWidth}
+                      graphScrollLeft={graphScrollLeft}
+                      refCellWidth={refCellWidth}
                       gridTemplateColumns={gridTemplateColumns}
                       isSelected={row.sha === selectedSha}
+                      rowIndex={virtualRow.index}
                       onSelect={() => onSelectRow(row.sha)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
                     />
@@ -231,6 +385,18 @@ export function GraphView({
           </>
         )}
       </div>
+
+      {graphContentWidth > graphWidth ? (
+        <div
+          className="graph-x-scrollbar"
+          style={{ left: refCellWidth, width: graphWidth }}
+          ref={graphScrollerRef}
+          onScroll={handleGraphScroll}
+          aria-hidden="true"
+        >
+          <div style={{ width: graphContentWidth, height: 1 }} />
+        </div>
+      ) : null}
 
       {contextMenu ? (
         <GraphContextMenu
@@ -261,22 +427,109 @@ export function GraphView({
 type GraphRowViewProps = {
   row: CommitGraphRow;
   graphWidth: number;
+  graphContentWidth: number;
+  graphScrollLeft: number;
+  refCellWidth: number;
   gridTemplateColumns: string;
   isSelected: boolean;
+  rowIndex: number;
   onSelect: () => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
 };
 
+type GraphColumnResizeHandleProps = {
+  column: ResizableGraphColumn;
+  label: string;
+  value: number;
+  isActive: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, column: ResizableGraphColumn) => void;
+  onNudge: (column: ResizableGraphColumn, delta: number) => void;
+  onReset: (column: ResizableGraphColumn) => void;
+};
+
+function GraphColumnResizeHandle({
+  column,
+  label,
+  value,
+  isActive,
+  onPointerDown,
+  onNudge,
+  onReset
+}: GraphColumnResizeHandleProps): ReactElement {
+  const limits = GRAPH_COLUMN_LIMITS[column];
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step = event.shiftKey ? 36 : 12;
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      onNudge(column, -step);
+      return;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      onNudge(column, step);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      onNudge(column, limits.min - value);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      onNudge(column, limits.max - value);
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onReset(column);
+    }
+  }
+
+  return (
+    <div
+      className="graph-column-resizer"
+      role="separator"
+      tabIndex={0}
+      aria-orientation="vertical"
+      aria-label={`Resize ${label} column`}
+      aria-valuemin={limits.min}
+      aria-valuemax={limits.max}
+      aria-valuenow={Math.round(value)}
+      data-active={isActive ? 'true' : undefined}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={(event) => onPointerDown(event, column)}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onReset(column);
+      }}
+      onKeyDown={handleKeyDown}
+    />
+  );
+}
+
 function GraphRowView({
   row,
   graphWidth,
+  graphContentWidth,
+  graphScrollLeft,
+  refCellWidth,
   gridTemplateColumns,
   isSelected,
+  rowIndex,
   onSelect,
   onContextMenu
 }: GraphRowViewProps): ReactElement {
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
+  const visibleRefs = isWip ? [] : (row.refs ?? []).filter((ref) => ref.kind !== 'stash');
+  const rowBackground = graphRowBackground(row, isSelected, rowIndex);
+  const bandBackground = graphRowBandBackground(row, nodeColor, isSelected);
 
   return (
     <div
@@ -284,9 +537,9 @@ function GraphRowView({
       style={{
         height: ROW_HEIGHT,
         gridTemplateColumns,
-        background: isSelected ? 'var(--select-bg)' : undefined,
+        background: rowBackground,
         boxShadow: isSelected
-          ? 'inset 0 0 0 1px var(--select-border)'
+          ? 'inset 0 0 0 1px rgba(36, 196, 222, 0.72)'
           : row.dateMarker
             ? 'inset 0 1px 0 0 var(--border-strong)'
             : undefined
@@ -301,54 +554,228 @@ function GraphRowView({
         />
       ) : null}
 
+      {bandBackground ? (
+        <div
+          className="pointer-events-none absolute bottom-[2px] top-[2px]"
+          style={{
+            left: refCellWidth,
+            width: graphWidth,
+            background: bandBackground,
+            boxShadow: `inset 3px 0 0 ${nodeColor}, inset 0 -1px 0 rgba(0, 0, 0, 0.18)`
+          }}
+        />
+      ) : null}
+
       <div className="ref-cell pl-2 pr-1.5">
-        <RefChipStack refs={row.refs ?? []} color={nodeColor} />
+        <RefChipStack refs={visibleRefs} color={nodeColor} />
       </div>
 
-      <RailCell row={row} nodeColor={nodeColor} graphWidth={graphWidth} />
+      <RailCell
+        row={row}
+        nodeColor={nodeColor}
+        graphWidth={graphWidth}
+        graphContentWidth={graphContentWidth}
+        graphScrollLeft={graphScrollLeft}
+      />
 
-      <div className="relative flex min-w-0 items-center gap-2.5 pr-3">
-        <span
-          className="h-4 w-[2.5px] shrink-0 rounded-full"
-          style={{ background: nodeColor, opacity: isWip ? 0.4 : 0.9 }}
-        />
-        <span
-          className={
-            isWip
-              ? 'min-w-0 truncate text-[12.5px] italic text-[var(--text-3)]'
-              : row.node.kind === 'merge'
-                ? 'min-w-0 truncate text-[12.5px] text-[var(--text-2)]'
-                : 'min-w-0 truncate text-[12.5px] text-[var(--text-1)]'
-          }
-        >
-          {row.subject}
-        </span>
-        {isWip && row.files.length > 0 ? <WipStatusCounts files={row.files} /> : null}
-        <span className="ml-auto hidden shrink-0 text-[11px] text-[var(--text-3)] xl:inline">{row.dateLabel}</span>
-        {row.dateMarker ? (
-          <span className="pointer-events-none absolute -top-2 right-3 z-10 rounded border border-[var(--border-strong)] bg-[var(--bg-graph)] px-1.5 py-px text-[10px] leading-4 text-[var(--text-3)]">
-            {row.dateMarker}
-          </span>
-        ) : null}
+      <div className="relative flex min-w-0 items-center gap-2 pr-3">
+        {isWip ? (
+          <>
+            <span className="wip-message-pill">// WIP</span>
+            {row.files.length > 0 ? <WipStatusCounts files={row.files} /> : null}
+          </>
+        ) : (
+          <CommitSubjectLine subject={row.subject} isMerge={row.node.kind === 'merge'} />
+        )}
       </div>
     </div>
   );
 }
 
-function WipStatusCounts({ files }: { files: GraphFile[] }): ReactElement {
-  const counts: Record<GraphFileStatus, number> = { added: 0, modified: 0, deleted: 0 };
-
-  for (const file of files) {
-    counts[file.status] += 1;
-  }
+function CommitSubjectLine({ subject, isMerge }: { subject: string; isMerge: boolean }): ReactElement {
+  const [primary, secondary] = splitCommitSubject(subject);
 
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-[10.5px] font-semibold tabular-nums">
-      {counts.added > 0 ? <span style={{ color: FILE_STATUS_COLORS.added }}>+{counts.added}</span> : null}
-      {counts.modified > 0 ? <span style={{ color: FILE_STATUS_COLORS.modified }}>~{counts.modified}</span> : null}
-      {counts.deleted > 0 ? <span style={{ color: FILE_STATUS_COLORS.deleted }}>−{counts.deleted}</span> : null}
+    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] leading-none">
+      <span className={isMerge ? 'min-w-0 truncate text-[var(--text-2)]' : 'min-w-0 truncate text-[var(--text-1)]'}>
+        {primary}
+      </span>
+      {secondary ? (
+        <span className="hidden min-w-0 shrink-[2] truncate text-[var(--text-3)] xl:inline">
+          {secondary}
+        </span>
+      ) : null}
     </span>
   );
+}
+
+function splitCommitSubject(subject: string): [string, string | undefined] {
+  const summaryIndex = subject.indexOf(' ## ');
+
+  if (summaryIndex !== -1) {
+    return [subject.slice(0, summaryIndex), subject.slice(summaryIndex + 1)];
+  }
+
+  const separatorIndex = subject.indexOf(' | ');
+
+  if (separatorIndex !== -1) {
+    return [subject.slice(0, separatorIndex), subject.slice(separatorIndex)];
+  }
+
+  return [subject, undefined];
+}
+
+function WipStatusCounts({ files }: { files: GraphFile[] }): ReactElement {
+  const changedCount = files.length;
+
+  return (
+    <span className="shrink-0 text-[15px] font-semibold leading-none tabular-nums" style={{ color: FILE_STATUS_COLORS.added }}>
+      + {changedCount}
+    </span>
+  );
+}
+
+function graphContentWidthForRows(rows: CommitGraphRow[], graphWidth: number): number {
+  let maxLane = 0;
+
+  for (const row of rows) {
+    maxLane = Math.max(maxLane, row.node.lane);
+
+    for (const rail of row.rails) {
+      if ('lane' in rail) {
+        maxLane = Math.max(maxLane, rail.lane);
+      } else {
+        maxLane = Math.max(maxLane, rail.from, rail.to);
+      }
+    }
+  }
+
+  return Math.max(graphWidth, LANE_X0 + maxLane * LANE_GAP + 76);
+}
+
+function resizeGraphColumn(widths: GraphColumnWidths, column: ResizableGraphColumn, width: number): GraphColumnWidths {
+  const nextWidth = clampGraphColumnWidth(column, width);
+
+  if (widths[column] === nextWidth) {
+    return widths;
+  }
+
+  return { ...widths, [column]: nextWidth };
+}
+
+function clampGraphColumnWidth(column: ResizableGraphColumn, width: number): number {
+  const limits = GRAPH_COLUMN_LIMITS[column];
+  return Math.round(Math.min(limits.max, Math.max(limits.min, width)));
+}
+
+function loadStoredGraphColumnWidths(): GraphColumnWidths {
+  const defaults = defaultGraphColumnWidths();
+
+  if (typeof window === 'undefined') {
+    return defaults;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(GRAPH_COLUMN_WIDTH_STORAGE_KEY);
+
+    if (!rawValue) {
+      return defaults;
+    }
+
+    const parsedValue: unknown = JSON.parse(rawValue);
+
+    if (!isRecord(parsedValue)) {
+      return defaults;
+    }
+
+    return {
+      refs: readStoredGraphColumnWidth(parsedValue.refs, 'refs'),
+      graph: readStoredGraphColumnWidth(parsedValue.graph, 'graph')
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveStoredGraphColumnWidths(widths: GraphColumnWidths): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(GRAPH_COLUMN_WIDTH_STORAGE_KEY, JSON.stringify(widths));
+  } catch {
+    // Ignore storage failures; resizing should still work for the current session.
+  }
+}
+
+function defaultGraphColumnWidths(): GraphColumnWidths {
+  return {
+    refs: GRAPH_COLUMN_LIMITS.refs.defaultValue,
+    graph: GRAPH_COLUMN_LIMITS.graph.defaultValue
+  };
+}
+
+function readStoredGraphColumnWidth(value: unknown, column: ResizableGraphColumn): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return GRAPH_COLUMN_LIMITS[column].defaultValue;
+  }
+
+  return clampGraphColumnWidth(column, value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function graphRowBackground(row: CommitGraphRow, isSelected: boolean, rowIndex: number): string | undefined {
+  if (isSelected) {
+    return 'linear-gradient(90deg, rgba(34, 77, 145, 0.58), rgba(31, 65, 120, 0.50) 64%, rgba(28, 45, 76, 0.50))';
+  }
+
+  if (row.node.kind === 'wip') {
+    return 'linear-gradient(90deg, rgba(11, 42, 51, 0.72), rgba(14, 30, 43, 0.72) 64%, rgba(21, 26, 34, 0.82))';
+  }
+
+  return rowIndex % 2 === 0 ? 'rgba(255, 255, 255, 0.018)' : undefined;
+}
+
+function graphRowBandBackground(row: CommitGraphRow, color: string, isSelected: boolean): string | undefined {
+  if (isSelected) {
+    return `linear-gradient(90deg, ${hexToRgba(color, 0.30)}, ${hexToRgba(color, 0.15)} 64%, ${hexToRgba(color, 0.03)})`;
+  }
+
+  if (row.node.kind === 'wip') {
+    return `linear-gradient(90deg, ${hexToRgba(color, 0.34)}, ${hexToRgba(color, 0.16)} 52%, ${hexToRgba(color, 0.04)})`;
+  }
+
+  if (row.node.kind === 'stash') {
+    return `linear-gradient(90deg, ${hexToRgba(color, 0.20)}, ${hexToRgba(color, 0.10)} 60%, ${hexToRgba(color, 0.03)})`;
+  }
+
+  const refs = row.refs ?? [];
+
+  if (refs.length === 0) {
+    return undefined;
+  }
+
+  const opacity = refs.some((ref) => ref.current) ? 0.32 : 0.22;
+  return `linear-gradient(90deg, ${hexToRgba(color, opacity)}, ${hexToRgba(color, opacity * 0.58)} 58%, ${hexToRgba(color, 0.035)})`;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.trim().replace(/^#/, '');
+
+  if (!/^[\da-f]{6}$/i.test(normalized)) {
+    return hex;
+  }
+
+  const value = Number.parseInt(normalized, 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 type RefChipDisplay = GraphRefChip & {
@@ -402,8 +829,6 @@ function RefChipView({ chip, color }: { chip: RefChipDisplay; color: string }): 
   const icon =
     current ? (
       <Check size={12} />
-    ) : kind === 'branch' ? (
-      <GitBranch size={10} />
     ) : kind === 'remote' ? (
       <Cloud size={10} />
     ) : kind === 'tag' ? (
@@ -419,8 +844,8 @@ function RefChipView({ chip, color }: { chip: RefChipDisplay; color: string }): 
       className="ref-chip"
       style={
         current
-          ? { background: color, borderColor: color, color: 'var(--bg-field)' }
-          : { background: `${color}24`, borderColor: `${color}59`, color }
+          ? { background: color, borderColor: color, color: 'var(--text-1)' }
+          : { background: `${color}55`, borderColor: `${color}8c`, color: 'var(--text-1)' }
       }
       title={title}
       aria-label={ariaLabel}
@@ -498,37 +923,45 @@ function refChipTitleLines(chip: RefChipDisplay): string[] {
 function RailCell({
   row,
   nodeColor,
-  graphWidth
+  graphWidth,
+  graphContentWidth,
+  graphScrollLeft
 }: {
   row: CommitGraphRow;
   nodeColor: string;
   graphWidth: number;
+  graphContentWidth: number;
+  graphScrollLeft: number;
 }): ReactElement {
   const h = ROW_HEIGHT;
   const mid = h / 2;
   const nodeTitle = row.node.kind === 'wip' ? 'Uncommitted changes' : `${row.author.name} · ${row.sha.slice(0, 7)}`;
 
   return (
-    <svg
-      width={graphWidth}
-      height={h}
-      viewBox={`0 0 ${graphWidth} ${h}`}
-      className="shrink-0"
-      aria-hidden="true"
-    >
-      {row.rails.map((segment, index) => (
-        <RailSegmentPath key={index} segment={segment} height={h} />
-      ))}
-      <GraphNode
-        kind={row.node.kind}
-        cx={laneX(row.node.lane)}
-        cy={mid}
-        color={nodeColor}
-        authorColor={row.author.color}
-        initials={row.author.initials}
-        title={nodeTitle}
-      />
-    </svg>
+    <div className="graph-cell-viewport" style={{ width: graphWidth, height: h }}>
+      <svg
+        width={graphContentWidth}
+        height={h}
+        viewBox={`0 0 ${graphContentWidth} ${h}`}
+        className="shrink-0"
+        style={{ transform: `translateX(-${graphScrollLeft}px)` }}
+        aria-hidden="true"
+      >
+        {row.rails.map((segment, index) => (
+          <RailSegmentPath key={index} segment={segment} height={h} />
+        ))}
+        <GraphNode
+          nodeId={row.sha}
+          kind={row.node.kind}
+          cx={laneX(row.node.lane)}
+          cy={mid}
+          color={nodeColor}
+          authorColor={row.author.color}
+          avatarUrl={row.author.avatarUrl}
+          title={nodeTitle}
+        />
+      </svg>
+    </div>
   );
 }
 
@@ -582,38 +1015,41 @@ function RailSegmentPath({ segment, height }: { segment: GraphRailSegment; heigh
       d={d}
       fill="none"
       stroke={segment.color ?? fallbackColor}
-      strokeWidth={2}
-      strokeDasharray={segment.dashed ? '3 3' : undefined}
+      strokeLinecap="round"
+      strokeWidth={segment.dashed ? 2.4 : 2.8}
+      strokeDasharray={segment.dashed ? '1 5' : undefined}
+      strokeOpacity={segment.dashed ? 0.86 : 0.95}
     />
   );
 }
 
 type GraphNodeProps = {
+  nodeId: string;
   kind: CommitGraphRow['node']['kind'];
   cx: number;
   cy: number;
   color: string;
   authorColor: string;
-  initials: string;
+  avatarUrl?: string;
   title: string;
 };
 
-function GraphNode({ kind, cx, cy, color, authorColor, initials, title }: GraphNodeProps): ReactElement {
-  if (kind === 'merge') {
-    return (
-      <g>
-        <title>{title}</title>
-        <circle cx={cx} cy={cy} r={6} fill="var(--bg-graph)" />
-        <circle cx={cx} cy={cy} r={4.5} fill={color} />
-      </g>
-    );
-  }
-
+function GraphNode({ nodeId, kind, cx, cy, color, authorColor, avatarUrl, title }: GraphNodeProps): ReactElement {
   if (kind === 'stash') {
     return (
       <g>
         <title>{title}</title>
-        <rect x={cx - 7} y={cy - 7} width={14} height={14} rx={3.5} fill="var(--bg-graph)" stroke={color} strokeWidth={1.8} />
+        <rect
+          x={cx - 7}
+          y={cy - 7}
+          width={14}
+          height={14}
+          rx={3.5}
+          fill="var(--bg-graph)"
+          stroke={color}
+          strokeDasharray="2 2"
+          strokeWidth={2}
+        />
         <path d={`M ${cx - 4} ${cy - 1.5} H ${cx + 4}`} stroke={color} strokeWidth={1.6} strokeLinecap="round" />
         <path d={`M ${cx - 2.5} ${cy + 2.5} H ${cx + 2.5}`} stroke={color} strokeWidth={1.6} strokeLinecap="round" />
       </g>
@@ -624,28 +1060,67 @@ function GraphNode({ kind, cx, cy, color, authorColor, initials, title }: GraphN
     return (
       <g>
         <title>{title}</title>
-        <circle cx={cx} cy={cy} r={8} fill="var(--bg-graph)" stroke={color} strokeWidth={1.8} strokeDasharray="2.5 2.5" />
+        <circle cx={cx} cy={cy} r={8.8} fill="var(--bg-graph)" stroke={color} strokeWidth={2.3} strokeDasharray="1 4.5" />
         <circle cx={cx} cy={cy} r={2} fill={color} />
       </g>
     );
   }
 
+  const clipId = `graph-avatar-${nodeId.replace(/[^\dA-Za-z_-]/g, '') || 'node'}`;
+  const outerRadius = 11.8;
+  const ringStrokeWidth = 4.1;
+  const matRadius = 8.8;
+  const imageRadius = 7.4;
+  const imageSize = imageRadius * 2;
+
   return (
     <g>
       <title>{title}</title>
-      <circle cx={cx} cy={cy} r={9.5} fill="var(--bg-graph)" />
-      <circle cx={cx} cy={cy} r={8} fill={authorColor} stroke={color} strokeWidth={2} />
-      <text
-        x={cx}
-        y={cy + 2.5}
-        textAnchor="middle"
-        fontSize={8}
-        fontWeight={700}
-        fill="var(--bg-field)"
-        style={{ fontFamily: 'inherit' }}
-      >
-        {initials}
-      </text>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={outerRadius - ringStrokeWidth / 2}
+        fill="var(--avatar-card-bg)"
+        stroke={color}
+        strokeWidth={ringStrokeWidth}
+      />
+      <circle cx={cx} cy={cy} r={matRadius} fill="var(--avatar-card-bg)" />
+      {avatarUrl ? (
+        <>
+          <clipPath id={clipId}>
+            <circle cx={cx} cy={cy} r={imageRadius} />
+          </clipPath>
+          <image
+            href={avatarUrl}
+            x={cx - imageRadius}
+            y={cy - imageRadius}
+            width={imageSize}
+            height={imageSize}
+            clipPath={`url(#${clipId})`}
+            preserveAspectRatio="xMidYMid slice"
+          />
+        </>
+      ) : (
+        <>
+          <circle cx={cx} cy={cy} r={imageRadius} fill={authorColor} />
+          <path
+            d={`M ${cx - 5.5} ${cy + 5.8} C ${cx - 4.5} ${cy + 2.5} ${cx - 2.4} ${cy + 1.2} ${cx} ${cy + 1.2} C ${cx + 2.4} ${cy + 1.2} ${cx + 4.5} ${cy + 2.5} ${cx + 5.5} ${cy + 5.8}`}
+            fill="rgba(6, 10, 15, 0.44)"
+          />
+          <circle cx={cx} cy={cy - 2.5} r={2.45} fill="rgba(255, 244, 225, 0.9)" />
+          <path
+            d={`M ${cx - 5} ${cy - 1.1} C ${cx - 3} ${cy - 5} ${cx + 1.7} ${cy - 5.7} ${cx + 5} ${cy - 2.1}`}
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.36)"
+            strokeLinecap="round"
+            strokeWidth={1.4}
+          />
+        </>
+      )}
+      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="rgba(4, 7, 10, 0.58)" strokeWidth={0.7} />
+      {kind === 'merge' ? (
+        <circle cx={cx + 7.4} cy={cy + 7.2} r={2.7} fill="var(--bg-graph)" stroke={color} strokeWidth={1.4} />
+      ) : null}
     </g>
   );
 }
@@ -953,53 +1428,6 @@ function GraphContextMenu({
   );
 }
 
-function graphCellWidth(rows: CommitGraphRow[]): number {
-  let maxLane = 0;
-
-  for (const row of rows) {
-    maxLane = Math.max(maxLane, row.node.lane);
-
-    for (const rail of row.rails) {
-      if ('lane' in rail) {
-        maxLane = Math.max(maxLane, rail.lane);
-      } else {
-        maxLane = Math.max(maxLane, rail.from, rail.to);
-      }
-    }
-  }
-
-  return Math.max(MIN_GRAPH_CELL_WIDTH, LANE_X0 + maxLane * LANE_GAP + 24);
-}
-
-function refCellWidthForRows(rows: CommitGraphRow[]): number {
-  let width = MIN_REF_CELL_WIDTH;
-
-  for (const row of rows) {
-    const refs = row.refs ?? [];
-
-    if (refs.length === 0) {
-      continue;
-    }
-
-    const displayRefs = coalesceRemotePeers(refs);
-    const primaryRef = displayRefs[0];
-
-    if (!primaryRef) {
-      continue;
-    }
-
-    const overflowWidth = displayRefs.length > 1 ? 36 : 0;
-    width = Math.max(width, refChipWidth(primaryRef) + overflowWidth + 20);
-  }
-
-  return Math.min(MAX_REF_CELL_WIDTH, width);
-}
-
-function refChipWidth(ref: RefChipDisplay): number {
-  const trailingIconWidth = ref.kind === 'branch' ? 18 : 0;
-  const remotePeerIconWidth = (ref.remotePeerLabels?.length ?? 0) > 0 ? 18 : 0;
-  return 31 + trailingIconWidth + remotePeerIconWidth + ref.label.length * 6.2;
-}
 
 function stashSelectorForRow(row: CommitGraphRow): string | undefined {
   return row.refs?.find((ref) => ref.kind === 'stash')?.label;

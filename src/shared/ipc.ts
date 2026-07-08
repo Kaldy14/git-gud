@@ -1,4 +1,6 @@
 import type {
+  AppSettings,
+  AppSettingsInput,
   CommitGraphPage,
   GitCommitDetail,
   GitCommitInput,
@@ -12,6 +14,7 @@ import type {
   GitInteractiveRebasePlan,
   GitMergeInput,
   GitOperationResult,
+  GitPatchApplyInput,
   GitPullInput,
   GitProfile,
   GitPushInput,
@@ -81,11 +84,27 @@ export type IpcChannelMap = {
     args: [repoPath: string, request: GitFileDiffRequest];
     result: GitFileDiff;
   };
+  'repo:apply-patch': {
+    args: [repoPath: string, input: GitPatchApplyInput];
+    result: GitOperationResult;
+  };
   'repo:stage-file': {
     args: [repoPath: string, path: string];
     result: GitOperationResult;
   };
   'repo:unstage-file': {
+    args: [repoPath: string, path: string];
+    result: GitOperationResult;
+  };
+  'repo:discard-file': {
+    args: [repoPath: string, path: string];
+    result: GitOperationResult;
+  };
+  'repo:open-file': {
+    args: [repoPath: string, path: string];
+    result: GitOperationResult;
+  };
+  'repo:reveal-file': {
     args: [repoPath: string, path: string];
     result: GitOperationResult;
   };
@@ -189,6 +208,18 @@ export type IpcChannelMap = {
     args: [repoPath: string, undoId: string];
     result: GitOperationResult;
   };
+  'repo:open-terminal': {
+    args: [repoPath: string];
+    result: GitOperationResult;
+  };
+  'settings:get': {
+    args: [];
+    result: AppSettings;
+  };
+  'settings:update': {
+    args: [settings: AppSettingsInput];
+    result: AppSettings;
+  };
   'profiles:list': {
     args: [];
     result: GitProfile[];
@@ -225,8 +256,12 @@ export type RendererApi = {
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
+  applyWipPatch: (repoPath: string, input: GitPatchApplyInput) => Promise<GitOperationResult>;
   stageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   unstageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  discardFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  openFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  revealFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   stageAll: (repoPath: string) => Promise<GitOperationResult>;
   unstageAll: (repoPath: string) => Promise<GitOperationResult>;
   commitChanges: (repoPath: string, input: GitCommitInput) => Promise<GitOperationResult>;
@@ -252,6 +287,9 @@ export type RendererApi = {
   runInteractiveRebase: (repoPath: string, input: GitInteractiveRebaseInput) => Promise<GitOperationResult>;
   resolveConflict: (repoPath: string, input: GitConflictActionInput) => Promise<GitOperationResult>;
   undoOperation: (repoPath: string, undoId: string) => Promise<GitOperationResult>;
+  openTerminal: (repoPath: string) => Promise<GitOperationResult>;
+  getSettings: () => Promise<AppSettings>;
+  updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;
   listProfiles: () => Promise<GitProfile[]>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;

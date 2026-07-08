@@ -76,6 +76,7 @@ export type GitCommitPerson = {
   name: string;
   email?: string;
   date?: string;
+  avatarUrl?: string;
 };
 
 export type GitCommitStats = {
@@ -136,8 +137,15 @@ export type GitFileDiff = {
   originalPath?: string;
   mode: GitFileDiffMode;
   patch: string;
+  stageablePatch?: string;
   isBinary: boolean;
   loadedAt: string;
+};
+
+export type GitPatchApplyInput = {
+  path: string;
+  mode: 'stage' | 'unstage';
+  patch: string;
 };
 
 export type GitCommitInput = {
@@ -307,6 +315,15 @@ export type GitOperationResult = {
   conflictState?: GitConflictState;
 };
 
+export type AppSettings = {
+  defaultDiffStyle: 'unified' | 'split';
+  graphPageSize: number;
+  largeRepoMode: boolean;
+  terminalApp: 'Terminal';
+};
+
+export type AppSettingsInput = Partial<AppSettings>;
+
 export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
 
 export type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
@@ -343,6 +360,7 @@ export type GraphAuthor = {
   email?: string;
   initials: string;
   color: string;
+  avatarUrl?: string;
 };
 
 export type CommitGraphRow = {

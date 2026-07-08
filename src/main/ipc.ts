@@ -27,7 +27,9 @@ import {
   undoOperation
 } from './git/operations';
 import {
+  applyWipPatch,
   commitChanges,
+  discardFile,
   loadCommitDetail,
   loadFileDiff,
   loadWipDetail,
@@ -44,12 +46,15 @@ import { assignProfileToRepository, listProfiles, saveProfile, suggestProfileFor
 import {
   activateWorkspaceTab,
   closeWorkspaceTab,
+  getAppSettings,
   getWorkspace,
   openWorkspaceRepository,
   selectWorkspaceCommit,
   selectWorkspaceFile,
+  updateAppSettings,
   updateSidebarCollapsed
 } from './store';
+import { openRepositoryFileInEditor, openTerminalAtRepository, revealRepositoryFileInFinder } from './system';
 
 type IpcHandler<TChannel extends IpcChannelName> = (
   event: IpcMainInvokeEvent,
@@ -110,8 +115,12 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('repo:commit-detail', async (_event, repoPath, sha) => loadCommitDetail(getOpenRepositoryTab(repoPath), sha));
   handle('repo:wip-detail', async (_event, repoPath) => loadWipDetail(getOpenRepositoryTab(repoPath)));
   handle('repo:file-diff', async (_event, repoPath, request) => loadFileDiff(getOpenRepositoryTab(repoPath), request));
+  handle('repo:apply-patch', async (_event, repoPath, input) => applyWipPatch(getOpenRepositoryTab(repoPath), input));
   handle('repo:stage-file', async (_event, repoPath, path) => stageFile(getOpenRepositoryTab(repoPath), path));
   handle('repo:unstage-file', async (_event, repoPath, path) => unstageFile(getOpenRepositoryTab(repoPath), path));
+  handle('repo:discard-file', async (_event, repoPath, path) => discardFile(getOpenRepositoryTab(repoPath), path));
+  handle('repo:open-file', async (_event, repoPath, path) => openRepositoryFileInEditor(getOpenRepositoryTab(repoPath), path));
+  handle('repo:reveal-file', async (_event, repoPath, path) => revealRepositoryFileInFinder(getOpenRepositoryTab(repoPath), path));
   handle('repo:stage-all', async (_event, repoPath) => stageAll(getOpenRepositoryTab(repoPath)));
   handle('repo:unstage-all', async (_event, repoPath) => unstageAll(getOpenRepositoryTab(repoPath)));
   handle('repo:commit', async (_event, repoPath, input) => commitChanges(getOpenRepositoryTab(repoPath), input));
@@ -139,6 +148,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('repo:interactive-rebase', async (_event, repoPath, input) => runInteractiveRebase(getOpenRepositoryTab(repoPath), input));
   handle('repo:resolve-conflict', async (_event, repoPath, input) => resolveConflict(getOpenRepositoryTab(repoPath), input));
   handle('repo:undo', async (_event, repoPath, undoId) => undoOperation(getOpenRepositoryTab(repoPath), undoId));
+  handle('repo:open-terminal', async (_event, repoPath) => openTerminalAtRepository(getOpenRepositoryTab(repoPath), getAppSettings().terminalApp));
+  handle('settings:get', () => getAppSettings());
+  handle('settings:update', (_event, settings) => updateAppSettings(settings));
   handle('profiles:list', () => listProfiles());
   handle('profiles:save', (_event, profile) => saveProfile(profile));
   handle('repo:assign-profile', async (_event, repoPath, profileId) => {

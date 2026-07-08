@@ -6,16 +6,20 @@ import type {
   GitFileDiff,
   GitFileDiffRequest,
   GitOperationResult,
+  GitPatchApplyInput,
   GitUndoEntry,
   GitWipDetail,
   RepoTab
 } from '@shared/types';
+
+import pathModule from 'node:path';
 
 import { createProfileCommandEnv } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import { createUndoEntryForCommit, getCurrentHead } from './operations';
 import { parseNameStatus, parseShortStat } from './parsers/details';
 import { loadStatus } from './repositoryOverview';
+import { gravatarUrlForEmail } from './gravatar';
 
 type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
 
@@ -71,6 +75,24 @@ export async function loadFileDiff(tab: DetailTab, request: GitFileDiffRequest):
   return loadWipFileDiff(tab.path, request, env);
 }
 
+export async function applyWipPatch(tab: DetailTab, input: GitPatchApplyInput): Promise<GitOperationResult> {
+  const patch = normalizePatch(input.patch);
+  const args = ['apply', '--cached', '--recount', '--unidiff-zero', '--whitespace=nowarn'];
+
+  if (input.mode === 'unstage') {
+    args.push('--reverse');
+  }
+
+  await gitExecutor.run(args, {
+    cwd: tab.path,
+    kind: 'mutation',
+    env: createProfileCommandEnv(tab.assignedProfileId),
+    input: patch
+  });
+
+  return createOperationResult(tab.path);
+}
+
 export async function stageFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
   await gitExecutor.run(['add', '--', path], {
     cwd: tab.path,
@@ -81,6 +103,7 @@ export async function stageFile(tab: DetailTab, path: string): Promise<GitOperat
 }
 
 export async function unstageFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
+  assertSafeRelativePath(path);
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const status = await loadStatus(tab.path, env);
   const statusFile = status.files.find((file) => file.path === path);
@@ -92,6 +115,60 @@ export async function unstageFile(tab: DetailTab, path: string): Promise<GitOper
   }
 
   await gitExecutor.run(['rm', '--cached', '--quiet', '--', ...pathspec], { cwd: tab.path, kind: 'mutation', env });
+  return createOperationResult(tab.path);
+}
+
+export async function discardFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
+  assertSafeRelativePath(path);
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const status = await loadStatus(tab.path, env);
+  const statusFile = status.files.find((file) => file.path === path);
+
+  if (!statusFile || statusFile.status === 'ignored') {
+    throw new Error('No changed file was found for that path.');
+  }
+
+  if (statusFile.conflicted) {
+    throw new Error('Discarding conflicted files is not supported. Resolve or abort the in-progress operation first.');
+  }
+
+  const headExists = await hasHead(tab.path);
+  const pathspec = createDiffPathspec(path, statusFile.originalPath);
+
+  if (statusFile.staged) {
+    if (headExists) {
+      await gitExecutor.run(['restore', '--staged', '--source=HEAD', '--', ...pathspec], {
+        cwd: tab.path,
+        kind: 'mutation',
+        env
+      });
+    } else {
+      await gitExecutor.run(['rm', '--cached', '-r', '--quiet', '--', ...pathspec], {
+        cwd: tab.path,
+        kind: 'mutation',
+        env
+      });
+    }
+  }
+
+  const restorePaths = headExists ? createHeadRestorePathspec(statusFile) : [];
+
+  if (restorePaths.length > 0) {
+    await gitExecutor.run(['restore', '--worktree', '--source=HEAD', '--', ...restorePaths], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+  }
+
+  if (shouldCleanDiscardedPath(statusFile) || !headExists) {
+    await gitExecutor.run(['clean', '-f', '-d', '--', path], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+  }
+
   return createOperationResult(tab.path);
 }
 
@@ -176,12 +253,14 @@ async function loadCommitMetadata(
     author: {
       name: tokens[2] ?? '',
       email: tokens[3] || undefined,
-      date: tokens[4] || undefined
+      date: tokens[4] || undefined,
+      avatarUrl: gravatarUrlForEmail(tokens[3], 96)
     },
     committer: {
       name: tokens[5] ?? '',
       email: tokens[6] || undefined,
-      date: tokens[7] || undefined
+      date: tokens[7] || undefined,
+      avatarUrl: gravatarUrlForEmail(tokens[6], 96)
     }
   };
 }
@@ -244,9 +323,15 @@ async function loadWipFileDiff(
 ): Promise<GitFileDiff> {
   const status = await loadStatus(repoPath, env);
   const statusFile = status.files.find((file) => file.path === request.path);
-  const patch = request.staged
-    ? await loadStagedPatch(repoPath, request.path, statusFile, env)
-    : await loadUnstagedPatch(repoPath, request.path, statusFile, env);
+  const [patch, stageablePatch] = request.staged
+    ? await Promise.all([
+        loadStagedPatch(repoPath, request.path, statusFile, env),
+        loadStagedPatch(repoPath, request.path, statusFile, env, 0)
+      ])
+    : await Promise.all([
+        loadUnstagedPatch(repoPath, request.path, statusFile, env),
+        loadUnstagedPatch(repoPath, request.path, statusFile, env, 0)
+      ]);
 
   return {
     repoPath,
@@ -254,6 +339,7 @@ async function loadWipFileDiff(
     originalPath: statusFile?.originalPath,
     mode: request.staged ? 'wip-staged' : 'wip-unstaged',
     patch,
+    stageablePatch,
     isBinary: isBinaryPatch(patch),
     loadedAt: new Date().toISOString()
   };
@@ -263,11 +349,22 @@ async function loadStagedPatch(
   repoPath: string,
   path: string,
   statusFile: GitFileChange | undefined,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  unifiedContext?: number
 ): Promise<string> {
   return (
     await gitExecutor.run(
-      ['diff', '--cached', '--binary', '--patch', '--find-renames', '--find-copies', '--', ...createDiffPathspec(path, statusFile?.originalPath)],
+      [
+        'diff',
+        '--cached',
+        '--binary',
+        '--patch',
+        ...unifiedContextArgs(unifiedContext),
+        '--find-renames',
+        '--find-copies',
+        '--',
+        ...createDiffPathspec(path, statusFile?.originalPath)
+      ],
       { cwd: repoPath, env }
     )
   ).stdout;
@@ -277,24 +374,51 @@ async function loadUnstagedPatch(
   repoPath: string,
   path: string,
   statusFile: GitFileChange | undefined,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  unifiedContext?: number
 ): Promise<string> {
   if (statusFile?.status === 'untracked') {
     return (
-      await gitExecutor.run(['diff', '--no-index', '--binary', '--patch', '--', '/dev/null', path], {
-        cwd: repoPath,
-        env,
-        allowedExitCodes: [1]
-      })
+      await gitExecutor.run(
+        ['diff', '--no-index', '--binary', '--patch', ...unifiedContextArgs(unifiedContext), '--', '/dev/null', path],
+        {
+          cwd: repoPath,
+          env,
+          allowedExitCodes: [1]
+        }
+      )
     ).stdout;
   }
 
   return (
     await gitExecutor.run(
-      ['diff', '--binary', '--patch', '--find-renames', '--find-copies', '--', ...createDiffPathspec(path, statusFile?.originalPath)],
+      [
+        'diff',
+        '--binary',
+        '--patch',
+        ...unifiedContextArgs(unifiedContext),
+        '--find-renames',
+        '--find-copies',
+        '--',
+        ...createDiffPathspec(path, statusFile?.originalPath)
+      ],
       { cwd: repoPath, env }
     )
   ).stdout;
+}
+
+function unifiedContextArgs(unifiedContext: number | undefined): string[] {
+  return typeof unifiedContext === 'number' ? [`--unified=${unifiedContext}`] : [];
+}
+
+function normalizePatch(patch: string): string {
+  const trimmedPatch = patch.trimEnd();
+
+  if (!trimmedPatch || !trimmedPatch.includes('@@')) {
+    throw new Error('A textual patch hunk is required.');
+  }
+
+  return `${trimmedPatch}\n`;
 }
 
 function createDiffPathspec(path: string, originalPath: string | undefined): string[] {
@@ -303,6 +427,22 @@ function createDiffPathspec(path: string, originalPath: string | undefined): str
   }
 
   return [originalPath, path];
+}
+
+function createHeadRestorePathspec(file: GitFileChange): string[] {
+  if (file.indexStatus === 'added' || file.indexStatus === 'copied' || file.status === 'untracked') {
+    return [];
+  }
+
+  if (file.indexStatus === 'renamed' && file.originalPath) {
+    return [file.originalPath];
+  }
+
+  return [file.path];
+}
+
+function shouldCleanDiscardedPath(file: GitFileChange): boolean {
+  return file.status === 'untracked' || file.indexStatus === 'added' || file.indexStatus === 'copied' || file.indexStatus === 'renamed';
 }
 
 function wipFileToDetail(file: GitFileChange): GitFileChangeDetail {
@@ -314,6 +454,14 @@ function wipFileToDetail(file: GitFileChange): GitFileChangeDetail {
     unstaged: file.unstaged,
     conflicted: file.conflicted
   };
+}
+
+function assertSafeRelativePath(path: string): void {
+  const normalizedPath = pathModule.normalize(path);
+
+  if (!path || pathModule.isAbsolute(path) || normalizedPath === '..' || normalizedPath.startsWith(`..${pathModule.sep}`)) {
+    throw new Error('A repository-relative file path is required.');
+  }
 }
 
 function splitParents(value: string): string[] {

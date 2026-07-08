@@ -6,21 +6,29 @@ import {
   ArrowUp,
   Check,
   Clipboard,
-  GitCommit,
-  GripVertical,
+  FileText,
+  FolderTree,
   Keyboard,
+  List,
   Loader2,
+  Minus,
+  Pencil,
   Play,
+  Plus,
   RotateCcw,
-  Workflow,
-  X
+  Workflow
 } from 'lucide-react';
 
+import { useCommitDetail } from '@renderer/queries/repository';
+import { FILE_STATUS_COLORS } from '@shared/graph';
 import type {
+  GitCommitDetail,
+  GitFileChangeDetail,
   GitInteractiveRebaseAction,
   GitInteractiveRebaseCommit,
   GitInteractiveRebaseInput,
-  GitInteractiveRebasePlan
+  GitInteractiveRebasePlan,
+  GitStatusCode
 } from '@shared/types';
 
 type InteractiveRebaseDialogProps = {
@@ -54,8 +62,8 @@ export function InteractiveRebaseDialog({
   onRun
 }: InteractiveRebaseDialogProps): ReactElement {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
-      <header className="flex min-h-11 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
+      <header className="flex min-h-9 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
         <Workflow size={17} className="text-[var(--accent-2)]" />
         <h2 className="shrink-0 text-sm font-semibold text-[var(--text-1)]">Interactive Rebase</h2>
         <div className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-2)]">
@@ -67,8 +75,13 @@ export function InteractiveRebaseDialog({
             'Preparing commit list'
           )}
         </div>
-        <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close interactive rebase">
-          <X size={14} />
+        <button
+          className="btn-subtle h-7 border-[var(--danger-border)] text-[11px] text-[var(--danger-text)]"
+          type="button"
+          onClick={onClose}
+          disabled={isRunning}
+        >
+          Cancel Rebase
         </button>
       </header>
 
@@ -85,7 +98,7 @@ export function InteractiveRebaseDialog({
       ) : (
         <InactiveDialogBody icon={<AlertTriangle size={15} />} label="Interactive rebase plan is unavailable." onClose={onClose} />
       )}
-    </div>
+    </section>
   );
 }
 
@@ -302,9 +315,9 @@ function InteractiveRebaseEditor({
     <div ref={shellRef} tabIndex={-1} onKeyDown={handleKeyDown} className="flex min-h-0 flex-1 flex-col outline-none">
       <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="flex min-w-0 flex-col overflow-hidden bg-[var(--bg-graph)]">
-          <div className="grid h-8 shrink-0 grid-cols-[118px_74px_minmax(0,1fr)_74px] items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
+          <div className="grid h-8 shrink-0 grid-cols-[88px_44px_minmax(0,1fr)_64px] items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
             <span>Action</span>
-            <span>Commit</span>
+            <span />
             <span>Message</span>
             <span className="text-right">Move</span>
           </div>
@@ -333,6 +346,7 @@ function InteractiveRebaseEditor({
         <aside className="hidden min-w-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)] xl:flex">
           {selectedItem ? (
             <CommitPreview
+              repoPath={plan.repoPath}
               item={selectedItem}
               index={selectedIndex}
               total={draft.length}
@@ -409,15 +423,24 @@ function RebaseTodoRow({
       onDragEnd={onDragEnd}
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
-      className="mx-4 grid min-h-9 cursor-pointer grid-cols-[118px_74px_minmax(0,1fr)_74px] items-start gap-2 rounded-md px-0 py-1.5"
+      className="group relative mx-4 grid min-h-8 cursor-pointer grid-cols-[88px_44px_minmax(0,1fr)_64px] items-center gap-2 rounded-sm px-0 py-0.5"
       style={{
-        background: isSelected ? 'var(--select-bg)' : undefined,
-        boxShadow: isSelected ? 'inset 0 0 0 1px var(--select-border)' : undefined,
         opacity: isDragged ? 0.54 : 1
       }}
     >
+      {isSelected ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-0.5 right-0 top-0.5 rounded-sm"
+          style={{
+            left: 96,
+            background: 'var(--select-bg)',
+            boxShadow: 'inset 0 0 0 1px var(--select-border)'
+          }}
+        />
+      ) : null}
       <select
-        className="h-8 rounded border border-[var(--success-text)] bg-[var(--bg-field)] px-2 text-xs font-semibold text-[var(--text-1)] outline-none"
+        className="relative z-10 h-7 rounded border border-[var(--success-text)] bg-[var(--bg-field)] px-2 text-[11px] font-semibold text-[var(--text-1)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-2)]"
         value={item.action}
         disabled={isRunning}
         onClick={(event) => event.stopPropagation()}
@@ -431,27 +454,30 @@ function RebaseTodoRow({
         ))}
       </select>
 
-      <div className="flex h-8 items-center">
-        <div className="flex h-7 min-w-14 items-center gap-1.5 rounded bg-[var(--bg-surface)] px-2 text-[10.5px] font-semibold text-[var(--text-2)]">
-          <GripVertical size={12} className="text-[var(--text-3)]" />
-          <span className="mono">{index + 1}</span>
-        </div>
+      <div className="relative z-10 flex h-8 items-center justify-center">
+        <span
+          className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2"
+          style={{ background: isSelected ? 'var(--accent-2)' : 'var(--border-strong)' }}
+        />
+        <span
+          className="relative grid h-5 w-5 place-items-center rounded-full border text-[9px] font-bold text-[var(--avatar-fg)] shadow-sm"
+          style={{
+            background: avatarColor(item.shortSha),
+            borderColor: isSelected ? 'var(--accent-2)' : 'var(--border-strong)'
+          }}
+        >
+          {index + 1}
+        </span>
       </div>
 
-      <div className="min-w-0 py-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="h-6 w-[3px] shrink-0 rounded-full"
-            style={{ background: isSelected ? 'var(--accent-2)' : 'var(--border-strong)' }}
-          />
-          <span className="mono shrink-0 text-[11px] text-[var(--text-3)]">{item.shortSha}</span>
-          <span className="min-w-0 truncate text-[13px] font-medium text-[var(--text-1)]">{item.subject}</span>
-        </div>
+      <div className="relative z-10 flex h-8 min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate text-[13px] font-medium text-[var(--text-1)]">{item.subject}</span>
+        <span className="mono shrink-0 text-[10.5px] text-[var(--text-3)]">{item.shortSha}</span>
       </div>
 
-      <div className="flex h-8 items-center justify-end gap-1">
+      <div className={`relative z-10 flex h-8 items-center justify-end gap-1 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
         <button
-          className="icon-btn h-7 w-7"
+          className="icon-btn h-6 w-6"
           type="button"
           disabled={isRunning || !canMoveUp}
           onClick={(event) => {
@@ -463,7 +489,7 @@ function RebaseTodoRow({
           <ArrowUp size={13} />
         </button>
         <button
-          className="icon-btn h-7 w-7"
+          className="icon-btn h-6 w-6"
           type="button"
           disabled={isRunning || !canMoveDown}
           onClick={(event) => {
@@ -480,18 +506,24 @@ function RebaseTodoRow({
 }
 
 function CommitPreview({
+  repoPath,
   item,
   index,
   total,
   isRunning,
   onChangeMessage
 }: {
+  repoPath: string;
   item: RebaseDraftItem;
   index: number;
   total: number;
   isRunning: boolean;
   onChangeMessage: (message: string) => void;
 }): ReactElement {
+  const detailQuery = useCommitDetail(repoPath, item.sha);
+  const detail = detailQuery.data;
+  const parentSha = detail?.parentShas[0];
+
   return (
     <>
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border)] px-4 text-[12px] text-[var(--text-2)]">
@@ -503,22 +535,26 @@ function CommitPreview({
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] p-4">
-          <div className="flex items-start gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--select-border)] bg-[var(--select-bg)] text-[var(--accent-2)]">
-              <GitCommit size={16} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 flex min-w-0 items-center gap-2">
-                <span className="badge-mini capitalize">{item.action}</span>
-                <span className="mono text-[11px] text-[var(--text-3)]">{item.shortSha}</span>
-              </div>
-              <h3 className="text-[15px] font-semibold leading-6 text-[var(--text-1)]">{item.subject}</h3>
-            </div>
+        <div className="border-b border-[var(--border)] pb-4">
+          <div className="mb-2 flex min-w-0 items-center gap-2">
+            <span className="badge-mini capitalize">{item.action}</span>
+            <span className="mono text-[11px] text-[var(--text-3)]">{item.shortSha}</span>
+          </div>
+          <div className="min-h-28 rounded border border-[var(--border)] bg-[var(--bg-field)] p-3">
+            <h3 className="text-[15px] font-semibold leading-6 text-[var(--text-1)]">{detail?.subject ?? item.subject}</h3>
+            {detail?.body ? <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[var(--text-2)]">{detail.body}</p> : null}
           </div>
         </div>
 
-        <div className="mt-4">
+        {detailQuery.isLoading && !detail ? (
+          <RebasePreviewMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading commit details..." />
+        ) : detailQuery.error instanceof Error ? (
+          <RebasePreviewMessage icon={<AlertTriangle size={15} />} label={detailQuery.error.message} />
+        ) : detail ? (
+          <RebaseCommitSummary detail={detail} parentSha={parentSha} />
+        ) : null}
+
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">Commit Message</span>
             {item.action === 'reword' ? <span className="badge-mini text-[var(--accent-2)]">Editable</span> : null}
@@ -529,6 +565,7 @@ function CommitPreview({
               value={item.message}
               disabled={isRunning}
               onChange={(event) => onChangeMessage(event.target.value)}
+              onInput={(event) => onChangeMessage(event.currentTarget.value)}
               aria-label={`New message for ${item.shortSha}`}
             />
           ) : (
@@ -539,6 +576,96 @@ function CommitPreview({
         </div>
       </div>
     </>
+  );
+}
+
+function RebaseCommitSummary({ detail, parentSha }: { detail: GitCommitDetail; parentSha?: string }): ReactElement {
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-[var(--avatar-fg)]"
+            style={{ background: avatarColor(detail.author.name || detail.author.email || detail.sha) }}
+          >
+            {initials(detail.author.name || detail.author.email || detail.shortSha)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-medium text-[var(--text-1)]">{detail.author.name || 'Unknown author'}</p>
+            <p className="truncate text-[11px] text-[var(--text-3)]">
+              authored {formatDate(detail.author.date)} {parentSha ? <span className="mono">parent: {parentSha.slice(0, 8)}</span> : null}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
+        <span className="text-[var(--text-2)]">{detail.stats.filesChanged} files</span>
+        <span className="text-[var(--success-text)]">+{detail.stats.additions}</span>
+        <span className="text-[var(--danger-text)]">-{detail.stats.deletions}</span>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">Files</span>
+          <div className="segmented shrink-0">
+            <button type="button" data-active title="Path list">
+              <List size={12} />
+              Path
+            </button>
+            <button type="button" disabled title="Tree view stays in the main detail panel">
+              <FolderTree size={12} />
+              Tree
+            </button>
+          </div>
+        </div>
+        <div className="space-y-1">
+          {detail.files.length > 0 ? (
+            detail.files.slice(0, 24).map((file) => <RebaseFileRow key={`${file.status}:${file.path}`} file={file} />)
+          ) : (
+            <RebasePreviewMessage icon={<FileText size={15} />} label="No files changed." />
+          )}
+          {detail.files.length > 24 ? <p className="px-2 py-1 text-[11px] text-[var(--text-3)]">+{detail.files.length - 24} more files</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RebaseFileRow({ file }: { file: GitFileChangeDetail }): ReactElement {
+  const separatorIndex = file.path.lastIndexOf('/');
+  const directory = separatorIndex === -1 ? '' : file.path.slice(0, separatorIndex + 1);
+  const basename = separatorIndex === -1 ? file.path : file.path.slice(separatorIndex + 1);
+
+  return (
+    <div className="flex h-7 min-w-0 items-center gap-2 rounded px-2 text-xs text-[var(--text-2)]">
+      <RebaseStatusIcon status={file.status} />
+      {directory ? <span className="min-w-0 truncate text-[var(--text-3)]">{directory}</span> : null}
+      <span className="shrink-0 truncate">{basename}</span>
+    </div>
+  );
+}
+
+function RebaseStatusIcon({ status }: { status: GitStatusCode }): ReactElement {
+  if (status === 'added' || status === 'untracked' || status === 'copied') {
+    return <Plus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.added }} />;
+  }
+
+  if (status === 'deleted') {
+    return <Minus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.deleted }} />;
+  }
+
+  return <Pencil size={12} className="shrink-0" style={{ color: FILE_STATUS_COLORS.modified }} />;
+}
+
+function RebasePreviewMessage({ icon, label }: { icon: ReactElement; label: string }): ReactElement {
+  return (
+    <div className="grid min-h-16 place-items-center px-3 py-4 text-center text-xs leading-5 text-[var(--text-3)]">
+      <span className="flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -617,6 +744,48 @@ function InactiveDialogBody({
       </footer>
     </>
   );
+}
+
+function initials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) {
+    return '?';
+  }
+
+  if (parts.length === 1) {
+    return (parts[0] ?? '?').slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase();
+}
+
+function avatarColor(seed: string): string {
+  const colors = ['var(--avatar-1)', 'var(--avatar-2)', 'var(--avatar-3)', 'var(--avatar-4)', 'var(--avatar-5)', 'var(--avatar-6)'];
+  let hash = 0;
+
+  for (const character of seed) {
+    hash = (hash * 31 + character.charCodeAt(0)) % colors.length;
+  }
+
+  return colors[Math.abs(hash)] ?? 'var(--accent)';
+}
+
+function formatDate(value: string | undefined): string {
+  if (!value) {
+    return 'date unknown';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  }).format(date);
 }
 
 function createInitialDraft(plan: GitInteractiveRebasePlan): RebaseDraftItem[] {

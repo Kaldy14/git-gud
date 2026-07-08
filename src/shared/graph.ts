@@ -11,7 +11,7 @@ import type {
 export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
 export const COMMIT_GRAPH_LIMIT_STEP = 1500;
 
-export const LANE_COLORS = ['#4c9df3', '#b46bf5', '#2ec8a6', '#f0a13f', '#ef5b9c', '#e8615a'] as const;
+export const LANE_COLORS = ['#19c9e6', '#2684ff', '#d726e7', '#ff5a36', '#ffd34d', '#2ed3a6'] as const;
 const AUTHOR_COLORS = ['#38bdf8', '#c084fc', '#4ade80', '#fbbf24', '#fb7185', '#a78bfa', '#2dd4bf'] as const;
 
 export const FILE_STATUS_COLORS: Record<GraphFileStatus, string> = {
@@ -26,6 +26,7 @@ export type GraphCommitInput = {
   subject: string;
   authorName: string;
   authorEmail?: string;
+  authorAvatarUrl?: string;
   authoredAt?: string;
   committedAt?: string;
   dateLabel?: string;
@@ -92,7 +93,8 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
         name: commit.authorName,
         email: commit.authorEmail,
         initials: initials(commit.authorName || commit.authorEmail || commit.sha),
-        color: authorColor(commit.authorEmail ?? commit.authorName)
+        color: authorColor(commit.authorEmail ?? commit.authorName),
+        avatarUrl: commit.authorAvatarUrl
       },
       authoredAt: commit.authoredAt,
       committedAt: commit.committedAt,

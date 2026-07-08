@@ -3,7 +3,8 @@ import { join } from 'node:path';
 
 import Store from 'electron-store';
 
-import type { WorkspaceState } from '@shared/types';
+import type { AppSettings, AppSettingsInput, WorkspaceState } from '@shared/types';
+import { createDefaultAppSettings, normalizeAppSettings } from '@shared/settings';
 import {
   activateRepositoryTab,
   assignRepositoryProfile,
@@ -18,13 +19,15 @@ import type { RepositorySummary } from '@shared/types';
 
 type StoreShape = {
   workspace: WorkspaceState;
+  settings: AppSettings;
 };
 
 const store = new Store<StoreShape>({
   name: 'git-gud-workspace',
   ...testStoreDirectory('workspace'),
   defaults: {
-    workspace: createDefaultWorkspaceState()
+    workspace: createDefaultWorkspaceState(),
+    settings: createDefaultAppSettings()
   }
 });
 
@@ -58,6 +61,16 @@ export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {
 
 export function assignWorkspaceProfile(repoPath: string, profileId: string | undefined): WorkspaceState {
   return saveWorkspace(assignRepositoryProfile(getWorkspace(), repoPath, profileId));
+}
+
+export function getAppSettings(): AppSettings {
+  return normalizeAppSettings(store.get('settings', createDefaultAppSettings()));
+}
+
+export function updateAppSettings(settings: AppSettingsInput): AppSettings {
+  const nextSettings = normalizeAppSettings(settings, getAppSettings());
+  store.set('settings', nextSettings);
+  return nextSettings;
 }
 
 function saveWorkspace(workspace: WorkspaceState): WorkspaceState {

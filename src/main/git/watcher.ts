@@ -47,21 +47,26 @@ export class RepoWatcherRegistry {
       return;
     }
 
-    for (const watcher of activeWatch.watchers) {
-      void watcher.close();
-    }
+    void this.closeActiveWatch(repoPath, activeWatch).catch(() => undefined);
+  }
+
+  async closeAll(): Promise<void> {
+    const closeOperations = [...this.watches.entries()].map(([repoPath, activeWatch]) =>
+      this.closeActiveWatch(repoPath, activeWatch)
+    );
+
+    await Promise.allSettled(closeOperations);
+  }
+
+  private async closeActiveWatch(repoPath: string, activeWatch: ActiveRepoWatch): Promise<void> {
+    this.watches.delete(repoPath);
 
     if (activeWatch.pendingTimer) {
       clearTimeout(activeWatch.pendingTimer);
+      activeWatch.pendingTimer = undefined;
     }
 
-    this.watches.delete(repoPath);
-  }
-
-  closeAll(): void {
-    for (const repoPath of this.watches.keys()) {
-      this.close(repoPath);
-    }
+    await Promise.allSettled(activeWatch.watchers.map((watcher) => watcher.close()));
   }
 
   private open(repository: RepositorySummary): void {

@@ -41,7 +41,10 @@ export async function loadConflictState(
 }
 
 async function loadConflictStatus(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<GitStatusSummary> {
-  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repoPath, env });
+  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'], {
+    cwd: repoPath,
+    env
+  });
   return parseStatusPorcelainV2(result.stdout);
 }
 
