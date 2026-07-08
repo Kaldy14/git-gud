@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import chokidar, { type FSWatcher } from 'chokidar';
 
@@ -9,6 +10,7 @@ type WatchReason = RepoChangedEvent['reason'];
 type WatchTarget = {
   path: string;
   reason: WatchReason;
+  depth?: number;
 };
 
 type ActiveRepoWatch = {
@@ -71,8 +73,8 @@ export class RepoWatcherRegistry {
 
   private open(repository: RepositorySummary): void {
     const targets = dedupeTargets([
-      { path: repository.gitDir, reason: 'git-dir' },
-      { path: repository.commonDir, reason: 'common-dir' },
+      ...gitMetadataTargets(repository.gitDir, 'git-dir'),
+      ...gitMetadataTargets(repository.commonDir, 'common-dir'),
       { path: repository.path, reason: 'worktree' }
     ]);
     const activeWatch: ActiveRepoWatch = {
@@ -100,7 +102,7 @@ export class RepoWatcherRegistry {
   private enqueueChange(activeWatch: ActiveRepoWatch, reason: WatchReason, changedPath: string | undefined): void {
     activeWatch.pendingReasons.add(reason);
 
-    if (changedPath) {
+    if (changedPath && activeWatch.pendingPaths.size < maxPendingPaths) {
       activeWatch.pendingPaths.add(changedPath);
     }
 
@@ -125,9 +127,12 @@ export class RepoWatcherRegistry {
           happenedAt: new Date().toISOString()
         });
       }
-    }, 180);
+    }, repoChangeDebounceMs);
   }
 }
+
+const repoChangeDebounceMs = 350;
+const maxPendingPaths = 32;
 
 function createWatcher(target: WatchTarget, onChange: (changedPath: string | undefined) => void): FSWatcher | undefined {
   if (!existsSync(target.path)) {
@@ -136,7 +141,8 @@ function createWatcher(target: WatchTarget, onChange: (changedPath: string | und
 
   const watcher = chokidar.watch(target.path, {
     ignoreInitial: true,
-    ignored: (candidatePath) => target.reason === 'worktree' && shouldIgnoreWorktreePath(candidatePath)
+    ...(typeof target.depth === 'number' ? { depth: target.depth } : {}),
+    ignored: (candidatePath) => shouldIgnoreWatchPath(target, candidatePath)
   });
 
   watcher.on('all', (_eventName, changedPath) => {
@@ -145,6 +151,14 @@ function createWatcher(target: WatchTarget, onChange: (changedPath: string | und
   watcher.on('error', () => undefined);
 
   return watcher;
+}
+
+function gitMetadataTargets(gitRoot: string, reason: WatchReason): WatchTarget[] {
+  return [
+    { path: gitRoot, reason, depth: 0 },
+    { path: join(gitRoot, 'refs'), reason },
+    { path: join(gitRoot, 'logs', 'refs'), reason }
+  ];
 }
 
 function dedupeTargets(targets: WatchTarget[]): WatchTarget[] {
@@ -167,4 +181,14 @@ function shouldIgnoreWorktreePath(candidatePath: string): boolean {
   return candidatePath
     .split(/[\\/]/)
     .some((part) => part === '.git' || part === 'node_modules' || part === 'dist' || part === 'out' || part === 'coverage');
+}
+
+function shouldIgnoreWatchPath(target: WatchTarget, candidatePath: string): boolean {
+  if (target.reason === 'worktree') {
+    return shouldIgnoreWorktreePath(candidatePath);
+  }
+
+  return candidatePath
+    .split(/[\\/]/)
+    .some((part) => part === 'objects' || part === 'hooks' || part === 'modules');
 }

@@ -5,7 +5,7 @@ import type {
   ReactElement,
   UIEvent as ReactUIEvent
 } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   Cherry,
@@ -37,6 +37,7 @@ const LANE_X0 = 48;
 const LANE_GAP = 28;
 const DEFAULT_REF_CELL_WIDTH = 166;
 const DEFAULT_GRAPH_VIEWPORT_WIDTH = 188;
+const MIN_MESSAGE_CELL_WIDTH = 220;
 const GRAPH_COLUMN_WIDTH_STORAGE_KEY = 'git-gud:graph-column-widths';
 
 type ResizableGraphColumn = 'refs' | 'graph';
@@ -129,15 +130,17 @@ export function GraphView({
   isOperationBusy = false,
   largeRepoMode = false
 }: GraphViewProps): ReactElement {
+  const sectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const graphScrollerRef = useRef<HTMLDivElement>(null);
   const resizeStateRef = useRef<ColumnResizeState | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [columnWidths, setColumnWidths] = useState<GraphColumnWidths>(loadStoredGraphColumnWidths);
+  const [graphContainerWidth, setGraphContainerWidth] = useState<number>();
   const [resizingColumn, setResizingColumn] = useState<ResizableGraphColumn>();
   const [graphScrollLeft, setGraphScrollLeft] = useState(0);
   const graphWidth = columnWidths.graph;
-  const graphContentWidth = graphContentWidthForRows(rows, graphWidth);
+  const graphContentWidth = useMemo(() => graphContentWidthForRows(rows, graphWidth), [graphWidth, rows]);
   const refCellWidth = columnWidths.refs;
   const gridTemplateColumns = `${refCellWidth}px ${graphWidth}px minmax(0, 1fr)`;
   // TanStack Virtual is the row windowing layer for M2; the virtualizer stays local to this component.
@@ -173,8 +176,41 @@ export function GraphView({
   }, [contextMenu]);
 
   useEffect(() => {
+    if (resizingColumn) {
+      return;
+    }
+
     saveStoredGraphColumnWidths(columnWidths);
-  }, [columnWidths]);
+  }, [columnWidths, resizingColumn]);
+
+  useLayoutEffect(() => {
+    const element = sectionRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const observedElement = element;
+
+    function updateContainerWidth(): void {
+      setGraphContainerWidth(Math.round(observedElement.getBoundingClientRect().width));
+    }
+
+    updateContainerWidth();
+
+    const observer = new ResizeObserver(updateContainerWidth);
+    observer.observe(observedElement);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!graphContainerWidth) {
+      return;
+    }
+
+    setColumnWidths((current) => fitGraphColumnWidths(current, graphContainerWidth));
+  }, [graphContainerWidth]);
 
   useEffect(() => {
     if (!resizingColumn) {
@@ -194,7 +230,7 @@ export function GraphView({
       }
 
       const nextWidth = state.startWidth + event.clientX - state.startX;
-      setColumnWidths((current) => resizeGraphColumn(current, state.column, nextWidth));
+      setColumnWidths((current) => resizeGraphColumn(current, state.column, nextWidth, graphContainerWidth));
     }
 
     function stopResize(): void {
@@ -213,7 +249,7 @@ export function GraphView({
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
     };
-  }, [resizingColumn]);
+  }, [graphContainerWidth, resizingColumn]);
 
   useEffect(() => {
     const maxScrollLeft = Math.max(0, graphContentWidth - graphWidth);
@@ -283,15 +319,17 @@ export function GraphView({
   }
 
   function handleColumnResizeNudge(column: ResizableGraphColumn, delta: number): void {
-    setColumnWidths((current) => resizeGraphColumn(current, column, current[column] + delta));
+    setColumnWidths((current) => resizeGraphColumn(current, column, current[column] + delta, graphContainerWidth));
   }
 
   function handleColumnResizeReset(column: ResizableGraphColumn): void {
-    setColumnWidths((current) => resizeGraphColumn(current, column, GRAPH_COLUMN_LIMITS[column].defaultValue));
+    setColumnWidths((current) =>
+      resizeGraphColumn(current, column, GRAPH_COLUMN_LIMITS[column].defaultValue, graphContainerWidth)
+    );
   }
 
   return (
-    <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-graph)]">
+    <section ref={sectionRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-graph)]">
       <div
         className="grid h-8 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-semibold uppercase text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
@@ -578,7 +616,7 @@ function GraphRowView({
         graphScrollLeft={graphScrollLeft}
       />
 
-      <div className="relative flex min-w-0 items-center gap-2 pr-3">
+      <div className="relative flex min-w-0 items-center gap-2 pl-4 pr-3">
         {isWip ? (
           <>
             <span className="wip-message-pill">// WIP</span>
@@ -653,8 +691,13 @@ function graphContentWidthForRows(rows: CommitGraphRow[], graphWidth: number): n
   return Math.max(graphWidth, LANE_X0 + maxLane * LANE_GAP + 76);
 }
 
-function resizeGraphColumn(widths: GraphColumnWidths, column: ResizableGraphColumn, width: number): GraphColumnWidths {
-  const nextWidth = clampGraphColumnWidth(column, width);
+function resizeGraphColumn(
+  widths: GraphColumnWidths,
+  column: ResizableGraphColumn,
+  width: number,
+  containerWidth: number | undefined
+): GraphColumnWidths {
+  const nextWidth = clampGraphColumnWidth(column, width, widths, containerWidth);
 
   if (widths[column] === nextWidth) {
     return widths;
@@ -663,9 +706,32 @@ function resizeGraphColumn(widths: GraphColumnWidths, column: ResizableGraphColu
   return { ...widths, [column]: nextWidth };
 }
 
-function clampGraphColumnWidth(column: ResizableGraphColumn, width: number): number {
+function fitGraphColumnWidths(widths: GraphColumnWidths, containerWidth: number): GraphColumnWidths {
+  const graph = clampGraphColumnWidth('graph', widths.graph, widths, containerWidth);
+  const nextWidths = { ...widths, graph };
+  const refs = clampGraphColumnWidth('refs', nextWidths.refs, nextWidths, containerWidth);
+
+  if (widths.refs === refs && widths.graph === graph) {
+    return widths;
+  }
+
+  return { refs, graph };
+}
+
+function clampGraphColumnWidth(
+  column: ResizableGraphColumn,
+  width: number,
+  widths?: GraphColumnWidths,
+  containerWidth?: number
+): number {
   const limits = GRAPH_COLUMN_LIMITS[column];
-  return Math.round(Math.min(limits.max, Math.max(limits.min, width)));
+  const otherColumn = column === 'refs' ? 'graph' : 'refs';
+  const maxWidth =
+    widths && containerWidth
+      ? Math.min(limits.max, Math.max(limits.min, containerWidth - widths[otherColumn] - MIN_MESSAGE_CELL_WIDTH))
+      : limits.max;
+
+  return Math.round(Math.min(maxWidth, Math.max(limits.min, width)));
 }
 
 function loadStoredGraphColumnWidths(): GraphColumnWidths {

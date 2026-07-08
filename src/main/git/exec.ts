@@ -40,6 +40,11 @@ export class GitCommandError extends Error {
 
 export class GitExecutor {
   private readonly mutationQueues = new Map<string, Promise<void>>();
+  private readonly mutationGenerations = new Map<string, number>();
+
+  getMutationGeneration(cwd: string): number {
+    return this.mutationGenerations.get(cwd) ?? 0;
+  }
 
   async run(args: string[], options: GitCommandOptions): Promise<GitCommandResult> {
     const kind = options.kind ?? 'read';
@@ -57,7 +62,15 @@ export class GitExecutor {
     kind: GitCommandKind
   ): Promise<GitCommandResult> {
     const previous = this.mutationQueues.get(options.cwd) ?? Promise.resolve();
-    const runAfterPrevious = previous.catch(() => undefined).then(() => this.spawnGit(args, options, kind));
+    const runAfterPrevious = previous.catch(() => undefined).then(async () => {
+      this.advanceMutationGeneration(options.cwd);
+
+      try {
+        return await this.spawnGit(args, options, kind);
+      } finally {
+        this.advanceMutationGeneration(options.cwd);
+      }
+    });
     const queueTail = runAfterPrevious.then(
       () => undefined,
       () => undefined
@@ -71,6 +84,10 @@ export class GitExecutor {
     });
 
     return runAfterPrevious;
+  }
+
+  private advanceMutationGeneration(cwd: string): void {
+    this.mutationGenerations.set(cwd, this.getMutationGeneration(cwd) + 1);
   }
 
   private spawnGit(args: string[], options: GitCommandOptions, kind: GitCommandKind): Promise<GitCommandResult> {

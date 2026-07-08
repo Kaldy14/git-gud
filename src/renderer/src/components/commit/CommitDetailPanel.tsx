@@ -93,7 +93,7 @@ export function CommitDetailPanel({
       return window.api.stageFile(repoPath, path);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath);
     }
   });
   const unstageFileMutation = useMutation({
@@ -105,7 +105,7 @@ export function CommitDetailPanel({
       return window.api.unstageFile(repoPath, path);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath);
     }
   });
   const stageAllMutation = useMutation({
@@ -117,7 +117,7 @@ export function CommitDetailPanel({
       return window.api.stageAll(repoPath);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath);
     }
   });
   const unstageAllMutation = useMutation({
@@ -129,7 +129,7 @@ export function CommitDetailPanel({
       return window.api.unstageAll(repoPath);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath);
     }
   });
   const commitMutation = useMutation({
@@ -145,7 +145,7 @@ export function CommitDetailPanel({
         setCommitMessage('');
       }
 
-      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath);
     }
   });
 

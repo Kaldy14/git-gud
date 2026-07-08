@@ -27,6 +27,7 @@ import {
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
+  CommitGraphRow,
   GitConflictActionInput,
   GitFileChangeDetail,
   GitInteractiveRebaseInput,
@@ -37,6 +38,8 @@ import type {
   AppSettings
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
+
+const emptyGraphRows: CommitGraphRow[] = [];
 
 type InteractiveRebaseDialogState = {
   base: string;
@@ -101,9 +104,12 @@ export function WorkspaceShell(): ReactElement {
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
-  const graphRows = graphQuery.data?.rows ?? [];
+  const graphRows = graphQuery.data?.rows ?? emptyGraphRows;
   const selectedSha = activeTab?.selectedCommit;
-  const selectedRow = graphRows.find((row) => row.sha === selectedSha) ?? graphRows[0];
+  const selectedRow = useMemo(
+    () => graphRows.find((row) => row.sha === selectedSha) ?? graphRows[0],
+    [graphRows, selectedSha]
+  );
   const parentSha = selectedRow?.parentShas[0];
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
@@ -295,7 +301,7 @@ export function WorkspaceShell(): ReactElement {
 
     try {
       const result = await action(activeTab.path);
-      await invalidateRepositoryQueries(queryClient, result.repoPath, activeTab.selectedCommit);
+      await invalidateRepositoryQueries(queryClient, result.repoPath);
 
       const status = result.operation?.status === 'conflicted' || result.conflictState?.isActive ? 'conflict' : 'success';
       const detail = result.conflictState?.message ?? result.operation?.message;

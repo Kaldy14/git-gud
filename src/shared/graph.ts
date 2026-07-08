@@ -13,6 +13,18 @@ export const COMMIT_GRAPH_LIMIT_STEP = 1500;
 
 export const LANE_COLORS = ['#19c9e6', '#2684ff', '#d726e7', '#ff5a36', '#ffd34d', '#2ed3a6'] as const;
 const AUTHOR_COLORS = ['#38bdf8', '#c084fc', '#4ade80', '#fbbf24', '#fb7185', '#a78bfa', '#2dd4bf'] as const;
+const dateLabelFormatter = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit'
+});
+const dateMarkerFormatter = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric'
+});
 
 export const FILE_STATUS_COLORS: Record<GraphFileStatus, string> = {
   added: '#4cc38a',
@@ -257,13 +269,7 @@ function formatDateLabel(value: string | undefined): string {
     return '';
   }
 
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  }).format(date);
+  return dateLabelFormatter.format(date);
 }
 
 function formatDateMarker(value: string | undefined): string | undefined {
@@ -277,9 +283,5 @@ function formatDateMarker(value: string | undefined): string | undefined {
     return undefined;
   }
 
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  }).format(date);
+  return dateMarkerFormatter.format(date);
 }

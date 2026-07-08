@@ -14,9 +14,7 @@ import type {
 import { createProfileCommandEnv } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import { parseGitLog, type GitLogCommit } from './parsers/log';
-import { parseForEachRef } from './parsers/refs';
-import { parseStashList } from './parsers/stash';
-import { parseStatusPorcelainV2 } from './parsers/status';
+import { loadRefs, loadStashes, loadStatus } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
 
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
@@ -122,37 +120,6 @@ function formatStashSubject(primaryStash: GitStashEntry, groupSize: number): str
   const extraCount = groupSize - 1;
 
   return extraCount > 0 ? `${subject} (+${extraCount} stashes)` : subject;
-}
-
-async function loadStatus(repoPath: string, env: NodeJS.ProcessEnv | undefined) {
-  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'], {
-    cwd: repoPath,
-    env
-  });
-  return parseStatusPorcelainV2(result.stdout);
-}
-
-async function loadRefs(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<GitRefsSummary> {
-  const result = await gitExecutor.run(
-    [
-      'for-each-ref',
-      '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(upstream:track)%00%(HEAD)%00%(creatordate:iso-strict)',
-      'refs/heads',
-      'refs/remotes',
-      'refs/tags'
-    ],
-    { cwd: repoPath, env }
-  );
-
-  return parseForEachRef(result.stdout);
-}
-
-async function loadStashes(repoPath: string, env: NodeJS.ProcessEnv | undefined) {
-  const result = await gitExecutor.run(['stash', 'list', '--format=%H%x00%P%x00%gd%x00%aI%x00%s%x00'], {
-    cwd: repoPath,
-    env
-  });
-  return parseStashList(result.stdout);
 }
 
 async function loadLogCommits(

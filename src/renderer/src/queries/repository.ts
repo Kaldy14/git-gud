@@ -12,6 +12,8 @@ import type {
   RepoChangedEvent
 } from '@shared/types';
 
+const immutableGitObjectStaleTime = Number.POSITIVE_INFINITY;
+
 export const repositoryOverviewQueryKey = (repoPath: string): readonly ['repository-overview', string] => [
   'repository-overview',
   repoPath
@@ -59,7 +61,8 @@ export function useRepositoryOverview(repoPath: string | undefined) {
 }
 
 export function useCommitGraph(repoPath: string | undefined, limit: number) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: repoPath ? commitGraphQueryKey(repoPath, limit) : ['commit-graph', 'none', limit],
     queryFn: async (): Promise<CommitGraphPage> => {
       if (!repoPath) {
@@ -74,6 +77,20 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
     // carry one repository's graph over into another tab.
     placeholderData: (previousData) => (previousData?.repoPath === repoPath ? previousData : undefined)
   });
+
+  useEffect(() => {
+    const loadedLimit = query.data?.limit;
+
+    if (!repoPath || !loadedLimit) {
+      return;
+    }
+
+    queryClient.removeQueries({
+      predicate: (candidate) => isLowerLimitCommitGraphQuery(candidate.queryKey, repoPath, loadedLimit)
+    });
+  }, [query.data?.limit, queryClient, repoPath]);
+
+  return query;
 }
 
 export function useCommitDetail(repoPath: string | undefined, sha: string | undefined) {
@@ -87,7 +104,7 @@ export function useCommitDetail(repoPath: string | undefined, sha: string | unde
       return window.api.getCommitDetail(repoPath, sha);
     },
     enabled: Boolean(repoPath && sha),
-    staleTime: 1500
+    staleTime: immutableGitObjectStaleTime
   });
 }
 
@@ -117,7 +134,7 @@ export function useFileDiff(repoPath: string | undefined, request: GitFileDiffRe
       return window.api.getFileDiff(repoPath, request);
     },
     enabled: Boolean(repoPath && request),
-    staleTime: 1000
+    staleTime: request?.kind === 'commit' ? immutableGitObjectStaleTime : 1000
   });
 }
 
@@ -133,16 +150,21 @@ export function useRepositoryChangeInvalidation(): void {
 
 export async function invalidateRepositoryQueries(
   queryClient: QueryClient,
-  repoPath: string,
-  selectedSha?: string
+  repoPath: string
 ): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }),
     queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }),
     queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }),
-    queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath] }),
-    selectedSha && selectedSha !== 'wip'
-      ? queryClient.invalidateQueries({ queryKey: commitDetailQueryKey(repoPath, selectedSha) })
-      : queryClient.invalidateQueries({ queryKey: ['commit-detail', repoPath] })
+    queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath, 'wip'] })
   ]);
+}
+
+function isLowerLimitCommitGraphQuery(queryKey: readonly unknown[], repoPath: string, loadedLimit: number): boolean {
+  return (
+    queryKey[0] === 'commit-graph' &&
+    queryKey[1] === repoPath &&
+    typeof queryKey[2] === 'number' &&
+    queryKey[2] < loadedLimit
+  );
 }

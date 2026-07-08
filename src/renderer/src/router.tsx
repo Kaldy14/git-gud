@@ -12,7 +12,15 @@ import {
 
 import { WorkspaceShell } from '@renderer/workspace/WorkspaceShell';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 2 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: 1
+    }
+  }
+});
 
 function RootRouteComponent(): ReactElement {
   return (

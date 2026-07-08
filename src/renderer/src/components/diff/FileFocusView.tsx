@@ -81,7 +81,7 @@ export function FileFocusView({
       });
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath, row?.sha);
+      void invalidateRepositoryQueries(queryClient, result.repoPath);
     }
   });
   const diffOptions = useMemo<FileDiffOptions<undefined>>(
