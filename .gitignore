@@ -5,6 +5,7 @@ dist
 *.log
 coverage
 *.tsbuildinfo
+.codex-screenshots/
 .omc/
 .env
 .env.*
