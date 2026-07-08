@@ -2,13 +2,14 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron';
 
 import { RepoWatcherRegistry } from './git/watcher';
 import { registerIpcHandlers } from './ipc';
 import { getWorkspace } from './store';
 
 const quitCleanupTimeoutMs = 1500;
+const hardQuitTimeoutMs = 3000;
 const appDisplayName = 'Git Gud';
 let isQuitting = false;
 
@@ -44,6 +45,15 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show();
+  });
+
+  mainWindow.on('close', (event) => {
+    if (isQuitting) {
+      return;
+    }
+
+    event.preventDefault();
+    requestQuit();
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -85,6 +95,7 @@ function isSafeExternalUrl(value: string): boolean {
 app.whenReady().then(() => {
   app.setName(appDisplayName);
   electronApp.setAppUserModelId('dev.kaldy.git-gud');
+  installApplicationMenu();
   const iconPath = resolveAppIconPath();
 
   if (iconPath && process.platform === 'darwin') {
@@ -101,14 +112,14 @@ app.whenReady().then(() => {
   createWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!isQuitting && BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
 
 app.on('window-all-closed', () => {
-  app.quit();
+  requestQuit();
 });
 
 app.on('before-quit', (event) => {
@@ -117,17 +128,65 @@ app.on('before-quit', (event) => {
   }
 
   event.preventDefault();
-  isQuitting = true;
-  void quitAfterCleanup();
+  requestQuit();
 });
 
+function installApplicationMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: appDisplayName,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        {
+          label: `Quit ${appDisplayName}`,
+          accelerator: 'Command+Q',
+          role: 'quit'
+        }
+      ]
+    },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function requestQuit(): void {
+  if (isQuitting) {
+    return;
+  }
+
+  isQuitting = true;
+  const hardQuitTimer = setTimeout(() => {
+    process.exit(0);
+  }, hardQuitTimeoutMs);
+  hardQuitTimer.unref();
+
+  void quitAfterCleanup();
+}
+
 async function quitAfterCleanup(): Promise<void> {
-  await Promise.race([repoWatchers.closeAll(), wait(quitCleanupTimeoutMs)]);
+  try {
+    await Promise.race([repoWatchers.closeAll(), wait(quitCleanupTimeoutMs)]);
+  } finally {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.destroy();
+    }
+  }
+
   app.exit(0);
+  process.exit(0);
 }
 
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
+    const timer = setTimeout(resolve, delayMs);
+    timer.unref();
   });
 }
