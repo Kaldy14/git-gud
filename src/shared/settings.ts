@@ -1,4 +1,4 @@
-import type { AppSettings, AppSettingsInput } from './types';
+import type { AppSettings } from './types';
 
 export const MIN_GRAPH_PAGE_SIZE = 250;
 export const MAX_GRAPH_PAGE_SIZE = 12000;
@@ -8,15 +8,37 @@ export function createDefaultAppSettings(): AppSettings {
     defaultDiffStyle: 'unified',
     graphPageSize: 1500,
     largeRepoMode: false,
+    graphColumns: {
+      author: true,
+      date: true,
+      sha: false
+    },
+    remoteAvatars: false,
     terminalApp: 'Terminal'
   };
 }
 
-export function normalizeAppSettings(input: AppSettingsInput, fallback: AppSettings = createDefaultAppSettings()): AppSettings {
+export function normalizeAppSettings(input: unknown, fallback: AppSettings = createDefaultAppSettings()): AppSettings {
+  const settings = isRecord(input) ? input : {};
+  const graphColumns = isRecord(settings.graphColumns) ? settings.graphColumns : {};
+
   return {
-    defaultDiffStyle: input.defaultDiffStyle === 'split' || input.defaultDiffStyle === 'unified' ? input.defaultDiffStyle : fallback.defaultDiffStyle,
-    graphPageSize: clampGraphPageSize(input.graphPageSize ?? fallback.graphPageSize),
-    largeRepoMode: typeof input.largeRepoMode === 'boolean' ? input.largeRepoMode : fallback.largeRepoMode,
+    defaultDiffStyle:
+      settings.defaultDiffStyle === 'split' || settings.defaultDiffStyle === 'unified'
+        ? settings.defaultDiffStyle
+        : fallback.defaultDiffStyle,
+    graphPageSize: clampGraphPageSize(
+      typeof settings.graphPageSize === 'number' ? settings.graphPageSize : fallback.graphPageSize
+    ),
+    largeRepoMode:
+      typeof settings.largeRepoMode === 'boolean' ? settings.largeRepoMode : fallback.largeRepoMode,
+    graphColumns: {
+      author: typeof graphColumns.author === 'boolean' ? graphColumns.author : fallback.graphColumns.author,
+      date: typeof graphColumns.date === 'boolean' ? graphColumns.date : fallback.graphColumns.date,
+      sha: typeof graphColumns.sha === 'boolean' ? graphColumns.sha : fallback.graphColumns.sha
+    },
+    remoteAvatars:
+      typeof settings.remoteAvatars === 'boolean' ? settings.remoteAvatars : fallback.remoteAvatars,
     terminalApp: 'Terminal'
   };
 }
@@ -27,4 +49,8 @@ export function clampGraphPageSize(value: number): number {
   }
 
   return Math.min(MAX_GRAPH_PAGE_SIZE, Math.max(MIN_GRAPH_PAGE_SIZE, Math.round(value)));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

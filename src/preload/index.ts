@@ -19,11 +19,16 @@ const api: RendererApi = {
   selectFile: (tabId, selectedFile) => invoke('tabs:select-file', tabId, selectedFile),
   setSidebarCollapsed: (collapsed) => invoke('workspace:set-sidebar-collapsed', collapsed),
   setSidebarWidth: (width) => invoke('workspace:set-sidebar-width', width),
+  setDetailPanelCollapsed: (collapsed) => invoke('workspace:set-detail-panel-collapsed', collapsed),
+  setDetailPanelWidth: (width) => invoke('workspace:set-detail-panel-width', width),
   getRepositoryOverview: (repoPath) => invoke('repo:overview', repoPath),
   getCommitGraph: (repoPath, limit) => invoke('repo:graph', repoPath, limit),
   getCommitDetail: (repoPath, sha) => invoke('repo:commit-detail', repoPath, sha),
   getWipDetail: (repoPath) => invoke('repo:wip-detail', repoPath),
   getFileDiff: (repoPath, request) => invoke('repo:file-diff', repoPath, request),
+  getFileHistory: (repoPath, path, limit) => invoke('repo:file-history', repoPath, path, limit),
+  getFileBlame: (repoPath, path, revision) => invoke('repo:file-blame', repoPath, path, revision),
+  compareRefs: (repoPath, base, head) => invoke('repo:compare', repoPath, base, head),
   applyWipPatch: (repoPath, input) => invoke('repo:apply-patch', repoPath, input),
   stageFile: (repoPath, path) => invoke('repo:stage-file', repoPath, path),
   unstageFile: (repoPath, path) => invoke('repo:unstage-file', repoPath, path),
@@ -56,6 +61,7 @@ const api: RendererApi = {
   resolveConflict: (repoPath, input) => invoke('repo:resolve-conflict', repoPath, input),
   undoOperation: (repoPath, undoId) => invoke('repo:undo', repoPath, undoId),
   openTerminal: (repoPath) => invoke('repo:open-terminal', repoPath),
+  cancelRepositoryOperation: (repoPath, operationId) => invoke('repo:cancel-operation', repoPath, operationId),
   getSettings: () => invoke('settings:get'),
   updateSettings: (settings) => invoke('settings:update', settings),
   listProfiles: () => invoke('profiles:list'),
@@ -63,6 +69,15 @@ const api: RendererApi = {
   assignProfile: (repoPath, profileId) => invoke('repo:assign-profile', repoPath, profileId),
   onRepositoryChanged: (listener) => {
     const channel = 'repo:changed';
+    const wrappedListener = (_event: Electron.IpcRendererEvent, event: Parameters<typeof listener>[0]): void => {
+      listener(event);
+    };
+
+    ipcRenderer.on(channel, wrappedListener);
+    return () => ipcRenderer.removeListener(channel, wrappedListener);
+  },
+  onOperationProgress: (listener) => {
+    const channel = 'repo:operation-progress';
     const wrappedListener = (_event: Electron.IpcRendererEvent, event: Parameters<typeof listener>[0]): void => {
       listener(event);
     };

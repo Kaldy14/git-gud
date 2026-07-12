@@ -1,6 +1,8 @@
 import type { FormEvent, ReactElement } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { AlertTriangle, Check, X } from 'lucide-react';
+
+import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 
 export type CommandDialogTone = 'default' | 'danger';
 
@@ -61,23 +63,13 @@ type CommandDialogProps = {
 };
 
 export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactElement {
+  const titleId = useId();
+  const descriptionId = useId();
   const [fields, setFields] = useState<CommandDialogField[]>(dialog.fields);
   const canSubmit = useMemo(
     () => fields.every((field) => field.kind !== 'text' || !field.required || field.value.trim().length > 0),
     [fields]
   );
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -91,9 +83,13 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8">
+    <ModalSurface
+      labelledBy={titleId}
+      describedBy={dialog.description || dialog.detail ? descriptionId : undefined}
+      className="w-full max-w-[440px] rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
+      onClose={onClose}
+    >
       <form
-        className="w-full max-w-[440px] rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
         onSubmit={handleSubmit}
       >
         <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] px-4 py-3">
@@ -101,8 +97,8 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
             {dialog.tone === 'danger' ? <AlertTriangle size={17} /> : <Check size={17} />}
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">{dialog.title}</h2>
-            {dialog.description ? <p className="mt-1 text-xs leading-5 text-[var(--text-2)]">{dialog.description}</p> : null}
+            <h2 id={titleId} className="truncate text-sm font-semibold text-[var(--text-1)]">{dialog.title}</h2>
+            {dialog.description ? <p id={descriptionId} className="mt-1 text-xs leading-5 text-[var(--text-2)]">{dialog.description}</p> : null}
           </div>
           <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close dialog">
             <X size={14} />
@@ -111,7 +107,7 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
 
         <div className="space-y-3 px-4 py-4">
           {dialog.detail ? (
-            <p className="rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2 text-xs leading-5 text-[var(--text-2)]">
+            <p id={dialog.description ? undefined : descriptionId} className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2 text-xs leading-5 text-[var(--text-2)]">
               {dialog.detail}
             </p>
           ) : null}
@@ -133,7 +129,7 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
           </button>
         </footer>
       </form>
-    </div>
+    </ModalSurface>
   );
 
   function setDialogField(nextField: CommandDialogField): void {

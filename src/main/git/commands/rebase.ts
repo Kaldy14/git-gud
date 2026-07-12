@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 import type {
   GitConflictState,
@@ -29,14 +29,15 @@ type ConflictAwareMutationResult = {
 
 type RebaseEditorState = {
   tempDir: string;
+  nonce: string;
 };
 
 type RebaseEditorFiles = RebaseEditorState & {
+  markerPath: string;
   sequenceEditorPath: string;
   messageEditorPath: string;
   todoPath: string;
   rewordMessagesPath: string;
-  rewordIndexPath: string;
 };
 
 type ValidatedTodoItem = GitInteractiveRebaseTodoItem & {
@@ -47,10 +48,20 @@ type ValidatedTodoItem = GitInteractiveRebaseTodoItem & {
 const unitSeparator = '\x1f';
 const recordSeparator = '\x1e';
 const rebaseStatePathName = 'git-gud-rebase-state.json';
+const rebaseDonePathName = 'rebase-merge/done';
+const rebaseTodoPathName = 'rebase-merge/git-rebase-todo';
+const rebaseEditorMarkerName = '.git-gud-rebase-editor';
+const uuidPattern = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const rebaseTempDirNamePattern = new RegExp(`^git-gud-rebase-${uuidPattern}$`);
+const noncePattern = new RegExp(`^${uuidPattern}$`);
+const untrustedRebaseStateMessage = 'Stored interactive rebase editor state is untrusted.';
 
 export async function rebaseOnto(tab: RebaseTab, input: GitRebaseInput): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const target = normalizeRequiredName(input.target, 'Rebase target');
+  const targetCommit = await revParse(tab.path, `${target}^{commit}`, env);
+  await assertNoIgnoredUntrackedTreeTransitionCollisions(tab.path, 'HEAD', targetCommit, env, 'the target tree');
+  await assertNoIgnoredUntrackedReplayCollisionsForRange(tab.path, `${targetCommit}..HEAD`, env);
   const { conflictState } = await runMutationAllowingConflicts(tab, ['rebase', target], env);
   return createOperationResult(tab, env, `Rebase onto ${target.slice(0, 8)}`, conflictState);
 }
@@ -65,6 +76,7 @@ export async function prepareInteractiveRebasePlan(tab: RebaseTab, base: string)
   }
 
   await assertBaseIsAncestor(tab.path, normalizedBase, env);
+  await assertInteractiveRebaseRangeIsLinear(tab.path, normalizedBase, env);
 
   const [baseSha, headSha, commits] = await Promise.all([
     revParse(tab.path, normalizedBase, env),
@@ -91,12 +103,21 @@ export async function runInteractiveRebase(tab: RebaseTab, input: GitInteractive
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const plan = await prepareInteractiveRebasePlan(tab, input.base);
   const todo = validateInteractiveRebaseTodo(input.commits, plan);
-  const editorFiles = await createRebaseEditorFiles(todo);
+  await assertNoIgnoredUntrackedTreeTransitionCollisions(tab.path, 'HEAD', plan.base, env, 'the rebase base tree');
+  await assertNoIgnoredUntrackedReplayCollisionsForCommits(
+    tab.path,
+    todo.filter((item) => item.action !== 'drop').map((item) => item.sha),
+    env
+  );
+  const [editorFiles, donePath] = await Promise.all([
+    createRebaseEditorFiles(todo),
+    gitPath(tab.path, rebaseDonePathName, env)
+  ]);
 
   await writeRebaseEditorState(tab.path, editorFiles, env);
 
   try {
-    const rebaseEnv = createRebaseEditorEnv(env, editorFiles);
+    const rebaseEnv = createRebaseEditorEnv(env, editorFiles, donePath);
     const { conflictState } = await runMutationAllowingConflicts(tab, ['rebase', '-i', plan.base], rebaseEnv);
 
     if (!conflictState.isActive) {
@@ -124,16 +145,48 @@ export async function createRebaseContinuationEnv(
   }
 
   const editorFiles = rebaseEditorFilesFromState(editorState);
-  return createRebaseEditorEnv(env, editorFiles);
+  const donePath = await gitPath(repoPath, rebaseDonePathName, env);
+  return createRebaseEditorEnv(env, editorFiles, donePath);
+}
+
+export async function assertNoIgnoredUntrackedRebaseContinuationCollisions(
+  repoPath: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const todoPath = await gitPath(repoPath, rebaseTodoPathName, env);
+  let todoContents: string;
+
+  try {
+    todoContents = await readFile(todoPath, 'utf8');
+  } catch (error) {
+    if (isErrnoException(error) && error.code === 'ENOENT') {
+      throw new Error(
+        'The remaining rebase commits cannot be inspected safely. Abort the rebase or protect ignored files before continuing in Terminal.',
+        { cause: error }
+      );
+    }
+
+    throw error;
+  }
+
+  await assertNoIgnoredUntrackedReplayCollisionsForCommits(repoPath, parseRemainingRebaseCommitShas(todoContents), env);
 }
 
 export async function clearRebaseEditorState(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<void> {
-  const state = await readRebaseEditorState(repoPath, env);
   const statePath = await rebaseStatePath(repoPath, env);
+  let state: RebaseEditorState | undefined;
+
+  try {
+    state = await readRebaseEditorState(repoPath, env);
+  } catch (error) {
+    await unlinkIfExists(statePath);
+    throw error;
+  }
 
   await unlinkIfExists(statePath);
 
   if (state) {
+    await validateRebaseEditorState(state);
     await rm(state.tempDir, { recursive: true, force: true });
   }
 }
@@ -176,6 +229,165 @@ async function loadInteractiveRebaseCommits(
   }
 
   return commits;
+}
+
+async function assertNoIgnoredUntrackedReplayCollisionsForRange(
+  repoPath: string,
+  range: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const result = await gitExecutor.run(
+    ['log', '--format=', '--name-only', '-z', '--diff-filter=ACMRTUXB', '--no-renames', '--no-merges', range, '--'],
+    { cwd: repoPath, env }
+  );
+  await assertNoIgnoredUntrackedReplayCollisions(repoPath, parseNullSeparatedPaths(result.stdout), env);
+}
+
+async function assertNoIgnoredUntrackedTreeTransitionCollisions(
+  repoPath: string,
+  currentRevision: string,
+  targetRevision: string,
+  env: NodeJS.ProcessEnv | undefined,
+  writeSource: string
+): Promise<void> {
+  const result = await gitExecutor.run(
+    ['diff', '--name-only', '-z', '--diff-filter=ACMRTUXB', '--no-renames', currentRevision, targetRevision, '--'],
+    { cwd: repoPath, env }
+  );
+  await assertNoIgnoredUntrackedReplayCollisions(repoPath, parseNullSeparatedPaths(result.stdout), env, writeSource);
+}
+
+async function assertNoIgnoredUntrackedReplayCollisionsForCommits(
+  repoPath: string,
+  commitShas: string[],
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const writePaths = new Set<string>();
+  const commitBatchSize = 256;
+
+  for (let offset = 0; offset < commitShas.length; offset += commitBatchSize) {
+    const commitBatch = commitShas.slice(offset, offset + commitBatchSize);
+    const result = await gitExecutor.run(
+      ['show', '--format=', '--name-only', '-z', '--diff-filter=ACMRTUXB', '--no-renames', ...commitBatch, '--'],
+      { cwd: repoPath, env }
+    );
+
+    for (const path of parseNullSeparatedPaths(result.stdout)) {
+      writePaths.add(path);
+    }
+  }
+
+  await assertNoIgnoredUntrackedReplayCollisions(repoPath, [...writePaths], env);
+}
+
+async function assertNoIgnoredUntrackedReplayCollisions(
+  repoPath: string,
+  writePaths: string[],
+  env: NodeJS.ProcessEnv | undefined,
+  writeSource = 'replayed commits'
+): Promise<void> {
+  if (writePaths.length === 0) {
+    return;
+  }
+
+  const ignoredResult = await gitExecutor.run(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--'], {
+    cwd: repoPath,
+    env
+  });
+  const ignoredPaths = parseNullSeparatedPaths(ignoredResult.stdout);
+  const writePathSet = new Set(writePaths);
+  const ignoredPathSet = new Set(ignoredPaths);
+  const collisions = new Map<string, string>();
+
+  for (const ignoredPath of ignoredPaths) {
+    const writePath = writePathSet.has(ignoredPath) ? ignoredPath : findAncestorPath(ignoredPath, writePathSet);
+
+    if (writePath) {
+      collisions.set(ignoredPath, writePath);
+    }
+  }
+
+  for (const writePath of writePaths) {
+    const ignoredAncestor = findAncestorPath(writePath, ignoredPathSet);
+
+    if (ignoredAncestor) {
+      collisions.set(ignoredAncestor, writePath);
+    }
+  }
+
+  if (collisions.size === 0) {
+    return;
+  }
+
+  const examples = [...collisions]
+    .slice(0, 3)
+    .map(([ignoredPath, writePath]) =>
+      ignoredPath === writePath ? JSON.stringify(ignoredPath) : `${JSON.stringify(ignoredPath)} blocks ${JSON.stringify(writePath)}`
+    )
+    .join(', ');
+  const remainingCount = collisions.size - 3;
+  const remainingLabel = remainingCount > 0 ? ` and ${remainingCount} more` : '';
+
+  throw new Error(
+    `Rebase is blocked because ${writeSource} would overwrite ignored ${collisions.size === 1 ? 'path' : 'paths'} ${examples}${remainingLabel}. Move or remove the colliding path first.`
+  );
+}
+
+function parseNullSeparatedPaths(output: string): string[] {
+  return output.split('\0').filter((path) => path.length > 0);
+}
+
+function parseRemainingRebaseCommitShas(todoContents: string): string[] {
+  const replayActions = new Set(['pick', 'p', 'reword', 'r', 'edit', 'e', 'squash', 's', 'fixup', 'f']);
+  const nonWritingActions = new Set(['drop', 'd', 'break', 'b', 'label', 'l', 'update-ref', 'u', 'noop']);
+  const commitShas = new Set<string>();
+
+  for (const rawLine of todoContents.split('\n')) {
+    const line = rawLine.trim();
+
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const parts = line.split(/\s+/);
+    const action = parts[0];
+
+    if (nonWritingActions.has(action)) {
+      continue;
+    }
+
+    if (!replayActions.has(action)) {
+      throw new Error(
+        `The remaining rebase action ${JSON.stringify(action)} cannot be inspected safely. Abort the rebase or continue in Terminal after protecting ignored files.`
+      );
+    }
+
+    const commitSha = parts.slice(1).find((part) => /^[0-9a-f]{4,64}$/i.test(part));
+
+    if (!commitSha) {
+      throw new Error(`The remaining ${action} rebase action does not identify a commit safely.`);
+    }
+
+    commitShas.add(commitSha);
+  }
+
+  return [...commitShas];
+}
+
+function findAncestorPath(path: string, candidates: Set<string>): string | undefined {
+  let separatorIndex = path.lastIndexOf('/');
+
+  while (separatorIndex > 0) {
+    const ancestor = path.slice(0, separatorIndex);
+
+    if (candidates.has(ancestor)) {
+      return ancestor;
+    }
+
+    separatorIndex = ancestor.lastIndexOf('/');
+  }
+
+  return undefined;
 }
 
 function validateInteractiveRebaseTodo(
@@ -229,17 +441,20 @@ function validateInteractiveRebaseAction(action: GitInteractiveRebaseAction): Gi
 
 async function createRebaseEditorFiles(todo: ValidatedTodoItem[]): Promise<RebaseEditorFiles> {
   const tempDir = join(tmpdir(), `git-gud-rebase-${randomUUID()}`);
-  await mkdir(tempDir, { recursive: true });
-  const editorFiles = rebaseEditorFilesFromState({ tempDir });
+  const nonce = randomUUID();
+  await mkdir(tempDir, { mode: 0o700 });
+  const editorFiles = rebaseEditorFilesFromState({ tempDir, nonce });
   const todoContents = todo.map((item) => `${item.action} ${item.sha} ${formatTodoSubject(item.subject)}`).join('\n');
-  const rewordMessages = todo.filter((item) => item.action === 'reword').map((item) => `${item.message.trim()}\n`);
+  const rewordMessages = Object.fromEntries(
+    todo.filter((item) => item.action === 'reword').map((item) => [item.sha, `${item.message.trim()}\n`])
+  );
 
   await Promise.all([
+    writeFile(editorFiles.markerPath, nonce, { flag: 'wx', mode: 0o600 }),
     writeFile(editorFiles.sequenceEditorPath, sequenceEditorScript(), { mode: 0o700 }),
     writeFile(editorFiles.messageEditorPath, messageEditorScript(), { mode: 0o700 }),
     writeFile(editorFiles.todoPath, `${todoContents}\n`),
-    writeFile(editorFiles.rewordMessagesPath, JSON.stringify(rewordMessages)),
-    writeFile(editorFiles.rewordIndexPath, '0')
+    writeFile(editorFiles.rewordMessagesPath, JSON.stringify(rewordMessages))
   ]);
 
   return editorFiles;
@@ -247,18 +462,19 @@ async function createRebaseEditorFiles(todo: ValidatedTodoItem[]): Promise<Rebas
 
 function rebaseEditorFilesFromState(state: RebaseEditorState): RebaseEditorFiles {
   return {
-    tempDir: state.tempDir,
+    ...state,
+    markerPath: join(state.tempDir, rebaseEditorMarkerName),
     sequenceEditorPath: join(state.tempDir, 'sequence-editor.cjs'),
     messageEditorPath: join(state.tempDir, 'message-editor.cjs'),
     todoPath: join(state.tempDir, 'git-rebase-todo'),
-    rewordMessagesPath: join(state.tempDir, 'reword-messages.json'),
-    rewordIndexPath: join(state.tempDir, 'reword-index')
+    rewordMessagesPath: join(state.tempDir, 'reword-messages.json')
   };
 }
 
 function createRebaseEditorEnv(
   env: NodeJS.ProcessEnv | undefined,
-  editorFiles: RebaseEditorFiles
+  editorFiles: RebaseEditorFiles,
+  donePath: string
 ): NodeJS.ProcessEnv {
   return {
     ...env,
@@ -266,7 +482,7 @@ function createRebaseEditorEnv(
     GIT_EDITOR: createNodeScriptCommand(editorFiles.messageEditorPath),
     GIT_GUD_SEQUENCE_TODO: editorFiles.todoPath,
     GIT_GUD_REWORD_MESSAGES: editorFiles.rewordMessagesPath,
-    GIT_GUD_REWORD_INDEX: editorFiles.rewordIndexPath
+    GIT_GUD_REBASE_DONE: donePath
   };
 }
 
@@ -309,24 +525,101 @@ async function readRebaseEditorState(
     const rawState = await readFile(await rebaseStatePath(repoPath, env), 'utf8');
     const parsedState = JSON.parse(rawState) as Partial<RebaseEditorState>;
 
-    if (typeof parsedState.tempDir === 'string' && parsedState.tempDir.length > 0) {
-      return {
-        tempDir: parsedState.tempDir
-      };
+    if (typeof parsedState.tempDir !== 'string' || typeof parsedState.nonce !== 'string') {
+      throw new Error(untrustedRebaseStateMessage);
     }
 
-    return undefined;
+    const state = {
+      tempDir: parsedState.tempDir,
+      nonce: parsedState.nonce
+    };
+
+    await validateRebaseEditorState(state);
+    return state;
   } catch (error) {
     if (isErrnoException(error) && error.code === 'ENOENT') {
       return undefined;
+    }
+
+    if (error instanceof SyntaxError) {
+      throw new Error(untrustedRebaseStateMessage, { cause: error });
     }
 
     throw error;
   }
 }
 
+async function validateRebaseEditorState(state: RebaseEditorState): Promise<void> {
+  const resolvedTempRoot = resolve(tmpdir());
+  const resolvedTempDir = resolve(state.tempDir);
+
+  if (
+    state.tempDir !== resolvedTempDir ||
+    dirname(resolvedTempDir) !== resolvedTempRoot ||
+    !rebaseTempDirNamePattern.test(basename(resolvedTempDir)) ||
+    !noncePattern.test(state.nonce)
+  ) {
+    throw new Error(untrustedRebaseStateMessage);
+  }
+
+  const directoryStats = await lstatTrustedPath(resolvedTempDir);
+
+  if (directoryStats.isSymbolicLink() || !directoryStats.isDirectory()) {
+    throw new Error(untrustedRebaseStateMessage);
+  }
+
+  const [canonicalTempRoot, canonicalTempDir] = await Promise.all([realpath(resolvedTempRoot), realpath(resolvedTempDir)]);
+
+  if (dirname(canonicalTempDir) !== canonicalTempRoot) {
+    throw new Error(untrustedRebaseStateMessage);
+  }
+
+  const editorFiles = rebaseEditorFilesFromState(state);
+  const artifactPaths = [
+    editorFiles.markerPath,
+    editorFiles.sequenceEditorPath,
+    editorFiles.messageEditorPath,
+    editorFiles.todoPath,
+    editorFiles.rewordMessagesPath
+  ];
+
+  for (const artifactPath of artifactPaths) {
+    await assertTrustedRegularFile(artifactPath, canonicalTempDir);
+  }
+
+  const [marker, sequenceEditor, messageEditor] = await Promise.all([
+    readFile(editorFiles.markerPath, 'utf8'),
+    readFile(editorFiles.sequenceEditorPath, 'utf8'),
+    readFile(editorFiles.messageEditorPath, 'utf8')
+  ]);
+
+  if (marker !== state.nonce || sequenceEditor !== sequenceEditorScript() || messageEditor !== messageEditorScript()) {
+    throw new Error(untrustedRebaseStateMessage);
+  }
+}
+
+async function assertTrustedRegularFile(path: string, canonicalTempDir: string): Promise<void> {
+  const stats = await lstatTrustedPath(path);
+
+  if (stats.isSymbolicLink() || !stats.isFile() || dirname(await realpath(path)) !== canonicalTempDir) {
+    throw new Error(untrustedRebaseStateMessage);
+  }
+}
+
+async function lstatTrustedPath(path: string) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    throw new Error(untrustedRebaseStateMessage, { cause: error });
+  }
+}
+
 async function rebaseStatePath(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<string> {
-  const result = await gitExecutor.run(['rev-parse', '--git-path', rebaseStatePathName], { cwd: repoPath, env });
+  return gitPath(repoPath, rebaseStatePathName, env);
+}
+
+async function gitPath(repoPath: string, pathName: string, env: NodeJS.ProcessEnv | undefined): Promise<string> {
+  const result = await gitExecutor.run(['rev-parse', '--git-path', pathName], { cwd: repoPath, env });
   return resolve(repoPath, result.stdout.trim());
 }
 
@@ -351,6 +644,23 @@ async function assertBaseIsAncestor(repoPath: string, base: string, env: NodeJS.
 
   if (result.exitCode !== 0) {
     throw new Error('Interactive rebase base must be an ancestor of HEAD.');
+  }
+}
+
+async function assertInteractiveRebaseRangeIsLinear(
+  repoPath: string,
+  base: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const result = await gitExecutor.run(['rev-list', '--max-count=1', '--min-parents=2', `${base}..HEAD`], {
+    cwd: repoPath,
+    env
+  });
+
+  if (result.stdout.trim()) {
+    throw new Error(
+      'Interactive rebase does not support ranges containing merge commits. Choose a base after the latest merge.'
+    );
   }
 }
 
@@ -382,7 +692,8 @@ async function createOperationResult(
       status: resolvedConflictState.isActive ? 'conflicted' : 'completed',
       message: resolvedConflictState.message
     },
-    conflictState: resolvedConflictState
+    conflictState: resolvedConflictState,
+    invalidates: ['overview', 'graph', 'commit-detail', 'wip-detail', 'file-diff']
   };
 }
 
@@ -438,25 +749,26 @@ function messageEditorScript(): string {
 
 const messagePath = process.argv[2];
 const messagesPath = process.env.GIT_GUD_REWORD_MESSAGES;
-const indexPath = process.env.GIT_GUD_REWORD_INDEX;
+const donePath = process.env.GIT_GUD_REBASE_DONE;
 
-if (!messagePath || !messagesPath || !indexPath) {
+if (!messagePath || !messagesPath || !donePath) {
   process.exit(0);
 }
 
-const currentMessage = readFileSync(messagePath, 'utf8');
+const doneLines = readFileSync(donePath, 'utf8').trimEnd().split('\\n');
+const currentCommand = doneLines.at(-1)?.match(/^(?:reword|r)\\s+([0-9a-f]+)/);
 
-if (!/^#\\s+reword\\s+[0-9a-f]+/m.test(currentMessage)) {
+if (!currentCommand) {
   process.exit(0);
 }
 
 const messages = JSON.parse(readFileSync(messagesPath, 'utf8'));
-const currentIndex = Number.parseInt(readFileSync(indexPath, 'utf8'), 10) || 0;
-const nextMessage = messages[currentIndex];
+const originalSha = currentCommand[1];
+const matchingSha = Object.keys(messages).find((sha) => sha.startsWith(originalSha) || originalSha.startsWith(sha));
+const nextMessage = matchingSha ? messages[matchingSha] : undefined;
 
 if (typeof nextMessage === 'string' && nextMessage.trim()) {
   writeFileSync(messagePath, nextMessage.endsWith('\\n') ? nextMessage : nextMessage + '\\n');
-  writeFileSync(indexPath, String(currentIndex + 1));
 }
 `;
 }

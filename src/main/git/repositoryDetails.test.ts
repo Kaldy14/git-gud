@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./exec', () => ({
   GitCommandError: class GitCommandError extends Error {},
+  GitOutputLimitError: class GitOutputLimitError extends Error {},
   gitExecutor: {
     run: mocks.run
   }
@@ -38,9 +39,14 @@ describe('loadFileDiff', () => {
       { kind: 'commit', sha: 'abc123', path: 'renamed.txt', originalPath: 'source.txt' }
     );
 
-    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
+    const patchCall = mocks.run.mock.calls.find(([args]) => args.includes('--patch'));
+
+    expect(patchCall?.[0]).toEqual([
+      '--literal-pathspecs',
       'show',
       '--format=',
+      '--first-parent',
+      '--diff-merges=first-parent',
       '--patch',
       '--binary',
       '--find-renames',
@@ -83,7 +89,10 @@ describe('loadFileDiff', () => {
     const diff = await loadFileDiff({ path: '/repo' }, { kind: 'wip', path: 'renamed.txt', staged: true });
 
     expect(diff.originalPath).toBe('source.txt');
-    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
+    const patchCall = mocks.run.mock.calls.find(([args]) => args.includes('--patch') && !args.includes('--unified=0'));
+
+    expect(patchCall?.[0]).toEqual([
+      '--literal-pathspecs',
       'diff',
       '--cached',
       '--binary',
@@ -127,6 +136,7 @@ describe('loadFileDiff', () => {
     await unstageFile({ path: '/repo' }, 'renamed.txt');
 
     expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+      '--literal-pathspecs',
       'restore',
       '--staged',
       '--',
@@ -161,6 +171,7 @@ describe('discardFile', () => {
     await discardFile({ path: '/repo' }, 'deleted.txt');
 
     expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+      '--literal-pathspecs',
       'restore',
       '--staged',
       '--source=HEAD',
@@ -168,6 +179,7 @@ describe('discardFile', () => {
       'deleted.txt'
     ]);
     expect(mocks.run.mock.calls[2]?.[0]).toEqual([
+      '--literal-pathspecs',
       'restore',
       '--worktree',
       '--source=HEAD',
@@ -194,13 +206,21 @@ describe('discardFile', () => {
     await discardFile({ path: '/repo' }, 'new.txt');
 
     expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+      '--literal-pathspecs',
       'restore',
       '--staged',
       '--source=HEAD',
       '--',
       'new.txt'
     ]);
-    expect(mocks.run.mock.calls[2]?.[0]).toEqual(['clean', '-f', '-d', '--', 'new.txt']);
+    expect(mocks.run.mock.calls[2]?.[0]).toEqual([
+      '--literal-pathspecs',
+      'clean',
+      '-f',
+      '-d',
+      '--',
+      'new.txt'
+    ]);
   });
 
   it('discards a staged rename by restoring the original path and cleaning the renamed path', async () => {
@@ -222,6 +242,7 @@ describe('discardFile', () => {
     await discardFile({ path: '/repo' }, 'renamed.txt');
 
     expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+      '--literal-pathspecs',
       'restore',
       '--staged',
       '--source=HEAD',
@@ -230,13 +251,21 @@ describe('discardFile', () => {
       'renamed.txt'
     ]);
     expect(mocks.run.mock.calls[2]?.[0]).toEqual([
+      '--literal-pathspecs',
       'restore',
       '--worktree',
       '--source=HEAD',
       '--',
       'source.txt'
     ]);
-    expect(mocks.run.mock.calls[3]?.[0]).toEqual(['clean', '-f', '-d', '--', 'renamed.txt']);
+    expect(mocks.run.mock.calls[3]?.[0]).toEqual([
+      '--literal-pathspecs',
+      'clean',
+      '-f',
+      '-d',
+      '--',
+      'renamed.txt'
+    ]);
   });
 
   it('discards an untracked file with git clean', async () => {
@@ -256,7 +285,14 @@ describe('discardFile', () => {
 
     await discardFile({ path: '/repo' }, 'scratch.txt');
 
-    expect(mocks.run.mock.calls[1]?.[0]).toEqual(['clean', '-f', '-d', '--', 'scratch.txt']);
+    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+      '--literal-pathspecs',
+      'clean',
+      '-f',
+      '-d',
+      '--',
+      'scratch.txt'
+    ]);
   });
 });
 

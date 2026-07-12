@@ -1,3 +1,5 @@
+import type { GitQueryInvalidation } from '@shared/types';
+
 export type GitCommandId =
   | 'fetch'
   | 'pull'
@@ -21,7 +23,6 @@ export type GitCommandId =
   | 'conflict-resolve'
   | 'undo';
 
-export type GitCommandInvalidation = 'overview' | 'graph' | 'commit-detail' | 'wip-detail' | 'file-diff';
 export type GitCommandMutationScope = 'remote' | 'refs' | 'working-tree' | 'history' | 'conflict';
 export type GitCommandUndoStrategy = 'none' | 'recorded' | 'conditional';
 export type GitCommandConflictStrategy = 'none' | 'detect-after-run' | 'continue-skip-abort';
@@ -32,7 +33,7 @@ export type GitCommandDescriptor = {
   mutationScope: GitCommandMutationScope;
   undo: GitCommandUndoStrategy;
   conflicts: GitCommandConflictStrategy;
-  invalidates: readonly GitCommandInvalidation[];
+  invalidates: readonly GitQueryInvalidation[];
 };
 
 const allRepositoryQueries = ['overview', 'graph', 'commit-detail', 'wip-detail', 'file-diff'] as const;
@@ -71,7 +72,7 @@ function command(
   mutationScope: GitCommandMutationScope,
   undo: GitCommandUndoStrategy,
   conflicts: GitCommandConflictStrategy,
-  invalidates: readonly GitCommandInvalidation[]
+  invalidates: readonly GitQueryInvalidation[]
 ): GitCommandDescriptor {
   return {
     id,

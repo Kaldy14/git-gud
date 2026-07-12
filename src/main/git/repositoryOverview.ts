@@ -13,17 +13,20 @@ const inFlightGitReads = new Map<string, Promise<unknown>>();
 
 export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assignedProfileId'>): Promise<GitRepositoryOverview> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const [status, refs, remotes, worktrees, stashes, profileState] = await Promise.all([
+  const [status, refs, remotes, worktrees, stashes] = await Promise.all([
     loadStatus(tab.path, env),
     loadRefs(tab.path, env),
     loadRemotes(tab.path, env),
     loadWorktrees(tab.path, env),
-    loadStashes(tab.path, env),
-    getRepoProfileState(tab.path, tab.assignedProfileId)
+    loadStashes(tab.path, env)
   ]);
-  const [conflictState, latestUndo] = await Promise.all([
+  const remoteUrls = remotes
+    .flatMap((remote) => [remote.fetchUrl, remote.pushUrl])
+    .filter((url): url is string => typeof url === 'string');
+  const [conflictState, latestUndo, profileState] = await Promise.all([
     loadConflictState(tab.path, env, status),
-    loadLatestUndoEntry(tab.path, env)
+    loadLatestUndoEntry(tab.path, env),
+    getRepoProfileState(tab.path, tab.assignedProfileId, remoteUrls)
   ]);
 
   return {
@@ -55,7 +58,7 @@ export async function loadRefs(repoPath: string, env?: NodeJS.ProcessEnv): Promi
     const result = await gitExecutor.run(
       [
         'for-each-ref',
-        '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(upstream:track)%00%(HEAD)%00%(creatordate:iso-strict)',
+        '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(upstream:track)%00%(HEAD)%00%(creatordate:iso-strict)%00%(objecttype)%00%(*objectname)%00%(*objecttype)',
         'refs/heads',
         'refs/remotes',
         'refs/tags'

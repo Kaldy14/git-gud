@@ -3,21 +3,22 @@ import { join } from 'node:path';
 
 import Store from 'electron-store';
 
-import type { AppSettings, AppSettingsInput, WorkspaceState } from '@shared/types';
+import type { AppSettings, AppSettingsInput, RepositorySummary, WorkspaceState } from '@shared/types';
 import { createDefaultAppSettings, normalizeAppSettings } from '@shared/settings';
 import {
   activateRepositoryTab,
   assignRepositoryProfile,
   closeRepositoryTab,
   createDefaultWorkspaceState,
-  normalizeSidebarWidth,
+  normalizeWorkspaceState,
   selectRepositoryCommit,
   selectRepositoryFile,
+  setDetailPanelCollapsed,
+  setDetailPanelWidth,
   setSidebarCollapsed,
   setSidebarWidth,
   upsertRepositoryTab
 } from '@shared/workspace';
-import type { RepositorySummary } from '@shared/types';
 
 type StoreShape = {
   workspace: WorkspaceState;
@@ -26,6 +27,7 @@ type StoreShape = {
 
 const store = new Store<StoreShape>({
   name: 'git-gud-workspace',
+  clearInvalidConfig: true,
   ...testStoreDirectory('workspace'),
   defaults: {
     workspace: createDefaultWorkspaceState(),
@@ -34,15 +36,7 @@ const store = new Store<StoreShape>({
 });
 
 export function getWorkspace(): WorkspaceState {
-  const defaults = createDefaultWorkspaceState();
-  const workspace = store.get('workspace', defaults);
-
-  return {
-    ...defaults,
-    ...workspace,
-    sidebarWidth: normalizeSidebarWidth(workspace.sidebarWidth),
-    detailPanelWidth: workspace.detailPanelWidth ?? defaults.detailPanelWidth
-  };
+  return normalizeWorkspaceState(store.get('workspace', createDefaultWorkspaceState()));
 }
 
 export function openWorkspaceRepository(repository: RepositorySummary): WorkspaceState {
@@ -71,6 +65,14 @@ export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {
 
 export function updateSidebarWidth(width: number): WorkspaceState {
   return saveWorkspace(setSidebarWidth(getWorkspace(), width));
+}
+
+export function updateDetailPanelCollapsed(collapsed: boolean): WorkspaceState {
+  return saveWorkspace(setDetailPanelCollapsed(getWorkspace(), collapsed));
+}
+
+export function updateDetailPanelWidth(width: number): WorkspaceState {
+  return saveWorkspace(setDetailPanelWidth(getWorkspace(), width));
 }
 
 export function assignWorkspaceProfile(repoPath: string, profileId: string | undefined): WorkspaceState {

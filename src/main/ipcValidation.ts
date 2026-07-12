@@ -42,11 +42,18 @@ const validators = {
   'workspace:set-sidebar-collapsed': (args) =>
     readOnlyArg(args, 'workspace:set-sidebar-collapsed', 'collapsed', readBoolean),
   'workspace:set-sidebar-width': (args) => readOnlyArg(args, 'workspace:set-sidebar-width', 'width', readPositiveInteger),
+  'workspace:set-detail-panel-collapsed': (args) =>
+    readOnlyArg(args, 'workspace:set-detail-panel-collapsed', 'collapsed', readBoolean),
+  'workspace:set-detail-panel-width': (args) =>
+    readOnlyArg(args, 'workspace:set-detail-panel-width', 'width', readPositiveInteger),
   'repo:overview': (args) => readOnlyArg(args, 'repo:overview', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
+  'repo:file-history': (args) => readRepoPathAndPathWithOptionalLimit(args),
+  'repo:file-blame': (args) => readStringPairWithOptionalString(args, 'repo:file-blame', 'repoPath', 'path', 'revision'),
+  'repo:compare': (args) => readStringTriple(args, 'repo:compare', 'repoPath', 'base', 'head'),
   'repo:apply-patch': (args) => readRepoPathWithObject(args, 'repo:apply-patch', readPatchApplyInput),
   'repo:stage-file': (args) => readStringPair(args, 'repo:stage-file', 'repoPath', 'path'),
   'repo:unstage-file': (args) => readStringPair(args, 'repo:unstage-file', 'repoPath', 'path'),
@@ -79,6 +86,7 @@ const validators = {
   'repo:resolve-conflict': (args) => readRepoPathWithObject(args, 'repo:resolve-conflict', readConflictActionInput),
   'repo:undo': (args) => readStringPair(args, 'repo:undo', 'repoPath', 'undoId'),
   'repo:open-terminal': (args) => readOnlyArg(args, 'repo:open-terminal', 'repoPath', readString),
+  'repo:cancel-operation': (args) => readOperationCancellationArgs(args),
   'settings:get': (args) => noArgs('settings:get', args),
   'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
   'profiles:list': (args) => noArgs('profiles:list', args),
@@ -118,6 +126,11 @@ function readStringPair(
   return [readString(args[0], firstLabel), readString(args[1], secondLabel)];
 }
 
+function readOperationCancellationArgs(args: readonly unknown[]): [string, string] {
+  assertArgCount('repo:cancel-operation', args, 2);
+  return [readString(args[0], 'repoPath'), readNonEmptyString(args[1], 'operationId')];
+}
+
 function readStringWithOptionalString(
   args: readonly unknown[],
   channel: string,
@@ -128,9 +141,48 @@ function readStringWithOptionalString(
   return [readString(args[0], firstLabel), readOptionalString(args[1], secondLabel)];
 }
 
+function readStringPairWithOptionalString(
+  args: readonly unknown[],
+  channel: string,
+  firstLabel: string,
+  secondLabel: string,
+  thirdLabel: string
+): [string, string, string | undefined] {
+  assertArgCountRange(channel, args, 2, 3);
+  return [
+    readString(args[0], firstLabel),
+    readString(args[1], secondLabel),
+    readOptionalString(args[2], thirdLabel)
+  ];
+}
+
+function readStringTriple(
+  args: readonly unknown[],
+  channel: string,
+  firstLabel: string,
+  secondLabel: string,
+  thirdLabel: string
+): [string, string, string] {
+  assertArgCount(channel, args, 3);
+  return [
+    readString(args[0], firstLabel),
+    readString(args[1], secondLabel),
+    readString(args[2], thirdLabel)
+  ];
+}
+
 function readRepoPathWithOptionalLimit(args: readonly unknown[]): [string, number | undefined] {
   assertArgCountRange('repo:graph', args, 1, 2);
   return [readString(args[0], 'repoPath'), readOptionalPositiveInteger(args[1], 'limit')];
+}
+
+function readRepoPathAndPathWithOptionalLimit(args: readonly unknown[]): [string, string, number | undefined] {
+  assertArgCountRange('repo:file-history', args, 2, 3);
+  return [
+    readString(args[0], 'repoPath'),
+    readString(args[1], 'path'),
+    readOptionalPositiveInteger(args[2], 'limit')
+  ];
 }
 
 function readRepoPathWithObject<TValue>(
@@ -247,7 +299,8 @@ function readStashPushInput(value: unknown): GitStashPushInput {
 function readStashRefInput(value: unknown): GitStashRefInput {
   const record = readRecord(value, 'stash ref input');
   return {
-    selector: readStringProperty(record, 'selector')
+    selector: readStringProperty(record, 'selector'),
+    expectedSha: readStringProperty(record, 'expectedSha')
   };
 }
 
@@ -331,7 +384,22 @@ function readSettingsInput(value: unknown): AppSettingsInput {
     defaultDiffStyle: readOptionalEnumProperty(record, 'defaultDiffStyle', ['unified', 'split']),
     graphPageSize: readOptionalPositiveIntegerProperty(record, 'graphPageSize'),
     largeRepoMode: readOptionalBooleanProperty(record, 'largeRepoMode'),
+    graphColumns: readOptionalGraphColumns(record.graphColumns),
+    remoteAvatars: readOptionalBooleanProperty(record, 'remoteAvatars'),
     terminalApp: readOptionalEnumProperty(record, 'terminalApp', ['Terminal'])
+  };
+}
+
+function readOptionalGraphColumns(value: unknown): AppSettingsInput['graphColumns'] {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const record = readRecord(value, 'graphColumns');
+  return {
+    author: readOptionalBooleanProperty(record, 'author'),
+    date: readOptionalBooleanProperty(record, 'date'),
+    sha: readOptionalBooleanProperty(record, 'sha')
   };
 }
 
@@ -433,6 +501,16 @@ function readString(value: unknown, label: string): string {
   }
 
   return value;
+}
+
+function readNonEmptyString(value: unknown, label: string): string {
+  const result = readString(value, label);
+
+  if (result.trim().length === 0) {
+    throw new Error(`${label} must not be empty.`);
+  }
+
+  return result;
 }
 
 function readOptionalString(value: unknown, label: string): string | undefined {

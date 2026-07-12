@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 
 import type { WorkspaceState } from '@shared/types';
-import { createDefaultWorkspaceState, normalizeSidebarWidth } from '@shared/workspace';
+import {
+  createDefaultWorkspaceState,
+  normalizeDetailPanelWidth,
+  normalizeSidebarWidth
+} from '@shared/workspace';
 
 type WorkspaceStore = {
   workspace: WorkspaceState;
@@ -16,6 +20,8 @@ type WorkspaceStore = {
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<void>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
   setSidebarWidth: (width: number) => Promise<void>;
+  setDetailPanelCollapsed: (collapsed: boolean) => Promise<void>;
+  setDetailPanelWidth: (width: number) => Promise<void>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
 };
@@ -59,6 +65,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 
     try {
       const workspace = await window.api.setSidebarWidth(sidebarWidth);
+      set({ workspace });
+    } catch (error) {
+      set({ errorMessage: workspaceActionErrorMessage(error) });
+    }
+  },
+  async setDetailPanelCollapsed(collapsed) {
+    await runWorkspaceAction(set, () => window.api.setDetailPanelCollapsed(collapsed));
+  },
+  async setDetailPanelWidth(width) {
+    const detailPanelWidth = normalizeDetailPanelWidth(width);
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        detailPanelWidth
+      },
+      errorMessage: undefined
+    }));
+
+    try {
+      const workspace = await window.api.setDetailPanelWidth(detailPanelWidth);
       set({ workspace });
     } catch (error) {
       set({ errorMessage: workspaceActionErrorMessage(error) });

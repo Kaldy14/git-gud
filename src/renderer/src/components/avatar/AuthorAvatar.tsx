@@ -38,21 +38,30 @@ export function AuthorAvatar({ name, email, avatarUrl, size = 32, className = ''
     );
   }
 
-  return <GeneratedAvatar seed={email || name || 'unknown'} label={label} size={size} className={baseClassName} />;
+  return (
+    <GeneratedAvatar
+      seed={email || name || 'unknown'}
+      initials={authorInitials(name || email || 'Unknown')}
+      label={label}
+      size={size}
+      className={baseClassName}
+    />
+  );
 }
 
 function GeneratedAvatar({
   seed,
+  initials,
   label,
   size,
   className
 }: {
   seed: string;
+  initials: string;
   label: string;
   size: number;
   className: string;
 }): ReactElement {
-  const cells = useMemo(() => generatedCells(seed), [seed]);
   const color = AVATAR_COLORS[Math.abs(hashString(seed)) % AVATAR_COLORS.length];
 
   return (
@@ -64,32 +73,24 @@ function GeneratedAvatar({
       style={{ width: size, height: size }}
     >
       <title>{label}</title>
-      <rect x="0" y="0" width="40" height="40" rx="4" fill="var(--avatar-card-bg)" />
-      {cells.map((cell) => (
-        <rect key={`${cell.x}:${cell.y}`} x={cell.x * 5} y={cell.y * 5} width="5" height="5" fill={color} />
-      ))}
+      <rect x="0" y="0" width="40" height="40" rx="5" fill={color} />
+      <text x="20" y="25" textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--bg-field)">
+        {initials}
+      </text>
     </svg>
   );
 }
 
-function generatedCells(seed: string): Array<{ x: number; y: number }> {
-  const cells: Array<{ x: number; y: number }> = [];
-  let hash = Math.abs(hashString(seed));
-
-  for (let y = 1; y < 7; y += 1) {
-    for (let x = 1; x < 4; x += 1) {
-      hash = (hash * 1664525 + 1013904223) >>> 0;
-
-      if ((hash & 1) === 0) {
-        continue;
-      }
-
-      cells.push({ x, y }, { x: 7 - x, y });
-    }
-  }
-
-  cells.push({ x: 3, y: 6 }, { x: 4, y: 6 });
-  return cells;
+function authorInitials(value: string): string {
+  return (
+    value
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || '?'
+  );
 }
 
 function authorLabel(name: string, email: string | undefined): string {

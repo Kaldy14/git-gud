@@ -29,6 +29,7 @@ export type WorkspaceState = {
   recentRepos: RecentRepository[];
   sidebarCollapsed: boolean;
   sidebarWidth: number;
+  detailPanelCollapsed: boolean;
   detailPanelWidth: number;
 };
 
@@ -139,6 +140,51 @@ export type GitFileDiff = {
   patch: string;
   stageablePatch?: string;
   isBinary: boolean;
+  omittedReason?: 'binary' | 'too-large';
+  loadedAt: string;
+};
+
+export type GitFileHistoryCommit = {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  author: GitCommitPerson;
+  authoredAt?: string;
+};
+
+export type GitFileHistory = {
+  repoPath: string;
+  path: string;
+  commits: GitFileHistoryCommit[];
+  loadedAt: string;
+};
+
+export type GitFileBlameLine = {
+  lineNumber: number;
+  originalLineNumber: number;
+  sha: string;
+  shortSha: string;
+  author: GitCommitPerson;
+  summary?: string;
+  content: string;
+};
+
+export type GitFileBlame = {
+  repoPath: string;
+  path: string;
+  revision: string;
+  lines: GitFileBlameLine[];
+  loadedAt: string;
+};
+
+export type GitComparison = {
+  repoPath: string;
+  base: string;
+  head: string;
+  ahead: number;
+  behind: number;
+  stats: GitCommitStats;
+  files: GitFileChangeDetail[];
   loadedAt: string;
 };
 
@@ -212,6 +258,7 @@ export type GitStashPushInput = {
 
 export type GitStashRefInput = {
   selector: string;
+  expectedSha: string;
 };
 
 export type GitResetInput = {
@@ -276,6 +323,13 @@ export type GitOperationSummary = {
   message?: string;
 };
 
+export type GitQueryInvalidation =
+  | 'overview'
+  | 'graph'
+  | 'commit-detail'
+  | 'wip-detail'
+  | 'file-diff';
+
 export type GitUndoOperation =
   | 'commit'
   | 'amend'
@@ -305,6 +359,9 @@ export type GitUndoEntry = {
   branchBefore?: string;
   branchAfter?: string;
   resetMode?: GitResetInput['mode'];
+  affectedRefs?: string[];
+  affectedPaths?: string[];
+  warning?: string;
 };
 
 export type GitOperationResult = {
@@ -313,16 +370,43 @@ export type GitOperationResult = {
   operation?: GitOperationSummary;
   undoEntry?: GitUndoEntry;
   conflictState?: GitConflictState;
+  invalidates?: GitQueryInvalidation[];
+};
+
+export type GitOperationProgressEvent = {
+  operationId: string;
+  repoPath: string;
+  label: string;
+  phase: 'queued' | 'running' | 'output' | 'completed' | 'failed' | 'cancelled';
+  stream?: 'stdout' | 'stderr';
+  message?: string;
+  elapsedMs: number;
+  cancellable: boolean;
+  happenedAt: string;
+};
+
+export type GitOperationCancellationResult = {
+  repoPath: string;
+  cancelled: boolean;
+  message: string;
 };
 
 export type AppSettings = {
   defaultDiffStyle: 'unified' | 'split';
   graphPageSize: number;
   largeRepoMode: boolean;
+  graphColumns: {
+    author: boolean;
+    date: boolean;
+    sha: boolean;
+  };
+  remoteAvatars: boolean;
   terminalApp: 'Terminal';
 };
 
-export type AppSettingsInput = Partial<AppSettings>;
+export type AppSettingsInput = Partial<Omit<AppSettings, 'graphColumns'>> & {
+  graphColumns?: Partial<AppSettings['graphColumns']>;
+};
 
 export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
 
@@ -476,7 +560,9 @@ export type GitIdentity = {
 export type RepoProfileState = {
   profiles: GitProfile[];
   activeProfile?: GitProfile;
+  suggestedProfile?: GitProfile;
   effectiveIdentity: GitIdentity;
+  identityMatchesActiveProfile?: boolean;
 };
 
 export type GitRepositoryOverview = {

@@ -10,7 +10,7 @@ export function parseForEachRef(output: string): GitRefsSummary {
       continue;
     }
 
-    const [fullName, name, sha, upstream, track, head, date] = line.split('\0');
+    const [fullName, name, sha, upstream, track, head, date, objectType, peeledSha, peeledType] = line.split('\0');
 
     if (!fullName || !name || !sha) {
       continue;
@@ -48,7 +48,7 @@ export function parseForEachRef(output: string): GitRefsSummary {
       tags.push({
         name,
         fullName,
-        sha,
+        sha: objectType === 'tag' && peeledSha && peeledType === 'commit' ? peeledSha : sha,
         date: date || undefined
       });
     }

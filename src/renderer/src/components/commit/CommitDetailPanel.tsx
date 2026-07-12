@@ -4,6 +4,7 @@ import { FileTree, useFileTree } from '@pierre/trees/react';
 import { prepareFileTreeInput, type GitStatusEntry } from '@pierre/trees';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   ArrowDownAZ,
   Check,
   ChevronDown,
@@ -16,9 +17,10 @@ import {
   Loader2,
   Minus,
   Pencil,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RotateCcw,
-  Sparkles,
   Trash2
 } from 'lucide-react';
 
@@ -39,6 +41,12 @@ import {
 import { AuthorAvatar } from '@renderer/components/avatar/AuthorAvatar';
 import { FILE_STATUS_COLORS } from '@shared/graph';
 import type { CommitGraphRow, GitCommitPerson, GitFileChangeDetail, GitRepositoryDetail, GitStatusCode, RepoProfileState } from '@shared/types';
+import {
+  DEFAULT_DETAIL_PANEL_WIDTH,
+  MAX_DETAIL_PANEL_WIDTH,
+  MIN_DETAIL_PANEL_WIDTH,
+  normalizeDetailPanelWidth
+} from '@shared/workspace';
 
 type CommitDetailPanelProps = {
   repoPath?: string;
@@ -49,6 +57,12 @@ type CommitDetailPanelProps = {
   profileState?: RepoProfileState;
   commitFocusSignal: number;
   isOperationBusy: boolean;
+  width?: number;
+  isCollapsed?: boolean;
+  remoteAvatars?: boolean;
+  onToggleCollapsed?: () => void;
+  onResize?: (width: number) => void;
+  onResizeCommit?: (width: number) => void;
   onSelectFile: (path: string | undefined) => void;
   onOpenWipChanges: () => void;
   onDiscardWipFile: (file: GitFileChangeDetail) => void;
@@ -65,6 +79,12 @@ export function CommitDetailPanel({
   profileState,
   commitFocusSignal,
   isOperationBusy,
+  width = 382,
+  isCollapsed = false,
+  remoteAvatars = false,
+  onToggleCollapsed,
+  onResize,
+  onResizeCommit,
   onSelectFile,
   onOpenWipChanges,
   onDiscardWipFile,
@@ -72,9 +92,11 @@ export function CommitDetailPanel({
   onRevealWipFile
 }: CommitDetailPanelProps): ReactElement {
   const queryClient = useQueryClient();
+  const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(undefined);
   const [fileView, setFileView] = useState<FileViewMode>('path');
   const [commitMessage, setCommitMessage] = useState('');
   const [amend, setAmend] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const isWip = row?.node.kind === 'wip';
   const commitQuery = useCommitDetail(repoPath, row && !isWip ? row.sha : undefined);
   const wipQuery = useWipDetail(repoPath, Boolean(row && isWip));
@@ -93,7 +115,7 @@ export function CommitDetailPanel({
       return window.api.stageFile(repoPath, path);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
     }
   });
   const unstageFileMutation = useMutation({
@@ -105,7 +127,7 @@ export function CommitDetailPanel({
       return window.api.unstageFile(repoPath, path);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
     }
   });
   const stageAllMutation = useMutation({
@@ -117,7 +139,7 @@ export function CommitDetailPanel({
       return window.api.stageAll(repoPath);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
     }
   });
   const unstageAllMutation = useMutation({
@@ -129,7 +151,7 @@ export function CommitDetailPanel({
       return window.api.unstageAll(repoPath);
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
     }
   });
   const commitMutation = useMutation({
@@ -145,7 +167,7 @@ export function CommitDetailPanel({
         setCommitMessage('');
       }
 
-      void invalidateRepositoryQueries(queryClient, result.repoPath);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
     }
   });
 
@@ -167,11 +189,82 @@ export function CommitDetailPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function handlePointerMove(event: globalThis.PointerEvent): void {
+      const state = resizeStateRef.current;
+
+      if (!state) {
+        return;
+      }
+
+      const nextWidth = normalizeDetailPanelWidth(state.startWidth + state.startX - event.clientX);
+      state.width = nextWidth;
+      onResize?.(nextWidth);
+    }
+
+    function stopResize(): void {
+      const nextWidth = resizeStateRef.current?.width;
+      resizeStateRef.current = undefined;
+      setIsResizing(false);
+
+      if (typeof nextWidth === 'number') {
+        onResizeCommit?.(nextWidth);
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizing, onResize, onResizeCommit]);
+
+  function handleResizeStart(event: PointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    resizeStateRef.current = { startX: event.clientX, startWidth: width, width };
+    setIsResizing(true);
+  }
+
+  if (isCollapsed) {
+    return (
+      <aside className="commit-detail-panel flex w-10 shrink-0 flex-col items-center border-l border-[var(--border)] bg-[var(--bg-panel)] py-2" aria-label="Commit details">
+        <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand commit details" title="Expand commit details">
+          <PanelRightOpen size={15} />
+        </button>
+      </aside>
+    );
+  }
+
   if (!row || !repoPath) {
     return (
-      <aside className="flex w-[428px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]">
+      <aside className="commit-detail-panel relative flex shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
+        <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
+        <div className="flex h-10 shrink-0 items-center justify-end border-b border-[var(--border)] px-2">
+          <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
+            <PanelRightClose size={15} />
+          </button>
+        </div>
         <div className="grid flex-1 place-items-center px-8 text-center text-xs leading-5 text-[var(--text-3)]">
-          Select a commit in the graph to inspect it.
+          Select a commit to inspect its message, author, and changed files.
         </div>
       </aside>
     );
@@ -271,13 +364,14 @@ export function CommitDetailPanel({
   }
 
   return (
-    <aside className="flex w-[428px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]">
+    <aside className="commit-detail-panel relative flex shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
+      <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
       <WorkingDirectoryBanner
         dirtyCount={wipDirtyCount}
         isViewingWip={isWip}
         onOpenWipChanges={onOpenWipChanges}
       />
-      <PanelHeader row={row} detail={detail} />
+      <PanelHeader row={row} detail={detail} onToggleCollapsed={onToggleCollapsed} />
 
       {isDetailLoading && !detail ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -296,11 +390,68 @@ export function CommitDetailPanel({
         </div>
       ) : detail ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <SummarySection detail={detail} parentSha={parentSha} />
+          <SummarySection detail={detail} parentSha={parentSha} remoteAvatars={remoteAvatars} />
           {renderFilesSection()}
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function DetailResizeHandle({
+  width,
+  isActive,
+  onPointerDown,
+  onResize,
+  onResizeCommit
+}: {
+  width: number;
+  isActive: boolean;
+  onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
+  onResize?: (width: number) => void;
+  onResizeCommit?: (width: number) => void;
+}): ReactElement {
+  function commitWidth(nextWidth: number): void {
+    const normalizedWidth = normalizeDetailPanelWidth(nextWidth);
+    onResize?.(normalizedWidth);
+    onResizeCommit?.(normalizedWidth);
+  }
+
+  return (
+    <div
+      className="detail-panel-resizer"
+      role="separator"
+      tabIndex={0}
+      aria-label="Resize commit details"
+      aria-orientation="vertical"
+      aria-valuemin={MIN_DETAIL_PANEL_WIDTH}
+      aria-valuemax={MAX_DETAIL_PANEL_WIDTH}
+      aria-valuenow={normalizeDetailPanelWidth(width)}
+      data-active={isActive ? 'true' : undefined}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => commitWidth(DEFAULT_DETAIL_PANEL_WIDTH)}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 48 : 16;
+
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          commitWidth(width + step);
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          commitWidth(width - step);
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          commitWidth(MIN_DETAIL_PANEL_WIDTH);
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          commitWidth(MAX_DETAIL_PANEL_WIDTH);
+        } else if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          commitWidth(DEFAULT_DETAIL_PANEL_WIDTH);
+        }
+      }}
+    />
   );
 }
 
@@ -333,28 +484,22 @@ function WorkingDirectoryBanner({
   );
 }
 
-function PanelHeader({ row, detail }: { row: CommitGraphRow; detail?: GitRepositoryDetail }): ReactElement {
+function PanelHeader({
+  row,
+  detail,
+  onToggleCollapsed
+}: {
+  row: CommitGraphRow;
+  detail?: GitRepositoryDetail;
+  onToggleCollapsed?: () => void;
+}): ReactElement {
   const isWip = row.node.kind === 'wip';
   const wipDetail = detail?.kind === 'wip' ? detail : undefined;
 
   if (isWip) {
     return (
-      <div className="grid h-9 shrink-0 grid-cols-[40px_minmax(0,1fr)_40px] items-center border-b border-[var(--border)] px-2 text-xs text-[var(--text-2)]">
-        <button
-          className="icon-btn h-7 w-7 justify-self-start rounded border border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)]"
-          type="button"
-          disabled
-          title="Discard all changes is not implemented yet."
-          style={{
-            background: 'var(--danger-bg)',
-            borderColor: 'var(--danger-border)',
-            color: 'var(--danger-text)',
-            opacity: 1
-          }}
-        >
-          <Trash2 size={14} />
-        </button>
-        <div className="flex min-w-0 items-center justify-center gap-2">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {wipDetail ? (
             <>
               <span className="min-w-0 truncate font-semibold text-[var(--text-1)]">{formatFileChangeLabel(wipDetail.dirtyCount)} on</span>
@@ -366,19 +511,8 @@ function PanelHeader({ row, detail }: { row: CommitGraphRow; detail?: GitReposit
             <span className="font-semibold text-[var(--text-1)]">File changes</span>
           )}
         </div>
-        <button
-          className="icon-btn h-7 w-7 justify-self-end rounded border border-[var(--ai-border)] bg-[var(--ai-bg)] text-[var(--ai-text)]"
-          type="button"
-          disabled
-          title="Compose commits with AI is not implemented yet."
-          style={{
-            background: 'var(--ai-bg)',
-            borderColor: 'var(--ai-border)',
-            color: 'var(--ai-text)',
-            opacity: 1
-          }}
-        >
-          <Sparkles size={14} />
+        <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
+          <PanelRightClose size={14} />
         </button>
       </div>
     );
@@ -391,20 +525,22 @@ function PanelHeader({ row, detail }: { row: CommitGraphRow; detail?: GitReposit
         <span className="shrink-0">commit:</span>
         <span className="mono min-w-0 truncate text-[var(--text-1)]">{row.sha.slice(0, 12)}</span>
       </span>
-      <button
-        className="inline-flex h-7 shrink-0 items-center gap-2 rounded border border-[var(--ai-border)] bg-[var(--ai-bg)] px-2.5 text-xs font-semibold text-[var(--ai-text)] disabled:opacity-100"
-        type="button"
-        disabled
-        title="Explain commit is not part of the local Git workflow scope."
-      >
-        <Sparkles size={13} />
-        <span>Explain commit</span>
+      <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
+        <PanelRightClose size={14} />
       </button>
     </div>
   );
 }
 
-function SummarySection({ detail, parentSha }: { detail: GitRepositoryDetail; parentSha?: string }): ReactElement | null {
+function SummarySection({
+  detail,
+  parentSha,
+  remoteAvatars
+}: {
+  detail: GitRepositoryDetail;
+  parentSha?: string;
+  remoteAvatars: boolean;
+}): ReactElement | null {
   if (detail.kind === 'wip') {
     return null;
   }
@@ -429,11 +565,13 @@ function SummarySection({ detail, parentSha }: { detail: GitRepositoryDetail; pa
         <SignatureRow
           person={detail.author}
           action="authored"
+          remoteAvatars={remoteAvatars}
         />
         {shouldShowCommitter(detail) ? (
           <SignatureRow
             person={detail.committer}
             action="committed"
+            remoteAvatars={remoteAvatars}
           />
         ) : null}
         <div className="flex flex-wrap items-center gap-4 pt-1 text-[12px] text-[var(--text-2)]">
@@ -457,10 +595,12 @@ function SummarySection({ detail, parentSha }: { detail: GitRepositoryDetail; pa
 
 function SignatureRow({
   person,
-  action
+  action,
+  remoteAvatars
 }: {
   person: GitCommitPerson;
   action: 'authored' | 'committed';
+  remoteAvatars: boolean;
 }): ReactElement {
   const email = person.email;
 
@@ -469,7 +609,7 @@ function SignatureRow({
       <AuthorAvatar
         name={person.name}
         email={email}
-        avatarUrl={person.avatarUrl}
+        avatarUrl={remoteAvatars ? person.avatarUrl : undefined}
         size={38}
       />
       <div className="min-w-0">
@@ -557,7 +697,13 @@ function WipCommitSection({
   }
 
   const hasStagedFiles = detail.stagedCount > 0;
-  const identity = profileState?.effectiveIdentity;
+  const identity = profileState?.activeProfile
+    ? {
+        name: profileState.activeProfile.name,
+        email: profileState.activeProfile.email,
+        source: 'profile' as const
+      }
+    : profileState?.effectiveIdentity;
   const canCommit = Boolean(commitMessage.trim()) && (hasStagedFiles || amend) && !isCommitting;
 
   return (
@@ -752,13 +898,25 @@ function PathFileRows({
     return <>{files.map((file) => renderRow(file, file.path))}</>;
   }
 
-  const unstagedFiles = files.filter((file) => file.unstaged);
-  const stagedFiles = files.filter((file) => file.staged);
+  const conflictedFiles = files.filter((file) => file.conflicted);
+  const unstagedFiles = files.filter((file) => file.unstaged && !file.conflicted);
+  const stagedFiles = files.filter((file) => file.staged && !file.conflicted);
 
   return (
     <>
+      {conflictedFiles.length > 0 ? (
+        <>
+          <FileGroupHeader
+            label={`Conflicts (${conflictedFiles.length})`}
+            tone="danger"
+            detail="Open a file, resolve its markers, then mark it resolved."
+          />
+          {conflictedFiles.map((file) => renderRow(file, `conflict:${file.path}`))}
+        </>
+      ) : null}
       <FileGroupHeader
         label={`Unstaged Files (${unstagedFiles.length})`}
+        separated={conflictedFiles.length > 0}
         action={
           unstagedFiles.length > 0 ? (
             <button
@@ -795,19 +953,26 @@ function PathFileRows({
 function FileGroupHeader({
   label,
   separated = false,
-  action
+  action,
+  tone = 'default',
+  detail
 }: {
   label: string;
   separated?: boolean;
   action?: ReactElement;
+  tone?: 'default' | 'danger';
+  detail?: string;
 }): ReactElement {
   return (
     <div
-      className={`flex h-8 items-center justify-between gap-2 px-1 text-[12px] font-semibold text-[var(--text-2)]${separated ? ' mt-2 border-t border-[var(--border)] pt-2' : ''}`}
+      className={`flex min-h-8 items-center justify-between gap-2 px-1 py-1 text-[12px] font-semibold ${tone === 'danger' ? 'text-[var(--danger-text)]' : 'text-[var(--text-2)]'}${separated ? ' mt-2 border-t border-[var(--border)] pt-2' : ''}`}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
-        <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-        <span className="truncate">{label}</span>
+      <div className="flex min-w-0 items-start gap-1.5">
+        {tone === 'danger' ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <ChevronDown size={13} className="mt-0.5 shrink-0 text-[var(--text-3)]" />}
+        <span className="min-w-0">
+          <span className="block truncate">{label}</span>
+          {detail ? <span className="mt-0.5 block text-[10.5px] font-normal leading-4 text-[var(--text-3)]">{detail}</span> : null}
+        </span>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -875,12 +1040,13 @@ function FileRow({
         <StatusIcon status={file.status} />
         {directory ? <span className="min-w-0 truncate text-[var(--text-3)]">{directory}</span> : null}
         <span className="min-w-0 truncate text-[var(--text-2)]">{basename}</span>
+        {file.conflicted ? <span className="badge-mini border-[var(--danger-border)] text-[var(--danger-text)]">conflict</span> : null}
         {!isWip && file.staged ? <span className="badge-mini">staged</span> : null}
         {!isWip && file.unstaged ? <span className="badge-mini">worktree</span> : null}
       </button>
       {isWip ? (
         <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-          <button className="icon-btn h-6 w-6" type="button" disabled={!file.unstaged || isMutating} onClick={onStage} title="Stage file">
+          <button className="icon-btn h-6 w-6" type="button" disabled={(!file.unstaged && !file.conflicted) || isMutating} onClick={onStage} title={file.conflicted ? 'Mark resolved by staging file' : 'Stage file'} aria-label={file.conflicted ? `Mark ${file.path} resolved` : `Stage ${file.path}`}>
             <Check size={12} />
           </button>
           <button className="icon-btn h-6 w-6" type="button" disabled={!file.staged || isMutating} onClick={onUnstage} title="Unstage file">
@@ -929,7 +1095,7 @@ function WipFileActionStrip({
         {file.path}
       </span>
       <div className="flex shrink-0 items-center gap-1">
-        <button className="icon-btn h-6 w-6" type="button" disabled={!file.unstaged || isMutating} onClick={onStage} title="Stage file">
+        <button className="icon-btn h-6 w-6" type="button" disabled={(!file.unstaged && !file.conflicted) || isMutating} onClick={onStage} title={file.conflicted ? 'Mark resolved by staging file' : 'Stage file'} aria-label={file.conflicted ? `Mark ${file.path} resolved` : `Stage ${file.path}`}>
           <Check size={12} />
         </button>
         <button className="icon-btn h-6 w-6" type="button" disabled={!file.staged || isMutating} onClick={onUnstage} title="Unstage file">
@@ -1056,7 +1222,7 @@ function StatusIcon({ status }: { status: GitStatusCode }): ReactElement {
 }
 
 function canOpenWorktreeFile(file: GitFileChangeDetail): boolean {
-  return file.status !== 'deleted' && !file.conflicted;
+  return file.status !== 'deleted';
 }
 
 function canDiscardWipFile(file: GitFileChangeDetail): boolean {

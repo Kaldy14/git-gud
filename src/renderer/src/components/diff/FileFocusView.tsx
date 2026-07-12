@@ -5,6 +5,7 @@ import { PatchDiff } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
+  ChevronLeft,
   Columns2,
   FilePen,
   FileText,
@@ -13,8 +14,7 @@ import {
   Plus,
   Minus,
   RotateCcw,
-  Rows3,
-  X
+  Rows3
 } from 'lucide-react';
 
 import { invalidateRepositoryQueries, useCommitDetail, useFileDiff, useWipDetail } from '@renderer/queries/repository';
@@ -87,7 +87,7 @@ export function FileFocusView({
       });
     },
     onSuccess: (result) => {
-      void invalidateRepositoryQueries(queryClient, result.repoPath);
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
     }
   });
   const diffOptions = useMemo<FileDiffOptions<undefined>>(
@@ -106,6 +106,12 @@ export function FileFocusView({
   }, [focusSignal, selectedFile]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (event.key === 'Escape' && !isEditableTarget(event.target)) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
     if (
       event.defaultPrevented ||
       event.metaKey ||
@@ -137,6 +143,11 @@ export function FileFocusView({
     <section ref={sectionRef} className="file-focus" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="file-focus-pathbar">
         <div className="flex min-w-0 items-center gap-2">
+          <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} title="Back to commit graph" aria-label="Back to commit graph">
+            <ChevronLeft size={14} />
+          </button>
+          <span className="shrink-0 text-[11px] text-[var(--text-3)]">{isWip ? 'Working directory' : 'History'}</span>
+          <span className="text-[var(--text-3)]" aria-hidden="true">/</span>
           {selectedFileDetail ? <StatusIcon status={selectedFileDetail.status} /> : <FileText size={13} className="text-[var(--text-3)]" />}
           {directory ? <span className="truncate text-[var(--text-3)]">{directory}</span> : null}
           <span className="truncate font-semibold text-[var(--text-1)]">{basename}</span>
@@ -144,18 +155,11 @@ export function FileFocusView({
         </div>
         <div className="flex shrink-0 items-center gap-3 text-[11px] text-[var(--text-3)]">
           <span>UTF-8</span>
-          <button className="icon-btn h-7 w-7" type="button" onClick={onClose} title="Close file view" aria-label="Close file view">
-            <X size={14} />
-          </button>
         </div>
       </div>
 
       <div className="file-focus-toolbar">
         <div className="file-focus-toolbar-group justify-start">
-          <button className="file-focus-outline" type="button" disabled title="Opening files in an external editor lands in a later milestone">
-            <FilePen size={13} />
-            <span>Edit in Working Directory</span>
-          </button>
           {isWip && selectedFileDetail?.staged && selectedFileDetail.unstaged ? (
             <div className="segmented">
               <button type="button" data-active={selectedWipScope === 'unstaged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'unstaged')}>
@@ -169,14 +173,7 @@ export function FileFocusView({
         </div>
 
         <div className="file-focus-toolbar-group justify-center">
-          <div className="segmented">
-            <button type="button" disabled title="File view lands in a later milestone">
-              File View
-            </button>
-            <button type="button" data-active>
-              Diff View
-            </button>
-          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Diff</span>
         </div>
 
         <div className="file-focus-toolbar-group justify-end">
@@ -268,8 +265,12 @@ function renderDiffContent({
     return <FileFocusMessage icon={<RotateCcw size={15} />} label={diffErrorMessage} />;
   }
 
-  if (diffQuery.data?.isBinary) {
-    return <FileFocusMessage icon={<FilePen size={15} />} label="Binary file diff cannot be rendered as text." />;
+  if (diffQuery.data?.omittedReason === 'too-large') {
+    return <FileFocusMessage icon={<FilePen size={15} />} label="This diff exceeds the 8 MiB preview limit. Open the file in your editor or inspect it in Terminal." />;
+  }
+
+  if (diffQuery.data?.isBinary || diffQuery.data?.omittedReason === 'binary') {
+    return <FileFocusMessage icon={<FilePen size={15} />} label="Binary preview is unavailable. Open the file in your editor or inspect it in Terminal." />;
   }
 
   if (diffQuery.data?.patch) {

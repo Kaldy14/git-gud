@@ -6,7 +6,10 @@ import {
   closeRepositoryTab,
   createDefaultWorkspaceState,
   createRepoTabId,
+  normalizeWorkspaceState,
   selectRepositoryCommit,
+  setDetailPanelCollapsed,
+  setDetailPanelWidth,
   setSidebarWidth,
   upsertRepositoryTab
 } from './workspace';
@@ -71,5 +74,35 @@ describe('workspace state', () => {
     expect(setSidebarWidth(state, 420).sidebarWidth).toBe(420);
     expect(setSidebarWidth(state, 120).sidebarWidth).toBe(220);
     expect(setSidebarWidth(state, 900).sidebarWidth).toBe(560);
+  });
+
+  it('persists a bounded detail panel layout', () => {
+    const state = createDefaultWorkspaceState();
+    const collapsed = setDetailPanelCollapsed(state, true);
+
+    expect(collapsed.detailPanelCollapsed).toBe(true);
+    expect(setDetailPanelWidth(state, 440).detailPanelWidth).toBe(440);
+    expect(setDetailPanelWidth(state, 120).detailPanelWidth).toBe(300);
+    expect(setDetailPanelWidth(state, 900).detailPanelWidth).toBe(620);
+  });
+
+  it('repairs malformed persisted workspace values', () => {
+    const normalized = normalizeWorkspaceState({
+      tabs: [{ id: 'broken' }],
+      activeTabId: 'missing',
+      recentRepos: [{ path: '/repo', name: 'repo', lastOpenedAt: 'now' }, null],
+      sidebarCollapsed: 'no',
+      sidebarWidth: Number.POSITIVE_INFINITY,
+      detailPanelCollapsed: true,
+      detailPanelWidth: 9999
+    });
+
+    expect(normalized.tabs).toEqual([]);
+    expect(normalized.activeTabId).toBeUndefined();
+    expect(normalized.recentRepos).toHaveLength(1);
+    expect(normalized.sidebarCollapsed).toBe(false);
+    expect(normalized.sidebarWidth).toBe(382);
+    expect(normalized.detailPanelCollapsed).toBe(true);
+    expect(normalized.detailPanelWidth).toBe(620);
   });
 });

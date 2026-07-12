@@ -10,11 +10,9 @@ import {
   GitBranch,
   GitPullRequestArrow,
   Loader2,
-  Redo2,
   Search,
   Terminal,
-  Undo2,
-  Zap
+  Undo2
 } from 'lucide-react';
 
 import type { GitRepositoryOverview, GitUndoEntry, RepoTab } from '@shared/types';
@@ -57,9 +55,9 @@ export function Toolbar({
   const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
 
   return (
-    <div className="flex h-[56px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
-      <div className="flex h-full min-w-0 items-center">
-        <button className="tb-select" type="button" disabled={!hasRepo} title={activeTab?.path}>
+    <div className="app-toolbar flex h-[56px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
+      <div className="tb-context flex h-full min-w-0 items-center">
+        <button className="tb-select" type="button" disabled={!hasRepo} title={activeTab?.path} onClick={onOpenQuickJump}>
           <span className="tb-select-label">repository</span>
           <span className="tb-select-value">
             <FolderGit2 size={13} className="shrink-0 text-[var(--text-3)]" />
@@ -68,7 +66,7 @@ export function Toolbar({
           </span>
         </button>
         <ChevronRight size={14} className="mx-0.5 shrink-0 text-[var(--text-3)]" />
-        <button className="tb-select" type="button" disabled title="Use the sidebar or graph context menu to switch branches">
+        <button className="tb-select" type="button" disabled={!hasRepo || isBusy} title="Switch branch" onClick={onOpenQuickJump}>
           <span className="tb-select-label">branch</span>
           <span className="tb-select-value">
             <GitBranch size={13} className="shrink-0 text-[var(--text-3)]" />
@@ -93,8 +91,6 @@ export function Toolbar({
           disabled={!latestUndo || Boolean(latestUndo.staleReason) || isBusy}
           onClick={onUndo}
         />
-        <ToolbarAction label="Redo" icon={<Redo2 size={17} />} hint="Redo is not implemented yet" />
-        <div className="tb-divider" />
         <ToolbarAction
           label="Fetch"
           icon={<ArrowDownToLine size={17} />}
@@ -149,13 +145,13 @@ export function Toolbar({
           disabled={!hasRepo || isBusy}
           onClick={onOpenTerminal}
           emphasized={hasRepo}
+          className="tb-action-optional"
         />
       </div>
 
       <div className="flex h-full shrink-0 items-center">
-        <ToolbarAction label="Actions" icon={<Zap size={17} />} hint="Quick actions are not implemented yet" />
         <ToolbarAction
-          label="Search"
+          label="Jump"
           icon={<Search size={17} />}
           hint="Jump to repository or branch"
           disabled={!hasRepo}
@@ -183,12 +179,13 @@ type ToolbarActionProps = {
   emphasized?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  className?: string;
 };
 
-function ToolbarAction({ label, icon, hint, emphasized = false, disabled = true, onClick }: ToolbarActionProps): ReactElement {
+function ToolbarAction({ label, icon, hint, emphasized = false, disabled = true, onClick, className = '' }: ToolbarActionProps): ReactElement {
   return (
     <button
-      className="tb-action"
+      className={`tb-action ${className}`.trim()}
       type="button"
       disabled={disabled}
       title={hint}

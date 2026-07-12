@@ -61,7 +61,21 @@ describe('git read parsers', () => {
         ].join('\0'),
         ['refs/remotes/origin/HEAD', 'origin', 'bbb', '', '', '', '2026-07-02T09:00:00+02:00'].join('\0'),
         ['refs/remotes/origin/main', 'origin/main', 'bbb', '', '', '', '2026-07-02T09:00:00+02:00'].join('\0'),
-        ['refs/tags/v0.1.0', 'v0.1.0', 'ccc', '', '', '', '2026-07-01T09:00:00+02:00'].join('\0')
+        ['refs/tags/v0.1.0', 'v0.1.0', 'ccc', '', '', '', '2026-07-01T09:00:00+02:00', 'commit', '', ''].join(
+          '\0'
+        ),
+        [
+          'refs/tags/v0.2.0',
+          'v0.2.0',
+          'annotated-tag-object',
+          '',
+          '',
+          '',
+          '2026-07-01T10:00:00+02:00',
+          'tag',
+          'peeled-commit',
+          'commit'
+        ].join('\0')
       ].join('\n')
     );
     const remotes = parseRemoteVerbose('origin\tgit@github.com:kaldy/git-gud.git (fetch)\norigin\tgit@github.com:kaldy/git-gud.git (push)\n');
@@ -70,6 +84,7 @@ describe('git read parsers', () => {
     expect(refs.remoteBranches).toHaveLength(1);
     expect(refs.remoteBranches[0]).toMatchObject({ name: 'origin/main', remote: 'origin' });
     expect(refs.tags[0]).toMatchObject({ name: 'v0.1.0', sha: 'ccc' });
+    expect(refs.tags[1]).toMatchObject({ name: 'v0.2.0', sha: 'peeled-commit' });
     expect(remotes).toEqual([
       {
         name: 'origin',

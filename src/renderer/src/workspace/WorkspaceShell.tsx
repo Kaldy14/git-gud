@@ -1,16 +1,41 @@
 import type { ReactElement } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  FileClock,
+  GitBranch,
+  GitCompareArrows,
+  Keyboard,
+  PanelLeftClose,
+  PanelRightClose,
+  RefreshCw,
+  Rows3,
+  SearchCode,
+  Settings,
+  Terminal,
+  Trash2,
+  X
+} from 'lucide-react';
+import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
-import { FileFocusView } from '@renderer/components/diff/FileFocusView';
 import { GraphView } from '@renderer/components/graph/GraphView';
+import {
+  RepositoryInspectorDialog,
+  type RepositoryInspectorMode
+} from '@renderer/components/inspection/RepositoryInspectorDialog';
 import { CommandDialog, type CommandDialogConfig, type CommandDialogValues } from '@renderer/components/operations/CommandDialog';
 import { ConflictBanner } from '@renderer/components/operations/ConflictBanner';
 import { OperationLog, type OperationLogEntry } from '@renderer/components/operations/OperationLog';
-import { QuickJumpDialog } from '@renderer/components/operations/QuickJumpDialog';
+import {
+  applyOperationFailure,
+  applyOperationProgress,
+  createOptimisticOperationEntry
+} from '@renderer/components/operations/operationProgress';
+import { QuickJumpDialog, type PaletteAction } from '@renderer/components/operations/QuickJumpDialog';
 import { InteractiveRebaseDialog } from '@renderer/components/rebase/InteractiveRebaseDialog';
 import { SettingsPanel } from '@renderer/components/settings/SettingsPanel';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
@@ -25,6 +50,7 @@ import {
   useRepositoryOverview
 } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
+import { resolveSelectedGraphRow } from '@renderer/workspace/selection';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
   CommitGraphRow,
@@ -35,11 +61,16 @@ import type {
   GitOperationResult,
   GitProfile,
   GitResetInput,
+  GitStashRefInput,
   AppSettings
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
 
 const emptyGraphRows: CommitGraphRow[] = [];
+const FileFocusView = lazy(async () => {
+  const module = await import('@renderer/components/diff/FileFocusView');
+  return { default: module.FileFocusView };
+});
 
 type InteractiveRebaseDialogState = {
   base: string;
@@ -55,6 +86,17 @@ type ShortcutState = {
   onPush: () => void;
   onToggleDiffStyle: () => void;
   onOpenQuickJump: () => void;
+  onFocusSidebarFilter: () => void;
+};
+
+type RepositoryInspectorState = {
+  mode: RepositoryInspectorMode;
+  path?: string;
+};
+
+type RepositoryOperationOptions = {
+  repoPath?: string;
+  retryable?: boolean;
 };
 
 export function WorkspaceShell(): ReactElement {
@@ -71,6 +113,8 @@ export function WorkspaceShell(): ReactElement {
     selectFile,
     setSidebarCollapsed,
     setSidebarWidth,
+    setDetailPanelCollapsed,
+    setDetailPanelWidth,
     assignProfile,
     clearError
   } = useWorkspaceStore();
@@ -87,15 +131,35 @@ export function WorkspaceShell(): ReactElement {
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
   const [isQuickJumpOpen, setIsQuickJumpOpen] = useState(false);
+  const [repositoryInspector, setRepositoryInspector] = useState<RepositoryInspectorState>();
   const [sidebarWidth, setSidebarWidthDraft] = useState(workspace.sidebarWidth);
+  const [detailPanelWidth, setDetailPanelWidthDraft] = useState(workspace.detailPanelWidth);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const [compactSidebarOpen, setCompactSidebarOpen] = useState(false);
+  const [compactDetailOpen, setCompactDetailOpen] = useState(false);
+  const [sidebarFilterFocusSignal, setSidebarFilterFocusSignal] = useState(0);
+  const operationRetryActionsRef = useRef(
+    new Map<
+      string,
+      {
+        label: string;
+        action: (repoPath: string) => Promise<GitOperationResult>;
+        repoPath: string;
+        retryable: true;
+      }
+    >()
+  );
+  const operationStartGuardRef = useRef(false);
   const shortcutStateRef = useRef<ShortcutState>({
     isBlocked: false,
     onFetch: () => {},
     onPush: () => {},
     onToggleDiffStyle: () => {},
-    onOpenQuickJump: () => {}
+    onOpenQuickJump: () => {},
+    onFocusSidebarFilter: () => {}
   });
   const queryClient = useQueryClient();
+  const localMutationCount = useIsMutating();
 
   const activeTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId),
@@ -110,13 +174,25 @@ export function WorkspaceShell(): ReactElement {
   const graphRows = graphQuery.data?.rows ?? emptyGraphRows;
   const selectedSha = activeTab?.selectedCommit;
   const selectedRow = useMemo(
-    () => graphRows.find((row) => row.sha === selectedSha) ?? graphRows[0],
+    () => resolveSelectedGraphRow(graphRows, selectedSha),
     [graphRows, selectedSha]
   );
   const parentSha = selectedRow?.parentShas[0];
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
-  const isOperationBusy = operationLogEntries.some((entry) => entry.status === 'pending');
+  const isOperationBusy =
+    localMutationCount > 0 || operationLogEntries.some((entry) => entry.status === 'pending');
+  const usesCompactDetail = viewportWidth < 900;
+  const usesCompactSidebar = viewportWidth < 700;
+  const sidebarWidthCap = viewportWidth < 900 ? 230 : viewportWidth < 1200 ? 280 : 560;
+  const detailPanelWidthCap = viewportWidth < 1200 ? 320 : 620;
+  const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarWidthCap);
+  const effectiveDetailPanelWidth = Math.min(detailPanelWidth, detailPanelWidthCap);
+  const isDetailPanelCollapsed = workspace.detailPanelCollapsed || (usesCompactDetail && !compactDetailOpen);
+  const isSidebarCollapsed =
+    workspace.sidebarCollapsed ||
+    (usesCompactSidebar && !compactSidebarOpen) ||
+    (usesCompactDetail && compactDetailOpen);
 
   useRepositoryChangeInvalidation();
 
@@ -129,6 +205,19 @@ export function WorkspaceShell(): ReactElement {
   }, [workspace.sidebarWidth]);
 
   useEffect(() => {
+    setDetailPanelWidthDraft(workspace.detailPanelWidth);
+  }, [workspace.detailPanelWidth]);
+
+  useEffect(() => {
+    function handleResize(): void {
+      setViewportWidth(window.innerWidth);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     window.api
       .getSettings()
       .then(setSettings)
@@ -138,12 +227,26 @@ export function WorkspaceShell(): ReactElement {
   }, []);
 
   useEffect(() => {
+    return window.api.onOperationProgress((event) => {
+      setOperationLogEntries((entries) => applyOperationProgress(entries, event));
+    });
+  }, []);
+
+  useEffect(() => {
     shortcutStateRef.current = {
-      isBlocked: Boolean(commandDialog || interactiveRebaseDialog || isSettingsOpen || isQuickJumpOpen),
+      isBlocked: Boolean(
+        commandDialog ||
+          interactiveRebaseDialog ||
+          isSettingsOpen ||
+          isQuickJumpOpen ||
+          repositoryInspector ||
+          isOperationBusy
+      ),
       onFetch: handleFetch,
       onPush: handlePush,
       onToggleDiffStyle: () => handleSetDiffStyle(activeDiffStyle === 'unified' ? 'split' : 'unified'),
-      onOpenQuickJump: () => setIsQuickJumpOpen(true)
+      onOpenQuickJump: () => setIsQuickJumpOpen(true),
+      onFocusSidebarFilter: handleFocusSidebarFilter
     };
   });
 
@@ -160,6 +263,12 @@ export function WorkspaceShell(): ReactElement {
       if (!event.shiftKey && key === 'p') {
         event.preventDefault();
         shortcutState.onOpenQuickJump();
+        return;
+      }
+
+      if (event.altKey && !event.shiftKey && key === 'f') {
+        event.preventDefault();
+        shortcutState.onFocusSidebarFilter();
         return;
       }
 
@@ -191,16 +300,71 @@ export function WorkspaceShell(): ReactElement {
     }
   }
 
-  const handleSidebarResize = useCallback((width: number): void => {
-    setSidebarWidthDraft(width);
-  }, []);
+  const handleSidebarResize = useCallback(
+    (width: number): void => {
+      setSidebarWidthDraft(Math.min(width, sidebarWidthCap));
+    },
+    [sidebarWidthCap]
+  );
 
   const handleSidebarResizeCommit = useCallback(
     (width: number): void => {
-      void setSidebarWidth(width);
+      void setSidebarWidth(Math.min(width, sidebarWidthCap));
     },
-    [setSidebarWidth]
+    [setSidebarWidth, sidebarWidthCap]
   );
+
+  const handleDetailPanelResize = useCallback(
+    (width: number): void => {
+      setDetailPanelWidthDraft(Math.min(width, detailPanelWidthCap));
+    },
+    [detailPanelWidthCap]
+  );
+
+  const handleDetailPanelResizeCommit = useCallback(
+    (width: number): void => {
+      void setDetailPanelWidth(Math.min(width, detailPanelWidthCap));
+    },
+    [detailPanelWidthCap, setDetailPanelWidth]
+  );
+
+  function handleToggleSidebar(): void {
+    if (usesCompactSidebar || compactDetailOpen) {
+      if (workspace.sidebarCollapsed) {
+        void setSidebarCollapsed(false);
+      }
+
+      setCompactSidebarOpen((value) => !value || compactDetailOpen);
+      setCompactDetailOpen(false);
+      return;
+    }
+
+    void setSidebarCollapsed(!workspace.sidebarCollapsed);
+  }
+
+  function handleFocusSidebarFilter(): void {
+    if (workspace.sidebarCollapsed) {
+      void setSidebarCollapsed(false);
+    }
+
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(true);
+    setSidebarFilterFocusSignal((value) => value + 1);
+  }
+
+  function handleToggleDetailPanel(): void {
+    if (usesCompactDetail) {
+      if (workspace.detailPanelCollapsed) {
+        void setDetailPanelCollapsed(false);
+      }
+
+      setCompactDetailOpen((value) => !value);
+      setCompactSidebarOpen(false);
+      return;
+    }
+
+    void setDetailPanelCollapsed(!workspace.detailPanelCollapsed);
+  }
 
   function handleLoadMoreGraphRows(): void {
     if (!activeTab) {
@@ -297,6 +461,22 @@ export function WorkspaceShell(): ReactElement {
     void selectCommit(activeTab.id, 'wip');
   }
 
+  function handleOpenConflictFile(path: string): void {
+    if (!activeTab) {
+      return;
+    }
+
+    const tabId = activeTab.id;
+    setFileFocusByTab((value) => ({
+      ...value,
+      [tabId]: (value[tabId] ?? 0) + 1
+    }));
+    void (async () => {
+      await selectCommit(tabId, 'wip');
+      await selectFile(tabId, path);
+    })();
+  }
+
   function handleSelectFile(path: string | undefined): void {
     if (!activeTab) {
       return;
@@ -314,30 +494,40 @@ export function WorkspaceShell(): ReactElement {
 
   async function runRepositoryOperation(
     label: string,
-    action: (repoPath: string) => Promise<GitOperationResult>
+    action: (repoPath: string) => Promise<GitOperationResult>,
+    options: RepositoryOperationOptions = {}
   ): Promise<boolean> {
-    if (!activeTab) {
+    const requestedRepoPath = options.repoPath ?? activeTab?.path;
+    const retryable = options.retryable ?? false;
+
+    if (!requestedRepoPath || isOperationBusy || operationStartGuardRef.current) {
       return false;
     }
 
+    operationStartGuardRef.current = true;
     const id = createLogId();
     const happenedAt = new Date().toISOString();
+    if (retryable) {
+      operationRetryActionsRef.current.set(id, { label, action, repoPath: requestedRepoPath, retryable: true });
+    }
     setOperationLogEntries((entries) => [
-      {
+      createOptimisticOperationEntry({
         id,
+        repoPath: requestedRepoPath,
         label,
-        status: 'pending',
-        happenedAt
-      },
+        happenedAt,
+        retryable
+      }),
       ...entries
     ]);
 
     try {
-      const result = await action(activeTab.path);
-      await invalidateRepositoryQueries(queryClient, result.repoPath);
+      const result = await action(requestedRepoPath);
+      await invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
 
       const status = result.operation?.status === 'conflicted' || result.conflictState?.isActive ? 'conflict' : 'success';
       const detail = result.conflictState?.message ?? result.operation?.message;
+      operationRetryActionsRef.current.delete(id);
       setOperationLogEntries((entries) =>
         entries.map((entry) =>
           entry.id === id
@@ -345,6 +535,7 @@ export function WorkspaceShell(): ReactElement {
                 ...entry,
                 label: result.operation?.label ?? label,
                 status,
+                canRetry: false,
                 detail,
                 happenedAt: result.happenedAt
               }
@@ -354,23 +545,76 @@ export function WorkspaceShell(): ReactElement {
       return true;
     } catch (error) {
       setOperationLogEntries((entries) =>
-        entries.map((entry) =>
-          entry.id === id
-            ? {
-                ...entry,
-                status: 'error',
-                detail: error instanceof Error ? error.message : 'Git operation failed.',
-                happenedAt: new Date().toISOString()
-              }
-          : entry
+        applyOperationFailure(
+          entries,
+          id,
+          error instanceof Error ? error.message : 'Git operation failed.',
+          new Date().toISOString()
         )
       );
       return false;
+    } finally {
+      operationStartGuardRef.current = false;
     }
   }
 
   function handleDismissOperation(id: string): void {
+    operationRetryActionsRef.current.delete(id);
     setOperationLogEntries((entries) => entries.filter((entry) => entry.id !== id));
+  }
+
+  async function handleCancelOperation(entry: OperationLogEntry): Promise<void> {
+    if (!entry.operationId) {
+      return;
+    }
+
+    const result = await window.api.cancelRepositoryOperation(entry.repoPath, entry.operationId);
+    setOperationLogEntries((entries) =>
+      entries.map((candidate) =>
+        candidate.id === entry.id
+          ? {
+              ...candidate,
+              detail: result.message,
+              happenedAt: new Date().toISOString()
+            }
+          : candidate
+      )
+    );
+  }
+
+  function handleRetryOperation(entry: OperationLogEntry): void {
+    const retry = operationRetryActionsRef.current.get(entry.id);
+    operationRetryActionsRef.current.delete(entry.id);
+    setOperationLogEntries((entries) => entries.filter((candidate) => candidate.id !== entry.id));
+
+    if (retry) {
+      void runRepositoryOperation(retry.label, retry.action, {
+        repoPath: retry.repoPath,
+        retryable: retry.retryable
+      });
+    }
+  }
+
+  function handleOpenTerminalFromLog(repoPath: string): void {
+    void window.api.openTerminal(repoPath).catch((error: unknown) => {
+      setOperationLogEntries((entries) => [
+        {
+          id: createLogId(),
+          repoPath,
+          label: 'Open Terminal',
+          status: 'error',
+          detail: error instanceof Error ? error.message : 'Unable to open Terminal.',
+          startedAt: new Date().toISOString(),
+          happenedAt: new Date().toISOString()
+        },
+        ...entries
+      ]);
+    });
+  }
+
+  function handleCopyOperationDetails(entry: OperationLogEntry): void {
+    const detail = [entry.label, entry.status, entry.detail].filter(Boolean).join('\n');
+    void navigator.clipboard.writeText(detail);
   }
 
   function openCommandDialog(dialog: Omit<CommandDialogConfig, 'id'>): void {
@@ -381,7 +625,9 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleFetch(): void {
-    void runRepositoryOperation('Fetch', (repoPath) => window.api.fetchRepository(repoPath));
+    void runRepositoryOperation('Fetch', (repoPath) => window.api.fetchRepository(repoPath), {
+      retryable: true
+    });
   }
 
   function handlePull(): void {
@@ -493,37 +739,42 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handleStashApply(selector: string): void {
+  function handleStashApply(input: GitStashRefInput): void {
+    const { selector } = input;
     openCommandDialog({
       title: `Apply ${selector}`,
       description: 'Apply this stash without removing it from the stash list.',
       confirmLabel: 'Apply Stash',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Apply ${selector}`, (repoPath) => window.api.stashApply(repoPath, { selector }));
+        void runRepositoryOperation(`Apply ${selector}`, (repoPath) => window.api.stashApply(repoPath, input));
       }
     });
   }
 
-  function handleStashPop(selector?: string): void {
-    const stashSelector = selector ?? repositoryQuery.data?.stashes[0]?.selector;
+  function handleStashPop(input?: GitStashRefInput): void {
+    const latestStash = repositoryQuery.data?.stashes[0];
+    const stashInput = input ?? (latestStash ? { selector: latestStash.selector, expectedSha: latestStash.sha } : undefined);
 
-    if (!stashSelector) {
+    if (!stashInput) {
       return;
     }
 
+    const { selector } = stashInput;
+
     openCommandDialog({
-      title: `Pop ${stashSelector}`,
+      title: `Pop ${selector}`,
       description: 'Apply this stash and remove it if the operation succeeds.',
       confirmLabel: 'Pop Stash',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Pop ${stashSelector}`, (repoPath) => window.api.stashPop(repoPath, { selector: stashSelector }));
+        void runRepositoryOperation(`Pop ${selector}`, (repoPath) => window.api.stashPop(repoPath, stashInput));
       }
     });
   }
 
-  function handleStashDrop(selector: string): void {
+  function handleStashDrop(input: GitStashRefInput): void {
+    const { selector } = input;
     openCommandDialog({
       title: `Drop ${selector}`,
       description: 'This removes the stash entry from Git.',
@@ -532,7 +783,7 @@ export function WorkspaceShell(): ReactElement {
       tone: 'danger',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Drop ${selector}`, (repoPath) => window.api.stashDrop(repoPath, { selector }));
+        void runRepositoryOperation(`Drop ${selector}`, (repoPath) => window.api.stashDrop(repoPath, input));
       }
     });
   }
@@ -832,7 +1083,8 @@ export function WorkspaceShell(): ReactElement {
     if (undoEntry.requiresConfirmation) {
       openCommandDialog({
         title: undoEntry.label,
-        description: 'Restore the recorded local state for this operation.',
+        description: undoEntry.warning ?? 'Restore the recorded local state for this operation.',
+        detail: formatUndoScope(undoEntry.affectedRefs, undoEntry.affectedPaths),
         confirmLabel: 'Undo',
         tone: 'danger',
         fields: [],
@@ -846,6 +1098,181 @@ export function WorkspaceShell(): ReactElement {
     void runRepositoryOperation(undoEntry.label, (repoPath) => window.api.undoOperation(repoPath, undoEntry.id));
   }
 
+  const paletteActions: PaletteAction[] = [
+    {
+      id: 'fetch',
+      label: 'Fetch all remotes',
+      category: 'Git',
+      detail: 'Prune and refresh remote references',
+      keywords: ['refresh', 'remote', 'network'],
+      icon: <RefreshCw size={14} />,
+      disabled: !activeTab || isOperationBusy,
+      disabledReason: !activeTab ? 'Open a repository first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: handleFetch
+    },
+    {
+      id: 'pull',
+      label: 'Pull fast-forward',
+      category: 'Git',
+      detail: 'Update the current branch without a merge commit',
+      keywords: ['download', 'remote', 'sync'],
+      icon: <ArrowDown size={14} />,
+      disabled: !activeTab || isOperationBusy,
+      disabledReason: !activeTab ? 'Open a repository first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: handlePull
+    },
+    {
+      id: 'push',
+      label: 'Push current branch',
+      category: 'Git',
+      detail: 'Publish local commits to the configured remote',
+      keywords: ['upload', 'remote', 'sync'],
+      icon: <ArrowUp size={14} />,
+      disabled: !activeTab || isOperationBusy,
+      disabledReason: !activeTab ? 'Open a repository first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: handlePush
+    },
+    {
+      id: 'create-branch',
+      label: 'Create branch',
+      category: 'Git',
+      keywords: ['checkout', 'new branch'],
+      icon: <GitBranch size={14} />,
+      disabled: !activeTab || isOperationBusy,
+      disabledReason: !activeTab ? 'Open a repository first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: () => handleCreateBranch()
+    },
+    {
+      id: 'stash',
+      label: 'Stash working changes',
+      category: 'Git',
+      keywords: ['save', 'working directory'],
+      icon: <Archive size={14} />,
+      disabled: !activeTab || isOperationBusy || !(repositoryQuery.data?.status.isDirty ?? false),
+      disabledReason: !activeTab
+        ? 'Open a repository first'
+        : isOperationBusy
+          ? 'A Git operation is running'
+          : repositoryQuery.data?.status.isDirty
+            ? undefined
+            : 'The working directory is clean',
+      onSelect: handleStashPush
+    },
+    {
+      id: 'file-history',
+      label: 'Inspect file history',
+      category: 'Inspect',
+      detail: activeTab?.selectedFile ?? 'Enter a repository-relative path',
+      keywords: ['log', 'commits', 'path'],
+      icon: <FileClock size={14} />,
+      disabled: !activeTab,
+      disabledReason: activeTab ? undefined : 'Open a repository first',
+      onSelect: () => setRepositoryInspector({ mode: 'history', path: activeTab?.selectedFile })
+    },
+    {
+      id: 'blame',
+      label: 'Blame file',
+      category: 'Inspect',
+      detail: activeTab?.selectedFile ?? 'Enter a repository-relative path',
+      keywords: ['authors', 'lines', 'attribution'],
+      icon: <SearchCode size={14} />,
+      disabled: !activeTab,
+      disabledReason: activeTab ? undefined : 'Open a repository first',
+      onSelect: () => setRepositoryInspector({ mode: 'blame', path: activeTab?.selectedFile })
+    },
+    {
+      id: 'compare',
+      label: 'Compare references',
+      category: 'Inspect',
+      detail: 'Ahead, behind, stats, and changed files',
+      keywords: ['branches', 'tags', 'diff'],
+      icon: <GitCompareArrows size={14} />,
+      disabled: !activeTab,
+      disabledReason: activeTab ? undefined : 'Open a repository first',
+      onSelect: () => setRepositoryInspector({ mode: 'compare' })
+    },
+    {
+      id: 'terminal',
+      label: 'Open Terminal here',
+      category: 'Workspace',
+      keywords: ['shell', 'command line'],
+      icon: <Terminal size={14} />,
+      disabled: !activeTab,
+      disabledReason: activeTab ? undefined : 'Open a repository first',
+      onSelect: handleOpenTerminal
+    },
+    {
+      id: 'toggle-sidebar',
+      label: isSidebarCollapsed ? 'Expand repository sidebar' : 'Collapse repository sidebar',
+      category: 'View',
+      icon: <PanelLeftClose size={14} />,
+      onSelect: handleToggleSidebar
+    },
+    {
+      id: 'toggle-details',
+      label: isDetailPanelCollapsed ? 'Expand commit details' : 'Collapse commit details',
+      category: 'View',
+      icon: <PanelRightClose size={14} />,
+      onSelect: handleToggleDetailPanel
+    },
+    {
+      id: 'settings',
+      label: 'Open settings',
+      category: 'Workspace',
+      keywords: ['preferences', 'graph columns', 'avatars'],
+      icon: <Settings size={14} />,
+      onSelect: () => setIsSettingsOpen(true)
+    },
+    {
+      id: 'toggle-diff-style',
+      label: `Use ${activeDiffStyle === 'unified' ? 'split' : 'unified'} diffs`,
+      category: 'View',
+      keywords: ['diff layout', 'unified', 'split'],
+      icon: <Rows3 size={14} />,
+      disabled: !activeTab,
+      disabledReason: activeTab ? undefined : 'Open a repository first',
+      onSelect: () => handleSetDiffStyle(activeDiffStyle === 'unified' ? 'split' : 'unified')
+    },
+    {
+      id: 'keyboard-shortcuts',
+      label: 'Keyboard shortcuts',
+      category: 'Help',
+      keywords: ['keys', 'commands', 'help'],
+      icon: <Keyboard size={14} />,
+      onSelect: () =>
+        openCommandDialog({
+          title: 'Keyboard shortcuts',
+          description: 'Navigate and run common actions without leaving the graph.',
+          detail: [
+            '⌘P  Command palette',
+            '⌘⇧F  Fetch all remotes',
+            '⌘⇧U  Push current branch',
+            '⌘\\  Toggle diff layout',
+            '⌘⌥F  Focus sidebar filter',
+            '↑ / ↓  Select graph rows or files',
+            'Shift F10  Open the selected context menu',
+            'Esc  Close the current dialog or file view'
+          ].join('\n'),
+          confirmLabel: 'Done',
+          fields: [],
+          onSubmit() {}
+        })
+    },
+    {
+      id: 'clear-operation-log',
+      label: 'Clear operation log',
+      category: 'Workspace',
+      keywords: ['logs', 'history', 'notifications'],
+      icon: <Trash2 size={14} />,
+      disabled: operationLogEntries.length === 0 || isOperationBusy,
+      disabledReason: isOperationBusy ? 'Wait for the running operation' : 'The operation log is empty',
+      onSelect: () => {
+        operationRetryActionsRef.current.clear();
+        setOperationLogEntries([]);
+      }
+    }
+  ];
+
   return (
     <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
       <TabStrip
@@ -854,6 +1281,7 @@ export function WorkspaceShell(): ReactElement {
         activeRepoPath={activeTab?.path}
         recentRepos={workspace.recentRepos}
         profileState={repositoryQuery.data?.profileState}
+        activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void activateTab(tabId)}
         onCloseTab={(tabId) => void closeTab(tabId)}
         onOpenRepository={() => void openRepository()}
@@ -880,7 +1308,7 @@ export function WorkspaceShell(): ReactElement {
       />
 
       {errorMessage || repositoryError ? (
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
           <span>{errorMessage ?? repositoryError}</span>
           <button className="icon-btn h-6 w-6" type="button" onClick={handleErrorAction} aria-label="Retry or dismiss error">
             <X size={13} />
@@ -892,6 +1320,7 @@ export function WorkspaceShell(): ReactElement {
         conflictState={repositoryQuery.data?.conflictState}
         isBusy={isOperationBusy}
         onResolve={handleResolveConflict}
+        onSelectFile={handleOpenConflictFile}
       />
 
       <section className="flex min-h-0 flex-1">
@@ -912,9 +1341,10 @@ export function WorkspaceShell(): ReactElement {
                 repositoryOverview={repositoryQuery.data}
                 isLoading={repositoryQuery.isLoading}
                 errorMessage={repositoryError}
-                isCollapsed={workspace.sidebarCollapsed}
-                width={sidebarWidth}
-                onToggleCollapsed={() => void setSidebarCollapsed(!workspace.sidebarCollapsed)}
+                isCollapsed={isSidebarCollapsed}
+                width={effectiveSidebarWidth}
+                filterFocusSignal={sidebarFilterFocusSignal}
+                onToggleCollapsed={handleToggleSidebar}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}
@@ -928,18 +1358,26 @@ export function WorkspaceShell(): ReactElement {
                 onStashDrop={handleStashDrop}
               />
               {activeTab.selectedFile ? (
-                <FileFocusView
-                  repoPath={activeTab.path}
-                  row={selectedRow}
-                  selectedFile={activeTab.selectedFile}
-                  diffStyle={activeDiffStyle}
-                  wipScopeByPath={activeWipScopeByPath}
-                  focusSignal={fileFocusByTab[activeTab.id] ?? 0}
-                  onSetDiffStyle={handleSetDiffStyle}
-                  onChangeWipScope={handleChangeWipScope}
-                  onSelectFile={handleSelectFile}
-                  onClose={() => handleSelectFile(undefined)}
-                />
+                <Suspense
+                  fallback={
+                    <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] text-xs text-[var(--text-3)]">
+                      Loading diff viewer…
+                    </section>
+                  }
+                >
+                  <FileFocusView
+                    repoPath={activeTab.path}
+                    row={selectedRow}
+                    selectedFile={activeTab.selectedFile}
+                    diffStyle={activeDiffStyle}
+                    wipScopeByPath={activeWipScopeByPath}
+                    focusSignal={fileFocusByTab[activeTab.id] ?? 0}
+                    onSetDiffStyle={handleSetDiffStyle}
+                    onChangeWipScope={handleChangeWipScope}
+                    onSelectFile={handleSelectFile}
+                    onClose={() => handleSelectFile(undefined)}
+                  />
+                </Suspense>
               ) : (
                 <GraphView
                   rows={graphRows}
@@ -967,6 +1405,8 @@ export function WorkspaceShell(): ReactElement {
                   onResetToCommit={handleResetToCommit}
                   isOperationBusy={isOperationBusy}
                   largeRepoMode={settings.largeRepoMode}
+                  columns={settings.graphColumns}
+                  remoteAvatars={settings.remoteAvatars}
                 />
               )}
               <CommitDetailPanel
@@ -978,6 +1418,12 @@ export function WorkspaceShell(): ReactElement {
                 profileState={repositoryQuery.data?.profileState}
                 commitFocusSignal={commitComposerFocusByTab[activeTab.id] ?? 0}
                 isOperationBusy={isOperationBusy}
+                width={effectiveDetailPanelWidth}
+                isCollapsed={isDetailPanelCollapsed}
+                remoteAvatars={settings.remoteAvatars}
+                onToggleCollapsed={handleToggleDetailPanel}
+                onResize={handleDetailPanelResize}
+                onResizeCommit={handleDetailPanelResizeCommit}
                 onSelectFile={handleSelectFile}
                 onOpenWipChanges={handleOpenWipChanges}
                 onDiscardWipFile={handleDiscardWipFile}
@@ -1001,16 +1447,41 @@ export function WorkspaceShell(): ReactElement {
         repositoryOverview={repositoryQuery.data}
         isRepositoryLoading={repositoryQuery.isLoading}
       />
-      <OperationLog entries={operationLogEntries} onDismiss={handleDismissOperation} />
+      <OperationLog
+        entries={operationLogEntries}
+        onDismiss={handleDismissOperation}
+        onCancel={(entry) => void handleCancelOperation(entry)}
+        onRetry={handleRetryOperation}
+        onOpenTerminal={handleOpenTerminalFromLog}
+        onCopyDetails={handleCopyOperationDetails}
+      />
       {isQuickJumpOpen ? (
         <QuickJumpDialog
           tabs={workspace.tabs}
           activeTabId={workspace.activeTabId}
           repositoryOverview={repositoryQuery.data}
+          graphRows={graphRows}
+          paletteActions={paletteActions}
+          isOperationBusy={isOperationBusy}
           onClose={() => setIsQuickJumpOpen(false)}
           onActivateTab={(tabId) => void activateTab(tabId)}
           onCheckoutBranch={handleCheckoutBranch}
           onCheckoutRemoteBranch={handleCheckoutRemoteBranch}
+          onSelectCommit={handleSelectRow}
+          onOpenRepositoryPath={(repoPath) => void openRepositoryAtPath(repoPath)}
+        />
+      ) : null}
+      {repositoryInspector && activeTab ? (
+        <RepositoryInspectorDialog
+          repoPath={activeTab.path}
+          initialMode={repositoryInspector.mode}
+          initialPath={repositoryInspector.path}
+          refs={repositoryQuery.data?.refs}
+          onSelectCommit={(sha) => {
+            handleSelectRow(sha);
+            setRepositoryInspector(undefined);
+          }}
+          onClose={() => setRepositoryInspector(undefined)}
         />
       ) : null}
       {isSettingsOpen ? (
@@ -1046,6 +1517,20 @@ function dialogText(values: CommandDialogValues, id: string): string {
 
 function dialogChecked(values: CommandDialogValues, id: string): boolean {
   return values.checked[id] ?? false;
+}
+
+function formatUndoScope(refs: string[] | undefined, paths: string[] | undefined): string | undefined {
+  const lines: string[] = [];
+
+  if (refs?.length) {
+    lines.push(`References: ${refs.join(', ')}`);
+  }
+
+  if (paths?.length) {
+    lines.push(`Files: ${paths.join(', ')}`);
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
 }
 
 function normalizeResetMode(value: string | null | undefined): GitResetInput['mode'] | undefined {

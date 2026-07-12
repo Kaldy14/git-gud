@@ -25,7 +25,7 @@ describe('loadCommitGraph', () => {
       await git(repoPath, ['checkout', '-B', 'main']);
       await writeRepoFile(repoPath, 'README.md', 'second\n');
       await git(repoPath, ['commit', '-am', 'second']);
-      await git(repoPath, ['tag', 'v-graph']);
+      await git(repoPath, ['tag', '-a', 'v-graph', '-m', 'annotated graph tag']);
       await git(rootPath, ['init', '--bare', remotePath]);
       await git(repoPath, ['remote', 'add', 'origin', remotePath]);
       await git(repoPath, ['push', '-u', 'origin', 'main']);
@@ -53,25 +53,91 @@ describe('loadCommitGraph', () => {
       expect(wipFiles).not.toContain('.kiosk-dev/');
       expect(page.rows[1]).toMatchObject({
         node: { kind: 'stash' },
-        refs: [
-          { label: 'stash@{0}', kind: 'stash' },
-          { label: 'stash@{1}', kind: 'stash' }
-        ]
+        refs: [{ label: 'stash@{0}', kind: 'stash' }]
       });
-      expect(page.rows[1]?.subject).toBe('On main: newer graph stash (+1 stashes)');
-      expect(page.rows[2]?.subject).toBe('second');
-      expect(page.rows[2]?.refs).toEqual(
+      expect(page.rows[1]?.subject).toBe('On main: newer graph stash');
+      expect(page.rows[2]).toMatchObject({
+        subject: 'On main: graph stash',
+        node: { kind: 'stash' },
+        refs: [{ label: 'stash@{1}', kind: 'stash' }]
+      });
+      expect(page.rows[1]?.sha).not.toBe(page.rows[2]?.sha);
+      expect(page.rows[3]?.subject).toBe('second');
+      expect(page.rows[3]?.refs).toEqual(
         expect.arrayContaining([
           { label: 'main', kind: 'branch', current: true },
           { label: 'origin/main', kind: 'remote' },
           { label: 'v-graph', kind: 'tag' }
         ])
       );
-      expect(page.rows[2]?.refs?.[0]).toMatchObject({ label: 'main', current: true });
+      expect(page.rows[3]?.refs?.[0]).toMatchObject({ label: 'main', current: true });
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
   });
+
+  it('loads remote history when the local HEAD is unborn', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-'));
+
+    try {
+      const sourcePath = join(rootPath, 'source');
+      const repoPath = join(rootPath, 'unborn');
+      const remotePath = join(rootPath, 'remote.git');
+      await mkdir(sourcePath);
+      await mkdir(repoPath);
+      await git(sourcePath, ['init']);
+      await git(sourcePath, ['config', 'user.name', 'Graph Test']);
+      await git(sourcePath, ['config', 'user.email', 'graph@example.test']);
+      await writeRepoFile(sourcePath, 'remote.txt', 'remote history\n');
+      await git(sourcePath, ['add', '.']);
+      await git(sourcePath, ['commit', '-m', 'remote commit']);
+      await git(sourcePath, ['branch', '-M', 'main']);
+      const remoteCommit = (await git(sourcePath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(rootPath, ['init', '--bare', remotePath]);
+      await git(sourcePath, ['remote', 'add', 'origin', remotePath]);
+      await git(sourcePath, ['push', 'origin', 'main']);
+
+      await git(repoPath, ['init']);
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['fetch', 'origin']);
+
+      const page = await loadCommitGraph({ path: repoPath });
+
+      expect(page.rows).toHaveLength(1);
+      expect(page.rows[0]).toMatchObject({
+        sha: remoteCommit,
+        subject: 'remote commit',
+        refs: [{ label: 'origin/main', kind: 'remote' }]
+      });
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it(
+    'stops pagination cleanly at the hard graph cap even when more commits exist',
+    async () => {
+      const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-'));
+
+      try {
+        const repoPath = join(rootPath, 'repo');
+        await mkdir(repoPath);
+        await git(repoPath, ['init']);
+        await fastImportHistory(repoPath, 12_001);
+        expect((await git(repoPath, ['rev-list', '--count', 'main'])).stdout.trim()).toBe('12001');
+
+        const page = await loadCommitGraph({ path: repoPath }, 12_000);
+
+        expect(page.loadedCommitCount).toBe(12_000);
+        expect(page.limit).toBe(12_000);
+        expect(page.hasMore).toBe(false);
+        expect(page.nextLimit).toBe(12_000);
+      } finally {
+        await rm(rootPath, { recursive: true, force: true });
+      }
+    },
+    30_000
+  );
 });
 
 async function writeRepoFile(repoPath: string, relativePath: string, contents: string): Promise<void> {
@@ -82,4 +148,25 @@ async function writeRepoFile(repoPath: string, relativePath: string, contents: s
 
 async function git(cwd: string, args: string[]) {
   return gitExecutor.run(args, { cwd, kind: 'mutation' });
+}
+
+async function fastImportHistory(repoPath: string, commitCount: number): Promise<void> {
+  const chunks = ['blob\nmark :1\ndata 5\nbase\n'];
+
+  for (let index = 1; index <= commitCount; index += 1) {
+    const mark = index + 1;
+    const message = `commit ${index}\n`;
+    const parent = index === 1 ? '' : `from :${mark - 1}\n`;
+    const file = index === 1 ? 'M 100644 :1 file.txt\n' : '';
+    chunks.push(
+      `commit refs/heads/main\nmark :${mark}\ncommitter Graph Test <graph@example.test> ${index} +0000\ndata ${Buffer.byteLength(message)}\n${message}${parent}${file}\n`
+    );
+  }
+
+  chunks.push('done\n');
+  await gitExecutor.run(['fast-import', '--quiet'], {
+    cwd: repoPath,
+    kind: 'mutation',
+    input: chunks.join('')
+  });
 }

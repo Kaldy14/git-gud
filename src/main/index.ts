@@ -5,7 +5,9 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron';
 
 import { RepoWatcherRegistry } from './git/watcher';
+import { gitExecutor } from './git/exec';
 import { registerIpcHandlers } from './ipc';
+import { isTrustedRendererUrl } from './ipcSecurity';
 import { getWorkspace } from './store';
 
 const quitCleanupTimeoutMs = 1500;
@@ -64,6 +66,18 @@ function createWindow(): void {
     return {
       action: 'deny'
     };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (isTrustedRendererUrl(navigationUrl)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (isSafeExternalUrl(navigationUrl)) {
+      void shell.openExternal(navigationUrl);
+    }
   });
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
@@ -173,8 +187,13 @@ function requestQuit(): void {
 
 async function quitAfterCleanup(): Promise<void> {
   try {
-    await Promise.race([repoWatchers.closeAll(), wait(quitCleanupTimeoutMs)]);
+    await Promise.race([
+      Promise.all([repoWatchers.closeAll(), gitExecutor.shutdown(quitCleanupTimeoutMs - 250)]),
+      wait(quitCleanupTimeoutMs)
+    ]);
   } finally {
+    gitExecutor.terminateActiveProcesses('SIGKILL');
+
     for (const window of BrowserWindow.getAllWindows()) {
       window.destroy();
     }

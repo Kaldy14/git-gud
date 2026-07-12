@@ -10,11 +10,11 @@ A personal macOS Git client (Electron + React), visually modeled on GitKraken. P
 - **M3 (details, trees, diffs, commit flow): done.** Commit metadata, `@pierre/trees` changed-file views, `@pierre/diffs` patch rendering, WIP staging, commit, and amend are wired through typed IPC.
 - **M4 (everyday branch operations): done.** Fetch, pull, push, branch create/delete/rename, checkout, merge, tags, stash operations, cherry-pick, revert, reset, conflict banner, operation log, and safe local undo are wired through typed IPC.
 - **M5 (rebase and interactive rebase): done.** Standard rebase, interactive todo planning, reorder/reword/squash/fixup/drop, controlled editor scripts, rebase conflict continuation, and temp-repo integration tests are wired through typed IPC.
-- **M6 (polish and power features): done.** Hunk/line-group staging, WIP file actions, shortcuts, Terminal button, settings, command dialogs, and large-repo graph defaults are wired through typed IPC.
+- **M6 (polish and power features): done.** Hunk/line-group staging, WIP file actions, keyboard navigation, responsive panels, command palette, repository inspection, advanced profiles, progress/cancellation, settings, and large-repo graph defaults are wired through typed IPC.
 
 The canonical milestone tracker is the **Progress Tracker** section in [PLAN.md](../PLAN.md); update it whenever milestone scope or status changes.
 
-M4 follow-up debt is tracked in [PLAN.md](../PLAN.md): finish splitting the centralized operations module, add operation progress streaming, and add executor-level cancellation/streaming helpers.
+The M4 reliability follow-up is tracked in [PLAN.md](../PLAN.md): progress streaming and safe cancellation are complete; splitting the centralized operations module remains an optional maintenance refactor.
 
 ## Renderer UI structure
 
@@ -25,7 +25,7 @@ src/renderer/src/
   state/workspace.ts                  Zustand store bridging window.api workspace IPC
   components/
     tabs/TabStrip.tsx                 title-bar repo tabs, + menu (open/recent), profile & settings buttons
-    profile/ProfileMenu.tsx           profile create/assign popover backed by typed IPC
+    profile/ProfileMenu.tsx           profile create/edit/assign popover with identity, SSH, signing, and remote matching
     toolbar/Toolbar.tsx               repository/branch selectors + stacked fetch/pull/push/branch/stash/undo actions
     sidebar/Sidebar.tsx               Local/Remote/Worktrees/Tags sections, filter input, collapse rail
     graph/GraphView.tsx               virtualized commit graph: ref chips, per-row SVG rails, nodes, date markers,
@@ -35,8 +35,9 @@ src/renderer/src/
     settings/SettingsPanel.tsx        app defaults for diff layout, graph loading, large-repo mode, and Terminal
     operations/ConflictBanner.tsx     merge/rebase/cherry-pick/revert conflict action banner
     operations/CommandDialog.tsx      app-native command confirmations and simple operation forms
-    operations/QuickJumpDialog.tsx    fuzzy repo/branch jump dialog
-    operations/OperationLog.tsx       compact pending/success/conflict/error operation log
+    inspection/RepositoryInspectorDialog.tsx file history, blame, and ref comparison dialog
+    operations/QuickJumpDialog.tsx    command palette for commits, refs, repos, stashes, worktrees, and app actions
+    operations/OperationLog.tsx       streamed pending/success/conflict/error/cancelled operation log
     rebase/InteractiveRebaseDialog.tsx interactive rebase todo modal
     start/StartPage.tsx               empty-state start page with recent repositories
     statusbar/StatusBar.tsx           repo path + preview notice + version

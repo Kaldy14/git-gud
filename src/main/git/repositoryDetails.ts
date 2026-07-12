@@ -15,13 +15,15 @@ import type {
 import pathModule from 'node:path';
 
 import { createProfileCommandEnv } from '../profiles';
-import { GitCommandError, gitExecutor } from './exec';
+import { GitCommandError, GitOutputLimitError, gitExecutor } from './exec';
 import { createUndoEntryForCommit, getCurrentHead } from './operations';
 import { parseNameStatus, parseShortStat } from './parsers/details';
 import { loadStatus } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
 
 type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
+
+const MAX_DIFF_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<GitCommitDetail> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
@@ -94,7 +96,8 @@ export async function applyWipPatch(tab: DetailTab, input: GitPatchApplyInput): 
 }
 
 export async function stageFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
-  await gitExecutor.run(['add', '--', path], {
+  assertSafeRelativePath(path);
+  await gitExecutor.run(withLiteralPathspec('add', '--', path), {
     cwd: tab.path,
     kind: 'mutation',
     env: createProfileCommandEnv(tab.assignedProfileId)
@@ -110,11 +113,19 @@ export async function unstageFile(tab: DetailTab, path: string): Promise<GitOper
   const pathspec = createDiffPathspec(path, statusFile?.originalPath);
 
   if (await hasHead(tab.path)) {
-    await gitExecutor.run(['restore', '--staged', '--', ...pathspec], { cwd: tab.path, kind: 'mutation', env });
+    await gitExecutor.run(withLiteralPathspec('restore', '--staged', '--', ...pathspec), {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
     return createOperationResult(tab.path);
   }
 
-  await gitExecutor.run(['rm', '--cached', '--quiet', '--', ...pathspec], { cwd: tab.path, kind: 'mutation', env });
+  await gitExecutor.run(withLiteralPathspec('rm', '--cached', '--quiet', '--', ...pathspec), {
+    cwd: tab.path,
+    kind: 'mutation',
+    env
+  });
   return createOperationResult(tab.path);
 }
 
@@ -137,13 +148,13 @@ export async function discardFile(tab: DetailTab, path: string): Promise<GitOper
 
   if (statusFile.staged) {
     if (headExists) {
-      await gitExecutor.run(['restore', '--staged', '--source=HEAD', '--', ...pathspec], {
+      await gitExecutor.run(withLiteralPathspec('restore', '--staged', '--source=HEAD', '--', ...pathspec), {
         cwd: tab.path,
         kind: 'mutation',
         env
       });
     } else {
-      await gitExecutor.run(['rm', '--cached', '-r', '--quiet', '--', ...pathspec], {
+      await gitExecutor.run(withLiteralPathspec('rm', '--cached', '-r', '--quiet', '--', ...pathspec), {
         cwd: tab.path,
         kind: 'mutation',
         env
@@ -154,7 +165,7 @@ export async function discardFile(tab: DetailTab, path: string): Promise<GitOper
   const restorePaths = headExists ? createHeadRestorePathspec(statusFile) : [];
 
   if (restorePaths.length > 0) {
-    await gitExecutor.run(['restore', '--worktree', '--source=HEAD', '--', ...restorePaths], {
+    await gitExecutor.run(withLiteralPathspec('restore', '--worktree', '--source=HEAD', '--', ...restorePaths), {
       cwd: tab.path,
       kind: 'mutation',
       env
@@ -162,7 +173,7 @@ export async function discardFile(tab: DetailTab, path: string): Promise<GitOper
   }
 
   if (shouldCleanDiscardedPath(statusFile) || !headExists) {
-    await gitExecutor.run(['clean', '-f', '-d', '--', path], {
+    await gitExecutor.run(withLiteralPathspec('clean', '-f', '-d', '--', path), {
       cwd: tab.path,
       kind: 'mutation',
       env
@@ -271,7 +282,17 @@ async function loadCommitFiles(
   env: NodeJS.ProcessEnv | undefined
 ): Promise<GitFileChangeDetail[]> {
   const result = await gitExecutor.run(
-    ['show', '--format=', '--name-status', '-z', '--find-renames', '--find-copies', sha],
+    [
+      'show',
+      '--format=',
+      '--first-parent',
+      '--diff-merges=first-parent',
+      '--name-status',
+      '-z',
+      '--find-renames',
+      '--find-copies',
+      sha
+    ],
     { cwd: repoPath, env }
   );
 
@@ -283,7 +304,10 @@ async function loadCommitStats(
   sha: string,
   env: NodeJS.ProcessEnv | undefined
 ): Promise<GitCommitDetail['stats']> {
-  const result = await gitExecutor.run(['show', '--format=', '--shortstat', sha], { cwd: repoPath, env });
+  const result = await gitExecutor.run(
+    ['show', '--format=', '--first-parent', '--diff-merges=first-parent', '--shortstat', sha],
+    { cwd: repoPath, env }
+  );
   return parseShortStat(result.stdout);
 }
 
@@ -292,18 +316,42 @@ async function loadCommitFileDiff(
   request: Extract<GitFileDiffRequest, { kind: 'commit' }>,
   env: NodeJS.ProcessEnv | undefined
 ): Promise<GitFileDiff> {
-  const args = [
-    'show',
-    '--format=',
-    '--patch',
-    '--binary',
-    '--find-renames',
-    '--find-copies',
-    request.sha,
-    '--',
-    ...createDiffPathspec(request.path, request.originalPath)
-  ];
-  const patch = (await gitExecutor.run(args, { cwd: repoPath, env })).stdout;
+  assertDiffPathsAreSafe(request.path, request.originalPath);
+  const pathspec = createDiffPathspec(request.path, request.originalPath);
+  const isBinary = await isCommitFileBinary(repoPath, request.sha, pathspec, env);
+
+  if (isBinary) {
+    return createOmittedDiff(repoPath, request.path, request.originalPath, 'commit', 'binary');
+  }
+
+  let patch: string;
+
+  try {
+    patch = (
+      await gitExecutor.run(
+        withLiteralPathspec(
+          'show',
+          '--format=',
+          '--first-parent',
+          '--diff-merges=first-parent',
+          '--patch',
+          '--binary',
+          '--find-renames',
+          '--find-copies',
+          request.sha,
+          '--',
+          ...pathspec
+        ),
+        { cwd: repoPath, env, maxStdoutBytes: MAX_DIFF_OUTPUT_BYTES }
+      )
+    ).stdout;
+  } catch (error) {
+    if (error instanceof GitOutputLimitError) {
+      return createOmittedDiff(repoPath, request.path, request.originalPath, 'commit', 'too-large');
+    }
+
+    throw error;
+  }
 
   return {
     repoPath,
@@ -311,7 +359,7 @@ async function loadCommitFileDiff(
     originalPath: request.originalPath,
     mode: 'commit',
     patch,
-    isBinary: isBinaryPatch(patch),
+    isBinary: false,
     loadedAt: new Date().toISOString()
   };
 }
@@ -321,26 +369,46 @@ async function loadWipFileDiff(
   request: Extract<GitFileDiffRequest, { kind: 'wip' }>,
   env: NodeJS.ProcessEnv | undefined
 ): Promise<GitFileDiff> {
+  assertSafeRelativePath(request.path);
   const status = await loadStatus(repoPath, env);
   const statusFile = status.files.find((file) => file.path === request.path);
-  const [patch, stageablePatch] = request.staged
-    ? await Promise.all([
-        loadStagedPatch(repoPath, request.path, statusFile, env),
-        loadStagedPatch(repoPath, request.path, statusFile, env, 0)
-      ])
-    : await Promise.all([
-        loadUnstagedPatch(repoPath, request.path, statusFile, env),
-        loadUnstagedPatch(repoPath, request.path, statusFile, env, 0)
-      ]);
+  const originalPath = statusFile?.originalPath;
+  assertDiffPathsAreSafe(request.path, originalPath);
+  const mode = request.staged ? 'wip-staged' : 'wip-unstaged';
+  const isBinary = request.staged
+    ? await isStagedFileBinary(repoPath, request.path, statusFile, env)
+    : await isUnstagedFileBinary(repoPath, request.path, statusFile, env);
+
+  if (isBinary) {
+    return createOmittedDiff(repoPath, request.path, originalPath, mode, 'binary');
+  }
+
+  let patch: string;
+  let stageablePatch: string;
+
+  try {
+    patch = request.staged
+      ? await loadStagedPatch(repoPath, request.path, statusFile, env)
+      : await loadUnstagedPatch(repoPath, request.path, statusFile, env);
+    stageablePatch = request.staged
+      ? await loadStagedPatch(repoPath, request.path, statusFile, env, 0)
+      : await loadUnstagedPatch(repoPath, request.path, statusFile, env, 0);
+  } catch (error) {
+    if (error instanceof GitOutputLimitError) {
+      return createOmittedDiff(repoPath, request.path, originalPath, mode, 'too-large');
+    }
+
+    throw error;
+  }
 
   return {
     repoPath,
     path: request.path,
-    originalPath: statusFile?.originalPath,
-    mode: request.staged ? 'wip-staged' : 'wip-unstaged',
+    originalPath,
+    mode,
     patch,
     stageablePatch,
-    isBinary: isBinaryPatch(patch),
+    isBinary: false,
     loadedAt: new Date().toISOString()
   };
 }
@@ -355,6 +423,7 @@ async function loadStagedPatch(
   return (
     await gitExecutor.run(
       [
+        '--literal-pathspecs',
         'diff',
         '--cached',
         '--binary',
@@ -365,7 +434,7 @@ async function loadStagedPatch(
         '--',
         ...createDiffPathspec(path, statusFile?.originalPath)
       ],
-      { cwd: repoPath, env }
+      { cwd: repoPath, env, maxStdoutBytes: MAX_DIFF_OUTPUT_BYTES }
     )
   ).stdout;
 }
@@ -380,11 +449,21 @@ async function loadUnstagedPatch(
   if (statusFile?.status === 'untracked') {
     return (
       await gitExecutor.run(
-        ['diff', '--no-index', '--binary', '--patch', ...unifiedContextArgs(unifiedContext), '--', '/dev/null', path],
+        withLiteralPathspec(
+          'diff',
+          '--no-index',
+          '--binary',
+          '--patch',
+          ...unifiedContextArgs(unifiedContext),
+          '--',
+          '/dev/null',
+          path
+        ),
         {
           cwd: repoPath,
           env,
-          allowedExitCodes: [1]
+          allowedExitCodes: [1],
+          maxStdoutBytes: MAX_DIFF_OUTPUT_BYTES
         }
       )
     ).stdout;
@@ -393,6 +472,7 @@ async function loadUnstagedPatch(
   return (
     await gitExecutor.run(
       [
+        '--literal-pathspecs',
         'diff',
         '--binary',
         '--patch',
@@ -402,7 +482,7 @@ async function loadUnstagedPatch(
         '--',
         ...createDiffPathspec(path, statusFile?.originalPath)
       ],
-      { cwd: repoPath, env }
+      { cwd: repoPath, env, maxStdoutBytes: MAX_DIFF_OUTPUT_BYTES }
     )
   ).stdout;
 }
@@ -412,13 +492,11 @@ function unifiedContextArgs(unifiedContext: number | undefined): string[] {
 }
 
 function normalizePatch(patch: string): string {
-  const trimmedPatch = patch.trimEnd();
-
-  if (!trimmedPatch || !trimmedPatch.includes('@@')) {
+  if (!patch || !patch.includes('@@')) {
     throw new Error('A textual patch hunk is required.');
   }
 
-  return `${trimmedPatch}\n`;
+  return patch.endsWith('\n') ? patch : `${patch}\n`;
 }
 
 function createDiffPathspec(path: string, originalPath: string | undefined): string[] {
@@ -427,6 +505,115 @@ function createDiffPathspec(path: string, originalPath: string | undefined): str
   }
 
   return [originalPath, path];
+}
+
+async function isCommitFileBinary(
+  repoPath: string,
+  sha: string,
+  pathspec: string[],
+  env: NodeJS.ProcessEnv | undefined
+): Promise<boolean> {
+  const result = await gitExecutor.run(
+    withLiteralPathspec(
+      'show',
+      '--format=',
+      '--first-parent',
+      '--diff-merges=first-parent',
+      '--numstat',
+      '--find-renames',
+      '--find-copies',
+      sha,
+      '--',
+      ...pathspec
+    ),
+    { cwd: repoPath, env }
+  );
+  return isBinaryNumstat(result.stdout);
+}
+
+async function isStagedFileBinary(
+  repoPath: string,
+  path: string,
+  statusFile: GitFileChange | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<boolean> {
+  const result = await gitExecutor.run(
+    withLiteralPathspec(
+      'diff',
+      '--cached',
+      '--numstat',
+      '--find-renames',
+      '--find-copies',
+      '--',
+      ...createDiffPathspec(path, statusFile?.originalPath)
+    ),
+    { cwd: repoPath, env }
+  );
+  return isBinaryNumstat(result.stdout);
+}
+
+async function isUnstagedFileBinary(
+  repoPath: string,
+  path: string,
+  statusFile: GitFileChange | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<boolean> {
+  if (statusFile?.status === 'untracked') {
+    const result = await gitExecutor.run(withLiteralPathspec('diff', '--no-index', '--numstat', '--', '/dev/null', path), {
+      cwd: repoPath,
+      env,
+      allowedExitCodes: [1]
+    });
+    return isBinaryNumstat(result.stdout);
+  }
+
+  const result = await gitExecutor.run(
+    withLiteralPathspec(
+      'diff',
+      '--numstat',
+      '--find-renames',
+      '--find-copies',
+      '--',
+      ...createDiffPathspec(path, statusFile?.originalPath)
+    ),
+    { cwd: repoPath, env }
+  );
+  return isBinaryNumstat(result.stdout);
+}
+
+function createOmittedDiff(
+  repoPath: string,
+  path: string,
+  originalPath: string | undefined,
+  mode: GitFileDiff['mode'],
+  omittedReason: NonNullable<GitFileDiff['omittedReason']>
+): GitFileDiff {
+  return {
+    repoPath,
+    path,
+    originalPath,
+    mode,
+    patch: '',
+    isBinary: omittedReason === 'binary',
+    omittedReason,
+    loadedAt: new Date().toISOString()
+  };
+}
+
+function isBinaryNumstat(output: string): boolean {
+  return output.split('\n').some((line) => line.startsWith('-\t-\t'));
+}
+
+function withLiteralPathspec(...args: string[]): string[] {
+  return ['--literal-pathspecs', ...args];
+}
+
+function assertDiffPathsAreSafe(path: string, originalPath: string | undefined): void {
+  assertSafeRelativePath(path);
+
+  if (originalPath) {
+    assertSafeRelativePath(originalPath);
+  }
 }
 
 function createHeadRestorePathspec(file: GitFileChange): string[] {
@@ -481,14 +668,11 @@ async function hasHead(repoPath: string): Promise<boolean> {
   }
 }
 
-function isBinaryPatch(patch: string): boolean {
-  return /^(Binary files |Binary file |GIT binary patch)/m.test(patch);
-}
-
 function createOperationResult(repoPath: string, undoEntry?: GitUndoEntry): GitOperationResult {
   return {
     repoPath,
     happenedAt: new Date().toISOString(),
-    undoEntry
+    undoEntry,
+    invalidates: ['overview', 'graph', 'wip-detail', 'file-diff']
   };
 }

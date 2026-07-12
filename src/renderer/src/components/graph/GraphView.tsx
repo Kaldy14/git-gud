@@ -21,7 +21,6 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
-  Settings,
   Tag,
   Trash2,
   Undo2,
@@ -29,8 +28,10 @@ import {
 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
+import { findSelectedContextMenuRow } from '@renderer/components/graph/graphInteraction';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
-import type { CommitGraphRow, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
+import type { CommitGraphRow, GitStashRefInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
 const ROW_HEIGHT = 34;
 const LANE_X0 = 48;
@@ -39,6 +40,9 @@ const GRAPH_NODE_EDGE_INSET = 18;
 const DEFAULT_REF_CELL_WIDTH = 166;
 const DEFAULT_GRAPH_VIEWPORT_WIDTH = 188;
 const MIN_MESSAGE_CELL_WIDTH = 220;
+const AUTHOR_CELL_WIDTH = 132;
+const DATE_CELL_WIDTH = 92;
+const SHA_CELL_WIDTH = 78;
 const GRAPH_COLUMN_WIDTH_STORAGE_KEY = 'git-gud:graph-column-widths';
 
 type ResizableGraphColumn = 'refs' | 'graph';
@@ -87,9 +91,9 @@ type GraphViewProps = {
   onStageAllWip?: () => Promise<void> | void;
   onOpenWipCommitComposer?: () => void;
   onStashPush?: () => Promise<void> | void;
-  onStashApply?: (selector: string) => Promise<void> | void;
-  onStashPop?: (selector: string) => Promise<void> | void;
-  onStashDrop?: (selector: string) => Promise<void> | void;
+  onStashApply?: (input: GitStashRefInput) => Promise<void> | void;
+  onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
+  onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
@@ -101,6 +105,20 @@ type GraphViewProps = {
   onResetToCommit?: (sha: string) => Promise<void> | void;
   isOperationBusy?: boolean;
   largeRepoMode?: boolean;
+  columns?: GraphColumnVisibility;
+  remoteAvatars?: boolean;
+};
+
+export type GraphColumnVisibility = {
+  author: boolean;
+  date: boolean;
+  sha: boolean;
+};
+
+const DEFAULT_GRAPH_COLUMN_VISIBILITY: GraphColumnVisibility = {
+  author: true,
+  date: true,
+  sha: true
 };
 
 type ContextMenuState = {
@@ -134,7 +152,9 @@ export function GraphView({
   onRevertCommit,
   onResetToCommit,
   isOperationBusy = false,
-  largeRepoMode = false
+  largeRepoMode = false,
+  columns = DEFAULT_GRAPH_COLUMN_VISIBILITY,
+  remoteAvatars = false
 }: GraphViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -145,10 +165,18 @@ export function GraphView({
   const [graphContainerWidth, setGraphContainerWidth] = useState<number>();
   const [resizingColumn, setResizingColumn] = useState<ResizableGraphColumn>();
   const [graphScrollLeft, setGraphScrollLeft] = useState(0);
+  const [firstVisibleRowIndex, setFirstVisibleRowIndex] = useState(0);
+  const visibleColumns = useMemo(
+    () => fitGraphColumnVisibility(columns, graphContainerWidth),
+    [columns, graphContainerWidth]
+  );
+  const metadataWidth = graphMetadataWidth(visibleColumns);
   const graphWidth = columnWidths.graph;
   const graphContentWidth = useMemo(() => graphContentWidthForRows(rows, graphWidth), [graphWidth, rows]);
+  const dateMarkersByRow = useMemo(() => buildDateMarkers(rows), [rows]);
   const refCellWidth = columnWidths.refs;
-  const gridTemplateColumns = `${refCellWidth}px ${graphWidth}px minmax(0, 1fr)`;
+  const gridTemplateColumns = graphGridTemplate(refCellWidth, graphWidth, visibleColumns);
+  const currentDateMarker = dateMarkersByRow[firstVisibleRowIndex];
   // TanStack Virtual is the row windowing layer for M2; the virtualizer stays local to this component.
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
@@ -157,6 +185,22 @@ export function GraphView({
     estimateSize: () => ROW_HEIGHT,
     overscan: largeRepoMode ? 8 : 24
   });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const selectedRowIsMounted = virtualRows.some(
+    (virtualRow) => rows[virtualRow.index]?.sha === selectedSha
+  );
+
+  useEffect(() => {
+    if (!selectedSha) {
+      return;
+    }
+
+    const selectedIndex = rows.findIndex((row) => row.sha === selectedSha);
+
+    if (selectedIndex >= 0) {
+      rowVirtualizer.scrollToIndex(selectedIndex, { align: 'auto' });
+    }
+  }, [rowVirtualizer, rows, selectedSha]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -166,6 +210,7 @@ export function GraphView({
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
         setContextMenu(undefined);
+        scrollRef.current?.focus({ preventScroll: true });
       }
     }
 
@@ -215,8 +260,8 @@ export function GraphView({
       return;
     }
 
-    setColumnWidths((current) => fitGraphColumnWidths(current, graphContainerWidth));
-  }, [graphContainerWidth]);
+    setColumnWidths((current) => fitGraphColumnWidths(current, graphContainerWidth, metadataWidth));
+  }, [graphContainerWidth, metadataWidth]);
 
   useEffect(() => {
     if (!resizingColumn) {
@@ -236,7 +281,7 @@ export function GraphView({
       }
 
       const nextWidth = state.startWidth + event.clientX - state.startX;
-      setColumnWidths((current) => resizeGraphColumn(current, state.column, nextWidth, graphContainerWidth));
+      setColumnWidths((current) => resizeGraphColumn(current, state.column, nextWidth, graphContainerWidth, metadataWidth));
     }
 
     function stopResize(): void {
@@ -255,7 +300,7 @@ export function GraphView({
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
     };
-  }, [graphContainerWidth, resizingColumn]);
+  }, [graphContainerWidth, metadataWidth, resizingColumn]);
 
   useEffect(() => {
     const maxScrollLeft = Math.max(0, graphContentWidth - graphWidth);
@@ -282,6 +327,18 @@ export function GraphView({
   }
 
   function handleListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      const row = findSelectedContextMenuRow(rows, selectedSha);
+
+      if (row) {
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        setContextMenu({ row, x: rect.left + Math.min(rect.width / 2, 420), y: rect.top + 48 });
+      }
+
+      return;
+    }
+
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
       return;
     }
@@ -309,6 +366,10 @@ export function GraphView({
     setGraphScrollLeft(event.currentTarget.scrollLeft);
   }
 
+  function handleListScroll(event: ReactUIEvent<HTMLDivElement>): void {
+    setFirstVisibleRowIndex(Math.min(rows.length - 1, Math.max(0, Math.floor(event.currentTarget.scrollTop / ROW_HEIGHT))));
+  }
+
   function handleColumnResizeStart(event: ReactPointerEvent<HTMLDivElement>, column: ResizableGraphColumn): void {
     if (event.button !== 0) {
       return;
@@ -325,12 +386,12 @@ export function GraphView({
   }
 
   function handleColumnResizeNudge(column: ResizableGraphColumn, delta: number): void {
-    setColumnWidths((current) => resizeGraphColumn(current, column, current[column] + delta, graphContainerWidth));
+    setColumnWidths((current) => resizeGraphColumn(current, column, current[column] + delta, graphContainerWidth, metadataWidth));
   }
 
   function handleColumnResizeReset(column: ResizableGraphColumn): void {
     setColumnWidths((current) =>
-      resizeGraphColumn(current, column, GRAPH_COLUMN_LIMITS[column].defaultValue, graphContainerWidth)
+      resizeGraphColumn(current, column, GRAPH_COLUMN_LIMITS[column].defaultValue, graphContainerWidth, metadataWidth)
     );
   }
 
@@ -364,19 +425,26 @@ export function GraphView({
             onReset={handleColumnResizeReset}
           />
         </div>
-        <span className="flex h-full items-center justify-between pl-4 pr-3">
+        <span className="flex h-full min-w-0 items-center justify-between pl-4 pr-3">
           <span className="leading-none tracking-[0.02em]">Commit message</span>
           <span className="flex items-center gap-2">
             {isFetching && rows.length > 0 ? <Loader2 size={13} className="animate-spin text-[var(--text-3)]" /> : null}
-            <Settings size={15} className="text-[var(--text-3)]" />
+            {currentDateMarker ? <span className="truncate normal-case tracking-normal text-[var(--text-2)]">{currentDateMarker}</span> : null}
           </span>
         </span>
+        {visibleColumns.author ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">Author</span> : null}
+        {visibleColumns.date ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">Date</span> : null}
+        {visibleColumns.sha ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">SHA</span> : null}
       </div>
 
       <div
         ref={scrollRef}
         tabIndex={0}
+        role="listbox"
+        aria-label="Commit history"
+        aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
+        onScroll={handleListScroll}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
       >
         {isLoading && rows.length === 0 ? (
@@ -388,7 +456,7 @@ export function GraphView({
         ) : (
           <>
             <div className="relative" style={{ height: rowVirtualizer.getTotalSize() }}>
-              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              {virtualRows.map((virtualRow) => {
                 const row = rows[virtualRow.index];
 
                 if (!row) {
@@ -408,6 +476,8 @@ export function GraphView({
                       graphScrollLeft={graphScrollLeft}
                       refCellWidth={refCellWidth}
                       gridTemplateColumns={gridTemplateColumns}
+                      visibleColumns={visibleColumns}
+                      remoteAvatars={remoteAvatars}
                       isSelected={row.sha === selectedSha}
                       rowIndex={virtualRow.index}
                       onSelect={() => onSelectRow(row.sha)}
@@ -445,7 +515,10 @@ export function GraphView({
       {contextMenu ? (
         <GraphContextMenu
           state={contextMenu}
-          onClose={() => setContextMenu(undefined)}
+          onClose={() => {
+            setContextMenu(undefined);
+            scrollRef.current?.focus({ preventScroll: true });
+          }}
           onStageAllWip={onStageAllWip}
           onOpenWipCommitComposer={onOpenWipCommitComposer}
           onStashPush={onStashPush}
@@ -475,6 +548,8 @@ type GraphRowViewProps = {
   graphScrollLeft: number;
   refCellWidth: number;
   gridTemplateColumns: string;
+  visibleColumns: GraphColumnVisibility;
+  remoteAvatars: boolean;
   isSelected: boolean;
   rowIndex: number;
   onSelect: () => void;
@@ -564,6 +639,8 @@ function GraphRowView({
   graphScrollLeft,
   refCellWidth,
   gridTemplateColumns,
+  visibleColumns,
+  remoteAvatars,
   isSelected,
   rowIndex,
   onSelect,
@@ -571,13 +648,18 @@ function GraphRowView({
 }: GraphRowViewProps): ReactElement {
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
-  const visibleRefs = isWip ? [] : (row.refs ?? []).filter((ref) => ref.kind !== 'stash');
+  const visibleRefs = isWip ? [] : (row.refs ?? []);
   const rowBackground = graphRowBackground(row, isSelected, rowIndex);
   const bandBackground = graphRowBandBackground(row, nodeColor, isSelected);
 
   return (
     <div
+      id={graphRowDomId(row.sha)}
       className="group relative grid cursor-pointer items-center"
+      role="option"
+      aria-selected={isSelected}
+      aria-label={graphRowAriaLabel(row)}
+      tabIndex={-1}
       style={{
         height: ROW_HEIGHT,
         gridTemplateColumns,
@@ -620,6 +702,7 @@ function GraphRowView({
         graphWidth={graphWidth}
         graphContentWidth={graphContentWidth}
         graphScrollLeft={graphScrollLeft}
+        remoteAvatars={remoteAvatars}
       />
 
       <div className="relative flex min-w-0 items-center gap-2 pl-4 pr-3">
@@ -632,6 +715,21 @@ function GraphRowView({
           <CommitSubjectLine subject={row.subject} isMerge={row.node.kind === 'merge'} />
         )}
       </div>
+      {visibleColumns.author ? (
+        <span className="relative min-w-0 truncate border-l border-[var(--border)] px-3 text-[12px] text-[var(--text-2)]" title={row.author.email ?? row.author.name}>
+          {isWip ? 'Working directory' : row.author.name || 'Unknown'}
+        </span>
+      ) : null}
+      {visibleColumns.date ? (
+        <span className="relative truncate border-l border-[var(--border)] px-3 text-[11px] tabular-nums text-[var(--text-2)]" title={row.authoredAt ?? row.committedAt}>
+          {isWip ? 'Now' : row.dateLabel}
+        </span>
+      ) : null}
+      {visibleColumns.sha ? (
+        <span className="mono relative truncate border-l border-[var(--border)] px-3 text-[11px] text-[var(--text-3)]">
+          {isWip ? '' : row.sha.slice(0, 7)}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -701,9 +799,10 @@ function resizeGraphColumn(
   widths: GraphColumnWidths,
   column: ResizableGraphColumn,
   width: number,
-  containerWidth: number | undefined
+  containerWidth: number | undefined,
+  metadataWidth = 0
 ): GraphColumnWidths {
-  const nextWidth = clampGraphColumnWidth(column, width, widths, containerWidth);
+  const nextWidth = clampGraphColumnWidth(column, width, widths, containerWidth, metadataWidth);
 
   if (widths[column] === nextWidth) {
     return widths;
@@ -712,10 +811,10 @@ function resizeGraphColumn(
   return { ...widths, [column]: nextWidth };
 }
 
-function fitGraphColumnWidths(widths: GraphColumnWidths, containerWidth: number): GraphColumnWidths {
-  const graph = clampGraphColumnWidth('graph', widths.graph, widths, containerWidth);
+function fitGraphColumnWidths(widths: GraphColumnWidths, containerWidth: number, metadataWidth = 0): GraphColumnWidths {
+  const graph = clampGraphColumnWidth('graph', widths.graph, widths, containerWidth, metadataWidth);
   const nextWidths = { ...widths, graph };
-  const refs = clampGraphColumnWidth('refs', nextWidths.refs, nextWidths, containerWidth);
+  const refs = clampGraphColumnWidth('refs', nextWidths.refs, nextWidths, containerWidth, metadataWidth);
 
   if (widths.refs === refs && widths.graph === graph) {
     return widths;
@@ -728,16 +827,80 @@ function clampGraphColumnWidth(
   column: ResizableGraphColumn,
   width: number,
   widths?: GraphColumnWidths,
-  containerWidth?: number
+  containerWidth?: number,
+  metadataWidth = 0
 ): number {
   const limits = GRAPH_COLUMN_LIMITS[column];
   const otherColumn = column === 'refs' ? 'graph' : 'refs';
   const maxWidth =
     widths && containerWidth
-      ? Math.min(limits.max, Math.max(limits.min, containerWidth - widths[otherColumn] - MIN_MESSAGE_CELL_WIDTH))
+      ? Math.min(limits.max, Math.max(limits.min, containerWidth - widths[otherColumn] - MIN_MESSAGE_CELL_WIDTH - metadataWidth))
       : limits.max;
 
   return Math.round(Math.min(maxWidth, Math.max(limits.min, width)));
+}
+
+function fitGraphColumnVisibility(
+  requested: GraphColumnVisibility,
+  containerWidth: number | undefined
+): GraphColumnVisibility {
+  const visible = { ...requested };
+
+  if (!containerWidth) {
+    return visible;
+  }
+
+  const baseWidth = GRAPH_COLUMN_LIMITS.refs.min + GRAPH_COLUMN_LIMITS.graph.min + MIN_MESSAGE_CELL_WIDTH;
+  const hideOrder: Array<keyof GraphColumnVisibility> = ['sha', 'author', 'date'];
+
+  for (const column of hideOrder) {
+    if (baseWidth + graphMetadataWidth(visible) <= containerWidth) {
+      break;
+    }
+
+    visible[column] = false;
+  }
+
+  return visible;
+}
+
+function graphMetadataWidth(columns: GraphColumnVisibility): number {
+  return (columns.author ? AUTHOR_CELL_WIDTH : 0) + (columns.date ? DATE_CELL_WIDTH : 0) + (columns.sha ? SHA_CELL_WIDTH : 0);
+}
+
+function graphGridTemplate(refs: number, graph: number, columns: GraphColumnVisibility): string {
+  return [
+    `${refs}px`,
+    `${graph}px`,
+    'minmax(0, 1fr)',
+    columns.author ? `${AUTHOR_CELL_WIDTH}px` : undefined,
+    columns.date ? `${DATE_CELL_WIDTH}px` : undefined,
+    columns.sha ? `${SHA_CELL_WIDTH}px` : undefined
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' ');
+}
+
+function buildDateMarkers(rows: CommitGraphRow[]): Array<string | undefined> {
+  let currentMarker: string | undefined;
+
+  return rows.map((row) => {
+    currentMarker = row.dateMarker ?? currentMarker ?? row.dateLabel;
+    return currentMarker;
+  });
+}
+
+function graphRowDomId(sha: string): string {
+  return `graph-row-${sha.replace(/[^\dA-Za-z_-]/g, '-')}`;
+}
+
+function graphRowAriaLabel(row: CommitGraphRow): string {
+  if (row.node.kind === 'wip') {
+    return `Working directory, ${row.files.length} changed files`;
+  }
+
+  const refs = row.refs?.map((ref) => ref.label).join(', ');
+  return [row.subject, row.author.name, row.dateLabel, row.sha.slice(0, 7), refs].filter(Boolean).join(', ');
 }
 
 function loadStoredGraphColumnWidths(): GraphColumnWidths {
@@ -997,13 +1160,15 @@ function RailCell({
   nodeColor,
   graphWidth,
   graphContentWidth,
-  graphScrollLeft
+  graphScrollLeft,
+  remoteAvatars
 }: {
   row: CommitGraphRow;
   nodeColor: string;
   graphWidth: number;
   graphContentWidth: number;
   graphScrollLeft: number;
+  remoteAvatars: boolean;
 }): ReactElement {
   const h = ROW_HEIGHT;
   const mid = h / 2;
@@ -1033,7 +1198,8 @@ function RailCell({
           cy={mid}
           color={nodeColor}
           authorColor={row.author.color}
-          avatarUrl={row.author.avatarUrl}
+          authorInitials={row.author.initials}
+          avatarUrl={remoteAvatars ? row.author.avatarUrl : undefined}
           title={nodeTitle}
         />
       </svg>
@@ -1124,11 +1290,12 @@ type GraphNodeProps = {
   cy: number;
   color: string;
   authorColor: string;
+  authorInitials: string;
   avatarUrl?: string;
   title: string;
 };
 
-function GraphNode({ nodeId, kind, cx, cy, color, authorColor, avatarUrl, title }: GraphNodeProps): ReactElement {
+function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, avatarUrl, title }: GraphNodeProps): ReactElement {
   if (kind === 'stash') {
     return (
       <g>
@@ -1197,18 +1364,9 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, avatarUrl, title 
       ) : (
         <>
           <circle cx={cx} cy={cy} r={imageRadius} fill={authorColor} />
-          <path
-            d={`M ${cx - 5.5} ${cy + 5.8} C ${cx - 4.5} ${cy + 2.5} ${cx - 2.4} ${cy + 1.2} ${cx} ${cy + 1.2} C ${cx + 2.4} ${cy + 1.2} ${cx + 4.5} ${cy + 2.5} ${cx + 5.5} ${cy + 5.8}`}
-            fill="rgba(6, 10, 15, 0.44)"
-          />
-          <circle cx={cx} cy={cy - 2.5} r={2.45} fill="rgba(255, 244, 225, 0.9)" />
-          <path
-            d={`M ${cx - 5} ${cy - 1.1} C ${cx - 3} ${cy - 5} ${cx + 1.7} ${cy - 5.7} ${cx + 5} ${cy - 2.1}`}
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.36)"
-            strokeLinecap="round"
-            strokeWidth={1.4}
-          />
+          <text x={cx} y={cy + 2.2} textAnchor="middle" fontSize="6.3" fontWeight="700" fill="var(--bg-field)">
+            {authorInitials.slice(0, 2)}
+          </text>
         </>
       )}
       <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="rgba(4, 7, 10, 0.58)" strokeWidth={0.7} />
@@ -1259,9 +1417,9 @@ function GraphContextMenu({
   onStageAllWip?: () => Promise<void> | void;
   onOpenWipCommitComposer?: () => void;
   onStashPush?: () => Promise<void> | void;
-  onStashApply?: (selector: string) => Promise<void> | void;
-  onStashPop?: (selector: string) => Promise<void> | void;
-  onStashDrop?: (selector: string) => Promise<void> | void;
+  onStashApply?: (input: GitStashRefInput) => Promise<void> | void;
+  onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
+  onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
@@ -1291,6 +1449,7 @@ function GraphContextMenu({
       left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
       top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
     });
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
   }, [state]);
 
   async function copySha(): Promise<void> {
@@ -1303,6 +1462,9 @@ function GraphContextMenu({
       ref={menuRef}
       className="fixed z-50 w-60 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
       style={{ left: position.left, top: position.top }}
+      role="menu"
+      aria-label="Commit actions"
+      onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       onClick={(event) => event.stopPropagation()}
     >
       {isWip ? (
@@ -1310,6 +1472,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onStageAllWip}
             title={onStageAllWip ? 'Stage all WIP files' : 'Open WIP detail panel to stage files'}
             onClick={() => {
@@ -1323,6 +1486,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onOpenWipCommitComposer}
             title={onOpenWipCommitComposer ? 'Focus the WIP commit form' : 'Select the WIP row to commit changes'}
             onClick={() => {
@@ -1336,6 +1500,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onStashPush || isOperationBusy}
             onClick={() => {
               void onStashPush?.();
@@ -1351,10 +1516,11 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onStashApply || !stashSelector || isOperationBusy}
             onClick={() => {
               if (stashSelector) {
-                void onStashApply?.(stashSelector);
+                void onStashApply?.({ selector: stashSelector, expectedSha: state.row.sha });
               }
 
               onClose();
@@ -1366,10 +1532,11 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onStashPop || !stashSelector || isOperationBusy}
             onClick={() => {
               if (stashSelector) {
-                void onStashPop?.(stashSelector);
+                void onStashPop?.({ selector: stashSelector, expectedSha: state.row.sha });
               }
 
               onClose();
@@ -1381,10 +1548,11 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onStashDrop || !stashSelector || isOperationBusy}
             onClick={() => {
               if (stashSelector) {
-                void onStashDrop?.(stashSelector);
+                void onStashDrop?.({ selector: stashSelector, expectedSha: state.row.sha });
               }
 
               onClose();
@@ -1394,7 +1562,7 @@ function GraphContextMenu({
             <span>Drop stash</span>
           </button>
           <MenuSeparator />
-          <button className="menu-row" type="button" onClick={() => void copySha()}>
+          <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
             <Copy size={14} />
             <span>Copy SHA</span>
           </button>
@@ -1404,6 +1572,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onCheckoutCommit || isOperationBusy}
             onClick={() => {
               void onCheckoutCommit?.(state.row.sha);
@@ -1416,6 +1585,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onCreateBranchAtCommit || isOperationBusy}
             onClick={() => {
               void onCreateBranchAtCommit?.(state.row.sha);
@@ -1428,6 +1598,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onCreateTagAtCommit || isOperationBusy}
             onClick={() => {
               void onCreateTagAtCommit?.(state.row.sha);
@@ -1441,6 +1612,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onMergeCommit || isOperationBusy}
             onClick={() => {
               void onMergeCommit?.(state.row.sha);
@@ -1453,6 +1625,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onRebaseOntoCommit || isOperationBusy}
             onClick={() => {
               void onRebaseOntoCommit?.(state.row.sha);
@@ -1465,6 +1638,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onInteractiveRebaseFromCommit || isOperationBusy}
             onClick={() => {
               void onInteractiveRebaseFromCommit?.(state.row.sha);
@@ -1478,6 +1652,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onCherryPickCommit || isOperationBusy}
             onClick={() => {
               void onCherryPickCommit?.(state.row.sha);
@@ -1490,6 +1665,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onRevertCommit || isOperationBusy}
             onClick={() => {
               void onRevertCommit?.(state.row.sha);
@@ -1502,6 +1678,7 @@ function GraphContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={!onResetToCommit || isOperationBusy}
             onClick={() => {
               void onResetToCommit?.(state.row.sha);
@@ -1512,7 +1689,7 @@ function GraphContextMenu({
             <span>Reset current branch here</span>
           </button>
           <MenuSeparator />
-          <button className="menu-row" type="button" onClick={() => void copySha()}>
+          <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
             <Copy size={14} />
             <span>Copy SHA</span>
           </button>

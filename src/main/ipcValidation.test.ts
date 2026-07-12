@@ -29,6 +29,21 @@ describe('IPC argument validation', () => {
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
+    expect(validateIpcArgs('workspace:set-detail-panel-collapsed', [true])).toEqual([true]);
+    expect(validateIpcArgs('workspace:set-detail-panel-width', [440])).toEqual([440]);
+    expect(validateIpcArgs('repo:file-history', ['/repo', 'src/app.ts', 50])).toEqual(['/repo', 'src/app.ts', 50]);
+    expect(validateIpcArgs('repo:file-blame', ['/repo', 'src/app.ts'])).toEqual(['/repo', 'src/app.ts', undefined]);
+    expect(validateIpcArgs('repo:compare', ['/repo', 'main', 'feature/test'])).toEqual(['/repo', 'main', 'feature/test']);
+    expect(
+      validateIpcArgs('repo:stash-drop', [
+        '/repo',
+        { selector: 'stash@{0}', expectedSha: 'a'.repeat(40) }
+      ])
+    ).toEqual(['/repo', { selector: 'stash@{0}', expectedSha: 'a'.repeat(40) }]);
+    expect(validateIpcArgs('repo:cancel-operation', ['/repo', 'operation-1'])).toEqual([
+      '/repo',
+      'operation-1'
+    ]);
     expect(
       validateIpcArgs('repo:apply-patch', [
         '/repo',
@@ -48,13 +63,25 @@ describe('IPC argument validation', () => {
           defaultDiffStyle: 'split',
           graphPageSize: 750,
           largeRepoMode: true,
+          graphColumns: {
+            author: false,
+            date: true,
+            sha: true
+          },
+          remoteAvatars: true,
           terminalApp: 'Terminal'
         }
       ])[0]
     ).toMatchObject({
       defaultDiffStyle: 'split',
       graphPageSize: 750,
-      largeRepoMode: true
+      largeRepoMode: true,
+      graphColumns: {
+        author: false,
+        date: true,
+        sha: true
+      },
+      remoteAvatars: true
     });
   });
 
@@ -93,5 +120,24 @@ describe('IPC argument validation', () => {
       ])
     ).toThrow('staged must be a boolean.');
     expect(() => validateIpcArgs('workspace:set-sidebar-width', [420.5])).toThrow('width must be a positive integer.');
+    expect(() => validateIpcArgs('workspace:set-detail-panel-collapsed', ['yes'])).toThrow('collapsed must be a boolean.');
+    expect(() => validateIpcArgs('repo:file-history', ['/repo', 'file.ts', 1.5])).toThrow('limit must be a positive integer.');
+    expect(() => validateIpcArgs('repo:compare', ['/repo', 'main'])).toThrow('repo:compare expected 3 arguments');
+    expect(() =>
+      validateIpcArgs('repo:stash-drop', ['/repo', { selector: 'stash@{0}' }])
+    ).toThrow('expectedSha must be a string.');
+    expect(() => validateIpcArgs('repo:cancel-operation', ['/repo'])).toThrow(
+      'repo:cancel-operation expected 2 arguments'
+    );
+    expect(() => validateIpcArgs('repo:cancel-operation', ['/repo', '   '])).toThrow(
+      'operationId must not be empty.'
+    );
+    expect(() =>
+      validateIpcArgs('settings:update', [
+        {
+          graphColumns: { sha: 'yes' }
+        }
+      ])
+    ).toThrow('sha must be a boolean.');
   });
 });

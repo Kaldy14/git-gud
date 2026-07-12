@@ -56,7 +56,7 @@ The UI can reserve small sidebar placeholders only if useful for matching the sc
 
 ## Progress Tracker
 
-Last updated: 2026-07-07.
+Last updated: 2026-07-10.
 
 | Milestone | Status | Notes |
 |---|---|---|
@@ -66,19 +66,17 @@ Last updated: 2026-07-07.
 | M3 - Details, Trees, Diffs, Commit Flow | Done | Commit/WIP details, `@pierre/trees`, `@pierre/diffs`, file/all stage and unstage, commit, amend, rename unstage coverage, and graph/detail refresh are implemented. |
 | M4 - Everyday Branch Operations | Done | Fetch, pull, push, branch create/delete/rename, checkout, merge, tags, stash operations, cherry-pick, revert, reset, conflict banner, operation log, and safe local undo are implemented. |
 | M5 - Rebase and Interactive Rebase | Done | Standard rebase, interactive todo planning, reorder/reword/squash/fixup/drop, controlled editor scripts, rebase conflict continuation, and temp-repo integration tests are implemented. |
-| M6 - Polish and Power Features | Done | Hunk/line-group staging, WIP file actions, shortcuts, Terminal button, settings, command dialogs, and large-repo graph defaults are implemented. |
+| M6 - Polish and Power Features | Done | Hunk/line-group staging, WIP file actions, keyboard navigation, responsive panels, command palette, repository inspection, advanced profiles, progress/cancellation, settings, and large-repo graph defaults are implemented. |
 
-Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after M6/WIP file action hardening on 2026-07-07.
+Current verification snapshot: `pnpm typecheck`, `pnpm lint`, and `pnpm test` passed after the correctness, safety, accessibility, and responsive-UI hardening pass on 2026-07-10.
 
 Tracking rule: update this table whenever a milestone is started, completed, reopened, or materially rescoped; keep `docs/README.md` status in sync with this table.
 
-### M4 Follow-Up Debt
+### M4 Follow-Up Status
 
-These items were intentionally deferred during the M4 hardening pass so the current branch operation work stayed stable. Revisit them during M6 polish or when they start blocking conflict/operation UX work:
-
-- Finish splitting `src/main/git/operations.ts` into per-command modules under `src/main/git/commands/`. The command registry now records labels, mutation scope, undo strategy, conflict behavior, and invalidation scope; the M5 rebase command lives in `src/main/git/commands/rebase.ts`, while most earlier operation implementations are still centralized.
-- Add operation progress streaming for long-running/network mutations. The current OperationLog records settled results; it does not yet receive incremental progress events.
-- Add executor-level cancellation and streaming helpers: cancellable reads, explicit cancellation blocking for unsafe mutation phases, and streamed output for long-running Git commands.
+- Operation progress now streams through typed IPC into the operation log, with bounded output and elapsed state.
+- Fetch cancellation is explicit and process-tree aware; unsafe mutation phases remain non-cancellable.
+- `src/main/git/operations.ts` still contains most everyday commands. Splitting it into the command-registry modules remains a maintenance refactor, not a functional milestone blocker.
 
 ## Stack
 

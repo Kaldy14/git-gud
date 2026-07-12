@@ -63,6 +63,52 @@ describe('patch staging', () => {
       await rm(rootPath, { recursive: true, force: true });
     }
   });
+
+  it('preserves trailing whitespace in the final staged patch line', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-patch-staging-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await writeRepoFile(repoPath, 'file.txt', 'one\ntwo\nthree\nfour\ntrailing spaces   \n');
+
+      const diff = await loadFileDiff(tab, { kind: 'wip', path: 'file.txt', staged: false });
+      await applyWipPatch(tab, {
+        path: 'file.txt',
+        mode: 'stage',
+        patch: diff.stageablePatch ?? ''
+      });
+
+      expect((await git(repoPath, ['show', ':file.txt'])).stdout).toBe(
+        'one\ntwo\nthree\nfour\ntrailing spaces   \n'
+      );
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves a final line without a newline while staging', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-patch-staging-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await writeRepoFile(repoPath, 'file.txt', 'one\ntwo\nthree\nfour\nno final newline');
+
+      const diff = await loadFileDiff(tab, { kind: 'wip', path: 'file.txt', staged: false });
+      await applyWipPatch(tab, {
+        path: 'file.txt',
+        mode: 'stage',
+        patch: diff.stageablePatch ?? ''
+      });
+
+      expect((await git(repoPath, ['show', ':file.txt'])).stdout).toBe(
+        'one\ntwo\nthree\nfour\nno final newline'
+      );
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
 });
 
 async function createBaseRepository(rootPath: string): Promise<string> {

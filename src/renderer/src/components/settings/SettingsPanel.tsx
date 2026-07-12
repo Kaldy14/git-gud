@@ -1,7 +1,8 @@
 import type { FormEvent, ReactElement } from 'react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Gauge, GitGraph, Rows3, Settings, SplitSquareHorizontal, Terminal, X } from 'lucide-react';
 
+import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { MAX_GRAPH_PAGE_SIZE, MIN_GRAPH_PAGE_SIZE, clampGraphPageSize } from '@shared/settings';
 import type { AppSettings } from '@shared/types';
 
@@ -14,6 +15,8 @@ type SettingsPanelProps = {
 };
 
 export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSave }: SettingsPanelProps): ReactElement {
+  const titleId = useId();
+  const descriptionId = useId();
   const [draft, setDraft] = useState<AppSettings>(settings);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -25,7 +28,13 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/45">
+    <ModalSurface
+      labelledBy={titleId}
+      describedBy={descriptionId}
+      className="h-full w-full max-w-[460px]"
+      backdropClassName="fixed inset-0 z-50 flex items-stretch justify-end bg-black/45"
+      onClose={onClose}
+    >
       <form
         className="flex h-full w-full max-w-[460px] flex-col border-l border-[var(--border-strong)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
         onSubmit={handleSubmit}
@@ -33,8 +42,8 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
         <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
           <Settings size={17} className="text-[var(--accent-2)]" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold text-[var(--text-1)]">Settings</h2>
-            <p className="mt-0.5 text-[11px] text-[var(--text-3)]">Local workflow defaults</p>
+            <h2 id={titleId} className="text-sm font-semibold text-[var(--text-1)]">Settings</h2>
+            <p id={descriptionId} className="mt-0.5 text-[11px] text-[var(--text-3)]">Local workflow defaults</p>
           </div>
           <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close settings">
             <X size={14} />
@@ -100,6 +109,41 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
                 </span>
               </span>
             </label>
+            <fieldset className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5">
+              <legend className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Graph metadata</legend>
+              {([
+                ['author', 'Author'],
+                ['date', 'Date'],
+                ['sha', 'Short SHA']
+              ] as const).map(([column, label]) => (
+                <label key={column} className="flex items-center gap-2 text-xs text-[var(--text-2)]">
+                  <input
+                    type="checkbox"
+                    checked={draft.graphColumns[column]}
+                    onChange={(event) =>
+                      setDraft((value) => ({
+                        ...value,
+                        graphColumns: { ...value.graphColumns, [column]: event.target.checked }
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+              <p className="text-[11px] leading-4 text-[var(--text-3)]">Columns hide automatically when the graph is narrow.</p>
+            </fieldset>
+            <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+              <input
+                className="mt-0.5"
+                type="checkbox"
+                checked={draft.remoteAvatars}
+                onChange={(event) => setDraft((value) => ({ ...value, remoteAvatars: event.target.checked }))}
+              />
+              <span className="min-w-0">
+                <span className="block font-semibold text-[var(--text-1)]">Load remote author avatars</span>
+                <span className="mt-1 block leading-5 text-[var(--text-3)]">Off by default. When disabled, author identities stay local and generated avatars are used.</span>
+              </span>
+            </label>
           </section>
 
           <section className="space-y-3 py-4">
@@ -110,7 +154,7 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
             </div>
           </section>
 
-          {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]">{errorMessage}</p> : null}
+          {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
         </div>
 
         <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
@@ -123,7 +167,7 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
           </button>
         </footer>
       </form>
-    </div>
+    </ModalSurface>
   );
 }
 

@@ -25,16 +25,17 @@ export async function loadCommitGraph(
 ): Promise<CommitGraphPage> {
   const limit = normalizeLimit(requestedLimit);
   const env = createProfileCommandEnv(tab.assignedProfileId);
+  const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
   const [logCommits, refs, status, stashes] = await Promise.all([
-    loadLogCommits(tab.path, limit + 1, env),
+    loadLogCommits(tab.path, logLimit, env),
     loadRefs(tab.path, env),
     loadStatus(tab.path, env),
     loadStashes(tab.path, env)
   ]);
-  const hasMore = logCommits.length > limit;
+  const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
   const refMap = createRefMap(refs);
-  const groupedStashInputsByBase = createGroupedStashInputsByBase(stashes);
+  const stashInputsByBase = createStashInputsByBase(stashes);
   const attachedStashBases = new Set<string>();
   const inputs: GraphCommitInput[] = [];
 
@@ -54,19 +55,19 @@ export async function loadCommitGraph(
   }
 
   for (const commit of commits) {
-    const stashInput = groupedStashInputsByBase.get(commit.sha);
+    const stashInputs = stashInputsByBase.get(commit.sha);
 
-    if (stashInput) {
-      inputs.push(stashInput);
+    if (stashInputs) {
+      inputs.push(...stashInputs);
       attachedStashBases.add(commit.sha);
     }
 
     inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha)));
   }
 
-  for (const [baseSha, stashInput] of groupedStashInputsByBase.entries()) {
+  for (const [baseSha, stashInputs] of stashInputsByBase.entries()) {
     if (!attachedStashBases.has(baseSha)) {
-      inputs.push(stashInput);
+      inputs.push(...stashInputs);
     }
   }
 
@@ -81,45 +82,26 @@ export async function loadCommitGraph(
   };
 }
 
-function createGroupedStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCommitInput> {
-  const stashesByBase = new Map<string, GitStashEntry[]>();
+function createStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCommitInput[]> {
+  const inputsByBase = new Map<string, GraphCommitInput[]>();
 
   for (const stash of stashes) {
     const baseSha = stash.parentShas[0] ?? '';
-    const group = stashesByBase.get(baseSha) ?? [];
-    group.push(stash);
-    stashesByBase.set(baseSha, group);
-  }
-
-  const inputsByBase = new Map<string, GraphCommitInput>();
-
-  for (const [baseSha, group] of stashesByBase.entries()) {
-    const primaryStash = group[0];
-
-    if (!primaryStash) {
-      continue;
-    }
-
-    inputsByBase.set(baseSha, {
-      sha: primaryStash.sha,
+    const inputs = inputsByBase.get(baseSha) ?? [];
+    inputs.push({
+      sha: stash.sha,
       parentShas: baseSha ? [baseSha] : [],
-      subject: formatStashSubject(primaryStash, group.length),
+      subject: stash.subject || stash.selector,
       authorName: 'Stash',
-      authoredAt: primaryStash.date,
+      authoredAt: stash.date,
       kind: 'stash',
       colorOverride: '#d726e7',
-      refs: group.map((stash) => ({ label: stash.selector, kind: 'stash' }))
+      refs: [{ label: stash.selector, kind: 'stash' }]
     });
+    inputsByBase.set(baseSha, inputs);
   }
 
   return inputsByBase;
-}
-
-function formatStashSubject(primaryStash: GitStashEntry, groupSize: number): string {
-  const subject = primaryStash.subject || primaryStash.selector;
-  const extraCount = groupSize - 1;
-
-  return extraCount > 0 ? `${subject} (+${extraCount} stashes)` : subject;
 }
 
 async function loadLogCommits(
@@ -128,14 +110,17 @@ async function loadLogCommits(
   env: NodeJS.ProcessEnv | undefined
 ): Promise<GitLogCommit[]> {
   try {
+    const head = await gitExecutor.run(['rev-parse', '--verify', '-q', 'HEAD'], {
+      cwd: repoPath,
+      env,
+      allowedExitCodes: [1]
+    });
+    const revisions = head.exitCode === 0 ? ['--branches', '--remotes', '--tags', 'HEAD'] : ['--branches', '--remotes', '--tags'];
     const result = await gitExecutor.run(
       [
         'log',
         `--max-count=${limit}`,
-        '--branches',
-        '--remotes',
-        '--tags',
-        'HEAD',
+        ...revisions,
         '--topo-order',
         '-z',
         '--date=iso-strict',

@@ -10,10 +10,15 @@ import type {
   GitDeleteBranchInput,
   GitFileDiff,
   GitFileDiffRequest,
+  GitFileBlame,
+  GitFileHistory,
+  GitComparison,
   GitInteractiveRebaseInput,
   GitInteractiveRebasePlan,
   GitMergeInput,
   GitOperationResult,
+  GitOperationCancellationResult,
+  GitOperationProgressEvent,
   GitPatchApplyInput,
   GitPullInput,
   GitProfile,
@@ -68,6 +73,14 @@ export type IpcChannelMap = {
     args: [width: number];
     result: WorkspaceState;
   };
+  'workspace:set-detail-panel-collapsed': {
+    args: [collapsed: boolean];
+    result: WorkspaceState;
+  };
+  'workspace:set-detail-panel-width': {
+    args: [width: number];
+    result: WorkspaceState;
+  };
   'repo:overview': {
     args: [repoPath: string];
     result: GitRepositoryOverview;
@@ -87,6 +100,18 @@ export type IpcChannelMap = {
   'repo:file-diff': {
     args: [repoPath: string, request: GitFileDiffRequest];
     result: GitFileDiff;
+  };
+  'repo:file-history': {
+    args: [repoPath: string, path: string, limit?: number];
+    result: GitFileHistory;
+  };
+  'repo:file-blame': {
+    args: [repoPath: string, path: string, revision?: string];
+    result: GitFileBlame;
+  };
+  'repo:compare': {
+    args: [repoPath: string, base: string, head: string];
+    result: GitComparison;
   };
   'repo:apply-patch': {
     args: [repoPath: string, input: GitPatchApplyInput];
@@ -216,6 +241,10 @@ export type IpcChannelMap = {
     args: [repoPath: string];
     result: GitOperationResult;
   };
+  'repo:cancel-operation': {
+    args: [repoPath: string, operationId: string];
+    result: GitOperationCancellationResult;
+  };
   'settings:get': {
     args: [];
     result: AppSettings;
@@ -242,6 +271,7 @@ export type IpcChannelName = keyof IpcChannelMap;
 
 export type RendererEventMap = {
   'repo:changed': RepoChangedEvent;
+  'repo:operation-progress': GitOperationProgressEvent;
 };
 
 export type RendererEventName = keyof RendererEventMap;
@@ -256,11 +286,16 @@ export type RendererApi = {
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<WorkspaceState>;
   setSidebarCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
   setSidebarWidth: (width: number) => Promise<WorkspaceState>;
+  setDetailPanelCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
+  setDetailPanelWidth: (width: number) => Promise<WorkspaceState>;
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
+  getFileHistory: (repoPath: string, path: string, limit?: number) => Promise<GitFileHistory>;
+  getFileBlame: (repoPath: string, path: string, revision?: string) => Promise<GitFileBlame>;
+  compareRefs: (repoPath: string, base: string, head: string) => Promise<GitComparison>;
   applyWipPatch: (repoPath: string, input: GitPatchApplyInput) => Promise<GitOperationResult>;
   stageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   unstageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
@@ -293,10 +328,12 @@ export type RendererApi = {
   resolveConflict: (repoPath: string, input: GitConflictActionInput) => Promise<GitOperationResult>;
   undoOperation: (repoPath: string, undoId: string) => Promise<GitOperationResult>;
   openTerminal: (repoPath: string) => Promise<GitOperationResult>;
+  cancelRepositoryOperation: (repoPath: string, operationId: string) => Promise<GitOperationCancellationResult>;
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;
   listProfiles: () => Promise<GitProfile[]>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;
   onRepositoryChanged: (listener: (event: RepoChangedEvent) => void) => () => void;
+  onOperationProgress: (listener: (event: GitOperationProgressEvent) => void) => () => void;
 };

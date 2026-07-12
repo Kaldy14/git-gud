@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, FolderOpen, GitBranch, History, Plus, Settings, X } from 'lucide-react';
+import { FolderOpen, GitBranch, History, Plus, Settings, X } from 'lucide-react';
 
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
 import type { GitProfile, RecentRepository, RepoProfileState, RepoTab } from '@shared/types';
@@ -11,6 +11,7 @@ type TabStripProps = {
   activeRepoPath?: string;
   recentRepos: RecentRepository[];
   profileState?: RepoProfileState;
+  activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onOpenRepository: () => void;
@@ -26,6 +27,7 @@ export function TabStrip({
   activeRepoPath,
   recentRepos,
   profileState,
+  activeRepoDirty = false,
   onActivateTab,
   onCloseTab,
   onOpenRepository,
@@ -55,34 +57,42 @@ export function TabStrip({
   return (
     <div className="drag-region flex h-[48px] shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
       <div className="no-drag relative flex min-w-0 flex-1 items-stretch">
-        <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map((tab) => {
+        <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Open repositories">
+          {tabs.map((tab, tabIndex) => {
             const isActive = tab.id === activeTabId;
 
             return (
-              <button
+              <div
                 key={tab.id}
                 className="repo-tab group"
                 data-active={isActive}
-                type="button"
                 title={tab.path}
-                onClick={() => onActivateTab(tab.id)}
               >
-                <GitBranch size={13} className={isActive ? 'shrink-0 text-[var(--accent-2)]' : 'shrink-0'} />
-                <span className="min-w-0 truncate">{tab.name}</span>
-                <span
-                  role="button"
-                  tabIndex={-1}
+                <button
+                  id={tabDomId(tab.id)}
+                  className="repo-tab-main"
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
+                  onClick={() => onActivateTab(tab.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, tabIndex, tabs, onActivateTab)}
+                >
+                  <GitBranch size={13} className={isActive ? 'shrink-0 text-[var(--accent-2)]' : 'shrink-0'} />
+                  <span className="min-w-0 truncate">{tab.name}</span>
+                  {isActive && activeRepoDirty ? (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
+                  ) : null}
+                </button>
+                <button
+                  type="button"
                   aria-label={`Close ${tab.name}`}
-                  className="grid h-4 w-4 shrink-0 place-items-center rounded text-[var(--text-3)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] group-hover:opacity-100 group-data-[active=true]:opacity-100"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCloseTab(tab.id);
-                  }}
+                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-[var(--text-3)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] focus:opacity-100 group-hover:opacity-100 group-data-[active=true]:opacity-100"
+                  onClick={() => onCloseTab(tab.id)}
                 >
                   <X size={11} />
-                </span>
-              </button>
+                </button>
+              </div>
             );
           })}
         </div>
@@ -140,9 +150,6 @@ export function TabStrip({
       </div>
 
       <div className="no-drag flex shrink-0 items-center gap-0.5 px-2">
-        <button className="icon-btn" type="button" aria-label="Notifications" title="Notifications - not implemented" disabled>
-          <Bell size={15} />
-        </button>
         <button className="icon-btn" type="button" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
           <Settings size={15} />
         </button>
@@ -155,4 +162,37 @@ export function TabStrip({
       </div>
     </div>
   );
+}
+
+function handleTabKeyDown(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+  currentIndex: number,
+  tabs: RepoTab[],
+  onActivateTab: (tabId: string) => void
+): void {
+  let nextIndex: number | undefined;
+
+  if (event.key === 'ArrowRight') {
+    nextIndex = (currentIndex + 1) % tabs.length;
+  } else if (event.key === 'ArrowLeft') {
+    nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  } else if (event.key === 'Home') {
+    nextIndex = 0;
+  } else if (event.key === 'End') {
+    nextIndex = tabs.length - 1;
+  }
+
+  const nextTab = typeof nextIndex === 'number' ? tabs[nextIndex] : undefined;
+
+  if (!nextTab) {
+    return;
+  }
+
+  event.preventDefault();
+  onActivateTab(nextTab.id);
+  window.requestAnimationFrame(() => document.getElementById(tabDomId(nextTab.id))?.focus());
+}
+
+function tabDomId(tabId: string): string {
+  return `repo-tab-${tabId.replace(/[^\dA-Za-z_-]/g, '-')}`;
 }

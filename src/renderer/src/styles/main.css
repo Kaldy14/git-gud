@@ -24,8 +24,8 @@
 
   /* Text */
   --text-1: #e3e5ea;
-  --text-2: #afb5bf;
-  --text-3: #7e8591;
+  --text-2: #bcc2cc;
+  --text-3: #9ba3af;
 
   /* Brand */
   --accent: #26b8a2;
@@ -106,6 +106,11 @@ button:disabled {
   cursor: default;
 }
 
+:where(button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+
 input {
   font: inherit;
 }
@@ -146,17 +151,29 @@ input {
 .repo-tab {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   height: 100%;
   min-width: 118px;
   max-width: 208px;
-  padding: 0 11px 0 13px;
+  padding-right: 7px;
   border-right: 1px solid var(--border);
   color: var(--text-2);
   font-size: 13px;
   font-weight: 600;
   border-radius: 0;
   transition: color 120ms ease, background 120ms ease;
+}
+
+.repo-tab-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding-left: 13px;
+  color: inherit;
+  text-align: left;
 }
 
 .repo-tab:hover {
@@ -336,6 +353,37 @@ input {
   box-shadow: 0 0 0 1px rgba(95, 214, 195, 0.22);
 }
 
+.detail-panel-resizer {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  z-index: 30;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.detail-panel-resizer::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: '';
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.detail-panel-resizer:hover::before,
+.detail-panel-resizer:focus-visible::before,
+.detail-panel-resizer[data-active='true']::before {
+  background: var(--accent-2);
+  box-shadow: 0 0 0 1px rgba(95, 214, 195, 0.22);
+}
+
 .side-row {
   display: flex;
   min-width: 0;
@@ -361,6 +409,11 @@ input {
   background: var(--control-active-bg);
   color: var(--text-1);
   box-shadow: inset 0 0 0 1px var(--control-active-border);
+}
+
+.side-row:focus-visible {
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--select-border);
 }
 
 .side-row-icon {
@@ -899,6 +952,26 @@ input {
   text-align: center;
 }
 
+.inspector-input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  background: var(--bg-field);
+  padding: 0 10px;
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.inspector-input::placeholder {
+  color: var(--text-3);
+}
+
+.inspector-input:focus {
+  border-color: var(--select-border);
+}
+
 .gg-file-tree {
   display: block;
   width: 100%;
@@ -952,5 +1025,76 @@ input {
 @media (max-width: 1120px) {
   .file-focus-toolbar-group {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1200px) {
+  .tb-action {
+    min-width: 48px;
+    padding-inline: 5px;
+  }
+
+  .tb-divider {
+    margin-inline: 3px;
+  }
+
+  .tb-select .tb-select-value {
+    max-width: 132px;
+  }
+}
+
+@media (max-width: 860px) {
+  .tb-action-optional,
+  .tb-divider {
+    display: none;
+  }
+
+  .tb-context .tb-select:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-toolbar {
+    height: 44px;
+    padding-inline: 4px;
+  }
+
+  .tb-context {
+    display: none;
+  }
+
+  .tb-action {
+    min-width: 38px;
+    height: 40px;
+    padding: 2px 4px;
+  }
+
+  .tb-action-label {
+    display: none;
+  }
+
+  .conflict-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .file-focus-pathbar {
+    padding-inline: 6px;
+  }
+
+  .file-focus-toolbar {
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

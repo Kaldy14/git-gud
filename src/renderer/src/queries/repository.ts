@@ -8,6 +8,7 @@ import type {
   GitFileDiff,
   GitFileDiffRequest,
   GitRepositoryOverview,
+  GitQueryInvalidation,
   GitWipDetail,
   RepoChangedEvent
 } from '@shared/types';
@@ -81,14 +82,14 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
   useEffect(() => {
     const loadedLimit = query.data?.limit;
 
-    if (!repoPath || !loadedLimit) {
+    if (!repoPath || !shouldPruneLowerGraphQueries(limit, loadedLimit, query.isPlaceholderData)) {
       return;
     }
 
     queryClient.removeQueries({
       predicate: (candidate) => isLowerLimitCommitGraphQuery(candidate.queryKey, repoPath, loadedLimit)
     });
-  }, [query.data?.limit, queryClient, repoPath]);
+  }, [limit, query.data?.limit, query.isPlaceholderData, queryClient, repoPath]);
 
   return query;
 }
@@ -143,21 +144,80 @@ export function useRepositoryChangeInvalidation(): void {
 
   useEffect(() => {
     return window.api.onRepositoryChanged((event: RepoChangedEvent) => {
-      void invalidateRepositoryQueries(queryClient, event.repoPath);
+      void invalidateRepositoryQueries(queryClient, event.repoPath, scopesForRepositoryChange(event));
     });
   }, [queryClient]);
 }
 
 export async function invalidateRepositoryQueries(
   queryClient: QueryClient,
-  repoPath: string
+  repoPath: string,
+  scopes: readonly GitQueryInvalidation[] = allRepositoryInvalidations
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }),
-    queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }),
-    queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }),
-    queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath, 'wip'] })
-  ]);
+  const requested = new Set(scopes);
+  const invalidations: Array<Promise<unknown>> = [];
+
+  if (requested.has('overview')) {
+    invalidations.push(queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }));
+  }
+
+  if (requested.has('graph')) {
+    invalidations.push(queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }));
+  }
+
+  if (requested.has('commit-detail')) {
+    invalidations.push(queryClient.invalidateQueries({ queryKey: ['commit-detail', repoPath] }));
+  }
+
+  if (requested.has('wip-detail')) {
+    invalidations.push(queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }));
+  }
+
+  if (requested.has('file-diff')) {
+    invalidations.push(queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath, 'wip'] }));
+  }
+
+  await Promise.all(invalidations);
+}
+
+const allRepositoryInvalidations: readonly GitQueryInvalidation[] = [
+  'overview',
+  'graph',
+  'commit-detail',
+  'wip-detail',
+  'file-diff'
+];
+
+export function scopesForRepositoryChange(event: RepoChangedEvent): readonly GitQueryInvalidation[] {
+  const normalizedPaths = event.paths.map((path) => path.replaceAll('\\', '/').toLowerCase());
+  const hasWorktreeChange = event.reasons.includes('worktree');
+  const hasRefChange = normalizedPaths.some(
+    (path) =>
+      path.includes('/refs/') ||
+      path.includes('/logs/refs/') ||
+      path.endsWith('/head') ||
+      path.endsWith('/packed-refs') ||
+      path.endsWith('/fetch_head')
+  );
+  const hasIndexOrOperationChange = normalizedPaths.some(
+    (path) =>
+      path.endsWith('/index') ||
+      path.endsWith('/merge_head') ||
+      path.endsWith('/cherry_pick_head') ||
+      path.endsWith('/revert_head') ||
+      path.includes('/rebase-merge/') ||
+      path.includes('/rebase-apply/')
+  );
+
+  if (hasRefChange) {
+    return allRepositoryInvalidations;
+  }
+
+  if (hasWorktreeChange || hasIndexOrOperationChange) {
+    return ['overview', 'graph', 'wip-detail', 'file-diff'];
+  }
+
+  return ['overview', 'graph'];
 }
 
 function isLowerLimitCommitGraphQuery(queryKey: readonly unknown[], repoPath: string, loadedLimit: number): boolean {
@@ -167,4 +227,12 @@ function isLowerLimitCommitGraphQuery(queryKey: readonly unknown[], repoPath: st
     typeof queryKey[2] === 'number' &&
     queryKey[2] < loadedLimit
   );
+}
+
+export function shouldPruneLowerGraphQueries(
+  requestedLimit: number,
+  loadedLimit: number | undefined,
+  isPlaceholderData: boolean
+): loadedLimit is number {
+  return !isPlaceholderData && typeof loadedLimit === 'number' && loadedLimit === requestedLimit;
 }

@@ -5,23 +5,20 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  CircleDot,
   Cloud,
   FolderGit2,
   GitBranch,
-  GitPullRequest,
   Laptop,
-  List,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Search,
   Tag,
-  Trash2,
-  Users
+  Trash2
 } from 'lucide-react';
 
-import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitTagRef, RepoTab } from '@shared/types';
+import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
+import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitStashRefInput, GitTagRef, RepoTab } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 type SidebarProps = {
@@ -31,6 +28,7 @@ type SidebarProps = {
   errorMessage?: string;
   isCollapsed: boolean;
   width: number;
+  filterFocusSignal: number;
   onToggleCollapsed: () => void;
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
@@ -40,12 +38,12 @@ type SidebarProps = {
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteTag: (name: string) => void;
-  onStashApply: (selector: string) => void;
-  onStashPop: (selector: string) => void;
-  onStashDrop: (selector: string) => void;
+  onStashApply: (input: GitStashRefInput) => void;
+  onStashPop: (input: GitStashRefInput) => void;
+  onStashDrop: (input: GitStashRefInput) => void;
 };
 
-type SectionId = 'local' | 'remote' | 'worktrees' | 'stashes' | 'cloudPatches' | 'pullRequests' | 'issues' | 'teams' | 'tags';
+type SectionId = 'local' | 'remote' | 'worktrees' | 'stashes' | 'tags';
 
 type SidebarContextMenuTarget =
   | {
@@ -76,15 +74,11 @@ type SidebarResizeState = {
   width: number;
 };
 
-const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode; placeholder?: boolean }> = [
+const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
   { id: 'local', title: 'Local', icon: <Laptop size={14} /> },
   { id: 'remote', title: 'Remote', icon: <Cloud size={14} /> },
   { id: 'worktrees', title: 'Worktrees', icon: <FolderGit2 size={14} /> },
   { id: 'stashes', title: 'Stashes', icon: <Archive size={14} /> },
-  { id: 'cloudPatches', title: 'Cloud Patches', icon: <Cloud size={14} />, placeholder: true },
-  { id: 'pullRequests', title: 'Pull Requests', icon: <GitPullRequest size={14} />, placeholder: true },
-  { id: 'issues', title: 'Issues', icon: <CircleDot size={14} />, placeholder: true },
-  { id: 'teams', title: 'Teams', icon: <Users size={14} />, placeholder: true },
   { id: 'tags', title: 'Tags', icon: <Tag size={14} /> }
 ];
 
@@ -95,6 +89,7 @@ export function Sidebar({
   errorMessage,
   isCollapsed,
   width,
+  filterFocusSignal,
   onToggleCollapsed,
   onResize,
   onResizeCommit,
@@ -109,20 +104,18 @@ export function Sidebar({
   onStashDrop
 }: SidebarProps): ReactElement {
   const resizeStateRef = useRef<SidebarResizeState | undefined>(undefined);
+  const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
     local: true,
     remote: false,
     worktrees: false,
     stashes: false,
-    cloudPatches: false,
-    pullRequests: false,
-    issues: false,
-    teams: false,
     tags: false
   });
   const [filter, setFilter] = useState('');
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState>();
   const [isResizing, setIsResizing] = useState(false);
+  const filterInputRef = useRef<HTMLInputElement>(null);
   const counts = {
     local: repositoryOverview?.refs.localBranches.length ?? 0,
     remote: repositoryOverview?.refs.remoteBranches.length ?? 0,
@@ -133,6 +126,12 @@ export function Sidebar({
   const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
 
   useEffect(() => {
+    if (filterFocusSignal > 0 && !isCollapsed) {
+      filterInputRef.current?.focus({ preventScroll: true });
+    }
+  }, [filterFocusSignal, isCollapsed]);
+
+  useEffect(() => {
     if (!contextMenu) {
       return;
     }
@@ -140,6 +139,7 @@ export function Sidebar({
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
         setContextMenu(undefined);
+        contextMenuReturnFocusRef.current?.focus({ preventScroll: true });
       }
     }
 
@@ -202,6 +202,7 @@ export function Sidebar({
 
   function handleRowContextMenu(event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget): void {
     event.preventDefault();
+    contextMenuReturnFocusRef.current = event.currentTarget;
     setContextMenu({
       ...state,
       x: event.clientX,
@@ -237,7 +238,7 @@ export function Sidebar({
 
   if (isCollapsed) {
     return (
-      <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--bg-sidebar)] py-2">
+      <aside className="workspace-sidebar flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--bg-sidebar)] py-2" aria-label="Repository navigation">
         <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand sidebar">
           <PanelLeftOpen size={15} />
         </button>
@@ -254,8 +255,9 @@ export function Sidebar({
 
   return (
     <aside
-      className="relative flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]"
+      className="workspace-sidebar relative flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]"
       style={{ width: normalizeSidebarWidth(width) }}
+      aria-label="Repository navigation"
     >
       <SidebarResizeHandle
         value={width}
@@ -269,16 +271,7 @@ export function Sidebar({
           <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse sidebar">
             <PanelLeftClose size={14} />
           </button>
-          <div className="segmented grid flex-1 grid-cols-2">
-            <button type="button" data-active="true" title="List view">
-              <List size={12} />
-              List
-            </button>
-            <button type="button" disabled title="Agents are not part of the local Git client scope.">
-              <Users size={12} />
-              Agents
-            </button>
-          </div>
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text-1)]">Repository</span>
         </div>
         <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-[var(--text-2)]">
           <span>
@@ -288,25 +281,31 @@ export function Sidebar({
         <div className="relative mt-1.5 min-w-0 flex-1">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-3)]" />
           <input
+            ref={filterInputRef}
             className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] pl-7 pr-2 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
-            placeholder="Filter (⌘ + Option + f)"
+            placeholder="Filter (⌘⌥F)"
+            aria-label="Filter repository references"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Branches, worktrees, stashes, and tags">
         {SECTIONS.map((section) => {
           const isExpanded = expanded[section.id];
           const sectionCount = counts[section.id as keyof typeof counts];
 
           return (
-            <section key={section.id} className="sidebar-section m-0">
+            <section key={section.id} className="sidebar-section m-0" role="group">
               <button
                 className="side-section"
                 type="button"
+                role="treeitem"
+                aria-expanded={isExpanded}
+                aria-level={1}
                 onClick={() => setExpanded((value) => ({ ...value, [section.id]: !value[section.id] }))}
+                onKeyDown={handleSidebarTreeKeyDown}
               >
                 {isExpanded ? (
                   <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
@@ -602,14 +601,71 @@ function SidebarRow({
       className="side-row"
       data-active={isActive}
       title={title ?? label}
+      role="treeitem"
+      aria-level={2}
+      aria-current={isActive ? 'page' : undefined}
+      tabIndex={isActive ? 0 : -1}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
+      onKeyDown={(event) => {
+        handleSidebarTreeKeyDown(event);
+
+        if ((event.key === 'Enter' || event.key === ' ') && onDoubleClick) {
+          event.preventDefault();
+          onDoubleClick();
+          return;
+        }
+
+        if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) && onContextMenu) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          event.currentTarget.dispatchEvent(
+            new globalThis.MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left + Math.min(24, rect.width / 2),
+              clientY: rect.top + rect.height / 2
+            })
+          );
+        }
+      }}
     >
       <span className="side-row-icon">{isActive ? <Check size={12} /> : icon}</span>
       <span className="side-row-label">{label}</span>
       {meta ? <span className="side-row-meta">{meta}</span> : null}
     </div>
   );
+}
+
+function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+  const tree = event.currentTarget.closest('[role="tree"]');
+
+  if (!tree) {
+    return;
+  }
+
+  const items = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]')).filter(
+    (item) => item.offsetParent !== null
+  );
+  const currentIndex = items.indexOf(event.currentTarget);
+  let nextIndex: number | undefined;
+
+  if (event.key === 'ArrowDown') {
+    nextIndex = Math.min(items.length - 1, currentIndex + 1);
+  } else if (event.key === 'ArrowUp') {
+    nextIndex = Math.max(0, currentIndex - 1);
+  } else if (event.key === 'Home') {
+    nextIndex = 0;
+  } else if (event.key === 'End') {
+    nextIndex = items.length - 1;
+  }
+
+  if (typeof nextIndex !== 'number' || nextIndex === currentIndex) {
+    return;
+  }
+
+  event.preventDefault();
+  items[nextIndex]?.focus();
 }
 
 function SidebarContextMenu({
@@ -633,9 +689,9 @@ function SidebarContextMenu({
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteTag: (name: string) => void;
-  onStashApply: (selector: string) => void;
-  onStashPop: (selector: string) => void;
-  onStashDrop: (selector: string) => void;
+  onStashApply: (input: GitStashRefInput) => void;
+  onStashPop: (input: GitStashRefInput) => void;
+  onStashDrop: (input: GitStashRefInput) => void;
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
@@ -652,6 +708,7 @@ function SidebarContextMenu({
       left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
       top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
     });
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
   }, [state]);
 
   return (
@@ -659,6 +716,9 @@ function SidebarContextMenu({
       ref={menuRef}
       className="fixed z-50 w-56 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
       style={{ left: position.left, top: position.top }}
+      role="menu"
+      aria-label="Reference actions"
+      onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       onClick={(event) => event.stopPropagation()}
     >
       {state.kind === 'local' ? (
@@ -666,6 +726,7 @@ function SidebarContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={state.branch.current || isOperationBusy}
             onClick={() => {
               onCheckoutBranch(state.branch.name);
@@ -678,6 +739,7 @@ function SidebarContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={isOperationBusy}
             onClick={() => {
               onRenameBranch(state.branch.name);
@@ -690,6 +752,7 @@ function SidebarContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={state.branch.current || isOperationBusy}
             onClick={() => {
               onDeleteBranch(state.branch.name);
@@ -704,6 +767,7 @@ function SidebarContextMenu({
         <button
           className="menu-row"
           type="button"
+          role="menuitem"
           disabled={isOperationBusy}
           onClick={() => {
             onCheckoutRemoteBranch(state.branch.name);
@@ -717,6 +781,7 @@ function SidebarContextMenu({
         <button
           className="menu-row"
           type="button"
+          role="menuitem"
           disabled={isOperationBusy}
           onClick={() => {
             onDeleteTag(state.tag.name);
@@ -731,9 +796,10 @@ function SidebarContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={isOperationBusy}
             onClick={() => {
-              onStashApply(state.stash.selector);
+              onStashApply({ selector: state.stash.selector, expectedSha: state.stash.sha });
               onClose();
             }}
           >
@@ -743,9 +809,10 @@ function SidebarContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={isOperationBusy}
             onClick={() => {
-              onStashPop(state.stash.selector);
+              onStashPop({ selector: state.stash.selector, expectedSha: state.stash.sha });
               onClose();
             }}
           >
@@ -755,9 +822,10 @@ function SidebarContextMenu({
           <button
             className="menu-row"
             type="button"
+            role="menuitem"
             disabled={isOperationBusy}
             onClick={() => {
-              onStashDrop(state.stash.selector);
+              onStashDrop({ selector: state.stash.selector, expectedSha: state.stash.sha });
               onClose();
             }}
           >
