@@ -109,7 +109,7 @@ export async function getRepoProfileState(
   };
 }
 
-export function suggestProfileForRepository(repoPath: string, remoteUrls: string[]): GitProfile | undefined {
+function suggestProfileForRepository(repoPath: string, remoteUrls: string[]): GitProfile | undefined {
   const profiles = listProfiles();
 
   return profiles.find((profile) => {

@@ -13,8 +13,7 @@ export function createDefaultAppSettings(): AppSettings {
       date: false,
       sha: false
     },
-    remoteAvatars: false,
-    terminalApp: 'Terminal'
+    remoteAvatars: false
   };
 }
 
@@ -38,8 +37,7 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
       sha: typeof graphColumns.sha === 'boolean' ? graphColumns.sha : fallback.graphColumns.sha
     },
     remoteAvatars:
-      typeof settings.remoteAvatars === 'boolean' ? settings.remoteAvatars : fallback.remoteAvatars,
-    terminalApp: 'Terminal'
+      typeof settings.remoteAvatars === 'boolean' ? settings.remoteAvatars : fallback.remoteAvatars
   };
 }
 

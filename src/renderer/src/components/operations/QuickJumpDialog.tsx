@@ -151,7 +151,7 @@ export function QuickJumpDialog({
         <input
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-[var(--text-1)] outline-none placeholder:text-[var(--text-3)]"
           value={query}
-          autoFocus
+          data-modal-initial-focus="true"
           role="combobox"
           aria-autocomplete="list"
           aria-controls={resultsId}

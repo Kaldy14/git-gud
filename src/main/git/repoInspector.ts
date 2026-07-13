@@ -4,7 +4,7 @@ import type { RepositorySummary } from '@shared/types';
 
 import { GitCommandError, gitExecutor } from './exec';
 
-export class RepositoryValidationError extends Error {
+class RepositoryValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'RepositoryValidationError';

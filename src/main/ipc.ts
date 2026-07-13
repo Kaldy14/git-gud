@@ -64,7 +64,7 @@ import {
   updateSidebarCollapsed,
   updateSidebarWidth
 } from './store';
-import { openRepositoryFileInEditor, openTerminalAtRepository, revealRepositoryFileInFinder } from './system';
+import { openRepositoryFileInEditor, revealRepositoryFileInFinder } from './system';
 
 type IpcHandler<TChannel extends IpcChannelName> = (
   event: IpcMainInvokeEvent,
@@ -291,7 +291,6 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('repo:undo', async (_event, repoPath, undoId) =>
     inRepositoryTransaction(repoPath, (tab) => undoOperation(tab, undoId))
   );
-  handle('repo:open-terminal', async (_event, repoPath) => openTerminalAtRepository(getOpenRepositoryTab(repoPath), getAppSettings().terminalApp));
   handle('repo:cancel-operation', (_event, repoPath, operationId) =>
     cancelRepositoryOperation(repoPath, operationId)
   );

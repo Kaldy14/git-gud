@@ -119,7 +119,7 @@ type GraphViewProps = {
   remoteAvatars?: boolean;
 };
 
-export type GraphColumnVisibility = {
+type GraphColumnVisibility = {
   author: boolean;
   date: boolean;
   sha: boolean;

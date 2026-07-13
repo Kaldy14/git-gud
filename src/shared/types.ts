@@ -5,7 +5,7 @@ export type RepositorySummary = {
   commonDir: string;
 };
 
-export type RepoViewMode = 'graph';
+type RepoViewMode = 'graph';
 
 export type RepoTab = RepositorySummary & {
   id: string;
@@ -117,7 +117,7 @@ export type GitWipDetail = {
 
 export type GitRepositoryDetail = GitCommitDetail | GitWipDetail;
 
-export type GitFileDiffMode = 'commit' | 'wip-staged' | 'wip-unstaged';
+type GitFileDiffMode = 'commit' | 'wip-staged' | 'wip-unstaged';
 
 export type GitFileDiffRequest =
   | {
@@ -317,7 +317,7 @@ export type GitConflictState = {
   message?: string;
 };
 
-export type GitOperationSummary = {
+type GitOperationSummary = {
   id: string;
   label: string;
   status: 'completed' | 'conflicted';
@@ -401,7 +401,6 @@ export type AppSettings = {
     sha: boolean;
   };
   remoteAvatars: boolean;
-  terminalApp: 'Terminal';
 };
 
 export type AppSettingsInput = Partial<Omit<AppSettings, 'graphColumns'>> & {
@@ -410,7 +409,7 @@ export type AppSettingsInput = Partial<Omit<AppSettings, 'graphColumns'>> & {
 
 export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
 
-export type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
+type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
 
 export type GraphRefChip = {
   label: string;
@@ -439,7 +438,7 @@ export type GraphFile = {
   status: GraphFileStatus;
 };
 
-export type GraphAuthor = {
+type GraphAuthor = {
   name: string;
   email?: string;
   initials: string;
@@ -549,7 +548,7 @@ export type GitProfile = {
   remoteUrlPatterns?: string[];
 };
 
-export type GitIdentitySource = 'profile' | 'repo-config' | 'global-config' | 'unknown';
+type GitIdentitySource = 'profile' | 'repo-config' | 'global-config' | 'unknown';
 
 export type GitIdentity = {
   name?: string;

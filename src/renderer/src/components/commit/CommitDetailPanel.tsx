@@ -826,10 +826,6 @@ function FileListControls({
         <ArrowDownAZ size={14} />
       </span>
       <FileViewToggle fileView={fileView} onSetFileView={onSetFileView} />
-      <label className="inline-flex h-7 items-center gap-2 text-[11px] text-[var(--text-2)]" title="Showing changed files only in this build.">
-        <input type="checkbox" disabled />
-        View all files
-      </label>
     </div>
   );
 }

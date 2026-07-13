@@ -11,7 +11,7 @@ import type {
 export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
 export const COMMIT_GRAPH_LIMIT_STEP = 1500;
 
-export const LANE_COLORS = ['#19c9e6', '#2684ff', '#d726e7', '#ff5a36', '#ffd34d', '#2ed3a6'] as const;
+const LANE_COLORS = ['#19c9e6', '#2684ff', '#d726e7', '#ff5a36', '#ffd34d', '#2ed3a6'] as const;
 const AUTHOR_COLORS = ['#38bdf8', '#c084fc', '#4ade80', '#fbbf24', '#fb7185', '#a78bfa', '#2dd4bf'] as const;
 const dateLabelFormatter = new Intl.DateTimeFormat('en', {
   month: 'short',

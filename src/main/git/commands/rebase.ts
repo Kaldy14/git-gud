@@ -161,7 +161,7 @@ export async function assertNoIgnoredUntrackedRebaseContinuationCollisions(
   } catch (error) {
     if (isErrnoException(error) && error.code === 'ENOENT') {
       throw new Error(
-        'The remaining rebase commits cannot be inspected safely. Abort the rebase or protect ignored files before continuing in Terminal.',
+        'The remaining rebase commits cannot be inspected safely. Abort the rebase or protect ignored files before continuing outside Git Gud.',
         { cause: error }
       );
     }
@@ -358,7 +358,7 @@ function parseRemainingRebaseCommitShas(todoContents: string): string[] {
 
     if (!replayActions.has(action)) {
       throw new Error(
-        `The remaining rebase action ${JSON.stringify(action)} cannot be inspected safely. Abort the rebase or continue in Terminal after protecting ignored files.`
+        `The remaining rebase action ${JSON.stringify(action)} cannot be inspected safely. Abort the rebase or continue outside Git Gud after protecting ignored files.`
       );
     }
 

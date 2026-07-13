@@ -457,7 +457,6 @@ Exit: reorder/squash/reword/drop workflows work on real temp repos and update th
 
 - Hunk/line-group staging.
 - Keyboard shortcuts: repo/branch fuzzy jump, commit submit, fetch, push, toggle tree/path, toggle unified/split.
-- Terminal button opens Terminal.app at repo.
 - Settings page for default diff style, graph page size, and large-repo mode.
 - Performance pass on large repos through persisted graph page-size defaults and reduced virtualized overscan.
 - Optional `pnpm dist` local `.app` build.

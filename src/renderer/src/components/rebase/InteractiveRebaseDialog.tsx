@@ -7,9 +7,7 @@ import {
   Check,
   Clipboard,
   FileText,
-  FolderTree,
   Keyboard,
-  List,
   Loader2,
   Minus,
   Pencil,
@@ -606,18 +604,8 @@ function RebaseCommitSummary({ detail, parentSha }: { detail: GitCommitDetail; p
       </div>
 
       <div>
-        <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="mb-2 flex items-center gap-3">
           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">Files</span>
-          <div className="segmented shrink-0">
-            <button type="button" data-active title="Path list">
-              <List size={12} />
-              Path
-            </button>
-            <button type="button" disabled title="Tree view stays in the main detail panel">
-              <FolderTree size={12} />
-              Tree
-            </button>
-          </div>
         </div>
         <div className="space-y-1">
           {detail.files.length > 0 ? (

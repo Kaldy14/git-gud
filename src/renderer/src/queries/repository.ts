@@ -20,21 +20,21 @@ export const repositoryOverviewQueryKey = (repoPath: string): readonly ['reposit
   repoPath
 ];
 
-export const commitGraphQueryKey = (repoPath: string, limit: number): readonly ['commit-graph', string, number] => [
+const commitGraphQueryKey = (repoPath: string, limit: number): readonly ['commit-graph', string, number] => [
   'commit-graph',
   repoPath,
   limit
 ];
 
-export const commitDetailQueryKey = (repoPath: string, sha: string): readonly ['commit-detail', string, string] => [
+const commitDetailQueryKey = (repoPath: string, sha: string): readonly ['commit-detail', string, string] => [
   'commit-detail',
   repoPath,
   sha
 ];
 
-export const wipDetailQueryKey = (repoPath: string): readonly ['wip-detail', string] => ['wip-detail', repoPath];
+const wipDetailQueryKey = (repoPath: string): readonly ['wip-detail', string] => ['wip-detail', repoPath];
 
-export const fileDiffQueryKey = (
+const fileDiffQueryKey = (
   repoPath: string,
   request: GitFileDiffRequest
 ): readonly ['file-diff', string, string, string, string | undefined, boolean | undefined] => [

@@ -61,7 +61,6 @@ const api: RendererApi = {
   runInteractiveRebase: (repoPath, input) => invoke('repo:interactive-rebase', repoPath, input),
   resolveConflict: (repoPath, input) => invoke('repo:resolve-conflict', repoPath, input),
   undoOperation: (repoPath, undoId) => invoke('repo:undo', repoPath, undoId),
-  openTerminal: (repoPath) => invoke('repo:open-terminal', repoPath),
   cancelRepositoryOperation: (repoPath, operationId) => invoke('repo:cancel-operation', repoPath, operationId),
   getSettings: () => invoke('settings:get'),
   updateSettings: (settings) => invoke('settings:update', settings),

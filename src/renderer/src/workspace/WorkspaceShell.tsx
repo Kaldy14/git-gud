@@ -15,7 +15,6 @@ import {
   SearchCode,
   Settings,
   Tag,
-  Terminal,
   Trash2,
   Workflow,
   X
@@ -646,23 +645,6 @@ export function WorkspaceShell(): ReactElement {
     }
   }
 
-  function handleOpenTerminalFromLog(repoPath: string): void {
-    void window.api.openTerminal(repoPath).catch((error: unknown) => {
-      setOperationLogEntries((entries) => [
-        {
-          id: createLogId(),
-          repoPath,
-          label: 'Open Terminal',
-          status: 'error',
-          detail: error instanceof Error ? error.message : 'Unable to open Terminal.',
-          startedAt: new Date().toISOString(),
-          happenedAt: new Date().toISOString()
-        },
-        ...entries
-      ]);
-    });
-  }
-
   function handleCopyOperationDetails(entry: OperationLogEntry): void {
     const detail = [entry.label, entry.status, entry.detail].filter(Boolean).join('\n');
     void navigator.clipboard.writeText(detail);
@@ -687,10 +669,6 @@ export function WorkspaceShell(): ReactElement {
 
   function handlePush(): void {
     void runRepositoryOperation('Push', (repoPath) => window.api.pushRepository(repoPath, { forceWithLease: false }));
-  }
-
-  function handleOpenTerminal(): void {
-    void runRepositoryOperation('Open Terminal', (repoPath) => window.api.openTerminal(repoPath));
   }
 
   function handleDiscardWipFile(file: GitFileChangeDetail): void {
@@ -1344,16 +1322,6 @@ export function WorkspaceShell(): ReactElement {
       onSelect: () => setRepositoryInspector({ mode: 'compare' })
     },
     {
-      id: 'terminal',
-      label: 'Open Terminal here',
-      category: 'Workspace',
-      keywords: ['shell', 'command line'],
-      icon: <Terminal size={14} />,
-      disabled: !activeTab,
-      disabledReason: activeTab ? undefined : 'Open a repository first',
-      onSelect: handleOpenTerminal
-    },
-    {
       id: 'toggle-sidebar',
       label: isSidebarCollapsed ? 'Expand repository sidebar' : 'Collapse repository sidebar',
       category: 'View',
@@ -1455,7 +1423,6 @@ export function WorkspaceShell(): ReactElement {
         onStashPush={handleStashPush}
         onStashPop={() => handleStashPop()}
         onUndo={handleUndo}
-        onOpenTerminal={handleOpenTerminal}
         onOpenQuickJump={() => setIsQuickJumpOpen(true)}
         hasSelectedCommit={Boolean(selectedRow && selectedRow.node.kind !== 'wip' && selectedRow.node.kind !== 'stash')}
         onMergeSelected={() => selectedRow && handleMergeCommit(selectedRow.sha)}
@@ -1621,7 +1588,6 @@ export function WorkspaceShell(): ReactElement {
         onDismiss={handleDismissOperation}
         onCancel={(entry) => void handleCancelOperation(entry)}
         onRetry={handleRetryOperation}
-        onOpenTerminal={handleOpenTerminalFromLog}
         onCopyDetails={handleCopyOperationDetails}
       />
       {isQuickJumpOpen ? (

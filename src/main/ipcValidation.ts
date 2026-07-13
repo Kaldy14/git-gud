@@ -86,7 +86,6 @@ const validators = {
   'repo:interactive-rebase': (args) => readRepoPathWithObject(args, 'repo:interactive-rebase', readInteractiveRebaseInput),
   'repo:resolve-conflict': (args) => readRepoPathWithObject(args, 'repo:resolve-conflict', readConflictActionInput),
   'repo:undo': (args) => readStringPair(args, 'repo:undo', 'repoPath', 'undoId'),
-  'repo:open-terminal': (args) => readOnlyArg(args, 'repo:open-terminal', 'repoPath', readString),
   'repo:cancel-operation': (args) => readOperationCancellationArgs(args),
   'settings:get': (args) => noArgs('settings:get', args),
   'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
@@ -386,8 +385,7 @@ function readSettingsInput(value: unknown): AppSettingsInput {
     graphPageSize: readOptionalPositiveIntegerProperty(record, 'graphPageSize'),
     largeRepoMode: readOptionalBooleanProperty(record, 'largeRepoMode'),
     graphColumns: readOptionalGraphColumns(record.graphColumns),
-    remoteAvatars: readOptionalBooleanProperty(record, 'remoteAvatars'),
-    terminalApp: readOptionalEnumProperty(record, 'terminalApp', ['Terminal'])
+    remoteAvatars: readOptionalBooleanProperty(record, 'remoteAvatars')
   };
 }
 

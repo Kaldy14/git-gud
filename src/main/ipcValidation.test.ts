@@ -69,8 +69,7 @@ describe('IPC argument validation', () => {
             date: true,
             sha: true
           },
-          remoteAvatars: true,
-          terminalApp: 'Terminal'
+          remoteAvatars: true
         }
       ])[0]
     ).toMatchObject({

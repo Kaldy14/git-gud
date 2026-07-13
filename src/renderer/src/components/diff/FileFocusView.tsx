@@ -266,11 +266,11 @@ function renderDiffContent({
   }
 
   if (diffQuery.data?.omittedReason === 'too-large') {
-    return <FileFocusMessage icon={<FilePen size={15} />} label="This diff exceeds the 8 MiB preview limit. Open the file in your editor or inspect it in Terminal." />;
+    return <FileFocusMessage icon={<FilePen size={15} />} label="This diff exceeds the 8 MiB preview limit. Open the file in your editor to inspect it." />;
   }
 
   if (diffQuery.data?.isBinary || diffQuery.data?.omittedReason === 'binary') {
-    return <FileFocusMessage icon={<FilePen size={15} />} label="Binary preview is unavailable. Open the file in your editor or inspect it in Terminal." />;
+    return <FileFocusMessage icon={<FilePen size={15} />} label="Binary preview is unavailable. Open the file in your editor to inspect it." />;
   }
 
   if (diffQuery.data?.patch) {

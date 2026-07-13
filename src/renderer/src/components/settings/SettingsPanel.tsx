@@ -1,6 +1,6 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useState } from 'react';
-import { Gauge, GitGraph, Rows3, Settings, SplitSquareHorizontal, Terminal, X } from 'lucide-react';
+import { Gauge, GitGraph, Rows3, Settings, SplitSquareHorizontal, X } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { MAX_GRAPH_PAGE_SIZE, MIN_GRAPH_PAGE_SIZE, clampGraphPageSize } from '@shared/settings';
@@ -138,14 +138,6 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
                 <span className="mt-1 block leading-5 text-[var(--text-3)]">Off by default. When disabled, author identities stay local and generated avatars are used.</span>
               </span>
             </label>
-          </section>
-
-          <section className="space-y-3 py-4">
-            <SettingHeading icon={<Terminal size={15} />} label="Terminal" />
-            <div className="rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
-              <span className="block font-semibold text-[var(--text-1)]">{draft.terminalApp}.app</span>
-              <span className="mt-1 block leading-5 text-[var(--text-3)]">The toolbar Terminal button opens at the active repository.</span>
-            </div>
           </section>
 
           {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}

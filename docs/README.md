@@ -32,7 +32,7 @@ src/renderer/src/
                                       arrow-key row navigation, viewport-clamped context menus, WIP status counts
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer/actions
     diff/FileFocusView.tsx            selected-file patch view with unified/split diff modes and WIP hunk staging
-    settings/SettingsPanel.tsx        app defaults for diff layout, graph loading, large-repo mode, and Terminal
+    settings/SettingsPanel.tsx        app defaults for diff layout, graph loading, and large-repo mode
     operations/ConflictBanner.tsx     merge/rebase/cherry-pick/revert conflict action banner
     operations/CommandDialog.tsx      app-native command confirmations and simple operation forms
     inspection/RepositoryInspectorDialog.tsx file history, blame, and ref comparison dialog

@@ -1,106 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">Git Gud app icon</title>
   <defs>
-    <linearGradient id="background" x1="154" y1="104" x2="870" y2="936" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#3a424e"/>
-      <stop offset="0.46" stop-color="#202831"/>
-      <stop offset="1" stop-color="#10161d"/>
+    <linearGradient id="background" x1="142" y1="92" x2="884" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12283b"/>
+      <stop offset="1" stop-color="#081827"/>
     </linearGradient>
-    <radialGradient id="teal-glow" cx="0" cy="0" r="1" gradientTransform="translate(320 226) rotate(51) scale(690 612)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#5fd6c3" stop-opacity="0.48"/>
-      <stop offset="0.48" stop-color="#26b8a2" stop-opacity="0.14"/>
-      <stop offset="1" stop-color="#26b8a2" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="diamond" x1="300" y1="282" x2="722" y2="742" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ff8367"/>
-      <stop offset="0.54" stop-color="#f15d49"/>
-      <stop offset="1" stop-color="#f2a33f"/>
+    <linearGradient id="git" x1="300" y1="236" x2="724" y2="792" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff5737"/>
+      <stop offset="1" stop-color="#f0442d"/>
     </linearGradient>
-    <linearGradient id="branch" x1="372" y1="386" x2="656" y2="684" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#eaf2f4"/>
+    <linearGradient id="cigar" x1="572" y1="594" x2="862" y2="594" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3c2419"/>
+      <stop offset="0.7" stop-color="#59311f"/>
+      <stop offset="1" stop-color="#70402a"/>
     </linearGradient>
-    <linearGradient id="shades" x1="372" y1="384" x2="656" y2="482" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#171d24"/>
-      <stop offset="1" stop-color="#06090d"/>
-    </linearGradient>
-    <linearGradient id="cigar" x1="592" y1="601" x2="734" y2="631" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8a4d2a"/>
-      <stop offset="0.48" stop-color="#5f321c"/>
-      <stop offset="1" stop-color="#2f1a12"/>
-    </linearGradient>
-    <radialGradient id="ember" cx="0" cy="0" r="1" gradientTransform="translate(734 616) rotate(90) scale(24 20)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffe19a"/>
-      <stop offset="0.48" stop-color="#ff7a3d"/>
-      <stop offset="1" stop-color="#7b241d"/>
-    </radialGradient>
-    <filter id="app-shadow" x="-10%" y="-8%" width="120%" height="124%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#000000" flood-opacity="0.32"/>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#02070c" flood-opacity="0.28"/>
     </filter>
-    <filter id="diamond-shadow" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#000000" flood-opacity="0.34"/>
+    <filter id="detail-shadow" x="-20%" y="-30%" width="150%" height="170%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#210b08" flood-opacity="0.24"/>
     </filter>
-    <filter id="line-shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#652017" flood-opacity="0.32"/>
-    </filter>
-    <clipPath id="app-shape">
-      <rect x="64" y="64" width="896" height="896" rx="212"/>
+    <clipPath id="squircle">
+      <rect x="28" y="22" width="968" height="980" rx="230"/>
     </clipPath>
   </defs>
 
-  <rect x="64" y="64" width="896" height="896" rx="212" fill="url(#background)" filter="url(#app-shadow)"/>
-  <g clip-path="url(#app-shape)">
-    <rect x="64" y="64" width="896" height="896" fill="url(#teal-glow)"/>
-    <path d="M124 756C244 688 344 680 466 728C598 780 730 774 900 640" fill="none" stroke="#5fd6c3" stroke-width="18" stroke-linecap="round" opacity="0.12"/>
-    <path d="M112 300C244 246 356 268 476 366C596 464 724 502 912 454" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.06"/>
-    <rect x="65" y="65" width="894" height="894" rx="211" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.12"/>
-    <rect x="86" y="86" width="852" height="852" rx="192" fill="none" stroke="#000000" stroke-width="10" opacity="0.2"/>
-  </g>
+  <g clip-path="url(#squircle)">
+    <rect x="28" y="22" width="968" height="980" rx="230" fill="url(#background)"/>
 
-  <g transform="translate(512 512) scale(1.28) translate(-512 -512)">
-    <g filter="url(#diamond-shadow)">
-      <rect x="306" y="306" width="412" height="412" rx="86" fill="url(#diamond)" transform="rotate(45 512 512)"/>
-      <rect x="306" y="306" width="412" height="412" rx="86" fill="none" stroke="#ffc37d" stroke-width="8" opacity="0.2" transform="rotate(45 512 512)"/>
+    <g filter="url(#soft-shadow)">
+      <rect x="252" y="252" width="520" height="520" rx="60" fill="url(#git)" transform="rotate(45 512 512)"/>
     </g>
 
-    <g filter="url(#line-shadow)">
-      <path d="M410 438L512 534L640 700" fill="none" stroke="url(#branch)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M512 534L614 438" fill="none" stroke="url(#branch)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="410" cy="438" r="60" fill="url(#branch)"/>
-      <circle cx="614" cy="438" r="60" fill="url(#branch)"/>
-      <circle cx="512" cy="534" r="60" fill="url(#branch)"/>
-      <circle cx="640" cy="700" r="56" fill="url(#branch)"/>
-      <circle cx="410" cy="438" r="24" fill="#f15d49" opacity="0.9"/>
-      <circle cx="614" cy="438" r="24" fill="#f15d49" opacity="0.9"/>
-      <circle cx="512" cy="534" r="25" fill="#f15d49" opacity="0.9"/>
-      <circle cx="640" cy="700" r="23" fill="#f2a33f" opacity="0.92"/>
+    <g fill="none" stroke="#f7f5f0" stroke-width="58" stroke-linecap="round" stroke-linejoin="round" filter="url(#detail-shadow)">
+      <path d="M366 394L512 556L658 394"/>
+      <path d="M512 556L662 786"/>
     </g>
 
-    <g transform="translate(0 12) rotate(-3 512 416)" filter="url(#line-shadow)">
-      <path d="M354 369H476V419H452V448H378V419H354Z" fill="url(#shades)"/>
-      <path d="M476 389H524V419H476Z" fill="url(#shades)"/>
-      <path d="M524 369H704V419H676V448H592V419H524Z" fill="url(#shades)"/>
-      <path d="M380 385H430V399H380Z" fill="#ffffff" opacity="0.16"/>
-      <path d="M580 385H640V399H580Z" fill="#ffffff" opacity="0.14"/>
-      <path d="M354 369H476V389H524V369H704" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="square" opacity="0.13"/>
+    <g fill="#f7f5f0" filter="url(#detail-shadow)">
+      <circle cx="366" cy="394" r="72"/>
+      <circle cx="658" cy="394" r="72"/>
+      <circle cx="512" cy="556" r="72"/>
+      <circle cx="662" cy="786" r="72"/>
+    </g>
+    <g fill="#f34c31">
+      <circle cx="512" cy="556" r="34"/>
+      <circle cx="662" cy="786" r="34"/>
     </g>
 
-    <g filter="url(#line-shadow)">
-      <path d="M430 584C472 606 532 609 590 586C584 600 532 619 474 608C452 604 436 596 430 584Z" fill="#74231d"/>
-      <path d="M441 587C478 601 528 604 574 588" fill="none" stroke="#ffd6a7" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
-      <path d="M432 590C470 614 532 617 586 591" fill="none" stroke="#3b120f" stroke-width="3" stroke-linecap="round" opacity="0.28"/>
+    <g fill="#05090d" filter="url(#detail-shadow)">
+      <path d="M228 346H796V378H776V400H754V424H732V446H590V424H568V400H546V378H478V400H456V424H434V446H292V424H270V400H248V378H228Z"/>
+      <rect x="208" y="362" width="42" height="20" rx="2"/>
+      <rect x="794" y="362" width="42" height="20" rx="2"/>
     </g>
 
-    <g transform="rotate(8 590 596)" filter="url(#line-shadow)">
-      <rect x="590" y="584" width="142" height="28" rx="14" fill="url(#cigar)"/>
-      <rect x="616" y="584" width="17" height="28" fill="#d7b46f" opacity="0.95"/>
-      <rect x="621" y="584" width="5" height="28" fill="#7b241d" opacity="0.42"/>
-      <path d="M606 594H706" fill="none" stroke="#c4854d" stroke-width="4" stroke-linecap="round" opacity="0.46"/>
-      <ellipse cx="732" cy="598" rx="14" ry="14" fill="url(#ember)"/>
-      <ellipse cx="737" cy="594" rx="5" ry="6" fill="#ffd37b" opacity="0.85"/>
+    <g fill="#f7f5f0">
+      <rect x="308" y="370" width="18" height="18"/>
+      <rect x="326" y="388" width="18" height="18"/>
+      <rect x="344" y="370" width="18" height="18"/>
+      <rect x="344" y="406" width="18" height="18"/>
+      <rect x="362" y="388" width="18" height="18"/>
+      <rect x="644" y="370" width="18" height="18"/>
+      <rect x="662" y="388" width="18" height="18"/>
+      <rect x="680" y="370" width="18" height="18"/>
+      <rect x="680" y="406" width="18" height="18"/>
+      <rect x="698" y="388" width="18" height="18"/>
     </g>
 
-    <g fill="none" stroke="#d7f6f1" stroke-linecap="round" opacity="0.2">
-      <path d="M748 574C792 556 798 520 766 500" stroke-width="10"/>
+    <g transform="rotate(18 578 602)" filter="url(#detail-shadow)">
+      <rect x="566" y="576" width="300" height="56" rx="28" fill="url(#cigar)"/>
+      <rect x="784" y="576" width="18" height="56" fill="#e1a73d"/>
+      <rect x="790" y="576" width="5" height="56" fill="#f5c45b"/>
+      <ellipse cx="864" cy="604" rx="24" ry="27" fill="#c95027"/>
+      <ellipse cx="868" cy="604" rx="14" ry="17" fill="#ff6d2c"/>
+      <ellipse cx="870" cy="602" rx="8" ry="11" fill="#ffb13b"/>
     </g>
   </g>
 </svg>

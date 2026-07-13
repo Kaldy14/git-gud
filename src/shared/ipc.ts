@@ -241,10 +241,6 @@ export type IpcChannelMap = {
     args: [repoPath: string, undoId: string];
     result: GitOperationResult;
   };
-  'repo:open-terminal': {
-    args: [repoPath: string];
-    result: GitOperationResult;
-  };
   'repo:cancel-operation': {
     args: [repoPath: string, operationId: string];
     result: GitOperationCancellationResult;
@@ -272,13 +268,6 @@ export type IpcChannelMap = {
 };
 
 export type IpcChannelName = keyof IpcChannelMap;
-
-export type RendererEventMap = {
-  'repo:changed': RepoChangedEvent;
-  'repo:operation-progress': GitOperationProgressEvent;
-};
-
-export type RendererEventName = keyof RendererEventMap;
 
 export type RendererApi = {
   getWorkspace: () => Promise<WorkspaceState>;
@@ -332,7 +321,6 @@ export type RendererApi = {
   runInteractiveRebase: (repoPath: string, input: GitInteractiveRebaseInput) => Promise<GitOperationResult>;
   resolveConflict: (repoPath: string, input: GitConflictActionInput) => Promise<GitOperationResult>;
   undoOperation: (repoPath: string, undoId: string) => Promise<GitOperationResult>;
-  openTerminal: (repoPath: string) => Promise<GitOperationResult>;
   cancelRepositoryOperation: (repoPath: string, operationId: string) => Promise<GitOperationCancellationResult>;
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;

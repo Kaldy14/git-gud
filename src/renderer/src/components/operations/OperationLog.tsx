@@ -1,11 +1,13 @@
 import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
-import { AlertCircle, Ban, CheckCircle2, Copy, GitPullRequest, Loader2, RefreshCcw, Terminal, X } from 'lucide-react';
+import { AlertCircle, Ban, CheckCircle2, Copy, GitPullRequest, Loader2, RefreshCcw, X } from 'lucide-react';
 
 import type { GitOperationProgressEvent } from '@shared/types';
 
-export type OperationLogStatus = 'pending' | 'success' | 'conflict' | 'error' | 'cancelled';
-export type OperationLogPhase = GitOperationProgressEvent['phase'] | 'refreshing';
+const AUTO_DISMISS_MS = 5_000;
+
+type OperationLogStatus = 'pending' | 'success' | 'conflict' | 'error' | 'cancelled';
+type OperationLogPhase = GitOperationProgressEvent['phase'] | 'refreshing';
 
 export type OperationLogEntry = {
   id: string;
@@ -28,7 +30,6 @@ type OperationLogProps = {
   onDismiss: (id: string) => void;
   onCancel: (entry: OperationLogEntry) => void;
   onRetry: (entry: OperationLogEntry) => void;
-  onOpenTerminal: (repoPath: string) => void;
   onCopyDetails: (entry: OperationLogEntry) => void;
 };
 
@@ -37,10 +38,22 @@ export function OperationLog({
   onDismiss,
   onCancel,
   onRetry,
-  onOpenTerminal,
   onCopyDetails
 }: OperationLogProps): ReactElement | null {
   const now = useOperationClock(entries.some((entry) => entry.status === 'pending'));
+
+  useEffect(() => {
+    const timers = entries
+      .filter((entry) => entry.status !== 'pending')
+      .map((entry) => {
+        const happenedAt = Date.parse(entry.happenedAt);
+        const elapsedMs = Number.isNaN(happenedAt) ? 0 : Date.now() - happenedAt;
+        const delayMs = Math.min(AUTO_DISMISS_MS, Math.max(0, AUTO_DISMISS_MS - elapsedMs));
+        return window.setTimeout(() => onDismiss(entry.id), delayMs);
+      });
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [entries, onDismiss]);
 
   if (entries.length === 0) {
     return null;
@@ -76,10 +89,6 @@ export function OperationLog({
                       Retry
                     </button>
                   ) : null}
-                  <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onOpenTerminal(entry.repoPath)}>
-                    <Terminal size={11} />
-                    Terminal
-                  </button>
                   <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onCopyDetails(entry)}>
                     <Copy size={11} />
                     Copy

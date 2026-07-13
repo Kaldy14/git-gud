@@ -2,19 +2,9 @@ import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { AppSettings, GitOperationResult, RepoTab } from '@shared/types';
+import type { GitOperationResult, RepoTab } from '@shared/types';
 
-type TerminalTab = Pick<RepoTab, 'path'>;
 type FileTab = Pick<RepoTab, 'path'>;
-
-export async function openTerminalAtRepository(tab: TerminalTab, terminalApp: AppSettings['terminalApp']): Promise<GitOperationResult> {
-  await openMacApp(terminalApp, tab.path);
-
-  return {
-    repoPath: tab.path,
-    happenedAt: new Date().toISOString()
-  };
-}
 
 export async function openRepositoryFileInEditor(tab: FileTab, relativePath: string): Promise<GitOperationResult> {
   const targetPath = resolveRepositoryChildPath(tab.path, relativePath);
@@ -30,10 +20,6 @@ export async function revealRepositoryFileInFinder(tab: FileTab, relativePath: s
   await openMacTarget(['-R', revealPath]);
 
   return createSystemOperationResult(tab.path);
-}
-
-function openMacApp(appName: string, targetPath: string): Promise<void> {
-  return openMacTarget(['-a', appName, targetPath], `Unable to open ${appName}.`);
 }
 
 function openMacTarget(args: string[], errorMessage = 'Unable to open file.'): Promise<void> {

@@ -4,9 +4,9 @@ import { AlertTriangle, Check, X } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 
-export type CommandDialogTone = 'default' | 'danger';
+type CommandDialogTone = 'default' | 'danger';
 
-export type CommandDialogTextField = {
+type CommandDialogTextField = {
   id: string;
   kind: 'text';
   label: string;
@@ -17,7 +17,7 @@ export type CommandDialogTextField = {
   autoFocus?: boolean;
 };
 
-export type CommandDialogSelectField = {
+type CommandDialogSelectField = {
   id: string;
   kind: 'select';
   label: string;
@@ -30,7 +30,7 @@ export type CommandDialogSelectField = {
   helper?: string;
 };
 
-export type CommandDialogCheckboxField = {
+type CommandDialogCheckboxField = {
   id: string;
   kind: 'checkbox';
   label: string;
@@ -38,7 +38,7 @@ export type CommandDialogCheckboxField = {
   helper?: string;
 };
 
-export type CommandDialogField = CommandDialogTextField | CommandDialogSelectField | CommandDialogCheckboxField;
+type CommandDialogField = CommandDialogTextField | CommandDialogSelectField | CommandDialogCheckboxField;
 
 export type CommandDialogValues = {
   text: Record<string, string>;
