@@ -29,7 +29,12 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
-import { findCurrentBranchName, findSelectedContextMenuRow } from '@renderer/components/graph/graphInteraction';
+import {
+  findCurrentBranchName,
+  findSelectedContextMenuRow,
+  registerRefClick,
+  type RefClickState
+} from '@renderer/components/graph/graphInteraction';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
 import type { CommitGraphRow, GitStashRefInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
@@ -95,6 +100,7 @@ type GraphViewProps = {
   onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
   onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onActivateRemoteBranch?: (name: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
   onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -158,6 +164,7 @@ export function GraphView({
   onStashPop,
   onStashDrop,
   onCheckoutBranch,
+  onActivateRemoteBranch,
   onMergeBranch,
   onRebaseOntoBranch,
   onInteractiveRebaseOntoBranch,
@@ -178,6 +185,7 @@ export function GraphView({
   const sectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const graphScrollerRef = useRef<HTMLDivElement>(null);
+  const lastRefClickRef = useRef<RefClickState | undefined>(undefined);
   const resizeStateRef = useRef<ColumnResizeState | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [columnWidths, setColumnWidths] = useState<GraphColumnWidths>(loadStoredGraphColumnWidths);
@@ -364,13 +372,23 @@ export function GraphView({
     });
   }
 
-  function handleBranchDoubleClick(row: CommitGraphRow, branchName: string): void {
-    if (branchName === currentBranchName || !onCheckoutBranch || isOperationBusy) {
+  function handleRefClick(row: CommitGraphRow, ref: GraphRefChip): void {
+    onSelectRow(row.sha);
+
+    const result = registerRefClick(lastRefClickRef.current, ref, Date.now());
+    lastRefClickRef.current = result.nextState;
+
+    if (!result.activate || isOperationBusy) {
       return;
     }
 
-    onSelectRow(row.sha);
-    void onCheckoutBranch(branchName);
+    if (ref.kind === 'branch' && ref.label !== currentBranchName && onCheckoutBranch) {
+      void onCheckoutBranch(ref.label);
+    }
+
+    if (ref.kind === 'remote' && onActivateRemoteBranch) {
+      void onActivateRemoteBranch(ref.label);
+    }
   }
 
   function handleListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
@@ -529,7 +547,7 @@ export function GraphView({
                       rowIndex={virtualRow.index}
                       onSelect={() => onSelectRow(row.sha)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
-                      onBranchDoubleClick={(branchName) => handleBranchDoubleClick(row, branchName)}
+                      onRefClick={(ref) => handleRefClick(row, ref)}
                       onBranchContextMenu={(event, branchName) => handleBranchContextMenu(event, row, branchName)}
                     />
                   </div>
@@ -616,7 +634,7 @@ type GraphRowViewProps = {
   rowIndex: number;
   onSelect: () => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
-  onBranchDoubleClick: (branchName: string) => void;
+  onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 };
 
@@ -709,7 +727,7 @@ function GraphRowView({
   rowIndex,
   onSelect,
   onContextMenu,
-  onBranchDoubleClick,
+  onRefClick,
   onBranchContextMenu
 }: GraphRowViewProps): ReactElement {
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
@@ -762,8 +780,7 @@ function GraphRowView({
         <RefChipStack
           refs={visibleRefs}
           color={nodeColor}
-          onSelect={onSelect}
-          onBranchDoubleClick={onBranchDoubleClick}
+          onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
         />
       </div>
@@ -1092,14 +1109,12 @@ type RefChipDisplay = GraphRefChip & {
 function RefChipStack({
   refs,
   color,
-  onSelect,
-  onBranchDoubleClick,
+  onRefClick,
   onBranchContextMenu
 }: {
   refs: GraphRefChip[];
   color: string;
-  onSelect: () => void;
-  onBranchDoubleClick: (branchName: string) => void;
+  onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 }): ReactElement | null {
   if (refs.length === 0) {
@@ -1121,8 +1136,7 @@ function RefChipStack({
         <RefChipView
           chip={primaryRef}
           color={color}
-          onSelect={onSelect}
-          onBranchDoubleClick={onBranchDoubleClick}
+          onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
         />
         {overflowRefs.length > 0 ? (
@@ -1142,8 +1156,7 @@ function RefChipStack({
               key={`${chip.kind}:${chip.label}`}
               chip={chip}
               color={color}
-              onSelect={onSelect}
-              onBranchDoubleClick={onBranchDoubleClick}
+              onRefClick={onRefClick}
               onBranchContextMenu={onBranchContextMenu}
             />
           ))}
@@ -1156,14 +1169,12 @@ function RefChipStack({
 function RefChipView({
   chip,
   color,
-  onSelect,
-  onBranchDoubleClick,
+  onRefClick,
   onBranchContextMenu
 }: {
   chip: RefChipDisplay;
   color: string;
-  onSelect: () => void;
-  onBranchDoubleClick: (branchName: string) => void;
+  onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 }): ReactElement {
   const { current, kind, label, remotePeerLabels } = chip;
@@ -1195,7 +1206,7 @@ function RefChipView({
     </>
   );
 
-  if (kind !== 'branch') {
+  if (kind !== 'branch' && kind !== 'remote') {
     return (
       <span className="ref-chip" style={style} title={title} aria-label={ariaLabel}>
         {content}
@@ -1208,21 +1219,18 @@ function RefChipView({
       type="button"
       className="ref-chip"
       style={style}
-      title={current ? title : `${title}\nDouble-click to checkout. Right-click for branch actions.`}
+      title={
+        current
+          ? title
+          : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
+      }
       aria-label={ariaLabel}
       onClick={(event) => {
         event.stopPropagation();
-        onSelect();
-      }}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-
-        if (!current) {
-          onBranchDoubleClick(label);
-        }
+        onRefClick(chip);
       }}
       onContextMenu={(event) => {
-        if (!current) {
+        if (kind === 'branch' && !current) {
           onBranchContextMenu(event, label);
         }
       }}

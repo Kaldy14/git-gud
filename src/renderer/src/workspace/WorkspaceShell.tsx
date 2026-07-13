@@ -53,6 +53,7 @@ import {
 } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { resolveSelectedGraphRow } from '@renderer/workspace/selection';
+import { resolveRemoteBranchActivation } from '@renderer/workspace/branchActivation';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
   CommitGraphRow,
@@ -841,6 +842,36 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  function handleActivateRemoteBranch(name: string): void {
+    const activation = resolveRemoteBranchActivation(name, repositoryQuery.data?.refs.localBranches ?? []);
+
+    if (activation.kind === 'none') {
+      return;
+    }
+
+    if (activation.kind === 'checkout-remote') {
+      handleCheckoutRemoteBranch(name);
+      return;
+    }
+
+    if (activation.kind === 'checkout-local') {
+      handleCheckoutBranch(activation.branchName);
+      return;
+    }
+
+    if (activation.kind === 'pull') {
+      void runRepositoryOperation(`Pull ${activation.branchName}`, (repoPath) =>
+        window.api.pullRepository(repoPath, { mode: 'ff-only' })
+      );
+      return;
+    }
+
+    void runRepositoryOperation(`Checkout and pull ${activation.branchName}`, async (repoPath) => {
+      await window.api.checkoutRef(repoPath, { kind: 'local', name: activation.branchName });
+      return window.api.pullRepository(repoPath, { mode: 'ff-only' });
+    });
+  }
+
   function handleCheckoutCommit(sha: string): void {
     openCommandDialog({
       title: 'Checkout commit',
@@ -1473,6 +1504,7 @@ export function WorkspaceShell(): ReactElement {
                   onStashPop={handleStashPop}
                   onStashDrop={handleStashDrop}
                   onCheckoutBranch={handleCheckoutBranch}
+                  onActivateRemoteBranch={handleActivateRemoteBranch}
                   onMergeBranch={handleMergeBranch}
                   onRebaseOntoBranch={handleRebaseOntoBranch}
                   onInteractiveRebaseOntoBranch={handleInteractiveRebaseOntoBranch}

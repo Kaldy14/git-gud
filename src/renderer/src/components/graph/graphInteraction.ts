@@ -1,4 +1,16 @@
-import type { CommitGraphRow } from '@shared/types';
+import type { CommitGraphRow, GraphRefChip } from '@shared/types';
+
+export type RefClickState = {
+  key: string;
+  clickedAt: number;
+};
+
+export type RefClickResult = {
+  activate: boolean;
+  nextState?: RefClickState;
+};
+
+const REF_DOUBLE_CLICK_WINDOW_MS = 500;
 
 export function findCurrentBranchName(rows: CommitGraphRow[]): string | undefined {
   for (const row of rows) {
@@ -21,4 +33,18 @@ export function findSelectedContextMenuRow(
   }
 
   return rows.find((row) => row.sha === selectedSha);
+}
+
+export function registerRefClick(
+  previous: RefClickState | undefined,
+  ref: Pick<GraphRefChip, 'kind' | 'label'>,
+  clickedAt: number
+): RefClickResult {
+  const key = `${ref.kind}:${ref.label}`;
+
+  if (previous?.key === key && clickedAt - previous.clickedAt <= REF_DOUBLE_CLICK_WINDOW_MS) {
+    return { activate: true };
+  }
+
+  return { activate: false, nextState: { key, clickedAt } };
 }
