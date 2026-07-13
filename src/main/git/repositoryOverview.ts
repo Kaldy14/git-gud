@@ -47,14 +47,14 @@ export async function loadStatus(
   repoPath: string,
   env?: NodeJS.ProcessEnv
 ): Promise<GitRepositoryOverview['status']> {
-  return coalesceGitRead(`status:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
+  return coalesceGitRead(repoPath, `status:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
     const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'], { cwd: repoPath, env });
     return parseStatusPorcelainV2(result.stdout);
   });
 }
 
 export async function loadRefs(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['refs']> {
-  return coalesceGitRead(`refs:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
+  return coalesceGitRead(repoPath, `refs:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
     const result = await gitExecutor.run(
       [
         'for-each-ref',
@@ -90,7 +90,7 @@ export async function loadWorktrees(repoPath: string, env?: NodeJS.ProcessEnv): 
 }
 
 export async function loadStashes(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['stashes']> {
-  return coalesceGitRead(`stashes:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
+  return coalesceGitRead(repoPath, `stashes:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
     const result = await gitExecutor.run(['stash', 'list', '--format=%H%x00%P%x00%gd%x00%aI%x00%s%x00'], {
       cwd: repoPath,
       env
@@ -99,7 +99,11 @@ export async function loadStashes(repoPath: string, env?: NodeJS.ProcessEnv): Pr
   });
 }
 
-async function coalesceGitRead<T>(cacheKey: string, load: () => Promise<T>): Promise<T> {
+async function coalesceGitRead<T>(repoPath: string, cacheKey: string, load: () => Promise<T>): Promise<T> {
+  if (gitExecutor.isInTransaction(repoPath)) {
+    return load();
+  }
+
   const existingRead = inFlightGitReads.get(cacheKey);
 
   if (existingRead) {

@@ -1,7 +1,11 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GitCommandError, gitExecutor, type GitCommandResult } from './exec';
-import { loadWorktrees } from './repositoryOverview';
+import { loadStatus, loadWorktrees } from './repositoryOverview';
 
 describe('loadWorktrees', () => {
   afterEach(() => {
@@ -37,6 +41,41 @@ describe('loadWorktrees', () => {
       ['worktree', 'list', '--porcelain', '-z'],
       ['worktree', 'list', '--porcelain']
     ]);
+  });
+});
+
+describe('loadStatus', () => {
+  it('does not coalesce a transaction read with an external read queued behind it', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-overview-'));
+    const repoPath = join(rootPath, 'repo');
+
+    try {
+      await gitExecutor.run(['init', repoPath], { cwd: rootPath, kind: 'mutation' });
+
+      let releaseTransaction: (() => void) | undefined;
+      const transactionGate = new Promise<void>((resolve) => {
+        releaseTransaction = resolve;
+      });
+      let markTransactionStarted: (() => void) | undefined;
+      const transactionStarted = new Promise<void>((resolve) => {
+        markTransactionStarted = resolve;
+      });
+
+      const transaction = gitExecutor.transaction(repoPath, async () => {
+        markTransactionStarted?.();
+        await transactionGate;
+        return loadStatus(repoPath);
+      });
+
+      await transactionStarted;
+      const queuedRead = loadStatus(repoPath);
+      releaseTransaction?.();
+
+      const [transactionStatus, queuedStatus] = await Promise.all([transaction, queuedRead]);
+      expect(transactionStatus).toEqual(queuedStatus);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
   });
 });
 

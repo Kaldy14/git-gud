@@ -64,6 +64,7 @@ describe('GitExecutor coordination', () => {
 
     await executor.run(['--version'], {
       cwd: process.cwd(),
+      kind: 'mutation',
       env: { GIT_GUD_SECRET_TEST: 'must-not-leak' }
     });
     unsubscribe();
@@ -73,6 +74,20 @@ describe('GitExecutor coordination', () => {
     expect(events.some((event) => event.type === 'close' && event.exitCode === 0)).toBe(true);
     expect(JSON.stringify(events)).not.toContain('must-not-leak');
     expect(JSON.stringify(events)).not.toContain('--version');
+  });
+
+  it('does not publish machine-readable stdout from read commands', async () => {
+    const executor = new GitExecutor();
+    const events: GitProgressEvent[] = [];
+    const unsubscribe = executor.onProgress((event) => events.push(event));
+
+    const result = await executor.run(['--version'], { cwd: process.cwd() });
+    unsubscribe();
+
+    expect(result.stdout).toContain('git version');
+    expect(events.some((event) => event.type === 'start')).toBe(true);
+    expect(events.some((event) => event.type === 'output' && event.stream === 'stdout')).toBe(false);
+    expect(events.some((event) => event.type === 'close' && event.exitCode === 0)).toBe(true);
   });
 
   it('correlates progress only with the operation async context that owns the command', async () => {

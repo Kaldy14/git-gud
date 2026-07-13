@@ -857,11 +857,14 @@ async function assertNoIgnoredPathCollisions(
     return;
   }
 
-  const ignoredResult = await gitExecutor.run(['ls-files', '--others', '--ignored', '--exclude-standard', '-z'], {
-    cwd: repoPath,
-    env
-  });
-  const ignoredPaths = parseNulPaths(ignoredResult.stdout);
+  const ignoredResult = await gitExecutor.run(
+    ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+    {
+      cwd: repoPath,
+      env
+    }
+  );
+  const ignoredPaths = parseNulPaths(ignoredResult.stdout).map(stripDirectoryMarker);
   const collisions = ignoredPaths.filter((ignoredPath) =>
     writePaths.some((writePath) => pathsCollide(ignoredPath, writePath))
   );
@@ -992,6 +995,10 @@ function parseNulPaths(output: string): string[] {
 
 function pathsCollide(leftPath: string, rightPath: string): boolean {
   return leftPath === rightPath || leftPath.startsWith(`${rightPath}/`) || rightPath.startsWith(`${leftPath}/`);
+}
+
+function stripDirectoryMarker(path: string): string {
+  return path.endsWith('/') ? path.slice(0, -1) : path;
 }
 
 async function revParse(repoPath: string, rev: string, env: NodeJS.ProcessEnv | undefined): Promise<string> {

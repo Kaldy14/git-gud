@@ -11,6 +11,7 @@ export type GitCommandOptions = {
   allowedExitCodes?: readonly number[];
   maxStdoutBytes?: number;
   cancellable?: boolean;
+  reportStdoutProgress?: boolean;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
 };
@@ -134,11 +135,15 @@ export class GitExecutor {
     return this.mutationGenerations.get(cwd) ?? 0;
   }
 
+  isInTransaction(cwd: string): boolean {
+    return this.transactionContext.getStore()?.has(cwd) ?? false;
+  }
+
   async run(args: string[], options: GitCommandOptions): Promise<GitCommandResult> {
     const kind = options.kind ?? 'read';
     this.throwIfCurrentOperationCancelled();
 
-    if (this.isInsideTransaction(options.cwd)) {
+    if (this.isInTransaction(options.cwd)) {
       return this.spawnGit(args, options, kind);
     }
 
@@ -159,7 +164,7 @@ export class GitExecutor {
   async transaction<T>(cwd: string, task: () => Promise<T>): Promise<T> {
     this.throwIfCurrentOperationCancelled();
 
-    if (this.isInsideTransaction(cwd)) {
+    if (this.isInTransaction(cwd)) {
       return task();
     }
 
@@ -293,10 +298,6 @@ export class GitExecutor {
       }
     }
     await this.waitForIdleWithin(100);
-  }
-
-  private isInsideTransaction(cwd: string): boolean {
-    return this.transactionContext.getStore()?.has(cwd) ?? false;
   }
 
   private acquire(cwd: string, kind: LockKind): Promise<() => void> {
@@ -433,15 +434,17 @@ export class GitExecutor {
         stdoutChunks.push(chunk);
         const text = chunk.toString('utf8');
         options.onStdout?.(text);
-        this.emitProgress({
-          type: 'output',
-          cwd: options.cwd,
-          kind,
-          processId: child.pid,
-          operationId,
-          stream: 'stdout',
-          chunk: sanitizeProgressChunk(text)
-        });
+        if (options.reportStdoutProgress ?? kind === 'mutation') {
+          this.emitProgress({
+            type: 'output',
+            cwd: options.cwd,
+            kind,
+            processId: child.pid,
+            operationId,
+            stream: 'stdout',
+            chunk: sanitizeProgressChunk(text)
+          });
+        }
       });
       child.stderr.on('data', (chunk: Buffer) => {
         stderrChunks.push(chunk);
@@ -600,11 +603,19 @@ function createGitErrorMessage(args: string[], result: GitCommandResult): string
 }
 
 function sanitizeProgressChunk(chunk: string): string {
-  return Array.from(chunk)
-    .filter((character) => {
-      const codePoint = character.codePointAt(0);
-      return codePoint === 9 || codePoint === 10 || codePoint === 13 || (codePoint !== undefined && codePoint >= 32 && codePoint !== 127);
-    })
-    .slice(0, 16 * 1024)
-    .join('');
+  let sanitized = '';
+
+  for (const character of chunk) {
+    const codePoint = character.codePointAt(0);
+
+    if (codePoint === 9 || codePoint === 10 || codePoint === 13 || (codePoint !== undefined && codePoint >= 32 && codePoint !== 127)) {
+      sanitized += character;
+    }
+
+    if (sanitized.length >= 16 * 1024) {
+      break;
+    }
+  }
+
+  return sanitized;
 }
