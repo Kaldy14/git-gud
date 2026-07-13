@@ -507,6 +507,7 @@ export function GraphView({
         tabIndex={0}
         role="listbox"
         aria-label="Commit history"
+        aria-busy={isLoading || isFetching}
         aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
         onScroll={handleListScroll}
@@ -1526,7 +1527,7 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
 
 function GraphMessage({ icon, label }: { icon: ReactElement; label: string }): ReactElement {
   return (
-    <div className="grid h-full min-h-[240px] place-items-center text-xs text-[var(--text-3)]">
+    <div className="grid h-full min-h-[240px] place-items-center text-xs text-[var(--text-3)]" role="status">
       <div className="flex items-center gap-2">
         {icon}
         <span>{label}</span>

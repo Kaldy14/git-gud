@@ -112,21 +112,20 @@ export async function createBranch(tab: OperationTab, input: GitCreateBranchInpu
   const startPoint = input.startPoint?.trim() || 'HEAD';
   await assertValidBranchName(tab.path, branchName, env);
   const startCommit = await revParse(tab.path, `${startPoint}^{commit}`, env);
-
-  if (input.checkout) {
-    await assertNoIgnoredTreeCollisions(tab.path, startCommit, env, `Checkout ${branchName}`);
-  }
-
-  const headBefore = await revParseOptional(tab.path, 'HEAD', env);
-  const branchBefore = await currentBranchName(tab.path, env);
+  const [headBefore, branchBefore] = await Promise.all([
+    revParseOptional(tab.path, 'HEAD', env),
+    currentBranchName(tab.path, env)
+  ]);
   const createArgs = input.checkout
-    ? ['checkout', '-b', branchName, startCommit]
+    ? ['checkout', '--no-overwrite-ignore', '-b', branchName, startCommit]
     : ['branch', branchName, startCommit];
   await gitExecutor.run(createArgs, { cwd: tab.path, kind: 'mutation', env });
 
-  const targetSha = await revParseOptional(tab.path, `refs/heads/${branchName}`, env);
-  const headAfter = await revParseOptional(tab.path, 'HEAD', env);
-  const branchAfter = await currentBranchName(tab.path, env);
+  const [targetSha, headAfter, branchAfter] = await Promise.all([
+    revParseOptional(tab.path, `refs/heads/${branchName}`, env),
+    revParseOptional(tab.path, 'HEAD', env),
+    currentBranchName(tab.path, env)
+  ]);
   const undoEntry = targetSha
     ? recordUndo(
         tab,
@@ -186,13 +185,16 @@ export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInpu
 
 export async function checkoutRef(tab: OperationTab, target: GitCheckoutTarget): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const headBefore = await revParseOptional(tab.path, 'HEAD', env);
-  const branchBefore = await currentBranchName(tab.path, env);
+  const [headBefore, branchBefore] = await Promise.all([
+    revParseOptional(tab.path, 'HEAD', env),
+    currentBranchName(tab.path, env)
+  ]);
   const args = checkoutArgs(target);
-  await assertNoIgnoredTreeCollisions(tab.path, checkoutTargetRevision(target), env, `Checkout ${checkoutTargetLabel(target)}`);
   await gitExecutor.run(args, { cwd: tab.path, kind: 'mutation', env });
-  const headAfter = await revParseOptional(tab.path, 'HEAD', env);
-  const branchAfter = await currentBranchName(tab.path, env);
+  const [headAfter, branchAfter] = await Promise.all([
+    revParseOptional(tab.path, 'HEAD', env),
+    currentBranchName(tab.path, env)
+  ]);
   const shouldRecordUndo = Boolean(headBefore && headAfter && (headBefore !== headAfter || branchBefore !== branchAfter));
   const undoEntry = shouldRecordUndo
     ? recordUndo(tab, 'checkout', 'Undo checkout', {
@@ -666,8 +668,7 @@ async function checkoutPreviousHead(
     : undefined;
   const target = entry.branchBefore && previousBranchHead === entry.headBefore ? entry.branchBefore : entry.headBefore;
 
-  await assertNoIgnoredTreeCollisions(repoPath, target, env, 'Undo checkout');
-  await gitExecutor.run(['checkout', target], { cwd: repoPath, kind: 'mutation', env });
+  await gitExecutor.run(['checkout', '--no-overwrite-ignore', target], { cwd: repoPath, kind: 'mutation', env });
 }
 
 async function runMutationAllowingConflicts(
@@ -695,7 +696,7 @@ async function runMutationAllowingConflicts(
 
 function checkoutArgs(target: GitCheckoutTarget): string[] {
   if (target.kind === 'local') {
-    return ['checkout', normalizeRequiredName(target.name, 'Branch name')];
+    return ['checkout', '--no-overwrite-ignore', normalizeRequiredName(target.name, 'Branch name')];
   }
 
   if (target.kind === 'remote') {
@@ -703,13 +704,13 @@ function checkoutArgs(target: GitCheckoutTarget): string[] {
     const localName = target.localName?.trim();
 
     if (localName) {
-      return ['checkout', '-b', localName, '--track', remoteName];
+      return ['checkout', '--no-overwrite-ignore', '-b', localName, '--track', remoteName];
     }
 
-    return ['checkout', '--track', remoteName];
+    return ['checkout', '--no-overwrite-ignore', '--track', remoteName];
   }
 
-  return ['checkout', normalizeRequiredName(target.sha, 'Commit SHA')];
+  return ['checkout', '--no-overwrite-ignore', normalizeRequiredName(target.sha, 'Commit SHA')];
 }
 
 function checkoutTargetLabel(target: GitCheckoutTarget): string {
@@ -722,14 +723,6 @@ function checkoutTargetLabel(target: GitCheckoutTarget): string {
   }
 
   return target.sha.slice(0, 8);
-}
-
-function checkoutTargetRevision(target: GitCheckoutTarget): string {
-  if (target.kind === 'local' || target.kind === 'remote') {
-    return normalizeRequiredName(target.name, target.kind === 'local' ? 'Branch name' : 'Remote branch name');
-  }
-
-  return normalizeRequiredName(target.sha, 'Commit SHA');
 }
 
 function conflictActionArgs(operation: NonNullable<GitConflictState['operation']>, action: GitConflictActionInput['action']): string[] {
@@ -753,8 +746,12 @@ function conflictActionArgs(operation: NonNullable<GitConflictState['operation']
 }
 
 async function currentBranchName(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<string | undefined> {
-  const status = await loadStatus(repoPath, env);
-  return status.branch.isDetached ? undefined : status.branch.head;
+  const result = await gitExecutor.run(['symbolic-ref', '--quiet', '--short', 'HEAD'], {
+    cwd: repoPath,
+    env,
+    allowedExitCodes: [1]
+  });
+  return result.exitCode === 0 ? result.stdout.trim() || undefined : undefined;
 }
 
 async function branchUpstream(repoPath: string, branchName: string, env: NodeJS.ProcessEnv | undefined): Promise<string | undefined> {
@@ -1045,7 +1042,9 @@ async function createOperationResult(
   undoEntry?: GitUndoEntry,
   conflictState?: GitConflictState
 ): Promise<GitOperationResult> {
-  const resolvedConflictState = conflictState ?? (await loadConflictState(tab.path, env));
+  const resolvedConflictState =
+    conflictState ??
+    (GIT_COMMANDS[commandId].conflicts === 'none' ? undefined : await loadConflictState(tab.path, env));
 
   return {
     repoPath: tab.path,
@@ -1053,11 +1052,11 @@ async function createOperationResult(
     operation: {
       id: randomUUID(),
       label,
-      status: resolvedConflictState.isActive ? 'conflicted' : 'completed',
-      message: resolvedConflictState.message
+      status: resolvedConflictState?.isActive ? 'conflicted' : 'completed',
+      message: resolvedConflictState?.message
     },
     undoEntry,
-    conflictState: resolvedConflictState,
+    ...(resolvedConflictState ? { conflictState: resolvedConflictState } : {}),
     invalidates: [...GIT_COMMANDS[commandId].invalidates]
   };
 }

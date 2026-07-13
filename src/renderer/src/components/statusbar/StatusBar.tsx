@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { FolderGit2, GitBranch, UserCircle } from 'lucide-react';
+import { FolderGit2, GitBranch, Loader2, UserCircle } from 'lucide-react';
 
 import { FILE_STATUS_COLORS } from '@shared/graph';
 import type { GitRepositoryOverview, RepoTab } from '@shared/types';
@@ -8,9 +8,20 @@ type StatusBarProps = {
   activeTab?: RepoTab;
   repositoryOverview?: GitRepositoryOverview;
   isRepositoryLoading: boolean;
+  isRepositoryRefreshing: boolean;
+  activeOperation?: {
+    label: string;
+    phase: 'running' | 'refreshing';
+  };
 };
 
-export function StatusBar({ activeTab, repositoryOverview, isRepositoryLoading }: StatusBarProps): ReactElement {
+export function StatusBar({
+  activeTab,
+  repositoryOverview,
+  isRepositoryLoading,
+  isRepositoryRefreshing,
+  activeOperation
+}: StatusBarProps): ReactElement {
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : isRepositoryLoading ? 'Loading Git data' : undefined;
   const statusLabel = repositoryOverview
     ? repositoryOverview.status.isDirty
@@ -25,6 +36,23 @@ export function StatusBar({ activeTab, repositoryOverview, isRepositoryLoading }
         <FolderGit2 size={12} className="shrink-0" />
         <span className="min-w-0 truncate">{activeTab ? activeTab.path : 'No repository open'}</span>
       </span>
+      {activeOperation || isRepositoryRefreshing ? (
+        <span
+          className="mx-3 flex min-w-0 items-center gap-1.5 text-[var(--text-2)]"
+          role={activeOperation ? undefined : 'status'}
+          aria-live={activeOperation ? undefined : 'polite'}
+          aria-atomic={activeOperation ? undefined : 'true'}
+        >
+          <Loader2 size={12} className="shrink-0 animate-spin text-[var(--accent-2)]" />
+          <span className="truncate">
+            {activeOperation
+              ? activeOperation.phase === 'refreshing'
+                ? `Updating after ${activeOperation.label}…`
+                : `${activeOperation.label}…`
+              : 'Refreshing repository…'}
+          </span>
+        </span>
+      ) : null}
       <span className="flex shrink-0 items-center gap-3">
         {branchLabel ? (
           <span className="flex items-center gap-1.5">

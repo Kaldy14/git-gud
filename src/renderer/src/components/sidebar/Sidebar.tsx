@@ -9,6 +9,7 @@ import {
   FolderGit2,
   GitBranch,
   Laptop,
+  Loader2,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -25,6 +26,7 @@ type SidebarProps = {
   activeTab?: RepoTab;
   repositoryOverview?: GitRepositoryOverview;
   isLoading: boolean;
+  isRefreshing: boolean;
   errorMessage?: string;
   isCollapsed: boolean;
   width: number;
@@ -86,6 +88,7 @@ export function Sidebar({
   activeTab,
   repositoryOverview,
   isLoading,
+  isRefreshing,
   errorMessage,
   isCollapsed,
   width,
@@ -258,6 +261,7 @@ export function Sidebar({
       className="workspace-sidebar relative flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]"
       style={{ width: normalizeSidebarWidth(width) }}
       aria-label="Repository navigation"
+      aria-busy={isLoading || isRefreshing}
     >
       <SidebarResizeHandle
         value={width}
@@ -277,6 +281,12 @@ export function Sidebar({
           <span>
             Viewing <span className="font-semibold text-[var(--text-1)]">{viewingCount}</span>
           </span>
+          {isRefreshing ? (
+            <span className="flex items-center gap-1 text-[var(--text-3)]">
+              <Loader2 size={11} className="animate-spin" />
+              Refreshing
+            </span>
+          ) : null}
         </div>
         <div className="relative mt-1.5 min-w-0 flex-1">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-3)]" />
@@ -324,6 +334,7 @@ export function Sidebar({
                   repositoryOverview={repositoryOverview}
                   filter={filter}
                   isLoading={isLoading}
+                  isOperationBusy={isOperationBusy}
                   errorMessage={errorMessage}
                   onContextMenu={handleRowContextMenu}
                   onCheckoutBranch={onCheckoutBranch}
@@ -437,6 +448,7 @@ type SectionRowsProps = {
   repositoryOverview?: GitRepositoryOverview;
   filter: string;
   isLoading: boolean;
+  isOperationBusy: boolean;
   errorMessage?: string;
   onContextMenu: (event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget) => void;
   onCheckoutBranch: (name: string) => void;
@@ -448,6 +460,7 @@ function SectionRows({
   repositoryOverview,
   filter,
   isLoading,
+  isOperationBusy,
   errorMessage,
   onContextMenu,
   onCheckoutBranch,
@@ -478,6 +491,8 @@ function SectionRows({
             label={branch.name}
             meta={formatAheadBehind(branch.ahead, branch.behind)}
             isActive={branch.current}
+            isActionDisabled={branch.current || isOperationBusy}
+            title={isOperationBusy && !branch.current ? 'A Git operation is running' : branch.name}
             onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
             onDoubleClick={() => {
               if (!branch.current) {
@@ -502,6 +517,8 @@ function SectionRows({
             icon={<Cloud size={12} />}
             label={branch.name}
             meta={branch.sha.slice(0, 7)}
+            isActionDisabled={isOperationBusy}
+            title={isOperationBusy ? 'A Git operation is running' : branch.name}
             onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
             onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
           />
@@ -584,6 +601,7 @@ function SidebarRow({
   label,
   meta,
   isActive = false,
+  isActionDisabled = false,
   title,
   onContextMenu,
   onDoubleClick
@@ -592,6 +610,7 @@ function SidebarRow({
   label: string;
   meta?: string;
   isActive?: boolean;
+  isActionDisabled?: boolean;
   title?: string;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: () => void;
@@ -604,13 +623,14 @@ function SidebarRow({
       role="treeitem"
       aria-level={2}
       aria-current={isActive ? 'page' : undefined}
+      aria-disabled={isActionDisabled || undefined}
       tabIndex={isActive ? 0 : -1}
       onContextMenu={onContextMenu}
-      onDoubleClick={onDoubleClick}
+      onDoubleClick={isActionDisabled ? undefined : onDoubleClick}
       onKeyDown={(event) => {
         handleSidebarTreeKeyDown(event);
 
-        if ((event.key === 'Enter' || event.key === ' ') && onDoubleClick) {
+        if ((event.key === 'Enter' || event.key === ' ') && onDoubleClick && !isActionDisabled) {
           event.preventDefault();
           onDoubleClick();
           return;

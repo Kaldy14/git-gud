@@ -80,6 +80,28 @@ describe('operation progress state', () => {
     expect(completed[0]?.cancellable).toBe(false);
   });
 
+  it('keeps locally started operations pending while repository data refreshes', () => {
+    const optimistic = createOptimisticOperationEntry({
+      id: 'client-1',
+      repoPath: '/repo',
+      label: 'Checkout feature',
+      happenedAt: queuedEvent.happenedAt,
+      retryable: false
+    });
+    const completed = applyOperationProgress([optimistic], {
+      ...queuedEvent,
+      phase: 'completed',
+      elapsedMs: 400
+    });
+
+    expect(completed[0]).toMatchObject({
+      status: 'pending',
+      phase: 'refreshing',
+      waitsForRefresh: true,
+      detail: 'Updating repository data…'
+    });
+  });
+
   it('marks cancellation distinctly from failure', () => {
     const entries = applyOperationProgress(applyOperationProgress([], queuedEvent), {
       ...queuedEvent,

@@ -327,7 +327,6 @@ export type GitOperationSummary = {
 export type GitQueryInvalidation =
   | 'overview'
   | 'graph'
-  | 'commit-detail'
   | 'wip-detail'
   | 'file-diff';
 

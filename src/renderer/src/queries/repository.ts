@@ -158,23 +158,27 @@ export async function invalidateRepositoryQueries(
   const invalidations: Array<Promise<unknown>> = [];
 
   if (requested.has('overview')) {
-    invalidations.push(queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }));
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: repositoryOverviewQueryKey(repoPath) }, { cancelRefetch: false })
+    );
   }
 
   if (requested.has('graph')) {
-    invalidations.push(queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }));
-  }
-
-  if (requested.has('commit-detail')) {
-    invalidations.push(queryClient.invalidateQueries({ queryKey: ['commit-detail', repoPath] }));
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }, { cancelRefetch: false })
+    );
   }
 
   if (requested.has('wip-detail')) {
-    invalidations.push(queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }));
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: wipDetailQueryKey(repoPath) }, { cancelRefetch: false })
+    );
   }
 
   if (requested.has('file-diff')) {
-    invalidations.push(queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath, 'wip'] }));
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: ['file-diff', repoPath, 'wip'] }, { cancelRefetch: false })
+    );
   }
 
   await Promise.all(invalidations);
@@ -183,7 +187,6 @@ export async function invalidateRepositoryQueries(
 const allRepositoryInvalidations: readonly GitQueryInvalidation[] = [
   'overview',
   'graph',
-  'commit-detail',
   'wip-detail',
   'file-diff'
 ];

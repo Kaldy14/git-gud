@@ -36,30 +36,30 @@ export type GitCommandDescriptor = {
   invalidates: readonly GitQueryInvalidation[];
 };
 
-const allRepositoryQueries = ['overview', 'graph', 'commit-detail', 'wip-detail', 'file-diff'] as const;
+const allMutableRepositoryQueries = ['overview', 'graph', 'wip-detail', 'file-diff'] as const;
 
 export const GIT_COMMANDS = {
   fetch: command('fetch', 'Fetch', 'remote', 'none', 'none', ['overview', 'graph']),
-  pull: command('pull', 'Pull', 'remote', 'none', 'detect-after-run', allRepositoryQueries),
+  pull: command('pull', 'Pull', 'remote', 'none', 'detect-after-run', allMutableRepositoryQueries),
   push: command('push', 'Push', 'remote', 'none', 'none', ['overview']),
   'branch-create': command('branch-create', 'Create branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
   'branch-rename': command('branch-rename', 'Rename branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
   'branch-delete': command('branch-delete', 'Delete branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  checkout: command('checkout', 'Checkout', 'working-tree', 'conditional', 'none', allRepositoryQueries),
-  merge: command('merge', 'Merge', 'history', 'conditional', 'detect-after-run', allRepositoryQueries),
+  checkout: command('checkout', 'Checkout', 'working-tree', 'conditional', 'none', allMutableRepositoryQueries),
+  merge: command('merge', 'Merge', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
   'tag-create': command('tag-create', 'Create tag', 'refs', 'recorded', 'none', ['overview', 'graph']),
   'tag-delete': command('tag-delete', 'Delete tag', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  'stash-push': command('stash-push', 'Stash changes', 'working-tree', 'none', 'none', allRepositoryQueries),
-  'stash-apply': command('stash-apply', 'Apply stash', 'working-tree', 'none', 'detect-after-run', allRepositoryQueries),
-  'stash-pop': command('stash-pop', 'Pop stash', 'working-tree', 'none', 'detect-after-run', allRepositoryQueries),
+  'stash-push': command('stash-push', 'Stash changes', 'working-tree', 'none', 'none', allMutableRepositoryQueries),
+  'stash-apply': command('stash-apply', 'Apply stash', 'working-tree', 'none', 'detect-after-run', allMutableRepositoryQueries),
+  'stash-pop': command('stash-pop', 'Pop stash', 'working-tree', 'none', 'detect-after-run', allMutableRepositoryQueries),
   'stash-drop': command('stash-drop', 'Drop stash', 'refs', 'none', 'none', ['overview', 'graph']),
-  'cherry-pick': command('cherry-pick', 'Cherry-pick', 'history', 'conditional', 'detect-after-run', allRepositoryQueries),
-  revert: command('revert', 'Revert', 'history', 'conditional', 'detect-after-run', allRepositoryQueries),
-  reset: command('reset', 'Reset', 'history', 'conditional', 'none', allRepositoryQueries),
-  rebase: command('rebase', 'Rebase', 'history', 'none', 'detect-after-run', allRepositoryQueries),
-  'interactive-rebase': command('interactive-rebase', 'Interactive rebase', 'history', 'none', 'detect-after-run', allRepositoryQueries),
-  'conflict-resolve': command('conflict-resolve', 'Resolve conflict', 'conflict', 'none', 'continue-skip-abort', allRepositoryQueries),
-  undo: command('undo', 'Undo', 'history', 'none', 'none', allRepositoryQueries)
+  'cherry-pick': command('cherry-pick', 'Cherry-pick', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
+  revert: command('revert', 'Revert', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
+  reset: command('reset', 'Reset', 'history', 'conditional', 'none', allMutableRepositoryQueries),
+  rebase: command('rebase', 'Rebase', 'history', 'none', 'detect-after-run', allMutableRepositoryQueries),
+  'interactive-rebase': command('interactive-rebase', 'Interactive rebase', 'history', 'none', 'detect-after-run', allMutableRepositoryQueries),
+  'conflict-resolve': command('conflict-resolve', 'Resolve conflict', 'conflict', 'none', 'continue-skip-abort', allMutableRepositoryQueries),
+  undo: command('undo', 'Undo', 'history', 'none', 'none', allMutableRepositoryQueries)
 } satisfies Record<GitCommandId, GitCommandDescriptor>;
 
 export function gitCommandLabel(id: GitCommandId): string {

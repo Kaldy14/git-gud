@@ -5,6 +5,7 @@ import { AlertCircle, Ban, CheckCircle2, Copy, GitPullRequest, Loader2, RefreshC
 import type { GitOperationProgressEvent } from '@shared/types';
 
 export type OperationLogStatus = 'pending' | 'success' | 'conflict' | 'error' | 'cancelled';
+export type OperationLogPhase = GitOperationProgressEvent['phase'] | 'refreshing';
 
 export type OperationLogEntry = {
   id: string;
@@ -12,13 +13,14 @@ export type OperationLogEntry = {
   repoPath: string;
   label: string;
   status: OperationLogStatus;
-  phase?: GitOperationProgressEvent['phase'];
+  phase?: OperationLogPhase;
   detail?: string;
   startedAt: string;
   happenedAt: string;
   elapsedMs?: number;
   cancellable?: boolean;
   canRetry?: boolean;
+  waitsForRefresh?: boolean;
 };
 
 type OperationLogProps = {
@@ -49,7 +51,7 @@ export function OperationLog({
       className="pointer-events-none fixed bottom-8 right-4 z-40 flex w-[340px] max-w-[calc(100vw-32px)] flex-col gap-2"
     >
       <span className="sr-only" role="status" aria-live="polite">
-        {entries[0] ? `${entries[0].label}: ${entries[0].phase ?? entries[0].status}` : ''}
+        {entries[0] ? operationAnnouncement(entries[0]) : ''}
       </span>
       {entries.slice(0, 5).map((entry) => (
         <div
@@ -100,6 +102,11 @@ export function OperationLog({
       ))}
     </div>
   );
+}
+
+function operationAnnouncement(entry: OperationLogEntry): string {
+  const state = entry.status === 'pending' ? (entry.phase ?? entry.status) : entry.status;
+  return `${entry.label}: ${state}${entry.detail ? `. ${entry.detail}` : ''}`;
 }
 
 function operationIcon(status: OperationLogStatus): ReactElement {

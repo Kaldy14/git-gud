@@ -18,7 +18,8 @@ export function createOptimisticOperationEntry(input: OptimisticOperationInput):
     phase: 'queued',
     startedAt: input.happenedAt,
     happenedAt: input.happenedAt,
-    canRetry: input.retryable
+    canRetry: input.retryable,
+    waitsForRefresh: true
   };
 }
 
@@ -68,24 +69,31 @@ export function applyOperationProgress(
     return entries;
   }
 
+  const backendCompletedBeforeRefresh = event.phase === 'completed' && entry.waitsForRefresh;
   const status =
     event.phase === 'failed'
       ? 'error'
       : event.phase === 'cancelled'
         ? 'cancelled'
         : event.phase === 'completed'
-          ? 'success'
+          ? backendCompletedBeforeRefresh
+            ? 'pending'
+            : 'success'
           : entry.status;
   const nextEntry: OperationLogEntry = {
     ...entry,
     operationId: event.operationId,
     label: entry.label || event.label,
     status,
-    phase: event.phase,
-    detail: event.message?.slice(0, 4000) ?? entry.detail,
+    phase: backendCompletedBeforeRefresh ? 'refreshing' : event.phase,
+    detail: backendCompletedBeforeRefresh
+      ? 'Updating repository data…'
+      : event.message?.slice(0, 4000) ?? entry.detail,
     happenedAt: event.happenedAt,
     elapsedMs: event.elapsedMs,
-    cancellable: event.cancellable && event.phase !== 'completed'
+    cancellable: event.cancellable && event.phase !== 'completed',
+    waitsForRefresh:
+      event.phase === 'failed' || event.phase === 'cancelled' ? false : entry.waitsForRefresh
   };
 
   return entries.map((candidate, index) => (index === entryIndex ? nextEntry : candidate));
@@ -106,7 +114,8 @@ export function applyOperationFailure(
       ...entry,
       status: 'error',
       detail,
-      happenedAt
+      happenedAt,
+      waitsForRefresh: false
     };
   });
 }

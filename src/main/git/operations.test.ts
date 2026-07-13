@@ -2,7 +2,7 @@ import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { GitCommandError, gitExecutor } from './exec';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './commands/rebase';
@@ -164,7 +164,7 @@ describe('git operations', () => {
       await writeRepoFile(repoPath, 'node_modules/unrelated/package.json', '{}\n');
 
       await expect(checkoutRef(tab, { kind: 'local', name: 'feature/ignored-checkout' })).rejects.toThrow(
-        'overwrite ignored path'
+        'would be overwritten by checkout'
       );
       expect(await currentBranch(repoPath)).toBe('main');
       expect(await readFile(join(repoPath, collisionPath), 'utf8')).toBe('ignored local value\n');
@@ -174,6 +174,111 @@ describe('git operations', () => {
 
       expect(await readFile(join(repoPath, collisionPath), 'utf8')).toBe('tracked target\n');
       expect(await readFile(join(repoPath, 'node_modules/unrelated/package.json'), 'utf8')).toBe('{}\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('uses native checkout protection without scanning the worktree or every ignored file', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['checkout', '-b', 'feature/fast-checkout']);
+      await commitFile(repoPath, 'feature.txt', 'feature\n', 'feature commit');
+      await git(repoPath, ['checkout', 'main']);
+      const runSpy = vi.spyOn(gitExecutor, 'run');
+
+      try {
+        await checkoutRef(tab, { kind: 'local', name: 'feature/fast-checkout' });
+
+        const commands = runSpy.mock.calls.map(([args]) => args);
+        expect(commands).toContainEqual(['checkout', '--no-overwrite-ignore', 'feature/fast-checkout']);
+        expect(commands.some(([command]) => command === 'status' || command === 'ls-files')).toBe(false);
+      } finally {
+        runSpy.mockRestore();
+      }
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('does not leave a branch behind when create-and-checkout collides with an ignored file', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, '.gitignore', 'generated/\n', 'ignore generated output');
+      await git(repoPath, ['checkout', '-b', 'branch-target']);
+      await writeRepoFile(repoPath, 'generated/output.txt', 'tracked target\n');
+      await git(repoPath, ['add', '-f', 'generated/output.txt']);
+      await git(repoPath, ['commit', '-m', 'track generated output']);
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'generated/output.txt', 'ignored local value\n');
+
+      await expect(
+        createBranch(tab, {
+          name: 'should-not-exist',
+          startPoint: 'branch-target',
+          checkout: true
+        })
+      ).rejects.toThrow('would be overwritten by checkout');
+
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/heads/should-not-exist']);
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect(await readFile(join(repoPath, 'generated/output.txt'), 'utf8')).toBe('ignored local value\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks checkout when a target file would replace an ignored directory', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, '.gitignore', 'generated\n', 'ignore generated output');
+      await git(repoPath, ['checkout', '-b', 'feature/ignored-directory']);
+      await writeRepoFile(repoPath, 'generated', 'tracked target\n');
+      await git(repoPath, ['add', '-f', 'generated']);
+      await git(repoPath, ['commit', '-m', 'track generated file']);
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'generated/keep.txt', 'ignored local value\n');
+
+      await expect(checkoutRef(tab, { kind: 'local', name: 'feature/ignored-directory' })).rejects.toThrow(
+        'would lose untracked files'
+      );
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect(await readFile(join(repoPath, 'generated/keep.txt'), 'utf8')).toBe('ignored local value\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks checkout when a target directory would replace an ignored file', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, '.gitignore', 'generated\n', 'ignore generated output');
+      await git(repoPath, ['checkout', '-b', 'feature/ignored-file']);
+      await writeRepoFile(repoPath, 'generated/output.txt', 'tracked target\n');
+      await git(repoPath, ['add', '-f', 'generated/output.txt']);
+      await git(repoPath, ['commit', '-m', 'track generated directory']);
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'generated', 'ignored local value\n');
+
+      await expect(checkoutRef(tab, { kind: 'local', name: 'feature/ignored-file' })).rejects.toThrow(
+        'would be overwritten by checkout'
+      );
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect(await readFile(join(repoPath, 'generated'), 'utf8')).toBe('ignored local value\n');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
@@ -1072,6 +1177,9 @@ describe('git operations', () => {
       await git(repoPath, ['checkout', 'main']);
 
       const result = await checkoutRef(tab, { kind: 'local', name: 'feature/checkout-target' });
+
+      expect(result.operation?.status).toBe('completed');
+      expect(result.conflictState).toBeUndefined();
 
       if (!result.undoEntry) {
         throw new Error('Expected checkout to record undo metadata.');

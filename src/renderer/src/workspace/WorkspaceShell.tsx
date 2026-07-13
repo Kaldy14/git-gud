@@ -102,6 +102,13 @@ type RepositoryOperationOptions = {
   retryable?: boolean;
 };
 
+type ActiveRepositoryOperation = {
+  id: string;
+  repoPath: string;
+  label: string;
+  phase: 'running' | 'refreshing';
+};
+
 export function WorkspaceShell(): ReactElement {
   const {
     workspace,
@@ -127,6 +134,7 @@ export function WorkspaceShell(): ReactElement {
   const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
   const [fileFocusByTab, setFileFocusByTab] = useState<Record<string, number>>({});
   const [operationLogEntries, setOperationLogEntries] = useState<OperationLogEntry[]>([]);
+  const [activeRepositoryOperation, setActiveRepositoryOperation] = useState<ActiveRepositoryOperation>();
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogState>();
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
@@ -183,8 +191,24 @@ export function WorkspaceShell(): ReactElement {
   const parentSha = selectedRow?.parentShas[0];
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
+  const pendingOperationForActiveRepo = operationLogEntries.find(
+    (entry) => entry.repoPath === activeTab?.path && entry.status === 'pending'
+  );
+  const visibleActiveOperation: ActiveRepositoryOperation | undefined =
+    activeRepositoryOperation?.repoPath === activeTab?.path
+      ? activeRepositoryOperation
+      : pendingOperationForActiveRepo
+        ? {
+            id: pendingOperationForActiveRepo.id,
+            repoPath: pendingOperationForActiveRepo.repoPath,
+            label: pendingOperationForActiveRepo.label,
+            phase: pendingOperationForActiveRepo.phase === 'refreshing' ? 'refreshing' : 'running'
+          }
+        : undefined;
   const isOperationBusy =
-    localMutationCount > 0 || operationLogEntries.some((entry) => entry.status === 'pending');
+    localMutationCount > 0 ||
+    Boolean(activeRepositoryOperation) ||
+    operationLogEntries.some((entry) => entry.status === 'pending');
   const usesCompactDetail = viewportWidth < 900;
   const usesCompactSidebar = viewportWidth < 700;
   const sidebarWidthCap = viewportWidth < 900 ? 230 : viewportWidth < 1200 ? 280 : 560;
@@ -510,6 +534,12 @@ export function WorkspaceShell(): ReactElement {
     operationStartGuardRef.current = true;
     const id = createLogId();
     const happenedAt = new Date().toISOString();
+    setActiveRepositoryOperation({
+      id,
+      repoPath: requestedRepoPath,
+      label,
+      phase: 'running'
+    });
     if (retryable) {
       operationRetryActionsRef.current.set(id, { label, action, repoPath: requestedRepoPath, retryable: true });
     }
@@ -526,6 +556,21 @@ export function WorkspaceShell(): ReactElement {
 
     try {
       const result = await action(requestedRepoPath);
+      setActiveRepositoryOperation((operation) =>
+        operation?.id === id ? { ...operation, phase: 'refreshing' } : operation
+      );
+      setOperationLogEntries((entries) =>
+        entries.map((entry) =>
+          entry.id === id
+            ? {
+                ...entry,
+                status: 'pending',
+                phase: 'refreshing',
+                detail: 'Updating repository data…'
+              }
+            : entry
+        )
+      );
       await invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
 
       const status = result.operation?.status === 'conflicted' || result.conflictState?.isActive ? 'conflict' : 'success';
@@ -538,7 +583,9 @@ export function WorkspaceShell(): ReactElement {
                 ...entry,
                 label: result.operation?.label ?? label,
                 status,
+                phase: 'completed',
                 canRetry: false,
+                waitsForRefresh: false,
                 detail,
                 happenedAt: result.happenedAt
               }
@@ -558,6 +605,7 @@ export function WorkspaceShell(): ReactElement {
       return false;
     } finally {
       operationStartGuardRef.current = false;
+      setActiveRepositoryOperation((operation) => (operation?.id === id ? undefined : operation));
     }
   }
 
@@ -1449,6 +1497,7 @@ export function WorkspaceShell(): ReactElement {
                 activeTab={activeTab}
                 repositoryOverview={repositoryQuery.data}
                 isLoading={repositoryQuery.isLoading}
+                isRefreshing={repositoryQuery.isFetching && !repositoryQuery.isLoading}
                 errorMessage={repositoryError}
                 isCollapsed={isSidebarCollapsed}
                 width={effectiveSidebarWidth}
@@ -1561,6 +1610,11 @@ export function WorkspaceShell(): ReactElement {
         activeTab={activeTab}
         repositoryOverview={repositoryQuery.data}
         isRepositoryLoading={repositoryQuery.isLoading}
+        isRepositoryRefreshing={
+          Boolean(repositoryQuery.data || graphQuery.data) &&
+          (repositoryQuery.isFetching || graphQuery.isFetching)
+        }
+        activeOperation={visibleActiveOperation}
       />
       <OperationLog
         entries={operationLogEntries}

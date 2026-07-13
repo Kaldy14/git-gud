@@ -11,7 +11,6 @@ import {
   GitBranch,
   GitMerge,
   GitPullRequestArrow,
-  Loader2,
   MoreHorizontal,
   Search,
   Tag,
@@ -103,7 +102,7 @@ export function Toolbar({
       <div className="flex h-full flex-1 items-center justify-center">
         <ToolbarAction
           label="Undo"
-          icon={isBusy ? <Loader2 size={17} className="animate-spin" /> : <Undo2 size={17} />}
+          icon={<Undo2 size={17} />}
           hint={undoTitle}
           disabled={!latestUndo || Boolean(latestUndo.staleReason) || isBusy}
           onClick={onUndo}
