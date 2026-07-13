@@ -75,14 +75,13 @@ export async function prepareInteractiveRebasePlan(tab: RebaseTab, base: string)
     throw new Error('Interactive rebase requires a checked-out branch.');
   }
 
-  await assertBaseIsAncestor(tab.path, normalizedBase, env);
-  await assertInteractiveRebaseRangeIsLinear(tab.path, normalizedBase, env);
-
-  const [baseSha, headSha, commits] = await Promise.all([
-    revParse(tab.path, normalizedBase, env),
-    revParse(tab.path, 'HEAD', env),
-    loadInteractiveRebaseCommits(tab.path, normalizedBase, env)
+  const [baseSha, headSha] = await Promise.all([
+    revParse(tab.path, `${normalizedBase}^{commit}`, env),
+    revParse(tab.path, 'HEAD', env)
   ]);
+  await assertInteractiveRebaseHasCommonAncestor(tab.path, baseSha, env);
+  await assertInteractiveRebaseRangeIsLinear(tab.path, baseSha, env);
+  const commits = await loadInteractiveRebaseCommits(tab.path, baseSha, env);
 
   if (commits.length === 0) {
     throw new Error('There are no commits after this base to replay.');
@@ -91,6 +90,7 @@ export async function prepareInteractiveRebasePlan(tab: RebaseTab, base: string)
   return {
     repoPath: tab.path,
     base: baseSha,
+    baseLabel: interactiveRebaseBaseLabel(normalizedBase, baseSha),
     baseShortSha: baseSha.slice(0, 8),
     branchName: status.branch.head,
     headSha,
@@ -124,7 +124,7 @@ export async function runInteractiveRebase(tab: RebaseTab, input: GitInteractive
       await clearRebaseEditorState(tab.path, env);
     }
 
-    return createOperationResult(tab, env, `Interactive rebase from ${plan.baseShortSha}`, conflictState);
+    return createOperationResult(tab, env, `Interactive rebase onto ${plan.baseShortSha}`, conflictState);
   } catch (error) {
     await clearRebaseEditorState(tab.path, env);
     throw error;
@@ -635,18 +635,6 @@ async function unlinkIfExists(path: string): Promise<void> {
   }
 }
 
-async function assertBaseIsAncestor(repoPath: string, base: string, env: NodeJS.ProcessEnv | undefined): Promise<void> {
-  const result = await gitExecutor.run(['merge-base', '--is-ancestor', base, 'HEAD'], {
-    cwd: repoPath,
-    env,
-    allowedExitCodes: [1]
-  });
-
-  if (result.exitCode !== 0) {
-    throw new Error('Interactive rebase base must be an ancestor of HEAD.');
-  }
-}
-
 async function assertInteractiveRebaseRangeIsLinear(
   repoPath: string,
   base: string,
@@ -662,6 +650,26 @@ async function assertInteractiveRebaseRangeIsLinear(
       'Interactive rebase does not support ranges containing merge commits. Choose a base after the latest merge.'
     );
   }
+}
+
+async function assertInteractiveRebaseHasCommonAncestor(
+  repoPath: string,
+  base: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const result = await gitExecutor.run(['merge-base', base, 'HEAD'], {
+    cwd: repoPath,
+    env,
+    allowedExitCodes: [1]
+  });
+
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
+    throw new Error('Interactive rebase target must share history with HEAD.');
+  }
+}
+
+function interactiveRebaseBaseLabel(base: string, baseSha: string): string {
+  return /^[0-9a-f]{7,64}$/i.test(base) ? baseSha.slice(0, 8) : base;
 }
 
 async function revParse(repoPath: string, rev: string, env: NodeJS.ProcessEnv | undefined): Promise<string> {

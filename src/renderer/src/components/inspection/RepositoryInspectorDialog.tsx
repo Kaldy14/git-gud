@@ -420,7 +420,7 @@ function InspectorField({ label, className, children }: { label: string; classNa
 }
 
 function InspectorSubmitButton({ isLoading, label }: { isLoading: boolean; label: string }): ReactElement {
-  return <button className="btn-accent h-8 shrink-0 text-xs" type="submit" disabled={isLoading}>{isLoading ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{label}</button>;
+  return <button className="btn-primary h-8 shrink-0 text-xs" type="submit" disabled={isLoading}>{isLoading ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{label}</button>;
 }
 
 function LoadableRegion<T>({

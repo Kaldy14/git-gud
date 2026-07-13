@@ -30,7 +30,7 @@ export function StartPage({
           <p className="mt-1.5 text-[13px] text-[var(--text-2)]">
             {isLoading ? 'Restoring your workspace…' : 'A fast, local-first Git client for macOS.'}
           </p>
-          <button className="btn-accent mt-6" type="button" onClick={onOpenRepository}>
+          <button className="btn-primary mt-6" type="button" onClick={onOpenRepository}>
             <FolderOpen size={15} />
             Open repository
           </button>

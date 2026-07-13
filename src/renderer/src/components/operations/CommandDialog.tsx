@@ -121,7 +121,7 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
             {dialog.cancelLabel ?? 'Cancel'}
           </button>
           <button
-            className={dialog.tone === 'danger' ? 'btn-subtle h-8 border-[var(--danger-border)] text-xs text-[var(--danger-text)]' : 'btn-accent h-8 text-xs'}
+            className={dialog.tone === 'danger' ? 'btn-subtle h-8 border-[var(--danger-border)] text-xs text-[var(--danger-text)]' : 'btn-primary h-8 text-xs'}
             type="submit"
             disabled={!canSubmit}
           >

@@ -161,7 +161,7 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
           <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-accent h-8 text-xs" type="submit" disabled={isSaving}>
+          <button className="btn-primary h-8 text-xs" type="submit" disabled={isSaving}>
             <Gauge size={13} />
             Save Settings
           </button>

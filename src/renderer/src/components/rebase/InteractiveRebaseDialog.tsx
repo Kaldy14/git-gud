@@ -69,7 +69,7 @@ export function InteractiveRebaseDialog({
         <div className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-2)]">
           {plan ? (
             <>
-              Rebasing <RebasePill>{plan.branchName}</RebasePill> onto <RebasePill>{plan.baseShortSha}</RebasePill>
+              Rebasing <RebasePill>{plan.branchName}</RebasePill> onto <RebasePill>{plan.baseLabel}</RebasePill>
             </>
           ) : (
             'Preparing commit list'
@@ -376,7 +376,7 @@ function InteractiveRebaseEditor({
           >
             Cancel Rebase
           </button>
-          <button className="btn-accent h-9 text-xs" type="button" onClick={() => void handleRun()} disabled={!canRun}>
+          <button className="btn-primary h-9 text-xs" type="button" onClick={() => void handleRun()} disabled={!canRun}>
             {isRunning ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
             Start Rebase
           </button>

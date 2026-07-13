@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
@@ -8,12 +9,18 @@ import {
   ChevronRight,
   FolderGit2,
   GitBranch,
+  GitMerge,
   GitPullRequestArrow,
   Loader2,
+  MoreHorizontal,
   Search,
+  Tag,
   Terminal,
-  Undo2
+  Undo2,
+  Workflow
 } from 'lucide-react';
+
+import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 
 import type { GitRepositoryOverview, GitUndoEntry, RepoTab } from '@shared/types';
 
@@ -31,6 +38,11 @@ type ToolbarProps = {
   onUndo: () => void;
   onOpenTerminal: () => void;
   onOpenQuickJump: () => void;
+  onMergeSelected: () => void;
+  onRebaseSelected: () => void;
+  onInteractiveRebaseSelected: () => void;
+  onTagSelected: () => void;
+  hasSelectedCommit: boolean;
 };
 
 export function Toolbar({
@@ -46,7 +58,12 @@ export function Toolbar({
   onStashPop,
   onUndo,
   onOpenTerminal,
-  onOpenQuickJump
+  onOpenQuickJump,
+  onMergeSelected,
+  onRebaseSelected,
+  onInteractiveRebaseSelected,
+  onTagSelected,
+  hasSelectedCommit
 }: ToolbarProps): ReactElement {
   const hasRepo = Boolean(activeTab);
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : '—';
@@ -150,6 +167,15 @@ export function Toolbar({
       </div>
 
       <div className="flex h-full shrink-0 items-center">
+        <ActionsMenu
+          disabled={!hasRepo || isBusy}
+          hasSelectedCommit={hasSelectedCommit}
+          onOpenQuickJump={onOpenQuickJump}
+          onMergeSelected={onMergeSelected}
+          onRebaseSelected={onRebaseSelected}
+          onInteractiveRebaseSelected={onInteractiveRebaseSelected}
+          onTagSelected={onTagSelected}
+        />
         <ToolbarAction
           label="Jump"
           icon={<Search size={17} />}
@@ -159,6 +185,84 @@ export function Toolbar({
         />
       </div>
     </div>
+  );
+}
+
+function ActionsMenu({
+  disabled,
+  hasSelectedCommit,
+  onOpenQuickJump,
+  onMergeSelected,
+  onRebaseSelected,
+  onInteractiveRebaseSelected,
+  onTagSelected
+}: {
+  disabled: boolean;
+  hasSelectedCommit: boolean;
+  onOpenQuickJump: () => void;
+  onMergeSelected: () => void;
+  onRebaseSelected: () => void;
+  onInteractiveRebaseSelected: () => void;
+  onTagSelected: () => void;
+}): ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    function closeOnPointerDown(event: PointerEvent): void {
+      if (!shellRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+
+    window.addEventListener('pointerdown', closeOnPointerDown);
+    return () => window.removeEventListener('pointerdown', closeOnPointerDown);
+  }, [isOpen]);
+
+  function run(action: () => void): void {
+    setIsOpen(false);
+    action();
+  }
+
+  return (
+    <div ref={shellRef} className="relative">
+      <ToolbarAction
+        label="Actions"
+        icon={<MoreHorizontal size={17} />}
+        hint="Git actions for the selected commit"
+        disabled={disabled}
+        onClick={() => setIsOpen((value) => !value)}
+      />
+      {isOpen ? (
+        <div
+          ref={menuRef}
+          className="absolute right-1 top-[48px] z-50 w-64 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+          role="menu"
+          aria-label="Git actions"
+          onKeyDown={(event) => handleMenuKeyDown(event, () => setIsOpen(false))}
+        >
+          <ActionMenuItem icon={<GitMerge size={14} />} label="Merge selected into current" disabled={!hasSelectedCommit} onClick={() => run(onMergeSelected)} />
+          <ActionMenuItem icon={<Workflow size={14} />} label="Rebase current onto selected" disabled={!hasSelectedCommit} onClick={() => run(onRebaseSelected)} />
+          <ActionMenuItem icon={<Workflow size={14} />} label="Interactive rebase from selected" disabled={!hasSelectedCommit} onClick={() => run(onInteractiveRebaseSelected)} />
+          <div className="my-1 border-t border-[var(--border)]" />
+          <ActionMenuItem icon={<Tag size={14} />} label="Tag selected commit" disabled={!hasSelectedCommit} onClick={() => run(onTagSelected)} />
+          <div className="my-1 border-t border-[var(--border)]" />
+          <ActionMenuItem icon={<Search size={14} />} label="All commands…" onClick={() => run(onOpenQuickJump)} shortcut="⌘P" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ActionMenuItem({ icon, label, shortcut, disabled = false, onClick }: { icon: ReactNode; label: string; shortcut?: string; disabled?: boolean; onClick: () => void }): ReactElement {
+  return (
+    <button className="menu-row" type="button" role="menuitem" disabled={disabled} onClick={onClick}>
+      {icon}
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      {shortcut ? <kbd className="text-[10px] text-[var(--text-3)]">{shortcut}</kbd> : null}
+    </button>
   );
 }
 

@@ -736,7 +736,7 @@ function WipCommitSection({
           />
           Amend previous commit
         </label>
-        <button className="btn-accent h-8 text-xs" type="button" disabled={!canCommit} onClick={onCommit}>
+        <button className="btn-primary h-8 text-xs" type="button" disabled={!canCommit} onClick={onCommit}>
           {isCommitting ? <Loader2 size={13} className="animate-spin" /> : <GitCommit size={13} />}
           <span>{amend ? 'Amend' : 'Commit'}</span>
         </button>

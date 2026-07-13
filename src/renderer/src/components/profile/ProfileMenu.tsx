@@ -287,7 +287,7 @@ export function ProfileMenu({
 
             {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
 
-            <button className="btn-accent h-8 w-full" type="submit" disabled={isPending || !name.trim() || !email.trim()}>
+            <button className="btn-primary h-8 w-full" type="submit" disabled={isPending || !name.trim() || !email.trim()}>
               <Plus size={13} />
               <span>{editingProfileId ? 'Update and Assign' : 'Save and Assign'}</span>
             </button>

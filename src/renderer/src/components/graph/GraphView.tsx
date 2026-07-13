@@ -29,7 +29,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
-import { findSelectedContextMenuRow } from '@renderer/components/graph/graphInteraction';
+import { findCurrentBranchName, findSelectedContextMenuRow } from '@renderer/components/graph/graphInteraction';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
 import type { CommitGraphRow, GitStashRefInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
@@ -94,6 +94,10 @@ type GraphViewProps = {
   onStashApply?: (input: GitStashRefInput) => Promise<void> | void;
   onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
   onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
+  onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onMergeBranch?: (name: string) => Promise<void> | void;
+  onRebaseOntoBranch?: (name: string) => Promise<void> | void;
+  onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
@@ -121,11 +125,22 @@ const DEFAULT_GRAPH_COLUMN_VISIBILITY: GraphColumnVisibility = {
   sha: true
 };
 
-type ContextMenuState = {
+type CommitContextMenuState = {
+  kind: 'commit';
   row: CommitGraphRow;
   x: number;
   y: number;
 };
+
+type BranchContextMenuState = {
+  kind: 'branch';
+  branchName: string;
+  currentBranchName: string;
+  x: number;
+  y: number;
+};
+
+type ContextMenuState = CommitContextMenuState | BranchContextMenuState;
 
 export function GraphView({
   rows,
@@ -142,6 +157,10 @@ export function GraphView({
   onStashApply,
   onStashPop,
   onStashDrop,
+  onCheckoutBranch,
+  onMergeBranch,
+  onRebaseOntoBranch,
+  onInteractiveRebaseOntoBranch,
   onCheckoutCommit,
   onCreateBranchAtCommit,
   onCreateTagAtCommit,
@@ -173,6 +192,7 @@ export function GraphView({
   const metadataWidth = graphMetadataWidth(visibleColumns);
   const graphWidth = columnWidths.graph;
   const graphContentWidth = useMemo(() => graphContentWidthForRows(rows, graphWidth), [graphWidth, rows]);
+  const currentBranchName = useMemo(() => findCurrentBranchName(rows), [rows]);
   const dateMarkersByRow = useMemo(() => buildDateMarkers(rows), [rows]);
   const refCellWidth = columnWidths.refs;
   const gridTemplateColumns = graphGridTemplate(refCellWidth, graphWidth, visibleColumns);
@@ -320,10 +340,37 @@ export function GraphView({
     event.preventDefault();
     onSelectRow(row.sha);
     setContextMenu({
+      kind: 'commit',
       row,
       x: event.clientX,
       y: event.clientY
     });
+  }
+
+  function handleBranchContextMenu(event: MouseEvent<HTMLElement>, row: CommitGraphRow, branchName: string): void {
+    if (!currentBranchName || branchName === currentBranchName) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectRow(row.sha);
+    setContextMenu({
+      kind: 'branch',
+      branchName,
+      currentBranchName,
+      x: event.clientX,
+      y: event.clientY
+    });
+  }
+
+  function handleBranchDoubleClick(row: CommitGraphRow, branchName: string): void {
+    if (branchName === currentBranchName || !onCheckoutBranch || isOperationBusy) {
+      return;
+    }
+
+    onSelectRow(row.sha);
+    void onCheckoutBranch(branchName);
   }
 
   function handleListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
@@ -333,7 +380,7 @@ export function GraphView({
       if (row) {
         event.preventDefault();
         const rect = event.currentTarget.getBoundingClientRect();
-        setContextMenu({ row, x: rect.left + Math.min(rect.width / 2, 420), y: rect.top + 48 });
+        setContextMenu({ kind: 'commit', row, x: rect.left + Math.min(rect.width / 2, 420), y: rect.top + 48 });
       }
 
       return;
@@ -482,6 +529,8 @@ export function GraphView({
                       rowIndex={virtualRow.index}
                       onSelect={() => onSelectRow(row.sha)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
+                      onBranchDoubleClick={(branchName) => handleBranchDoubleClick(row, branchName)}
+                      onBranchContextMenu={(event, branchName) => handleBranchContextMenu(event, row, branchName)}
                     />
                   </div>
                 );
@@ -489,7 +538,7 @@ export function GraphView({
             </div>
             {hasMore ? (
               <div className="flex items-center justify-center gap-3 border-t border-[var(--border)] px-3 py-3">
-                <button className="btn-accent h-8 text-xs" type="button" onClick={onLoadMore} disabled={isFetching}>
+                <button className="btn-primary h-8 text-xs" type="button" onClick={onLoadMore} disabled={isFetching}>
                   {isFetching ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                   <span>Load more</span>
                 </button>
@@ -512,7 +561,20 @@ export function GraphView({
         </div>
       ) : null}
 
-      {contextMenu ? (
+      {contextMenu?.kind === 'branch' ? (
+        <GraphBranchContextMenu
+          state={contextMenu}
+          onClose={() => {
+            setContextMenu(undefined);
+            scrollRef.current?.focus({ preventScroll: true });
+          }}
+          onCheckoutBranch={onCheckoutBranch}
+          onMergeBranch={onMergeBranch}
+          onRebaseOntoBranch={onRebaseOntoBranch}
+          onInteractiveRebaseOntoBranch={onInteractiveRebaseOntoBranch}
+          isOperationBusy={isOperationBusy}
+        />
+      ) : contextMenu ? (
         <GraphContextMenu
           state={contextMenu}
           onClose={() => {
@@ -554,6 +616,8 @@ type GraphRowViewProps = {
   rowIndex: number;
   onSelect: () => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
+  onBranchDoubleClick: (branchName: string) => void;
+  onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 };
 
 type GraphColumnResizeHandleProps = {
@@ -644,7 +708,9 @@ function GraphRowView({
   isSelected,
   rowIndex,
   onSelect,
-  onContextMenu
+  onContextMenu,
+  onBranchDoubleClick,
+  onBranchContextMenu
 }: GraphRowViewProps): ReactElement {
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
@@ -693,7 +759,13 @@ function GraphRowView({
       ) : null}
 
       <div className="ref-cell pl-2 pr-1.5">
-        <RefChipStack refs={visibleRefs} color={nodeColor} />
+        <RefChipStack
+          refs={visibleRefs}
+          color={nodeColor}
+          onSelect={onSelect}
+          onBranchDoubleClick={onBranchDoubleClick}
+          onBranchContextMenu={onBranchContextMenu}
+        />
       </div>
 
       <RailCell
@@ -1017,7 +1089,19 @@ type RefChipDisplay = GraphRefChip & {
   remotePeerLabels?: string[];
 };
 
-function RefChipStack({ refs, color }: { refs: GraphRefChip[]; color: string }): ReactElement | null {
+function RefChipStack({
+  refs,
+  color,
+  onSelect,
+  onBranchDoubleClick,
+  onBranchContextMenu
+}: {
+  refs: GraphRefChip[];
+  color: string;
+  onSelect: () => void;
+  onBranchDoubleClick: (branchName: string) => void;
+  onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
+}): ReactElement | null {
   if (refs.length === 0) {
     return null;
   }
@@ -1034,7 +1118,13 @@ function RefChipStack({ refs, color }: { refs: GraphRefChip[]; color: string }):
   return (
     <div className="ref-stack" data-has-overflow={overflowRefs.length > 0}>
       <div className="ref-stack-summary">
-        <RefChipView chip={primaryRef} color={color} />
+        <RefChipView
+          chip={primaryRef}
+          color={color}
+          onSelect={onSelect}
+          onBranchDoubleClick={onBranchDoubleClick}
+          onBranchContextMenu={onBranchContextMenu}
+        />
         {overflowRefs.length > 0 ? (
           <span
             className="ref-overflow"
@@ -1048,7 +1138,14 @@ function RefChipStack({ refs, color }: { refs: GraphRefChip[]; color: string }):
       {overflowRefs.length > 0 ? (
         <div className="ref-stack-expanded">
           {displayRefs.map((chip) => (
-            <RefChipView key={`${chip.kind}:${chip.label}`} chip={chip} color={color} />
+            <RefChipView
+              key={`${chip.kind}:${chip.label}`}
+              chip={chip}
+              color={color}
+              onSelect={onSelect}
+              onBranchDoubleClick={onBranchDoubleClick}
+              onBranchContextMenu={onBranchContextMenu}
+            />
           ))}
         </div>
       ) : null}
@@ -1056,7 +1153,19 @@ function RefChipStack({ refs, color }: { refs: GraphRefChip[]; color: string }):
   );
 }
 
-function RefChipView({ chip, color }: { chip: RefChipDisplay; color: string }): ReactElement {
+function RefChipView({
+  chip,
+  color,
+  onSelect,
+  onBranchDoubleClick,
+  onBranchContextMenu
+}: {
+  chip: RefChipDisplay;
+  color: string;
+  onSelect: () => void;
+  onBranchDoubleClick: (branchName: string) => void;
+  onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
+}): ReactElement {
   const { current, kind, label, remotePeerLabels } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
   const title = refChipTitle(chip);
@@ -1074,22 +1183,52 @@ function RefChipView({ chip, color }: { chip: RefChipDisplay; color: string }): 
       <Pencil size={10} />
     );
 
-  return (
-    <span
-      className="ref-chip"
-      style={
-        current
-          ? { background: color, borderColor: color, color: 'var(--text-1)' }
-          : { background: `${color}55`, borderColor: `${color}8c`, color: 'var(--text-1)' }
-      }
-      title={title}
-      aria-label={ariaLabel}
-    >
+  const style = current
+    ? { background: color, borderColor: color, color: 'var(--text-1)' }
+    : { background: `${color}55`, borderColor: `${color}8c`, color: 'var(--text-1)' };
+  const content = (
+    <>
       {icon}
       <span className="ref-chip-label">{label}</span>
       {kind === 'branch' ? <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
       {hasRemotePeer ? <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
-    </span>
+    </>
+  );
+
+  if (kind !== 'branch') {
+    return (
+      <span className="ref-chip" style={style} title={title} aria-label={ariaLabel}>
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="ref-chip"
+      style={style}
+      title={current ? title : `${title}\nDouble-click to checkout. Right-click for branch actions.`}
+      aria-label={ariaLabel}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+
+        if (!current) {
+          onBranchDoubleClick(label);
+        }
+      }}
+      onContextMenu={(event) => {
+        if (!current) {
+          onBranchContextMenu(event, label);
+        }
+      }}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -1392,6 +1531,108 @@ function MenuSeparator(): ReactElement {
   return <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />;
 }
 
+function GraphBranchContextMenu({
+  state,
+  onClose,
+  onCheckoutBranch,
+  onMergeBranch,
+  onRebaseOntoBranch,
+  onInteractiveRebaseOntoBranch,
+  isOperationBusy
+}: {
+  state: BranchContextMenuState;
+  onClose: () => void;
+  onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onMergeBranch?: (name: string) => Promise<void> | void;
+  onRebaseOntoBranch?: (name: string) => Promise<void> | void;
+  onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
+  isOperationBusy: boolean;
+}): ReactElement {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: state.x, top: state.y });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+
+    if (!menu) {
+      return;
+    }
+
+    const rect = menu.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
+    });
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+  }, [state]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 w-80 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      style={{ left: position.left, top: position.top }}
+      role="menu"
+      aria-label={`${state.branchName} branch actions`}
+      onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onCheckoutBranch || isOperationBusy}
+        onClick={() => {
+          void onCheckoutBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <Check size={14} />
+        <span>Checkout {state.branchName}</span>
+      </button>
+      <MenuSeparator />
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onMergeBranch || isOperationBusy}
+        onClick={() => {
+          void onMergeBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <GitMerge size={14} />
+        <span>Merge {state.branchName} into {state.currentBranchName}</span>
+      </button>
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onRebaseOntoBranch || isOperationBusy}
+        onClick={() => {
+          void onRebaseOntoBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <RefreshCw size={14} />
+        <span>Rebase {state.currentBranchName} onto {state.branchName}</span>
+      </button>
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onInteractiveRebaseOntoBranch || isOperationBusy}
+        onClick={() => {
+          void onInteractiveRebaseOntoBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <Workflow size={14} />
+        <span>Interactive rebase {state.currentBranchName} onto {state.branchName}</span>
+      </button>
+    </div>
+  );
+}
+
 function GraphContextMenu({
   state,
   onClose,
@@ -1412,7 +1653,7 @@ function GraphContextMenu({
   onResetToCommit,
   isOperationBusy
 }: {
-  state: ContextMenuState;
+  state: CommitContextMenuState;
   onClose: () => void;
   onStageAllWip?: () => Promise<void> | void;
   onOpenWipCommitComposer?: () => void;

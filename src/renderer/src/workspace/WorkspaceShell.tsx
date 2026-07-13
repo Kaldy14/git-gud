@@ -14,8 +14,10 @@ import {
   Rows3,
   SearchCode,
   Settings,
+  Tag,
   Terminal,
   Trash2,
+  Workflow,
   X
 } from 'lucide-react';
 import { useIsMutating, useQueryClient } from '@tanstack/react-query';
@@ -931,16 +933,24 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handleMergeCommit(sha: string): void {
+  function handleMergeRef(ref: string, label: string): void {
     openCommandDialog({
       title: 'Merge into current branch',
-      description: `Merge ${sha.slice(0, 8)} into the checked-out branch.`,
+      description: `Merge ${label} into the checked-out branch.`,
       confirmLabel: 'Merge',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Merge ${sha.slice(0, 8)}`, (repoPath) => window.api.mergeRef(repoPath, { ref: sha }));
+        void runRepositoryOperation(`Merge ${label}`, (repoPath) => window.api.mergeRef(repoPath, { ref }));
       }
     });
+  }
+
+  function handleMergeCommit(sha: string): void {
+    handleMergeRef(sha, sha.slice(0, 8));
+  }
+
+  function handleMergeBranch(name: string): void {
+    handleMergeRef(name, name);
   }
 
   function handleCherryPickCommit(sha: string): void {
@@ -1004,36 +1014,44 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handleRebaseOntoCommit(sha: string): void {
+  function handleRebaseOntoRef(ref: string, label: string): void {
     openCommandDialog({
       title: 'Rebase current branch',
-      description: `Replay the current branch onto ${sha.slice(0, 8)}.`,
+      description: `Replay the current branch onto ${label}.`,
       confirmLabel: 'Rebase',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Rebase onto ${sha.slice(0, 8)}`, (repoPath) => window.api.rebaseOnto(repoPath, { target: sha }));
+        void runRepositoryOperation(`Rebase onto ${label}`, (repoPath) => window.api.rebaseOnto(repoPath, { target: ref }));
       }
     });
   }
 
-  function handleInteractiveRebaseFromCommit(sha: string): void {
+  function handleRebaseOntoCommit(sha: string): void {
+    handleRebaseOntoRef(sha, sha.slice(0, 8));
+  }
+
+  function handleRebaseOntoBranch(name: string): void {
+    handleRebaseOntoRef(name, name);
+  }
+
+  function handleInteractiveRebase(base: string): void {
     if (!activeTab) {
       return;
     }
 
     setInteractiveRebaseDialog({
-      base: sha,
+      base,
       isLoading: true,
       isRunning: false
     });
 
     window.api
-      .getInteractiveRebasePlan(activeTab.path, sha)
+      .getInteractiveRebasePlan(activeTab.path, base)
       .then((plan) => {
         setInteractiveRebaseDialog((state) =>
-          state?.base === sha
+          state?.base === base
             ? {
-                base: sha,
+                base,
                 plan,
                 isLoading: false,
                 isRunning: false
@@ -1043,9 +1061,9 @@ export function WorkspaceShell(): ReactElement {
       })
       .catch((error: unknown) => {
         setInteractiveRebaseDialog((state) =>
-          state?.base === sha
+          state?.base === base
             ? {
-                base: sha,
+                base,
                 isLoading: false,
                 isRunning: false,
                 errorMessage: error instanceof Error ? error.message : 'Unable to prepare interactive rebase.'
@@ -1055,9 +1073,17 @@ export function WorkspaceShell(): ReactElement {
       });
   }
 
+  function handleInteractiveRebaseFromCommit(sha: string): void {
+    handleInteractiveRebase(sha);
+  }
+
+  function handleInteractiveRebaseOntoBranch(name: string): void {
+    handleInteractiveRebase(name);
+  }
+
   async function handleRunInteractiveRebase(input: GitInteractiveRebaseInput): Promise<void> {
     setInteractiveRebaseDialog((state) => (state ? { ...state, isRunning: true, errorMessage: undefined } : state));
-    const completed = await runRepositoryOperation(`Interactive rebase from ${input.base.slice(0, 8)}`, (repoPath) =>
+    const completed = await runRepositoryOperation(`Interactive rebase onto ${input.base.slice(0, 8)}`, (repoPath) =>
       window.api.runInteractiveRebase(repoPath, input)
     );
 
@@ -1157,6 +1183,39 @@ export function WorkspaceShell(): ReactElement {
             ? undefined
             : 'The working directory is clean',
       onSelect: handleStashPush
+    },
+    {
+      id: 'rebase-selected',
+      label: 'Rebase current branch onto selected commit',
+      category: 'Git',
+      detail: selectedRow ? selectedRow.subject : 'Select a commit in the graph',
+      keywords: ['rebase', 'branch', 'history'],
+      icon: <Workflow size={14} />,
+      disabled: !selectedRow || selectedRow.node.kind === 'wip' || selectedRow.node.kind === 'stash' || isOperationBusy,
+      disabledReason: !selectedRow ? 'Select a commit first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: () => selectedRow && handleRebaseOntoCommit(selectedRow.sha)
+    },
+    {
+      id: 'interactive-rebase-selected',
+      label: 'Interactive rebase from selected commit',
+      category: 'Git',
+      detail: 'Reorder, reword, squash, fixup, or drop commits',
+      keywords: ['rebase', 'squash', 'fixup', 'reword', 'drop', 'history'],
+      icon: <Workflow size={14} />,
+      disabled: !selectedRow || selectedRow.node.kind === 'wip' || selectedRow.node.kind === 'stash' || isOperationBusy,
+      disabledReason: !selectedRow ? 'Select a base commit first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: () => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)
+    },
+    {
+      id: 'tag-selected',
+      label: 'Tag selected commit',
+      category: 'Git',
+      detail: selectedRow ? selectedRow.sha.slice(0, 8) : 'Select a commit in the graph',
+      keywords: ['tag', 'release', 'annotated'],
+      icon: <Tag size={14} />,
+      disabled: !selectedRow || selectedRow.node.kind === 'wip' || selectedRow.node.kind === 'stash' || isOperationBusy,
+      disabledReason: !selectedRow ? 'Select a commit first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: () => selectedRow && handleCreateTagAtCommit(selectedRow.sha)
     },
     {
       id: 'file-history',
@@ -1305,6 +1364,11 @@ export function WorkspaceShell(): ReactElement {
         onUndo={handleUndo}
         onOpenTerminal={handleOpenTerminal}
         onOpenQuickJump={() => setIsQuickJumpOpen(true)}
+        hasSelectedCommit={Boolean(selectedRow && selectedRow.node.kind !== 'wip' && selectedRow.node.kind !== 'stash')}
+        onMergeSelected={() => selectedRow && handleMergeCommit(selectedRow.sha)}
+        onRebaseSelected={() => selectedRow && handleRebaseOntoCommit(selectedRow.sha)}
+        onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
+        onTagSelected={() => selectedRow && handleCreateTagAtCommit(selectedRow.sha)}
       />
 
       {errorMessage || repositoryError ? (
@@ -1394,6 +1458,10 @@ export function WorkspaceShell(): ReactElement {
                   onStashApply={handleStashApply}
                   onStashPop={handleStashPop}
                   onStashDrop={handleStashDrop}
+                  onCheckoutBranch={handleCheckoutBranch}
+                  onMergeBranch={handleMergeBranch}
+                  onRebaseOntoBranch={handleRebaseOntoBranch}
+                  onInteractiveRebaseOntoBranch={handleInteractiveRebaseOntoBranch}
                   onCheckoutCommit={handleCheckoutCommit}
                   onCreateBranchAtCommit={handleCreateBranch}
                   onCreateTagAtCommit={handleCreateTagAtCommit}

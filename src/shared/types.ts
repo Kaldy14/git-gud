@@ -282,6 +282,7 @@ export type GitInteractiveRebaseCommit = {
 export type GitInteractiveRebasePlan = {
   repoPath: string;
   base: string;
+  baseLabel: string;
   baseShortSha: string;
   branchName: string;
   headSha: string;

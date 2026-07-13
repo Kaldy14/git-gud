@@ -17,6 +17,66 @@ import {
 const rebaseStatePathName = 'git-gud-rebase-state.json';
 
 describe('prepareInteractiveRebasePlan', () => {
+  it('prepares and runs an interactive rebase onto a divergent branch', async () => {
+    const { repoPath, rootPath } = await createRepository();
+
+    try {
+      await git(repoPath, ['checkout', '-b', 'feature']);
+      await commitFile(repoPath, 'feature-one.txt', 'one\n', 'feature one');
+      await commitFile(repoPath, 'feature-two.txt', 'two\n', 'feature two');
+      const featureHeadBefore = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      await git(repoPath, ['checkout', 'main']);
+      await commitFile(repoPath, 'main-only.txt', 'main\n', 'main advance');
+      const mainHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'feature']);
+
+      const plan = await prepareInteractiveRebasePlan({ path: repoPath }, 'main');
+
+      expect(plan).toMatchObject({
+        base: mainHead,
+        baseLabel: 'main',
+        branchName: 'feature'
+      });
+      expect(plan.commits.map((commit) => commit.subject)).toEqual(['feature one', 'feature two']);
+
+      const result = await runInteractiveRebase(
+        { path: repoPath },
+        {
+          base: plan.base,
+          commits: plan.commits.map((commit) => ({ sha: commit.sha, action: 'pick' }))
+        }
+      );
+
+      expect(result.operation?.status).toBe('completed');
+      expect((await git(repoPath, ['merge-base', 'HEAD', 'main'])).stdout.trim()).toBe(mainHead);
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).not.toBe(featureHeadBefore);
+      expect((await git(repoPath, ['log', '--reverse', '--format=%s', 'main..HEAD'])).stdout.trim().split('\n')).toEqual([
+        'feature one',
+        'feature two'
+      ]);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an interactive rebase target with unrelated history', async () => {
+    const { repoPath, rootPath } = await createRepository();
+
+    try {
+      await git(repoPath, ['checkout', '--orphan', 'unrelated']);
+      await git(repoPath, ['rm', '-rf', '.']);
+      await commitFile(repoPath, 'unrelated.txt', 'unrelated\n', 'unrelated root');
+      await git(repoPath, ['checkout', 'main']);
+
+      await expect(prepareInteractiveRebasePlan({ path: repoPath }, 'unrelated')).rejects.toThrow(
+        'Interactive rebase target must share history with HEAD.'
+      );
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('rejects ranges containing merge commits instead of flattening their topology', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-rebase-'));
 
