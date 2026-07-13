@@ -13,7 +13,7 @@ export function createDefaultAppSettings(): AppSettings {
       date: false,
       sha: false
     },
-    remoteAvatars: false
+    remoteAvatars: true
   };
 }
 

@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { createDefaultAppSettings, normalizeAppSettings } from './settings';
 
 describe('app settings', () => {
-  it('defaults to a focused commit graph and local initials', () => {
+  it('defaults to a focused commit graph and Gravatar author images', () => {
     expect(createDefaultAppSettings()).toMatchObject({
       graphColumns: {
         author: false,
         date: false,
         sha: false
       },
-      remoteAvatars: false
+      remoteAvatars: true
     });
   });
 
@@ -28,6 +28,11 @@ describe('app settings', () => {
       sha: true
     });
     expect(normalized.remoteAvatars).toBe(true);
+  });
+
+  it('restores Gravatar for legacy settings while preserving an explicit opt-out', () => {
+    expect(normalizeAppSettings({ graphPageSize: 1500 }).remoteAvatars).toBe(true);
+    expect(normalizeAppSettings({ remoteAvatars: false }).remoteAvatars).toBe(false);
   });
 
   it('keeps legacy author and date preferences hidden', () => {
