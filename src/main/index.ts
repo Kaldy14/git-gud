@@ -178,7 +178,7 @@ function requestQuit(): void {
 
   isQuitting = true;
   const hardQuitTimer = setTimeout(() => {
-    process.exit(0);
+    exitWithoutNodeCleanup();
   }, hardQuitTimeoutMs);
   hardQuitTimer.unref();
 
@@ -188,10 +188,12 @@ function requestQuit(): void {
 async function quitAfterCleanup(): Promise<void> {
   try {
     await Promise.race([
-      Promise.all([repoWatchers.closeAll(), gitExecutor.shutdown(quitCleanupTimeoutMs - 250)]),
+      gitExecutor.shutdown(quitCleanupTimeoutMs - 250),
       wait(quitCleanupTimeoutMs)
     ]);
   } finally {
+    // Closing Chokidar's macOS FSEvents handles can block the main thread.
+    // Leave repository watchers for exitWithoutNodeCleanup to discard.
     gitExecutor.terminateActiveProcesses('SIGKILL');
 
     for (const window of BrowserWindow.getAllWindows()) {
@@ -199,8 +201,7 @@ async function quitAfterCleanup(): Promise<void> {
     }
   }
 
-  app.exit(0);
-  process.exit(0);
+  exitWithoutNodeCleanup();
 }
 
 function wait(delayMs: number): Promise<void> {
@@ -208,4 +209,15 @@ function wait(delayMs: number): Promise<void> {
     const timer = setTimeout(resolve, delayMs);
     timer.unref();
   });
+}
+
+function exitWithoutNodeCleanup(): void {
+  // Electron's normal exit tears down Node handles and can deadlock on macOS FSEvents.
+  try {
+    process.execve?.('/usr/bin/true', ['/usr/bin/true']);
+  } catch {
+    // Fall back to an unconditional exit if execve is unavailable or fails.
+  }
+
+  process.kill(process.pid, 'SIGKILL');
 }

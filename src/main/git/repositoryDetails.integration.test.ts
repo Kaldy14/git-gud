@@ -1,11 +1,11 @@
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { gitExecutor } from './exec';
-import { discardFile, loadCommitDetail, loadFileDiff, stageFile } from './repositoryDetails';
+import { discardAllChanges, discardFile, loadCommitDetail, loadFileDiff, stageFile } from './repositoryDetails';
 
 describe('repository details integration', () => {
   it('treats pathspec-magic filenames literally across stage, diff, and discard', async () => {
@@ -31,6 +31,30 @@ describe('repository details integration', () => {
 
       await expect(access(join(repoPath, magicPath))).rejects.toThrow();
       expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe(' M ordinary.txt\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('discards all tracked, staged, and untracked changes while preserving ignored files', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await writeRepoFile(repoPath, '.git/info/exclude', 'ignored-output/\n');
+      await writeRepoFile(repoPath, 'ordinary.txt', 'ordinary changed\n');
+      await writeRepoFile(repoPath, 'staged.txt', 'staged addition\n');
+      await git(repoPath, ['add', 'staged.txt']);
+      await writeRepoFile(repoPath, 'scratch/note.txt', 'untracked\n');
+      await writeRepoFile(repoPath, 'ignored-output/cache.txt', 'keep me\n');
+
+      await discardAllChanges({ path: repoPath });
+
+      expect(await readFile(join(repoPath, 'ordinary.txt'), 'utf8')).toBe('ordinary base\n');
+      await expect(access(join(repoPath, 'staged.txt'))).rejects.toThrow();
+      await expect(access(join(repoPath, 'scratch'))).rejects.toThrow();
+      expect(await readFile(join(repoPath, 'ignored-output/cache.txt'), 'utf8')).toBe('keep me\n');
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

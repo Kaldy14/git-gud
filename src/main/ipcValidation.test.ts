@@ -28,6 +28,7 @@ describe('IPC argument validation', () => {
       mode: 'mixed'
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
+    expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
     expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
     expect(validateIpcArgs('workspace:set-detail-panel-collapsed', [true])).toEqual([true]);
     expect(validateIpcArgs('workspace:set-detail-panel-width', [440])).toEqual([440]);

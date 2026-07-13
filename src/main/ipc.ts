@@ -32,6 +32,7 @@ import {
 import {
   applyWipPatch,
   commitChanges,
+  discardAllChanges,
   discardFile,
   loadCommitDetail,
   loadFileDiff,
@@ -85,6 +86,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:stage-file': { label: 'Stage file' },
   'repo:unstage-file': { label: 'Unstage file' },
   'repo:discard-file': { label: 'Discard file changes' },
+  'repo:discard-all': { label: 'Discard all changes' },
   'repo:stage-all': { label: 'Stage all files' },
   'repo:unstage-all': { label: 'Unstage all files' },
   'repo:commit': { label: 'Commit changes' },
@@ -214,6 +216,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   );
   handle('repo:discard-file', async (_event, repoPath, path) =>
     inRepositoryTransaction(repoPath, (tab) => discardFile(tab, path))
+  );
+  handle('repo:discard-all', async (_event, repoPath) =>
+    inRepositoryTransaction(repoPath, discardAllChanges)
   );
   handle('repo:open-file', async (_event, repoPath, path) => openRepositoryFileInEditor(getOpenRepositoryTab(repoPath), path));
   handle('repo:reveal-file', async (_event, repoPath, path) => revealRepositoryFileInFinder(getOpenRepositoryTab(repoPath), path));

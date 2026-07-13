@@ -129,6 +129,10 @@ export type IpcChannelMap = {
     args: [repoPath: string, path: string];
     result: GitOperationResult;
   };
+  'repo:discard-all': {
+    args: [repoPath: string];
+    result: GitOperationResult;
+  };
   'repo:open-file': {
     args: [repoPath: string, path: string];
     result: GitOperationResult;
@@ -300,6 +304,7 @@ export type RendererApi = {
   stageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   unstageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   discardFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  discardAllChanges: (repoPath: string) => Promise<GitOperationResult>;
   openFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   revealFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   stageAll: (repoPath: string) => Promise<GitOperationResult>;

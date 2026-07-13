@@ -111,26 +111,20 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
             </label>
             <fieldset className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5">
               <legend className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Graph metadata</legend>
-              {([
-                ['author', 'Author'],
-                ['date', 'Date'],
-                ['sha', 'Short SHA']
-              ] as const).map(([column, label]) => (
-                <label key={column} className="flex items-center gap-2 text-xs text-[var(--text-2)]">
-                  <input
-                    type="checkbox"
-                    checked={draft.graphColumns[column]}
-                    onChange={(event) =>
-                      setDraft((value) => ({
-                        ...value,
-                        graphColumns: { ...value.graphColumns, [column]: event.target.checked }
-                      }))
-                    }
-                  />
-                  {label}
-                </label>
-              ))}
-              <p className="text-[11px] leading-4 text-[var(--text-3)]">Columns hide automatically when the graph is narrow.</p>
+              <label className="flex items-center gap-2 text-xs text-[var(--text-2)]">
+                <input
+                  type="checkbox"
+                  checked={draft.graphColumns.sha}
+                  onChange={(event) =>
+                    setDraft((value) => ({
+                      ...value,
+                      graphColumns: { ...value.graphColumns, sha: event.target.checked }
+                    }))
+                  }
+                />
+                Short SHA
+              </label>
+              <p className="text-[11px] leading-4 text-[var(--text-3)]">The commit message stays the primary history detail.</p>
             </fieldset>
             <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
               <input

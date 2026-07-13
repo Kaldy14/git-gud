@@ -58,6 +58,7 @@ const validators = {
   'repo:stage-file': (args) => readStringPair(args, 'repo:stage-file', 'repoPath', 'path'),
   'repo:unstage-file': (args) => readStringPair(args, 'repo:unstage-file', 'repoPath', 'path'),
   'repo:discard-file': (args) => readStringPair(args, 'repo:discard-file', 'repoPath', 'path'),
+  'repo:discard-all': (args) => readOnlyArg(args, 'repo:discard-all', 'repoPath', readString),
   'repo:open-file': (args) => readStringPair(args, 'repo:open-file', 'repoPath', 'path'),
   'repo:reveal-file': (args) => readStringPair(args, 'repo:reveal-file', 'repoPath', 'path'),
   'repo:stage-all': (args) => readOnlyArg(args, 'repo:stage-all', 'repoPath', readString),

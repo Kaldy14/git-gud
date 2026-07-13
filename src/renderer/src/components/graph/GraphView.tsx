@@ -120,9 +120,9 @@ export type GraphColumnVisibility = {
 };
 
 const DEFAULT_GRAPH_COLUMN_VISIBILITY: GraphColumnVisibility = {
-  author: true,
-  date: true,
-  sha: true
+  author: false,
+  date: false,
+  sha: false
 };
 
 type CommitContextMenuState = {
@@ -513,7 +513,7 @@ export function GraphView({
                 return (
                   <div
                     key={row.sha}
-                    className="absolute left-0 top-0 w-full"
+                    className="graph-row-shell absolute left-0 top-0 w-full"
                     style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start}px)` }}
                   >
                     <GraphRowView

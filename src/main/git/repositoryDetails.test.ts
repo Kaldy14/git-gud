@@ -3,7 +3,7 @@ import type { GitStatusSummary } from '@shared/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GitCommandOptions, GitCommandResult } from './exec';
-import { discardFile, loadFileDiff, unstageFile } from './repositoryDetails';
+import { discardAllChanges, discardFile, loadFileDiff, unstageFile } from './repositoryDetails';
 
 const mocks = vi.hoisted(() => ({
   loadStatus: vi.fn<() => Promise<GitStatusSummary>>(),
@@ -293,6 +293,66 @@ describe('discardFile', () => {
       '--',
       'scratch.txt'
     ]);
+  });
+});
+
+describe('discardAllChanges', () => {
+  beforeEach(() => {
+    mocks.loadStatus.mockReset();
+    mocks.run.mockReset();
+    mocks.run.mockImplementation(async (args, options) => createGitResult(args, options.cwd, ''));
+  });
+
+  it('hard-resets tracked changes and cleans untracked files', async () => {
+    mocks.loadStatus.mockResolvedValue(
+      createStatusSummary([
+        {
+          path: 'tracked.txt',
+          indexStatus: 'modified',
+          worktreeStatus: 'modified',
+          status: 'modified',
+          staged: true,
+          unstaged: true,
+          conflicted: false
+        },
+        {
+          path: 'scratch.txt',
+          indexStatus: 'untracked',
+          worktreeStatus: 'untracked',
+          status: 'untracked',
+          staged: false,
+          unstaged: true,
+          conflicted: false
+        }
+      ])
+    );
+
+    await discardAllChanges({ path: '/repo' });
+
+    expect(mocks.run.mock.calls.map(([args]) => args)).toEqual([
+      ['rev-parse', '--verify', 'HEAD'],
+      ['reset', '--hard', 'HEAD'],
+      ['clean', '-f', '-d', '--', '.']
+    ]);
+  });
+
+  it('blocks bulk discard while the repository has conflicts', async () => {
+    mocks.loadStatus.mockResolvedValue(
+      createStatusSummary([
+        {
+          path: 'conflicted.txt',
+          indexStatus: 'conflicted',
+          worktreeStatus: 'conflicted',
+          status: 'conflicted',
+          staged: false,
+          unstaged: true,
+          conflicted: true
+        }
+      ])
+    );
+
+    await expect(discardAllChanges({ path: '/repo' })).rejects.toThrow('blocked during a conflict');
+    expect(mocks.run).not.toHaveBeenCalled();
   });
 });
 

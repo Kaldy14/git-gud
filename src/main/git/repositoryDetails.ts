@@ -183,6 +183,28 @@ export async function discardFile(tab: DetailTab, path: string): Promise<GitOper
   return createOperationResult(tab.path);
 }
 
+export async function discardAllChanges(tab: DetailTab): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const status = await loadStatus(tab.path, env);
+
+  if (!status.isDirty) {
+    throw new Error('The working directory is already clean.');
+  }
+
+  if (status.conflictedCount > 0) {
+    throw new Error('Discarding all changes is blocked during a conflict. Resolve or abort the in-progress operation first.');
+  }
+
+  if (await hasHead(tab.path)) {
+    await gitExecutor.run(['reset', '--hard', 'HEAD'], { cwd: tab.path, kind: 'mutation', env });
+  } else if (status.stagedCount > 0) {
+    await gitExecutor.run(['rm', '--cached', '-r', '--quiet', '--', '.'], { cwd: tab.path, kind: 'mutation', env });
+  }
+
+  await gitExecutor.run(['clean', '-f', '-d', '--', '.'], { cwd: tab.path, kind: 'mutation', env });
+  return createOperationResult(tab.path);
+}
+
 export async function stageAll(tab: DetailTab): Promise<GitOperationResult> {
   await gitExecutor.run(['add', '--all'], {
     cwd: tab.path,

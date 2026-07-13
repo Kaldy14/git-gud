@@ -482,6 +482,11 @@ input {
   gap: 4px;
 }
 
+.graph-row-shell:has(> .group:hover),
+.graph-row-shell:has(.ref-chip:focus-visible) {
+  z-index: 40;
+}
+
 .ref-stack {
   position: relative;
   display: flex;
@@ -520,6 +525,7 @@ input {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  background: var(--bg-graph);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-6px) scale(0.98);
@@ -532,7 +538,7 @@ input {
 }
 
 .group:hover .ref-stack[data-has-overflow='true'] .ref-stack-summary,
-.group:focus-within .ref-stack[data-has-overflow='true'] .ref-stack-summary {
+.group:has(.ref-chip:focus-visible) .ref-stack[data-has-overflow='true'] .ref-stack-summary {
   opacity: 0;
   transform: translateY(-4px) scale(0.98);
   transition-delay: 0s, 0s, 160ms;
@@ -540,8 +546,9 @@ input {
 }
 
 .group:hover .ref-stack-expanded,
-.group:focus-within .ref-stack-expanded {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded {
   opacity: 1;
+  pointer-events: auto;
   transform: translateY(0) scale(1);
   transition-delay: 45ms, 45ms, 0s;
   visibility: visible;
@@ -595,33 +602,33 @@ button.ref-chip {
 }
 
 .group:hover .ref-stack-expanded .ref-chip,
-.group:focus-within .ref-stack-expanded .ref-chip {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded .ref-chip {
   opacity: 1;
   transform: translateY(0);
 }
 
 .group:hover .ref-stack-expanded .ref-chip:nth-child(1),
-.group:focus-within .ref-stack-expanded .ref-chip:nth-child(1) {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded .ref-chip:nth-child(1) {
   transition-delay: 45ms;
 }
 
 .group:hover .ref-stack-expanded .ref-chip:nth-child(2),
-.group:focus-within .ref-stack-expanded .ref-chip:nth-child(2) {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded .ref-chip:nth-child(2) {
   transition-delay: 68ms;
 }
 
 .group:hover .ref-stack-expanded .ref-chip:nth-child(3),
-.group:focus-within .ref-stack-expanded .ref-chip:nth-child(3) {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded .ref-chip:nth-child(3) {
   transition-delay: 91ms;
 }
 
 .group:hover .ref-stack-expanded .ref-chip:nth-child(4),
-.group:focus-within .ref-stack-expanded .ref-chip:nth-child(4) {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded .ref-chip:nth-child(4) {
   transition-delay: 114ms;
 }
 
 .group:hover .ref-stack-expanded .ref-chip:nth-child(n + 5),
-.group:focus-within .ref-stack-expanded .ref-chip:nth-child(n + 5) {
+.group:has(.ref-chip:focus-visible) .ref-stack-expanded .ref-chip:nth-child(n + 5) {
   transition-delay: 137ms;
 }
 

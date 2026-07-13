@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { createDefaultAppSettings, normalizeAppSettings } from './settings';
 
 describe('app settings', () => {
-  it('defaults to readable graph columns and local initials', () => {
+  it('defaults to a focused commit graph and local initials', () => {
     expect(createDefaultAppSettings()).toMatchObject({
       graphColumns: {
-        author: true,
-        date: true,
+        author: false,
+        date: false,
         sha: false
       },
       remoteAvatars: false
@@ -23,11 +23,19 @@ describe('app settings', () => {
     });
 
     expect(normalized.graphColumns).toEqual({
-      author: true,
-      date: true,
+      author: false,
+      date: false,
       sha: true
     });
     expect(normalized.remoteAvatars).toBe(true);
+  });
+
+  it('keeps legacy author and date preferences hidden', () => {
+    expect(normalizeAppSettings({ graphColumns: { author: true, date: true } }).graphColumns).toEqual({
+      author: false,
+      date: false,
+      sha: false
+    });
   });
 
   it('recovers from valid JSON with the wrong persisted shape', () => {

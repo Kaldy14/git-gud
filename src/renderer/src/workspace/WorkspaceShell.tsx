@@ -660,6 +660,20 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  function handleDiscardAllWip(): void {
+    openCommandDialog({
+      title: 'Discard all changes',
+      description: 'Permanently discard every staged and unstaged change in this repository.',
+      detail: 'Tracked files will be restored to HEAD and untracked files and folders will be deleted. Ignored files are kept.',
+      confirmLabel: 'Discard All',
+      tone: 'danger',
+      fields: [],
+      onSubmit() {
+        void runRepositoryOperation('Discard all changes', (repoPath) => window.api.discardAllChanges(repoPath));
+      }
+    });
+  }
+
   function handleOpenWipFile(file: GitFileChangeDetail): void {
     void runRepositoryOperation(`Open ${file.path}`, (repoPath) => window.api.openFile(repoPath, file.path));
   }
@@ -1494,6 +1508,7 @@ export function WorkspaceShell(): ReactElement {
                 onResizeCommit={handleDetailPanelResizeCommit}
                 onSelectFile={handleSelectFile}
                 onOpenWipChanges={handleOpenWipChanges}
+                onDiscardAllWip={handleDiscardAllWip}
                 onDiscardWipFile={handleDiscardWipFile}
                 onOpenWipFile={handleOpenWipFile}
                 onRevealWipFile={handleRevealWipFile}

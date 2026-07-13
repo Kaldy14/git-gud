@@ -65,6 +65,7 @@ type CommitDetailPanelProps = {
   onResizeCommit?: (width: number) => void;
   onSelectFile: (path: string | undefined) => void;
   onOpenWipChanges: () => void;
+  onDiscardAllWip: () => void;
   onDiscardWipFile: (file: GitFileChangeDetail) => void;
   onOpenWipFile: (file: GitFileChangeDetail) => void;
   onRevealWipFile: (file: GitFileChangeDetail) => void;
@@ -87,6 +88,7 @@ export function CommitDetailPanel({
   onResizeCommit,
   onSelectFile,
   onOpenWipChanges,
+  onDiscardAllWip,
   onDiscardWipFile,
   onOpenWipFile,
   onRevealWipFile
@@ -371,7 +373,13 @@ export function CommitDetailPanel({
         isViewingWip={isWip}
         onOpenWipChanges={onOpenWipChanges}
       />
-      <PanelHeader row={row} detail={detail} onToggleCollapsed={onToggleCollapsed} />
+      <PanelHeader
+        row={row}
+        detail={detail}
+        isMutating={activeMutation}
+        onDiscardAllWip={onDiscardAllWip}
+        onToggleCollapsed={onToggleCollapsed}
+      />
 
       {isDetailLoading && !detail ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -487,18 +495,38 @@ function WorkingDirectoryBanner({
 function PanelHeader({
   row,
   detail,
+  isMutating,
+  onDiscardAllWip,
   onToggleCollapsed
 }: {
   row: CommitGraphRow;
   detail?: GitRepositoryDetail;
+  isMutating: boolean;
+  onDiscardAllWip: () => void;
   onToggleCollapsed?: () => void;
 }): ReactElement {
   const isWip = row.node.kind === 'wip';
   const wipDetail = detail?.kind === 'wip' ? detail : undefined;
 
   if (isWip) {
+    const hasConflicts = (wipDetail?.conflictedCount ?? 0) > 0;
+    const discardDisabled = !wipDetail || hasConflicts || isMutating;
+    const discardTitle = hasConflicts
+      ? 'Resolve or abort the in-progress operation before discarding all changes'
+      : 'Discard all uncommitted changes';
+
     return (
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+        <button
+          className="icon-btn h-7 w-7 shrink-0 rounded border border-[var(--danger-border)] text-[var(--danger-text)]"
+          type="button"
+          disabled={discardDisabled}
+          onClick={onDiscardAllWip}
+          aria-label="Discard all uncommitted changes"
+          title={discardTitle}
+        >
+          <Trash2 size={14} />
+        </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {wipDetail ? (
             <>

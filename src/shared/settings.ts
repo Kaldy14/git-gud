@@ -9,8 +9,8 @@ export function createDefaultAppSettings(): AppSettings {
     graphPageSize: 1500,
     largeRepoMode: false,
     graphColumns: {
-      author: true,
-      date: true,
+      author: false,
+      date: false,
       sha: false
     },
     remoteAvatars: false,
@@ -33,8 +33,8 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
     largeRepoMode:
       typeof settings.largeRepoMode === 'boolean' ? settings.largeRepoMode : fallback.largeRepoMode,
     graphColumns: {
-      author: typeof graphColumns.author === 'boolean' ? graphColumns.author : fallback.graphColumns.author,
-      date: typeof graphColumns.date === 'boolean' ? graphColumns.date : fallback.graphColumns.date,
+      author: false,
+      date: false,
       sha: typeof graphColumns.sha === 'boolean' ? graphColumns.sha : fallback.graphColumns.sha
     },
     remoteAvatars:
