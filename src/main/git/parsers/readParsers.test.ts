@@ -141,6 +141,43 @@ describe('git read parsers', () => {
     });
   });
 
+  it('parses newline-delimited worktrees emitted by Git versions without worktree list -z', () => {
+    const currentRepoPath = '/repos/git gud';
+    const linkedRepoPath = '/repos/Gr\u00fcn 👍\nlinked';
+    const worktrees = parseWorktreeList(
+      [
+        `worktree ${currentRepoPath}`,
+        'HEAD aaa',
+        'branch refs/heads/main',
+        '',
+        'worktree "/repos/Gr\\303\\274n 👍\\nlinked"',
+        'HEAD bbb',
+        'detached',
+        ''
+      ].join('\n'),
+      currentRepoPath
+    );
+
+    expect(worktrees).toEqual([
+      {
+        path: currentRepoPath,
+        head: 'aaa',
+        branch: 'main',
+        detached: false,
+        bare: false,
+        current: true
+      },
+      {
+        path: linkedRepoPath,
+        head: 'bbb',
+        branch: undefined,
+        detached: true,
+        bare: false,
+        current: false
+      }
+    ]);
+  });
+
   it('parses commit detail file lists and short stats', () => {
     const files = parseNameStatus(
       [

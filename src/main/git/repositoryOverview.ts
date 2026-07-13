@@ -2,7 +2,7 @@ import type { GitRepositoryOverview, RepoTab } from '@shared/types';
 
 import { createProfileCommandEnv, getRepoProfileState } from '../profiles';
 import { loadConflictState } from './conflicts';
-import { gitExecutor } from './exec';
+import { GitCommandError, gitExecutor } from './exec';
 import { parseForEachRef, parseRemoteVerbose } from './parsers/refs';
 import { parseStashList } from './parsers/stash';
 import { parseStatusPorcelainV2 } from './parsers/status';
@@ -76,8 +76,17 @@ export async function loadRemotes(repoPath: string, env?: NodeJS.ProcessEnv): Pr
 }
 
 export async function loadWorktrees(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['worktrees']> {
-  const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath, env });
-  return parseWorktreeList(result.stdout, repoPath);
+  try {
+    const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath, env });
+    return parseWorktreeList(result.stdout, repoPath);
+  } catch (error) {
+    if (!(error instanceof GitCommandError) || error.exitCode !== 129) {
+      throw error;
+    }
+
+    const result = await gitExecutor.run(['worktree', 'list', '--porcelain'], { cwd: repoPath, env });
+    return parseWorktreeList(result.stdout, repoPath);
+  }
 }
 
 export async function loadStashes(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['stashes']> {
