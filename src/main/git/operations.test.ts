@@ -467,7 +467,7 @@ describe('git operations', () => {
       await git(repoPath, ['push', '-u', 'origin', 'feature/tracked']);
       await git(repoPath, ['checkout', 'main']);
 
-      const result = await deleteBranch(tab, { name: 'feature/tracked', force: true });
+      const result = await deleteBranch(tab, { localName: 'feature/tracked', force: true });
 
       expect(result.undoEntry).toMatchObject({
         operation: 'branch-delete',
@@ -482,6 +482,98 @@ describe('git operations', () => {
       await undoOperation(tab, result.undoEntry.id);
 
       expect(await branchUpstream(repoPath, 'feature/tracked')).toBe('origin/feature/tracked');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes a remote branch without deleting its local branch', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['checkout', '-b', 'feature/remote-only']);
+      await git(repoPath, ['push', '-u', 'origin', 'feature/remote-only']);
+      await git(repoPath, ['checkout', 'main']);
+
+      const result = await deleteBranch(tab, {
+        remote: { name: 'origin', branch: 'feature/remote-only' },
+        force: false
+      });
+
+      expect((await git(repoPath, ['rev-parse', 'refs/heads/feature/remote-only'])).stdout.trim()).not.toBe('');
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/heads/feature/remote-only']);
+      expect(result.undoEntry).toBeUndefined();
+      expect(result.operation?.label).toBe('Delete branch origin/feature/remote-only');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes local and remote branches while keeping local undo available', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['checkout', '-b', 'feature/delete-both']);
+      await git(repoPath, ['push', '-u', 'origin', 'feature/delete-both']);
+      await git(repoPath, ['checkout', 'main']);
+
+      const result = await deleteBranch(tab, {
+        localName: 'feature/delete-both',
+        remote: { name: 'origin', branch: 'feature/delete-both' },
+        force: false
+      });
+
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/heads/feature/delete-both']);
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/heads/feature/delete-both']);
+      expect(result.undoEntry).toMatchObject({
+        operation: 'branch-delete',
+        refName: 'feature/delete-both'
+      });
+      expect(result.undoEntry?.upstream).toBeUndefined();
+
+      if (!result.undoEntry) {
+        throw new Error('Expected combined branch delete to record local undo metadata.');
+      }
+
+      await undoOperation(tab, result.undoEntry.id);
+
+      expect((await git(repoPath, ['rev-parse', 'refs/heads/feature/delete-both'])).stdout.trim()).not.toBe('');
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'feature/delete-both@{upstream}']);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('restores a local branch when its paired remote deletion fails', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      await git(repoPath, ['branch', 'feature/keep-local']);
+
+      await expect(
+        deleteBranch(tab, {
+          localName: 'feature/keep-local',
+          remote: { name: 'missing', branch: 'feature/keep-local' },
+          force: false
+        })
+      ).rejects.toThrow();
+
+      expect((await git(repoPath, ['rev-parse', 'refs/heads/feature/keep-local'])).stdout.trim()).not.toBe('');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

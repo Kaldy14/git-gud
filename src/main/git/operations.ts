@@ -170,17 +170,60 @@ export async function renameBranch(tab: OperationTab, input: GitRenameBranchInpu
 
 export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInput): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const branchName = normalizeRequiredName(input.name, 'Branch name');
-  const targetSha = await revParse(tab.path, `refs/heads/${branchName}`, env);
-  const upstream = await branchUpstream(tab.path, branchName, env);
-  await gitExecutor.run(['branch', input.force ? '-D' : '-d', branchName], { cwd: tab.path, kind: 'mutation', env });
-  const undoEntry = recordUndo(tab, 'branch-delete', `Undo delete branch ${branchName}`, {
-    refName: branchName,
-    ...(upstream ? { upstream } : {}),
-    targetSha
-  });
+  const localName = input.localName ? normalizeRequiredName(input.localName, 'Local branch name') : undefined;
+  const remote = input.remote
+    ? {
+        name: normalizeRequiredName(input.remote.name, 'Remote name'),
+        branch: normalizeRequiredName(input.remote.branch, 'Remote branch name')
+      }
+    : undefined;
 
-  return createOperationResult(tab, env, 'branch-delete', `Delete branch ${branchName}`, undoEntry);
+  if (!localName && !remote) {
+    throw new Error('Choose a local or remote branch to delete.');
+  }
+
+  if (remote) {
+    await assertValidBranchName(tab.path, remote.branch, env);
+  }
+
+  const localSnapshot = localName
+    ? {
+        targetSha: await revParse(tab.path, `refs/heads/${localName}`, env),
+        upstream: await branchUpstream(tab.path, localName, env)
+      }
+    : undefined;
+
+  if (localName) {
+    await gitExecutor.run(['branch', input.force ? '-D' : '-d', localName], { cwd: tab.path, kind: 'mutation', env });
+  }
+
+  try {
+    if (remote) {
+      await gitExecutor.run(['push', remote.name, '--delete', remote.branch], { cwd: tab.path, kind: 'mutation', env });
+    }
+  } catch (error) {
+    if (localName && localSnapshot) {
+      await restoreDeletedBranch(tab.path, localName, localSnapshot.targetSha, localSnapshot.upstream, env);
+    }
+
+    throw error;
+  }
+
+  const deletedRemoteRef = remote ? `${remote.name}/${remote.branch}` : undefined;
+  const undoEntry = localName && localSnapshot
+    ? recordUndo(tab, 'branch-delete', `Undo delete branch ${localName}`, {
+        refName: localName,
+        ...(localSnapshot.upstream && localSnapshot.upstream !== deletedRemoteRef
+          ? { upstream: localSnapshot.upstream }
+          : {}),
+        targetSha: localSnapshot.targetSha
+      })
+    : undefined;
+  const label = localName && remote
+    ? `Delete ${localName} and ${deletedRemoteRef}`
+    : `Delete branch ${localName ?? deletedRemoteRef}`;
+
+  return createOperationResult(tab, env, 'branch-delete', label, undoEntry);
 }
 
 export async function checkoutRef(tab: OperationTab, target: GitCheckoutTarget): Promise<GitOperationResult> {
@@ -553,10 +596,20 @@ async function runUndoBranchDelete(
     throw new Error('Undo metadata is missing the deleted branch.');
   }
 
-  await gitExecutor.run(['branch', entry.refName, entry.targetSha], { cwd: repoPath, kind: 'mutation', env });
+  await restoreDeletedBranch(repoPath, entry.refName, entry.targetSha, entry.upstream, env);
+}
 
-  if (entry.upstream) {
-    await gitExecutor.run(['branch', '--set-upstream-to', entry.upstream, entry.refName], {
+async function restoreDeletedBranch(
+  repoPath: string,
+  branchName: string,
+  targetSha: string,
+  upstream: string | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  await gitExecutor.run(['branch', branchName, targetSha], { cwd: repoPath, kind: 'mutation', env });
+
+  if (upstream) {
+    await gitExecutor.run(['branch', '--set-upstream-to', upstream, branchName], {
       cwd: repoPath,
       kind: 'mutation',
       env

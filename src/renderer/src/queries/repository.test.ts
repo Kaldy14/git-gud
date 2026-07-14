@@ -6,6 +6,7 @@ import type { RepoChangedEvent } from '@shared/types';
 import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
+  prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   scopesForRepositoryChange,
   shouldPruneLowerGraphQueries
@@ -106,5 +107,29 @@ describe('repository query invalidation', () => {
 
     unsubscribe();
     queryClient.clear();
+  });
+
+  it('refreshes profile-sensitive overview data while reusing a warm graph', async () => {
+    const queryClient = new QueryClient();
+    const getRepositoryOverview = vi.fn(async () => ({ repoPath: '/repo' }));
+    const getCommitGraph = vi.fn(async () => ({ repoPath: '/repo', limit: 1500, rows: [] }));
+    vi.stubGlobal('window', {
+      api: {
+        getRepositoryOverview,
+        getCommitGraph
+      }
+    });
+    queryClient.setQueryData(['commit-graph', '/repo', 1500], {
+      repoPath: '/repo',
+      limit: 1500,
+      rows: []
+    });
+
+    await prepareRepositoryForProfileTransition(queryClient, '/repo', 1500);
+
+    expect(getRepositoryOverview).toHaveBeenCalledTimes(1);
+    expect(getCommitGraph).not.toHaveBeenCalled();
+    queryClient.clear();
+    vi.unstubAllGlobals();
   });
 });

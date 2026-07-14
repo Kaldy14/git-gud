@@ -39,6 +39,7 @@ type SidebarProps = {
   onCheckoutRemoteBranch: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
+  onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   onDeleteTag: (name: string) => void;
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
@@ -103,6 +104,7 @@ export function Sidebar({
   onCheckoutRemoteBranch,
   onRenameBranch,
   onDeleteBranch,
+  onDeleteRemoteBranch,
   onDeleteTag,
   onStashApply,
   onStashPop,
@@ -368,6 +370,7 @@ export function Sidebar({
           onCheckoutRemoteBranch={onCheckoutRemoteBranch}
           onRenameBranch={onRenameBranch}
           onDeleteBranch={onDeleteBranch}
+          onDeleteRemoteBranch={onDeleteRemoteBranch}
           onDeleteTag={onDeleteTag}
           onStashApply={onStashApply}
           onStashPop={onStashPop}
@@ -775,6 +778,7 @@ function SidebarContextMenu({
   onCheckoutRemoteBranch,
   onRenameBranch,
   onDeleteBranch,
+  onDeleteRemoteBranch,
   onDeleteTag,
   onStashApply,
   onStashPop,
@@ -787,6 +791,7 @@ function SidebarContextMenu({
   onCheckoutRemoteBranch: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
+  onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   onDeleteTag: (name: string) => void;
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
@@ -863,19 +868,35 @@ function SidebarContextMenu({
           </button>
         </>
       ) : state.kind === 'remote' ? (
-        <button
-          className="menu-row"
-          type="button"
-          role="menuitem"
-          disabled={isOperationBusy}
-          onClick={() => {
-            onCheckoutRemoteBranch(state.branch.name);
-            onClose();
-          }}
-        >
-          <GitBranch size={14} />
-          <span>Checkout tracking branch</span>
-        </button>
+        <>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onCheckoutRemoteBranch(state.branch.name);
+              onClose();
+            }}
+          >
+            <GitBranch size={14} />
+            <span>Checkout tracking branch</span>
+          </button>
+          <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onDeleteRemoteBranch(state.branch);
+              onClose();
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Delete remote branch</span>
+          </button>
+        </>
       ) : state.kind === 'tag' ? (
         <button
           className="menu-row"

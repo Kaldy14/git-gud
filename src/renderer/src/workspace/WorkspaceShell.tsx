@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   Archive,
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   FileClock,
   GitBranch,
@@ -47,22 +48,26 @@ import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
+  prepareRepositoryForProfileTransition,
   useCommitGraph,
   useRepositoryChangeInvalidation,
   useRepositoryOverview
 } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
+import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
 import { resolveSelectedGraphRow } from '@renderer/workspace/selection';
 import { resolveRemoteBranchActivation } from '@renderer/workspace/branchActivation';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
   CommitGraphRow,
   GitConflictActionInput,
+  GitDeleteBranchInput,
   GitFileChangeDetail,
   GitInteractiveRebaseInput,
   GitInteractiveRebasePlan,
   GitOperationResult,
   GitProfile,
+  GitRemoteBranchRef,
   RepoProfileState,
   GitResetInput,
   GitStashRefInput,
@@ -110,6 +115,20 @@ type ActiveRepositoryOperation = {
   phase: 'running' | 'refreshing';
 };
 
+type ProfileTransitionIdentity = {
+  label: string;
+  color: string;
+};
+
+type ProfileTransitionState = {
+  from: ProfileTransitionIdentity;
+  to: ProfileTransitionIdentity;
+  phase: 'loading' | 'revealing';
+};
+
+const PROFILE_TRANSITION_MIN_MS = 240;
+const PROFILE_TRANSITION_EXIT_MS = 180;
+
 export function WorkspaceShell(): ReactElement {
   const {
     workspace,
@@ -151,6 +170,7 @@ export function WorkspaceShell(): ReactElement {
   const [compactSidebarOpen, setCompactSidebarOpen] = useState(false);
   const [compactDetailOpen, setCompactDetailOpen] = useState(false);
   const [sidebarFilterFocusSignal, setSidebarFilterFocusSignal] = useState(0);
+  const [profileTransition, setProfileTransition] = useState<ProfileTransitionState>();
   const operationRetryActionsRef = useRef(
     new Map<
       string,
@@ -209,6 +229,15 @@ export function WorkspaceShell(): ReactElement {
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
   const graphRows = graphQuery.data?.rows ?? emptyGraphRows;
+  const linkedWorktreeBranches = useMemo(
+    () =>
+      new Set(
+        repositoryQuery.data?.worktrees.flatMap((worktree) =>
+          !worktree.current && worktree.branch ? [worktree.branch] : []
+        ) ?? []
+      ),
+    [repositoryQuery.data?.worktrees]
+  );
   const selectedSha = activeTab?.selectedCommit;
   const selectedRow = useMemo(
     () => resolveSelectedGraphRow(graphRows, selectedSha),
@@ -444,22 +473,58 @@ export function WorkspaceShell(): ReactElement {
     void repositoryQuery.refetch();
   }
 
-  async function handleActivateProfile(profileId: string | undefined): Promise<void> {
-    for (const tab of workspace.tabs) {
-      clearRepositoryQueries(queryClient, tab.path);
-    }
+  async function handleActivateProfile(
+    profileId: string | undefined,
+    targetProfile?: GitProfile
+  ): Promise<void> {
+    const startedAt = window.performance.now();
+    const nextProfile = targetProfile ?? profiles.find((profile) => profile.id === profileId);
+    setProfileTransition({
+      from: profileTransitionIdentity(activeWorkspaceProfile),
+      to: profileTransitionIdentity(nextProfile),
+      phase: 'loading'
+    });
 
-    setGraphLimitByTab({});
-    setDiffStyleByTab({});
-    setWipScopeByTab({});
-    setCommitComposerFocusByTab({});
-    setFileFocusByTab({});
-    await activateProfile(profileId);
+    try {
+      const nextWorkspace = await activateProfile(profileId);
+
+      if (!nextWorkspace) {
+        return;
+      }
+
+      setGraphLimitByTab({});
+      setDiffStyleByTab({});
+      setWipScopeByTab({});
+      setCommitComposerFocusByTab({});
+      setFileFocusByTab({});
+
+      const nextTab = nextWorkspace.tabs.find((tab) => tab.id === nextWorkspace.activeTabId);
+
+      if (nextTab) {
+        await prepareRepositoryForProfileTransition(queryClient, nextTab.path, settings.graphPageSize).catch(() => undefined);
+      }
+    } finally {
+      const remainingMs = PROFILE_TRANSITION_MIN_MS - (window.performance.now() - startedAt);
+
+      if (remainingMs > 0) {
+        await delay(remainingMs);
+      }
+
+      setProfileTransition((transition) =>
+        transition ? { ...transition, phase: 'revealing' } : transition
+      );
+      await delay(PROFILE_TRANSITION_EXIT_MS);
+      setProfileTransition(undefined);
+    }
   }
 
   async function handleSaveAndActivateProfile(profile: GitProfile): Promise<void> {
-    setProfiles(await window.api.saveProfile(profile));
-    await handleActivateProfile(profile.id);
+    const nextProfiles = await window.api.saveProfile(profile);
+    setProfiles(nextProfiles);
+    await handleActivateProfile(
+      profile.id,
+      nextProfiles.find((candidate) => candidate.id === profile.id)
+    );
   }
 
   function handleCloseTab(tabId: string): void {
@@ -992,29 +1057,92 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleDeleteBranch(name: string): void {
+    const localBranch = repositoryQuery.data?.refs.localBranches.find((branch) => branch.name === name);
+    const remoteBranch = localBranch
+      ? resolveRemoteBranchForLocalBranch(localBranch, repositoryQuery.data?.refs.remoteBranches ?? [])
+      : undefined;
+    const remote = remoteBranch ? remoteBranchDeleteTarget(remoteBranch) : undefined;
+    const fields: CommandDialogConfig['fields'] = [
+      ...(remote
+        ? [
+            {
+              id: 'target',
+              kind: 'select' as const,
+              label: 'Delete',
+              value: 'local',
+              options: [
+                {
+                  value: 'local',
+                  label: 'Local branch only',
+                  description: `Delete ${name} from this repository.`
+                },
+                {
+                  value: 'remote',
+                  label: `${remote.name}/${remote.branch} only`,
+                  description: 'Delete the shared remote branch and keep the local branch.'
+                },
+                {
+                  value: 'both',
+                  label: 'Local and remote branches',
+                  description: `Delete both ${name} and ${remote.name}/${remote.branch}.`
+                }
+              ]
+            }
+          ]
+        : []),
+      {
+        id: 'force',
+        kind: 'checkbox',
+        label: 'Force delete if not merged',
+        checked: false,
+        helper: remote ? 'Applies when the local branch is included.' : undefined
+      }
+    ];
+
     openCommandDialog({
       title: 'Delete branch',
-      description: `Delete ${name}.`,
-      detail: 'Use force only when you intentionally want to delete an unmerged branch.',
-      confirmLabel: 'Delete Branch',
+      description: remote ? `Choose which copy of ${name} to delete.` : `Delete local branch ${name}.`,
+      detail: remote
+        ? `Deleting ${remote.name}/${remote.branch} changes the shared remote and cannot be undone. Local deletion can be undone from the operation log.`
+        : 'Use force only when you intentionally want to delete an unmerged branch.',
+      confirmLabel: 'Delete',
       tone: 'danger',
-      fields: [
-        {
-          id: 'force',
-          kind: 'checkbox',
-          label: 'Force delete if not merged',
-          checked: false
-        }
-      ],
+      fields,
       onSubmit(values) {
-        void runRepositoryOperation(`Delete ${name}`, (repoPath) => window.api.deleteBranch(repoPath, { name, force: dialogChecked(values, 'force') }));
+        const choice = normalizeBranchDeleteChoice(dialogText(values, 'target'));
+        const force = dialogChecked(values, 'force');
+        const input: GitDeleteBranchInput = choice === 'remote' && remote
+          ? { remote, force: false }
+          : choice === 'both' && remote
+            ? { localName: name, remote, force }
+            : { localName: name, force };
+
+        void runRepositoryOperation(`Delete ${name}`, (repoPath) => window.api.deleteBranch(repoPath, input));
+      }
+    });
+  }
+
+  function handleDeleteRemoteBranch(branch: GitRemoteBranchRef): void {
+    const remote = remoteBranchDeleteTarget(branch);
+
+    openCommandDialog({
+      title: 'Delete remote branch',
+      description: `Delete ${branch.name} from ${branch.remote}.`,
+      detail: 'This changes the shared remote and cannot be undone in Git Gud.',
+      confirmLabel: 'Delete Remote Branch',
+      tone: 'danger',
+      fields: [],
+      onSubmit() {
+        void runRepositoryOperation(`Delete ${branch.name}`, (repoPath) =>
+          window.api.deleteBranch(repoPath, { remote, force: false })
+        );
       }
     });
   }
 
   function handleCreateTagAtCommit(sha: string): void {
     openCommandDialog({
-      title: 'Create tag',
+      title: 'Create tag here',
       description: `Create a tag at ${sha.slice(0, 8)}.`,
       confirmLabel: 'Create Tag',
       fields: [
@@ -1103,9 +1231,12 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleResetToCommit(sha: string): void {
+    const branch = repositoryQuery.data?.status.branch;
+    const targetLabel = branch?.isDetached ? 'HEAD' : branch?.head || 'current branch';
+
     openCommandDialog({
-      title: 'Reset current branch',
-      description: `Move the current branch to ${sha.slice(0, 8)}.`,
+      title: `Reset ${targetLabel} to this commit`,
+      description: `Move ${targetLabel} to ${sha.slice(0, 8)}.`,
       detail: 'Hard reset overwrites tracked working tree changes. Use it only when you intend to discard local file contents.',
       confirmLabel: 'Reset',
       tone: 'danger',
@@ -1116,9 +1247,9 @@ export function WorkspaceShell(): ReactElement {
           label: 'Reset mode',
           value: 'mixed',
           options: [
-            { value: 'soft', label: 'Soft', description: 'Move HEAD only; keep index and working tree.' },
-            { value: 'mixed', label: 'Mixed', description: 'Move HEAD and reset index; keep working tree.' },
-            { value: 'hard', label: 'Hard', description: 'Move HEAD, index, and tracked working tree files.' }
+            { value: 'soft', label: 'Soft — keep all changes', description: 'Move HEAD only; keep index and working tree.' },
+            { value: 'mixed', label: 'Mixed — keep working copy but reset index', description: 'Move HEAD and reset index; keep working tree.' },
+            { value: 'hard', label: 'Hard — discard all changes', description: 'Move HEAD, index, and tracked working tree files.' }
           ]
         }
       ],
@@ -1448,7 +1579,10 @@ export function WorkspaceShell(): ReactElement {
   ];
 
   return (
-    <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
+    <main
+      className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]"
+      aria-busy={Boolean(profileTransition)}
+    >
       <TabStrip
         tabs={workspace.tabs}
         activeTabId={workspace.activeTabId}
@@ -1530,6 +1664,7 @@ export function WorkspaceShell(): ReactElement {
                 onCheckoutRemoteBranch={handleCheckoutRemoteBranch}
                 onRenameBranch={handleRenameBranch}
                 onDeleteBranch={handleDeleteBranch}
+                onDeleteRemoteBranch={handleDeleteRemoteBranch}
                 onDeleteTag={handleDeleteTag}
                 onStashApply={handleStashApply}
                 onStashPop={handleStashPop}
@@ -1559,6 +1694,7 @@ export function WorkspaceShell(): ReactElement {
               ) : (
                 <GraphView
                   rows={graphRows}
+                  linkedWorktreeBranches={linkedWorktreeBranches}
                   selectedSha={selectedRow?.sha}
                   isLoading={graphQuery.isLoading}
                   isFetching={graphQuery.isFetching}
@@ -1573,10 +1709,12 @@ export function WorkspaceShell(): ReactElement {
                   onStashPop={handleStashPop}
                   onStashDrop={handleStashDrop}
                   onCheckoutBranch={handleCheckoutBranch}
+                  onRenameBranch={handleRenameBranch}
                   onActivateRemoteBranch={handleActivateRemoteBranch}
                   onMergeBranch={handleMergeBranch}
                   onRebaseOntoBranch={handleRebaseOntoBranch}
                   onInteractiveRebaseOntoBranch={handleInteractiveRebaseOntoBranch}
+                  onDeleteBranch={handleDeleteBranch}
                   onCheckoutCommit={handleCheckoutCommit}
                   onCreateBranchAtCommit={handleCreateBranch}
                   onCreateTagAtCommit={handleCreateTagAtCommit}
@@ -1643,6 +1781,7 @@ export function WorkspaceShell(): ReactElement {
         onRetry={handleRetryOperation}
         onCopyDetails={handleCopyOperationDetails}
       />
+      {profileTransition ? <ProfileTransition transition={profileTransition} /> : null}
       {isQuickJumpOpen ? (
         <QuickJumpDialog
           tabs={workspace.tabs}
@@ -1686,6 +1825,75 @@ export function WorkspaceShell(): ReactElement {
   );
 }
 
+function ProfileTransition({ transition }: { transition: ProfileTransitionState }): ReactElement {
+  return (
+    <div
+      className="profile-transition-overlay"
+      data-phase={transition.phase}
+      role="status"
+      aria-live="polite"
+      aria-label={`Switching workspace from ${transition.from.label} to ${transition.to.label}`}
+    >
+      <div className="profile-transition-card">
+        <p className="profile-transition-kicker">Switching workspace</p>
+        <div className="profile-transition-identities" aria-hidden="true">
+          <ProfileTransitionAvatar identity={transition.from} />
+          <ArrowRight size={16} className="profile-transition-arrow" />
+          <ProfileTransitionAvatar identity={transition.to} isTarget />
+        </div>
+        <p className="profile-transition-labels">
+          <span>{transition.from.label}</span>
+          <span className="text-[var(--text-3)]">to</span>
+          <span>{transition.to.label}</span>
+        </p>
+        <div className="profile-transition-progress" aria-hidden="true">
+          <span />
+        </div>
+        <p className="profile-transition-detail">Restoring tabs and repository state…</p>
+      </div>
+    </div>
+  );
+}
+
+function ProfileTransitionAvatar({
+  identity,
+  isTarget = false
+}: {
+  identity: ProfileTransitionIdentity;
+  isTarget?: boolean;
+}): ReactElement {
+  return (
+    <span
+      className="profile-transition-avatar"
+      data-target={isTarget ? 'true' : undefined}
+      style={{ background: identity.color }}
+    >
+      {profileInitials(identity.label)}
+    </span>
+  );
+}
+
+function profileTransitionIdentity(profile: GitProfile | undefined): ProfileTransitionIdentity {
+  return profile
+    ? { label: profile.name, color: profile.avatarColor }
+    : { label: 'Git config', color: 'var(--accent-2)' };
+}
+
+function profileInitials(value: string): string {
+  return (
+    value
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || 'P'
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function createLogId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -1709,6 +1917,10 @@ function dialogText(values: CommandDialogValues, id: string): string {
 
 function dialogChecked(values: CommandDialogValues, id: string): boolean {
   return values.checked[id] ?? false;
+}
+
+function normalizeBranchDeleteChoice(value: string): 'local' | 'remote' | 'both' {
+  return value === 'remote' || value === 'both' ? value : 'local';
 }
 
 function formatUndoScope(refs: string[] | undefined, paths: string[] | undefined): string | undefined {

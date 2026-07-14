@@ -94,6 +94,25 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
   return query;
 }
 
+export async function prepareRepositoryForProfileTransition(
+  queryClient: QueryClient,
+  repoPath: string,
+  graphLimit: number
+): Promise<void> {
+  await Promise.all([
+    queryClient.fetchQuery({
+      queryKey: repositoryOverviewQueryKey(repoPath),
+      queryFn: () => window.api.getRepositoryOverview(repoPath),
+      staleTime: 0
+    }),
+    queryClient.ensureQueryData({
+      queryKey: commitGraphQueryKey(repoPath, graphLimit),
+      queryFn: () => window.api.getCommitGraph(repoPath, graphLimit),
+      staleTime: 1500
+    })
+  ]);
+}
+
 export function useCommitDetail(repoPath: string | undefined, sha: string | undefined) {
   return useQuery({
     queryKey: repoPath && sha ? commitDetailQueryKey(repoPath, sha) : ['commit-detail', 'none', 'none'],

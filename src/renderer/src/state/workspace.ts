@@ -23,7 +23,7 @@ type WorkspaceStore = {
   setSidebarWidth: (width: number) => Promise<void>;
   setDetailPanelCollapsed: (collapsed: boolean) => Promise<void>;
   setDetailPanelWidth: (width: number) => Promise<void>;
-  activateProfile: (profileId: string | undefined) => Promise<void>;
+  activateProfile: (profileId: string | undefined) => Promise<WorkspaceState | undefined>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
 };
@@ -32,7 +32,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   workspace: createDefaultWorkspaceState(),
   isLoading: true,
   async initialize() {
-    await runWorkspaceAction(set, () => window.api.getWorkspace(), true);
+    await runWorkspaceAction(set, () => window.api.getWorkspace());
   },
   async openRepository() {
     await runWorkspaceAction(set, () => window.api.openRepository());
@@ -111,10 +111,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     }
   },
   async activateProfile(profileId) {
-    await runWorkspaceAction(set, () => window.api.activateProfile(profileId), false, true);
+    return runWorkspaceAction(set, () => window.api.activateProfile(profileId), true);
   },
   async assignProfile(repoPath, profileId) {
-    await runWorkspaceAction(set, () => window.api.assignProfile(repoPath, profileId), false, true);
+    await runWorkspaceAction(set, () => window.api.assignProfile(repoPath, profileId), true);
   },
   clearError() {
     set({ errorMessage: undefined });
@@ -124,20 +124,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
 async function runWorkspaceAction(
   set: (partial: Partial<WorkspaceStore>) => void,
   action: () => Promise<WorkspaceState | null>,
-  keepLoading = false,
   rethrow = false
-): Promise<void> {
+): Promise<WorkspaceState | undefined> {
   set({ isLoading: true, errorMessage: undefined });
 
   try {
     const workspace = await action();
 
     if (workspace) {
-      set({ workspace, isLoading: keepLoading ? false : false });
-      return;
+      set({ workspace, isLoading: false });
+      return workspace;
     }
 
     set({ isLoading: false });
+    return undefined;
   } catch (error) {
     const errorMessage = workspaceActionErrorMessage(error);
 
@@ -149,6 +149,8 @@ async function runWorkspaceAction(
     if (rethrow) {
       throw new Error(errorMessage, { cause: error });
     }
+
+    return undefined;
   }
 }
 

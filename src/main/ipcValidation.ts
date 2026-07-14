@@ -237,9 +237,29 @@ function readRenameBranchInput(value: unknown): GitRenameBranchInput {
 
 function readDeleteBranchInput(value: unknown): GitDeleteBranchInput {
   const record = readRecord(value, 'delete branch input');
+  const localName = readOptionalStringProperty(record, 'localName');
+  const remote = readOptionalDeleteBranchRemote(record.remote);
+
+  if (!localName && !remote) {
+    throw new Error('delete branch input must include a local or remote branch.');
+  }
+
+  return {
+    ...(localName ? { localName } : {}),
+    ...(remote ? { remote } : {}),
+    force: readBooleanProperty(record, 'force')
+  };
+}
+
+function readOptionalDeleteBranchRemote(value: unknown): GitDeleteBranchInput['remote'] {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const record = readRecord(value, 'delete branch remote');
   return {
     name: readStringProperty(record, 'name'),
-    force: readBooleanProperty(record, 'force')
+    branch: readStringProperty(record, 'branch')
   };
 }
 

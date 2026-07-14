@@ -18,6 +18,14 @@ describe('IPC argument validation', () => {
         mode: 'mixed'
       }
     ]);
+    const deleteBranchArgs = validateIpcArgs('repo:delete-branch', [
+      '/repo',
+      {
+        localName: 'feature/ipc-validation',
+        remote: { name: 'origin', branch: 'feature/ipc-validation' },
+        force: false
+      }
+    ]);
 
     expect(branchArgs[1]).toMatchObject({
       name: 'feature/ipc-validation',
@@ -26,6 +34,11 @@ describe('IPC argument validation', () => {
     expect(resetArgs[1]).toMatchObject({
       target: 'HEAD~1',
       mode: 'mixed'
+    });
+    expect(deleteBranchArgs[1]).toEqual({
+      localName: 'feature/ipc-validation',
+      remote: { name: 'origin', branch: 'feature/ipc-validation' },
+      force: false
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
@@ -128,6 +141,15 @@ describe('IPC argument validation', () => {
     expect(() =>
       validateIpcArgs('repo:stash-drop', ['/repo', { selector: 'stash@{0}' }])
     ).toThrow('expectedSha must be a string.');
+    expect(() => validateIpcArgs('repo:delete-branch', ['/repo', { force: false }])).toThrow(
+      'delete branch input must include a local or remote branch.'
+    );
+    expect(() =>
+      validateIpcArgs('repo:delete-branch', [
+        '/repo',
+        { remote: { name: 'origin' }, force: false }
+      ])
+    ).toThrow('branch must be a string.');
     expect(() => validateIpcArgs('repo:cancel-operation', ['/repo'])).toThrow(
       'repo:cancel-operation expected 2 arguments'
     );

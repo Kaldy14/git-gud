@@ -220,7 +220,11 @@ export type GitRenameBranchInput = {
 };
 
 export type GitDeleteBranchInput = {
-  name: string;
+  localName?: string;
+  remote?: {
+    name: string;
+    branch: string;
+  };
   force: boolean;
 };
 

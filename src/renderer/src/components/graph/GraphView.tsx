@@ -22,6 +22,7 @@ import {
   RefreshCw,
   RotateCcw,
   Tag,
+  TreePine,
   Trash2,
   Undo2,
   Workflow
@@ -86,6 +87,7 @@ const GRAPH_COLUMN_LIMITS: Record<ResizableGraphColumn, GraphColumnLimit> = {
 
 type GraphViewProps = {
   rows: CommitGraphRow[];
+  linkedWorktreeBranches: ReadonlySet<string>;
   selectedSha?: string;
   isLoading: boolean;
   isFetching: boolean;
@@ -100,10 +102,12 @@ type GraphViewProps = {
   onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
   onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onRenameBranch?: (name: string) => Promise<void> | void;
   onActivateRemoteBranch?: (name: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
   onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
+  onDeleteBranch?: (name: string) => Promise<void> | void;
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
@@ -150,6 +154,7 @@ type ContextMenuState = CommitContextMenuState | BranchContextMenuState;
 
 export function GraphView({
   rows,
+  linkedWorktreeBranches,
   selectedSha,
   isLoading,
   isFetching,
@@ -164,10 +169,12 @@ export function GraphView({
   onStashPop,
   onStashDrop,
   onCheckoutBranch,
+  onRenameBranch,
   onActivateRemoteBranch,
   onMergeBranch,
   onRebaseOntoBranch,
   onInteractiveRebaseOntoBranch,
+  onDeleteBranch,
   onCheckoutCommit,
   onCreateBranchAtCommit,
   onCreateTagAtCommit,
@@ -356,7 +363,7 @@ export function GraphView({
   }
 
   function handleBranchContextMenu(event: MouseEvent<HTMLElement>, row: CommitGraphRow, branchName: string): void {
-    if (!currentBranchName || branchName === currentBranchName) {
+    if (!currentBranchName) {
       return;
     }
 
@@ -537,6 +544,7 @@ export function GraphView({
                   >
                     <GraphRowView
                       row={row}
+                      linkedWorktreeBranches={linkedWorktreeBranches}
                       graphWidth={graphWidth}
                       graphContentWidth={graphContentWidth}
                       graphScrollLeft={graphScrollLeft}
@@ -588,9 +596,11 @@ export function GraphView({
             scrollRef.current?.focus({ preventScroll: true });
           }}
           onCheckoutBranch={onCheckoutBranch}
+          onRenameBranch={onRenameBranch}
           onMergeBranch={onMergeBranch}
           onRebaseOntoBranch={onRebaseOntoBranch}
           onInteractiveRebaseOntoBranch={onInteractiveRebaseOntoBranch}
+          onDeleteBranch={onDeleteBranch}
           isOperationBusy={isOperationBusy}
         />
       ) : contextMenu ? (
@@ -615,6 +625,7 @@ export function GraphView({
           onCherryPickCommit={onCherryPickCommit}
           onRevertCommit={onRevertCommit}
           onResetToCommit={onResetToCommit}
+          currentBranchName={currentBranchName}
           isOperationBusy={isOperationBusy}
         />
       ) : null}
@@ -624,6 +635,7 @@ export function GraphView({
 
 type GraphRowViewProps = {
   row: CommitGraphRow;
+  linkedWorktreeBranches: ReadonlySet<string>;
   graphWidth: number;
   graphContentWidth: number;
   graphScrollLeft: number;
@@ -717,6 +729,7 @@ function GraphColumnResizeHandle({
 
 function GraphRowView({
   row,
+  linkedWorktreeBranches,
   graphWidth,
   graphContentWidth,
   graphScrollLeft,
@@ -780,6 +793,7 @@ function GraphRowView({
       <div className="ref-cell pl-2 pr-1.5">
         <RefChipStack
           refs={visibleRefs}
+          linkedWorktreeBranches={linkedWorktreeBranches}
           color={nodeColor}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
@@ -1109,11 +1123,13 @@ type RefChipDisplay = GraphRefChip & {
 
 function RefChipStack({
   refs,
+  linkedWorktreeBranches,
   color,
   onRefClick,
   onBranchContextMenu
 }: {
   refs: GraphRefChip[];
+  linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -1136,6 +1152,7 @@ function RefChipStack({
       <div className="ref-stack-summary">
         <RefChipView
           chip={primaryRef}
+          linkedWorktreeBranches={linkedWorktreeBranches}
           color={color}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
@@ -1156,6 +1173,7 @@ function RefChipStack({
             <RefChipView
               key={`${chip.kind}:${chip.label}`}
               chip={chip}
+              linkedWorktreeBranches={linkedWorktreeBranches}
               color={color}
               onRefClick={onRefClick}
               onBranchContextMenu={onBranchContextMenu}
@@ -1169,19 +1187,22 @@ function RefChipStack({
 
 function RefChipView({
   chip,
+  linkedWorktreeBranches,
   color,
   onRefClick,
   onBranchContextMenu
 }: {
   chip: RefChipDisplay;
+  linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 }): ReactElement {
   const { current, kind, label, remotePeerLabels } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
+  const isLinkedWorktree = kind === 'branch' && linkedWorktreeBranches.has(label);
   const title = refChipTitle(chip);
-  const ariaLabel = `${label}${current ? ', checked out' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
+  const ariaLabel = `${label}${current ? ', checked out' : isLinkedWorktree ? ', checked out in a linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
   const icon =
     current ? (
       <Check size={12} />
@@ -1202,8 +1223,14 @@ function RefChipView({
   const content = (
     <>
       {icon}
-      <span className="ref-chip-label">{label}</span>
-      {kind === 'branch' ? <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
+      <span className="ref-chip-label" title={label}>{label}</span>
+      {kind === 'branch' ? (
+        isLinkedWorktree ? (
+          <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+        ) : (
+          <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+        )
+      ) : null}
       {hasRemotePeer ? <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
     </>
   );
@@ -1222,9 +1249,11 @@ function RefChipView({
       className="ref-chip"
       style={style}
       title={
-        current
-          ? title
-          : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
+        current && kind === 'branch'
+          ? `${title}\nRight-click for branch actions.`
+          : current
+            ? title
+            : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
       }
       aria-label={ariaLabel}
       onClick={(event) => {
@@ -1232,7 +1261,7 @@ function RefChipView({
         onRefClick(chip);
       }}
       onContextMenu={(event) => {
-        if (kind === 'branch' && !current) {
+        if (kind === 'branch') {
           onBranchContextMenu(event, label);
         }
       }}
@@ -1545,21 +1574,26 @@ function GraphBranchContextMenu({
   state,
   onClose,
   onCheckoutBranch,
+  onRenameBranch,
   onMergeBranch,
   onRebaseOntoBranch,
   onInteractiveRebaseOntoBranch,
+  onDeleteBranch,
   isOperationBusy
 }: {
   state: BranchContextMenuState;
   onClose: () => void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onRenameBranch?: (name: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
   onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
+  onDeleteBranch?: (name: string) => Promise<void> | void;
   isOperationBusy: boolean;
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
+  const isCurrentBranch = state.branchName === state.currentBranchName;
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -1590,7 +1624,7 @@ function GraphBranchContextMenu({
         className="menu-row"
         type="button"
         role="menuitem"
-        disabled={!onCheckoutBranch || isOperationBusy}
+        disabled={!onCheckoutBranch || isCurrentBranch || isOperationBusy}
         onClick={() => {
           void onCheckoutBranch?.(state.branchName);
           onClose();
@@ -1599,12 +1633,25 @@ function GraphBranchContextMenu({
         <Check size={14} />
         <span>Checkout {state.branchName}</span>
       </button>
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onRenameBranch || isOperationBusy}
+        onClick={() => {
+          void onRenameBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <Pencil size={14} />
+        <span>Rename branch…</span>
+      </button>
       <MenuSeparator />
       <button
         className="menu-row"
         type="button"
         role="menuitem"
-        disabled={!onMergeBranch || isOperationBusy}
+        disabled={!onMergeBranch || isCurrentBranch || isOperationBusy}
         onClick={() => {
           void onMergeBranch?.(state.branchName);
           onClose();
@@ -1617,7 +1664,7 @@ function GraphBranchContextMenu({
         className="menu-row"
         type="button"
         role="menuitem"
-        disabled={!onRebaseOntoBranch || isOperationBusy}
+        disabled={!onRebaseOntoBranch || isCurrentBranch || isOperationBusy}
         onClick={() => {
           void onRebaseOntoBranch?.(state.branchName);
           onClose();
@@ -1630,7 +1677,7 @@ function GraphBranchContextMenu({
         className="menu-row"
         type="button"
         role="menuitem"
-        disabled={!onInteractiveRebaseOntoBranch || isOperationBusy}
+        disabled={!onInteractiveRebaseOntoBranch || isCurrentBranch || isOperationBusy}
         onClick={() => {
           void onInteractiveRebaseOntoBranch?.(state.branchName);
           onClose();
@@ -1638,6 +1685,20 @@ function GraphBranchContextMenu({
       >
         <Workflow size={14} />
         <span>Interactive rebase {state.currentBranchName} onto {state.branchName}</span>
+      </button>
+      <MenuSeparator />
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onDeleteBranch || isCurrentBranch || isOperationBusy}
+        onClick={() => {
+          void onDeleteBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <Trash2 size={14} />
+        <span>Delete local or remote branch…</span>
       </button>
     </div>
   );
@@ -1661,6 +1722,7 @@ function GraphContextMenu({
   onCherryPickCommit,
   onRevertCommit,
   onResetToCommit,
+  currentBranchName,
   isOperationBusy
 }: {
   state: CommitContextMenuState;
@@ -1680,6 +1742,7 @@ function GraphContextMenu({
   onCherryPickCommit?: (sha: string) => Promise<void> | void;
   onRevertCommit?: (sha: string) => Promise<void> | void;
   onResetToCommit?: (sha: string) => Promise<void> | void;
+  currentBranchName?: string;
   isOperationBusy: boolean;
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1711,7 +1774,7 @@ function GraphContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 w-60 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      className="fixed z-50 w-80 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
       style={{ left: position.left, top: position.top }}
       role="menu"
       aria-label="Commit actions"
@@ -1857,7 +1920,7 @@ function GraphContextMenu({
             }}
           >
             <Tag size={14} />
-            <span>Tag this commit</span>
+            <span>Create tag here</span>
           </button>
           <MenuSeparator />
           <button
@@ -1937,7 +2000,7 @@ function GraphContextMenu({
             }}
           >
             <RotateCcw size={14} />
-            <span>Reset current branch here</span>
+            <span>Reset {currentBranchName ?? 'HEAD'} to this commit…</span>
           </button>
           <MenuSeparator />
           <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
