@@ -95,6 +95,7 @@ type ShortcutState = {
   onPush: () => void;
   onToggleDiffStyle: () => void;
   onOpenQuickJump: () => void;
+  onOpenCommitSearch: () => void;
   onFocusSidebarFilter: () => void;
 };
 
@@ -163,6 +164,8 @@ export function WorkspaceShell(): ReactElement {
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
   const [isQuickJumpOpen, setIsQuickJumpOpen] = useState(false);
+  const [isCommitSearchOpen, setIsCommitSearchOpen] = useState(false);
+  const [commitSearchFocusSignal, setCommitSearchFocusSignal] = useState(0);
   const [repositoryInspector, setRepositoryInspector] = useState<RepositoryInspectorState>();
   const [sidebarWidth, setSidebarWidthDraft] = useState(workspace.sidebarWidth);
   const [detailPanelWidth, setDetailPanelWidthDraft] = useState(workspace.detailPanelWidth);
@@ -189,6 +192,7 @@ export function WorkspaceShell(): ReactElement {
     onPush: () => {},
     onToggleDiffStyle: () => {},
     onOpenQuickJump: () => {},
+    onOpenCommitSearch: () => {},
     onFocusSidebarFilter: () => {}
   });
   const queryClient = useQueryClient();
@@ -335,6 +339,7 @@ export function WorkspaceShell(): ReactElement {
       onPush: handlePush,
       onToggleDiffStyle: () => handleSetDiffStyle(activeDiffStyle === 'unified' ? 'split' : 'unified'),
       onOpenQuickJump: () => setIsQuickJumpOpen(true),
+      onOpenCommitSearch: handleOpenCommitSearch,
       onFocusSidebarFilter: handleFocusSidebarFilter
     };
   });
@@ -348,6 +353,12 @@ export function WorkspaceShell(): ReactElement {
       }
 
       const key = event.key.toLowerCase();
+
+      if (!event.altKey && !event.shiftKey && key === 'f') {
+        event.preventDefault();
+        shortcutState.onOpenCommitSearch();
+        return;
+      }
 
       if (!event.shiftKey && key === 'p') {
         event.preventDefault();
@@ -387,6 +398,19 @@ export function WorkspaceShell(): ReactElement {
     if (activeTab) {
       void selectCommit(activeTab.id, sha);
     }
+  }
+
+  function handleOpenCommitSearch(): void {
+    if (!activeTab) {
+      return;
+    }
+
+    if (activeTab.selectedFile) {
+      void selectFile(activeTab.id, undefined);
+    }
+
+    setIsCommitSearchOpen(true);
+    setCommitSearchFocusSignal((value) => value + 1);
   }
 
   const handleSidebarResize = useCallback(
@@ -628,6 +652,7 @@ export function WorkspaceShell(): ReactElement {
     }
 
     if (path) {
+      setIsCommitSearchOpen(false);
       setFileFocusByTab((value) => ({
         ...value,
         [activeTab.id]: (value[activeTab.id] ?? 0) + 1
@@ -1550,6 +1575,7 @@ export function WorkspaceShell(): ReactElement {
           description: 'Navigate and run common actions without leaving the graph.',
           detail: [
             '⌘P  Command palette',
+            '⌘F  Find commits by SHA or message',
             '⌘⇧F  Fetch all remotes',
             '⌘⇧U  Push current branch',
             '⌘\\  Toggle diff layout',
@@ -1728,6 +1754,9 @@ export function WorkspaceShell(): ReactElement {
                   largeRepoMode={settings.largeRepoMode}
                   columns={settings.graphColumns}
                   remoteAvatars={settings.remoteAvatars}
+                  isSearchOpen={isCommitSearchOpen}
+                  searchFocusSignal={commitSearchFocusSignal}
+                  onCloseSearch={() => setIsCommitSearchOpen(false)}
                 />
               )}
               <CommitDetailPanel

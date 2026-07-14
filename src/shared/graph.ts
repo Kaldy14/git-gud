@@ -36,6 +36,7 @@ export type GraphCommitInput = {
   sha: string;
   parentShas: string[];
   subject: string;
+  body?: string;
   authorName: string;
   authorEmail?: string;
   authorAvatarUrl?: string;
@@ -101,6 +102,7 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
       sha: commit.sha,
       parentShas: commit.parentShas,
       subject: commit.subject,
+      body: commit.body,
       author: {
         name: commit.authorName,
         email: commit.authorEmail,

@@ -124,7 +124,7 @@ async function loadLogCommits(
         '--topo-order',
         '-z',
         '--date=iso-strict',
-        '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%D%x00%s'
+        '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%D%x00%s%x00%b'
       ],
       { cwd: repoPath, env }
     );
@@ -144,6 +144,7 @@ function logCommitToGraphInput(commit: GitLogCommit, refs: GraphRefChip[] | unde
     sha: commit.sha,
     parentShas: commit.parentShas,
     subject: commit.subject,
+    body: commit.body,
     authorName: commit.authorName,
     authorEmail: commit.authorEmail,
     authorAvatarUrl: gravatarUrlForEmail(commit.authorEmail, 64),

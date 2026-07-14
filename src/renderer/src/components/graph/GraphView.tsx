@@ -30,6 +30,8 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
+import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
+import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
 import {
   findCurrentBranchName,
   findSelectedContextMenuRow,
@@ -121,6 +123,9 @@ type GraphViewProps = {
   largeRepoMode?: boolean;
   columns?: GraphColumnVisibility;
   remoteAvatars?: boolean;
+  isSearchOpen?: boolean;
+  searchFocusSignal?: number;
+  onCloseSearch?: () => void;
 };
 
 type GraphColumnVisibility = {
@@ -187,7 +192,10 @@ export function GraphView({
   isOperationBusy = false,
   largeRepoMode = false,
   columns = DEFAULT_GRAPH_COLUMN_VISIBILITY,
-  remoteAvatars = false
+  remoteAvatars = false,
+  isSearchOpen = false,
+  searchFocusSignal = 0,
+  onCloseSearch
 }: GraphViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -200,6 +208,8 @@ export function GraphView({
   const [resizingColumn, setResizingColumn] = useState<ResizableGraphColumn>();
   const [graphScrollLeft, setGraphScrollLeft] = useState(0);
   const [firstVisibleRowIndex, setFirstVisibleRowIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchSha, setActiveSearchSha] = useState<string>();
   const visibleColumns = useMemo(
     () => fitGraphColumnVisibility(columns, graphContainerWidth),
     [columns, graphContainerWidth]
@@ -212,6 +222,14 @@ export function GraphView({
   const refCellWidth = columnWidths.refs;
   const gridTemplateColumns = graphGridTemplate(refCellWidth, graphWidth, visibleColumns);
   const currentDateMarker = dateMarkersByRow[firstVisibleRowIndex];
+  const commitSearchIndex = useMemo(() => buildCommitSearchIndex(rows), [rows]);
+  const searchMatches = useMemo(
+    () => findCommitSearchMatches(commitSearchIndex, searchQuery),
+    [commitSearchIndex, searchQuery]
+  );
+  const searchMatchShas = useMemo(() => new Set(searchMatches.map((row) => row.sha)), [searchMatches]);
+  const activeSearchMatchIndex = searchMatches.findIndex((row) => row.sha === activeSearchSha);
+  const isSearchFiltering = isSearchOpen && searchQuery.trim().length > 0;
   // TanStack Virtual is the row windowing layer for M2; the virtualizer stays local to this component.
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
@@ -467,8 +485,54 @@ export function GraphView({
     );
   }
 
+  function handleSearchQueryChange(query: string): void {
+    const matches = findCommitSearchMatches(commitSearchIndex, query);
+    const nextMatch = matches.find((row) => row.sha === selectedSha) ?? matches[0];
+
+    setSearchQuery(query);
+    setActiveSearchSha(nextMatch?.sha);
+
+    if (nextMatch) {
+      onSelectRow(nextMatch.sha);
+    }
+  }
+
+  function handleSearchNavigate(direction: 1 | -1): void {
+    if (searchMatches.length === 0) {
+      return;
+    }
+
+    const currentIndex = activeSearchMatchIndex >= 0 ? activeSearchMatchIndex : direction === 1 ? -1 : 0;
+    const nextIndex = (currentIndex + direction + searchMatches.length) % searchMatches.length;
+    const nextMatch = searchMatches[nextIndex];
+
+    if (nextMatch) {
+      setActiveSearchSha(nextMatch.sha);
+      onSelectRow(nextMatch.sha);
+    }
+  }
+
+  function handleCloseSearch(): void {
+    setSearchQuery('');
+    setActiveSearchSha(undefined);
+    onCloseSearch?.();
+    window.requestAnimationFrame(() => scrollRef.current?.focus({ preventScroll: true }));
+  }
+
   return (
     <section ref={sectionRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-graph)]">
+      {isSearchOpen ? (
+        <CommitSearchBar
+          query={searchQuery}
+          resultCount={searchMatches.length}
+          activeResultIndex={activeSearchMatchIndex}
+          focusSignal={searchFocusSignal}
+          onQueryChange={handleSearchQueryChange}
+          onPrevious={() => handleSearchNavigate(-1)}
+          onNext={() => handleSearchNavigate(1)}
+          onClose={handleCloseSearch}
+        />
+      ) : null}
       <div
         className="grid h-8 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-semibold uppercase text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
@@ -553,6 +617,8 @@ export function GraphView({
                       visibleColumns={visibleColumns}
                       remoteAvatars={remoteAvatars}
                       isSelected={row.sha === selectedSha}
+                      isSearchMatch={searchMatchShas.has(row.sha)}
+                      isSearchFiltering={isSearchFiltering}
                       rowIndex={virtualRow.index}
                       onSelect={() => onSelectRow(row.sha)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
@@ -644,6 +710,8 @@ type GraphRowViewProps = {
   visibleColumns: GraphColumnVisibility;
   remoteAvatars: boolean;
   isSelected: boolean;
+  isSearchMatch: boolean;
+  isSearchFiltering: boolean;
   rowIndex: number;
   onSelect: () => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
@@ -738,6 +806,8 @@ function GraphRowView({
   visibleColumns,
   remoteAvatars,
   isSelected,
+  isSearchMatch,
+  isSearchFiltering,
   rowIndex,
   onSelect,
   onContextMenu,
@@ -747,16 +817,18 @@ function GraphRowView({
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
   const visibleRefs = isWip ? [] : (row.refs ?? []);
-  const rowBackground = graphRowBackground(row, isSelected, rowIndex);
+  const rowBackground = graphRowBackground(row, isSelected, rowIndex, isSearchMatch);
   const bandBackground = graphRowBandBackground(row, nodeColor, isSelected);
 
   return (
     <div
       id={graphRowDomId(row.sha)}
-      className="group relative grid cursor-pointer items-center"
+      className="graph-row group relative grid cursor-pointer items-center"
       role="option"
       aria-selected={isSelected}
       aria-label={graphRowAriaLabel(row)}
+      data-search-match={isSearchFiltering && isSearchMatch ? 'true' : undefined}
+      data-search-muted={isSearchFiltering && !isSearchMatch ? 'true' : undefined}
       tabIndex={-1}
       style={{
         height: ROW_HEIGHT,
@@ -1067,9 +1139,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function graphRowBackground(row: CommitGraphRow, isSelected: boolean, rowIndex: number): string | undefined {
+function graphRowBackground(
+  row: CommitGraphRow,
+  isSelected: boolean,
+  rowIndex: number,
+  isSearchMatch = false
+): string | undefined {
   if (isSelected) {
     return 'linear-gradient(90deg, rgba(34, 77, 145, 0.58), rgba(31, 65, 120, 0.50) 64%, rgba(28, 45, 76, 0.50))';
+  }
+
+  if (isSearchMatch) {
+    return 'linear-gradient(90deg, rgba(52, 91, 155, 0.28), rgba(35, 63, 108, 0.18) 68%, rgba(25, 37, 55, 0.12))';
   }
 
   if (row.node.kind === 'wip') {

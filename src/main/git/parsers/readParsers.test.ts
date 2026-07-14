@@ -105,7 +105,7 @@ describe('git read parsers', () => {
     const stashes = parseStashList(['aaa', 'bbb ccc', 'stash@{0}', '2026-07-02T10:00:00+02:00', 'WIP on main'].join('\0'));
     const emptyFieldStashes = parseStashList(['ddd', 'eee', 'stash@{1}', '', ''].join('\0'));
     const commits = parseGitLog(
-      ['abc', 'def ghi', 'Kaldy', 'kaldy@example.com', '2026-07-02T10:00:00+02:00', '2026-07-02T10:01:00+02:00', 'HEAD -> main, tag: v1', 'subject'].join(
+      ['abc', 'def ghi', 'Kaldy', 'kaldy@example.com', '2026-07-02T10:00:00+02:00', '2026-07-02T10:01:00+02:00', 'HEAD -> main, tag: v1', 'subject', 'searchable body'].join(
         '\0'
       )
     );
@@ -140,7 +140,8 @@ describe('git read parsers', () => {
       sha: 'abc',
       parentShas: ['def', 'ghi'],
       refs: ['HEAD -> main', 'tag: v1'],
-      subject: 'subject'
+      subject: 'subject',
+      body: 'searchable body'
     });
   });
 

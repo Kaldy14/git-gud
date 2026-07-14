@@ -7,9 +7,10 @@ export type GitLogCommit = {
   committedAt: string;
   refs: string[];
   subject: string;
+  body: string;
 };
 
-const LOG_FIELD_COUNT = 8;
+const LOG_FIELD_COUNT = 9;
 
 export function parseGitLog(output: string): GitLogCommit[] {
   const tokens = output.split('\0');
@@ -20,7 +21,7 @@ export function parseGitLog(output: string): GitLogCommit[] {
   }
 
   for (let index = 0; index + LOG_FIELD_COUNT - 1 < tokens.length; index += LOG_FIELD_COUNT) {
-    const [sha, parents, authorName, authorEmail, authoredAt, committedAt, refs, subject] = tokens.slice(
+    const [sha, parents, authorName, authorEmail, authoredAt, committedAt, refs, subject, body] = tokens.slice(
       index,
       index + LOG_FIELD_COUNT
     );
@@ -37,7 +38,8 @@ export function parseGitLog(output: string): GitLogCommit[] {
       authoredAt,
       committedAt,
       refs: refs ? refs.split(', ').filter(Boolean) : [],
-      subject
+      subject,
+      body
     });
   }
 

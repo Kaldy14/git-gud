@@ -24,7 +24,7 @@ describe('loadCommitGraph', () => {
       await git(repoPath, ['commit', '-m', 'base']);
       await git(repoPath, ['checkout', '-B', 'main']);
       await writeRepoFile(repoPath, 'README.md', 'second\n');
-      await git(repoPath, ['commit', '-am', 'second']);
+      await git(repoPath, ['commit', '-am', 'second', '-m', 'Graph body searchable description']);
       await git(repoPath, ['tag', '-a', 'v-graph', '-m', 'annotated graph tag']);
       await git(rootPath, ['init', '--bare', remotePath]);
       await git(repoPath, ['remote', 'add', 'origin', remotePath]);
@@ -71,6 +71,7 @@ describe('loadCommitGraph', () => {
         ])
       );
       expect(page.rows[3]?.refs?.[0]).toMatchObject({ label: 'main', current: true });
+      expect(page.rows[3]?.body).toContain('Graph body searchable description');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
