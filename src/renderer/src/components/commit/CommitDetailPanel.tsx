@@ -249,7 +249,7 @@ export function CommitDetailPanel({
 
   if (isCollapsed) {
     return (
-      <aside className="commit-detail-panel flex w-10 shrink-0 flex-col items-center border-l border-[var(--border)] bg-[var(--bg-panel)] py-2" aria-label="Commit details">
+      <aside className="commit-detail-panel flex min-h-0 w-10 shrink-0 flex-col items-center overflow-hidden border-l border-[var(--border)] bg-[var(--bg-panel)] py-2" aria-label="Commit details">
         <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand commit details" title="Expand commit details">
           <PanelRightOpen size={15} />
         </button>
@@ -259,7 +259,7 @@ export function CommitDetailPanel({
 
   if (!row || !repoPath) {
     return (
-      <aside className="commit-detail-panel relative flex shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
+      <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
         <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
         <div className="flex h-10 shrink-0 items-center justify-end border-b border-[var(--border)] px-2">
           <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
@@ -289,7 +289,7 @@ export function CommitDetailPanel({
     }
 
     return (
-      <>
+      <div className="flex min-h-0 flex-1 flex-col">
         <FilesToolbar
           counts={counts}
           fileView={fileView}
@@ -297,7 +297,7 @@ export function CommitDetailPanel({
           onSetFileView={setFileView}
         />
 
-        <div className="px-2 pb-3 pt-1">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-1">
           {isWip && selectedFileDetail ? (
             <WipFileActionStrip
               file={selectedFileDetail}
@@ -335,7 +335,7 @@ export function CommitDetailPanel({
             />
           )}
         </div>
-      </>
+      </div>
     );
   }
 
@@ -367,7 +367,7 @@ export function CommitDetailPanel({
   }
 
   return (
-    <aside className="commit-detail-panel relative flex shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
+    <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
       <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
       <WorkingDirectoryBanner
         dirtyCount={wipDirtyCount}
@@ -392,13 +392,11 @@ export function CommitDetailPanel({
         </div>
       ) : detail && isWip ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {renderFilesSection()}
-          </div>
+          {renderFilesSection()}
           {renderWipCommitSection()}
         </div>
       ) : detail ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <SummarySection detail={detail} parentSha={parentSha} remoteAvatars={remoteAvatars} />
           {renderFilesSection()}
         </div>
@@ -611,26 +609,28 @@ function SummarySection({
 
   return (
     <>
-      <div className="border-b border-[var(--border)] px-5 py-4">
+      <div className="max-h-40 shrink-0 overflow-y-auto border-b border-[var(--border)] px-5 py-4">
         <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">{detail.subject}</h2>
         {detail.body ? (
-          <div className="mt-3 max-h-40 overflow-y-auto pr-2 text-[13px] leading-5 text-[var(--text-2)]">
+          <div className="mt-3 pr-2 text-[13px] leading-5 text-[var(--text-2)]">
             <p className="whitespace-pre-wrap">{detail.body}</p>
           </div>
         ) : null}
       </div>
 
-      <div className="space-y-3 border-b border-[var(--border)] px-5 py-3.5">
-        {parentSha ? (
-          <p className="text-right text-[11px] text-[var(--text-3)]">
-            parent: <span className="mono">{parentSha.slice(0, 8)}</span>
-          </p>
-        ) : null}
-        <SignatureRow
-          person={detail.author}
-          action="authored"
-          remoteAvatars={remoteAvatars}
-        />
+      <div className="shrink-0 space-y-2 border-b border-[var(--border)] px-5 py-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <SignatureRow
+            person={detail.author}
+            action="authored"
+            remoteAvatars={remoteAvatars}
+          />
+          {parentSha ? (
+            <p className="shrink-0 pt-1 text-right text-[11px] text-[var(--text-3)]">
+              parent: <span className="mono">{parentSha.slice(0, 8)}</span>
+            </p>
+          ) : null}
+        </div>
         {shouldShowCommitter(detail) ? (
           <SignatureRow
             person={detail.committer}
@@ -669,7 +669,7 @@ function SignatureRow({
   const email = person.email;
 
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    <div className="flex min-w-0 flex-1 items-center gap-2.5">
       <AuthorAvatar
         name={person.name}
         email={email}
@@ -825,7 +825,7 @@ function FilesToolbar({
 }: FilesToolbarProps): ReactElement {
   if (isWip) {
     return (
-      <div className="border-b border-[var(--border)] px-4 py-2">
+      <div className="shrink-0 border-b border-[var(--border)] px-4 py-2">
         <div className="flex items-center justify-between gap-3">
           <FileListControls fileView={fileView} onSetFileView={onSetFileView} />
         </div>
@@ -834,17 +834,15 @@ function FilesToolbar({
   }
 
   return (
-    <div className="border-b border-[var(--border)] px-4 pb-2 pt-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
-          <StatusCount status="modified" count={counts.modified} />
-          <StatusCount status="added" count={counts.added} />
-          <StatusCount status="deleted" count={counts.deleted} />
-          {counts.renamed > 0 ? <span className="text-[var(--text-2)]">{counts.renamed} renamed</span> : null}
-          {counts.conflicted > 0 ? <span className="text-[var(--danger-text)]">{counts.conflicted} conflicted</span> : null}
-        </div>
-        <FileListControls fileView={fileView} onSetFileView={onSetFileView} />
+    <div className="shrink-0 space-y-2 border-b border-[var(--border)] px-4 py-2.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
+        <StatusCount status="modified" count={counts.modified} />
+        <StatusCount status="added" count={counts.added} />
+        <StatusCount status="deleted" count={counts.deleted} />
+        {counts.renamed > 0 ? <span className="text-[var(--text-2)]">{counts.renamed} renamed</span> : null}
+        {counts.conflicted > 0 ? <span className="text-[var(--danger-text)]">{counts.conflicted} conflicted</span> : null}
       </div>
+      <FileListControls fileView={fileView} onSetFileView={onSetFileView} />
     </div>
   );
 }
@@ -857,7 +855,7 @@ function FileListControls({
   onSetFileView: (view: FileViewMode) => void;
 }): ReactElement {
   return (
-    <div className="flex shrink-0 items-center gap-3">
+    <div className="flex w-full shrink-0 items-center justify-between gap-3">
       <span className="inline-flex h-7 items-center gap-1.5 text-[11px] font-semibold uppercase text-[var(--text-3)]" title="Sorted by path">
         <ArrowDownAZ size={14} />
       </span>
