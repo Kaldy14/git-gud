@@ -5,6 +5,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import type {
   CommitGraphPage,
   GitCommitDetail,
+  GitCommitSelectionDetail,
   GitFileDiff,
   GitFileDiffRequest,
   GitRepositoryOverview,
@@ -32,6 +33,15 @@ const commitDetailQueryKey = (repoPath: string, sha: string): readonly ['commit-
   sha
 ];
 
+const commitSelectionDetailQueryKey = (
+  repoPath: string,
+  shas: readonly string[]
+): readonly ['commit-selection-detail', string, string] => [
+  'commit-selection-detail',
+  repoPath,
+  shas.join('\0')
+];
+
 const wipDetailQueryKey = (repoPath: string): readonly ['wip-detail', string] => ['wip-detail', repoPath];
 
 const fileDiffQueryKey = (
@@ -42,7 +52,7 @@ const fileDiffQueryKey = (
   repoPath,
   request.kind,
   request.path,
-  request.kind === 'commit' ? request.sha : undefined,
+  request.kind === 'commit' ? request.sha : request.kind === 'selection' ? request.shas.join('\0') : undefined,
   request.kind === 'wip' ? request.staged : undefined
 ];
 
@@ -128,6 +138,27 @@ export function useCommitDetail(repoPath: string | undefined, sha: string | unde
   });
 }
 
+export function useCommitSelectionDetail(
+  repoPath: string | undefined,
+  shas: readonly string[]
+) {
+  return useQuery({
+    queryKey:
+      repoPath && shas.length > 1
+        ? commitSelectionDetailQueryKey(repoPath, shas)
+        : ['commit-selection-detail', 'none', 'none'],
+    queryFn: async (): Promise<GitCommitSelectionDetail> => {
+      if (!repoPath || shas.length < 2) {
+        throw new Error('Repository path and at least two commit shas are required.');
+      }
+
+      return window.api.getCommitSelectionDetail(repoPath, [...shas]);
+    },
+    enabled: Boolean(repoPath) && shas.length > 1,
+    staleTime: immutableGitObjectStaleTime
+  });
+}
+
 export function useWipDetail(repoPath: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: repoPath ? wipDetailQueryKey(repoPath) : ['wip-detail', 'none'],
@@ -154,7 +185,7 @@ export function useFileDiff(repoPath: string | undefined, request: GitFileDiffRe
       return window.api.getFileDiff(repoPath, request);
     },
     enabled: Boolean(repoPath && request),
-    staleTime: request?.kind === 'commit' ? immutableGitObjectStaleTime : 1000
+    staleTime: request && request.kind !== 'wip' ? immutableGitObjectStaleTime : 1000
   });
 }
 

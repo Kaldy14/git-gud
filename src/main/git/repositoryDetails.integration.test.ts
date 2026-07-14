@@ -5,7 +5,14 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { gitExecutor } from './exec';
-import { discardAllChanges, discardFile, loadCommitDetail, loadFileDiff, stageFile } from './repositoryDetails';
+import {
+  discardAllChanges,
+  discardFile,
+  loadCommitDetail,
+  loadCommitSelectionDetail,
+  loadFileDiff,
+  stageFile
+} from './repositoryDetails';
 
 describe('repository details integration', () => {
   it('treats pathspec-magic filenames literally across stage, diff, and discard', async () => {
@@ -114,6 +121,56 @@ describe('repository details integration', () => {
 
       expect(largeDiff).toMatchObject({ patch: '', isBinary: false, omittedReason: 'too-large' });
       expect(largeDiff.stageablePatch).toBeUndefined();
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('combines contiguous commit selections and preserves exact sparse commit patches', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await commitFile(repoPath, 'review.txt', 'one\n', 'add review file');
+      const oldestSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'review.txt', 'two\n', 'refine review file');
+      const middleSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'review.txt', 'three\n', 'finish review file');
+      const newestSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      const contiguousShas = [newestSha, middleSha, oldestSha];
+
+      const contiguousDetail = await loadCommitSelectionDetail({ path: repoPath }, contiguousShas);
+      const contiguousDiff = await loadFileDiff(
+        { path: repoPath },
+        { kind: 'selection', shas: contiguousShas, path: 'review.txt' }
+      );
+
+      expect(contiguousDetail).toMatchObject({
+        kind: 'selection',
+        isContiguous: true,
+        shas: contiguousShas,
+        stats: { filesChanged: 1, additions: 1, deletions: 0 }
+      });
+      expect(contiguousDetail.files.map((file) => file.path)).toEqual(['review.txt']);
+      expect(contiguousDiff).toMatchObject({ mode: 'selection', isBinary: false });
+      expect(contiguousDiff.segments).toBeUndefined();
+      expect(contiguousDiff.patch).toContain('+three');
+      expect(contiguousDiff.patch).not.toContain('+one');
+
+      const sparseShas = [newestSha, oldestSha];
+      const sparseDetail = await loadCommitSelectionDetail({ path: repoPath }, sparseShas);
+      const sparseDiff = await loadFileDiff(
+        { path: repoPath },
+        { kind: 'selection', shas: sparseShas, path: 'review.txt' }
+      );
+
+      expect(sparseDetail.isContiguous).toBe(false);
+      expect(sparseDiff.segments?.map((segment) => segment.subject)).toEqual([
+        'add review file',
+        'finish review file'
+      ]);
+      expect(sparseDiff.segments?.[0]?.patch).toContain('+one');
+      expect(sparseDiff.segments?.[1]?.patch).toContain('+three');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

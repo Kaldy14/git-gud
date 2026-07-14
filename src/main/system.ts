@@ -2,6 +2,9 @@ import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 
+import { shell } from 'electron';
+
+import { createCodexTaskDeepLink } from '@shared/codex';
 import type { GitOperationResult, RepoTab } from '@shared/types';
 
 type FileTab = Pick<RepoTab, 'path'>;
@@ -20,6 +23,15 @@ export async function revealRepositoryFileInFinder(tab: FileTab, relativePath: s
   await openMacTarget(['-R', revealPath]);
 
   return createSystemOperationResult(tab.path);
+}
+
+export async function openCodexTaskForRepository(tab: FileTab, prompt: string): Promise<void> {
+  if (!path.isAbsolute(tab.path)) {
+    throw new Error('Codex workspace path must be absolute.');
+  }
+
+  await access(tab.path);
+  await shell.openExternal(createCodexTaskDeepLink(tab.path, prompt));
 }
 
 function openMacTarget(args: string[], errorMessage = 'Unable to open file.'): Promise<void> {

@@ -9,6 +9,7 @@ import {
   preferredBranchName,
   registerRefClick,
   resolveBulkSquashSelection,
+  selectCommitRange,
   toggleSelectedCommit
 } from './graphInteraction';
 
@@ -65,6 +66,29 @@ describe('graph bulk commit selection', () => {
   it('toggles commits without disturbing the existing selection order', () => {
     expect(toggleSelectedCommit(['newest'], 'older')).toEqual(['newest', 'older']);
     expect(toggleSelectedCommit(['newest', 'older'], 'newest')).toEqual(['older']);
+  });
+
+  it('selects an ancestry range without including interleaved branch commits', () => {
+    const rows = [
+      commitRow('newest', ['middle']),
+      commitRow('side-newer', ['side-older']),
+      commitRow('middle', ['oldest']),
+      commitRow('side-older', ['base']),
+      commitRow('oldest', ['base'])
+    ];
+
+    expect(selectCommitRange(rows, 'newest', 'oldest')).toEqual(['newest', 'middle', 'oldest']);
+    expect(selectCommitRange(rows, 'oldest', 'newest')).toEqual(['newest', 'middle', 'oldest']);
+  });
+
+  it('falls back to the visible graph range for commits on separate branches', () => {
+    const rows = [
+      commitRow('left', ['base']),
+      commitRow('middle', ['base']),
+      commitRow('right', ['base'])
+    ];
+
+    expect(selectCommitRange(rows, 'left', 'right')).toEqual(['left', 'middle', 'right']);
   });
 
   it('orders cherry-picks oldest to newest regardless of click order', () => {

@@ -28,6 +28,7 @@ import {
 import {
   invalidateRepositoryQueries,
   useCommitDetail,
+  useCommitSelectionDetail,
   useWipDetail
 } from '@renderer/queries/repository';
 import {
@@ -52,6 +53,7 @@ import {
 type CommitDetailPanelProps = {
   repoPath?: string;
   row?: CommitGraphRow;
+  selectedShas?: string[];
   parentSha?: string;
   selectedFile?: string;
   wipDirtyCount?: number;
@@ -75,6 +77,7 @@ type CommitDetailPanelProps = {
 export function CommitDetailPanel({
   repoPath,
   row,
+  selectedShas = [],
   parentSha,
   selectedFile,
   wipDirtyCount = 0,
@@ -101,12 +104,16 @@ export function CommitDetailPanel({
   const [amend, setAmend] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const isWip = row?.node.kind === 'wip';
-  const commitQuery = useCommitDetail(repoPath, row && !isWip ? row.sha : undefined);
+  const isCommitSelection = !isWip && selectedShas.length > 1;
+  const commitQuery = useCommitDetail(repoPath, row && !isWip && !isCommitSelection ? row.sha : undefined);
+  const commitSelectionQuery = useCommitSelectionDetail(repoPath, isCommitSelection ? selectedShas : []);
   const wipQuery = useWipDetail(repoPath, Boolean(row && isWip));
   const headCommitQuery = useCommitDetail(repoPath, row && isWip ? row.parentShas[0] : undefined);
-  const detail = (isWip ? wipQuery.data : commitQuery.data) as GitRepositoryDetail | undefined;
-  const detailError = isWip ? wipQuery.error : commitQuery.error;
-  const isDetailLoading = isWip ? wipQuery.isLoading : commitQuery.isLoading;
+  const detail = (
+    isWip ? wipQuery.data : isCommitSelection ? commitSelectionQuery.data : commitQuery.data
+  ) as GitRepositoryDetail | undefined;
+  const detailError = isWip ? wipQuery.error : isCommitSelection ? commitSelectionQuery.error : commitQuery.error;
+  const isDetailLoading = isWip ? wipQuery.isLoading : isCommitSelection ? commitSelectionQuery.isLoading : commitQuery.isLoading;
   const files = detail?.files ?? [];
   const selectedFileDetail = findFile(files, selectedFile);
   const stageFileMutation = useMutation({
@@ -377,6 +384,7 @@ export function CommitDetailPanel({
       <PanelHeader
         row={row}
         detail={detail}
+        selectionCount={selectedShas.length}
         isMutating={activeMutation}
         onDiscardAllWip={onDiscardAllWip}
         onToggleCollapsed={onToggleCollapsed}
@@ -494,12 +502,14 @@ function WorkingDirectoryBanner({
 function PanelHeader({
   row,
   detail,
+  selectionCount,
   isMutating,
   onDiscardAllWip,
   onToggleCollapsed
 }: {
   row: CommitGraphRow;
   detail?: GitRepositoryDetail;
+  selectionCount: number;
   isMutating: boolean;
   onDiscardAllWip: () => void;
   onToggleCollapsed?: () => void;
@@ -565,6 +575,22 @@ function PanelHeader({
     );
   }
 
+  if (selectionCount > 1) {
+    return (
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+        <span className="flex min-w-0 items-center gap-2">
+          <GitCommit size={14} className="shrink-0 text-[var(--accent-2)]" />
+          <span className="truncate font-semibold text-[var(--text-1)]">
+            {selectionCount} commits selected
+          </span>
+        </span>
+        <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
+          <PanelRightClose size={14} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
       <span className="flex min-w-0 items-center gap-2">
@@ -605,6 +631,33 @@ function SummarySection({
 }): ReactElement | null {
   if (detail.kind === 'wip') {
     return null;
+  }
+
+  if (detail.kind === 'selection') {
+    const newest = detail.commits[0];
+    const oldest = detail.commits.at(-1);
+
+    return (
+      <div className="max-h-48 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-3.5">
+        <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">
+          Combined changes
+        </h2>
+        <p className="mt-1 text-[11px] text-[var(--text-3)]">
+          {detail.isContiguous && oldest && newest
+            ? `${oldest.shortSha} → ${newest.shortSha}`
+            : `${detail.commits.length} individually selected commits`}
+        </p>
+        <div className="mt-3 space-y-1.5" data-testid="selected-commit-summary">
+          {detail.commits.slice().reverse().map((commit, index) => (
+            <div key={commit.sha} className="flex min-w-0 items-center gap-2 text-[12px] text-[var(--text-2)]">
+              <span className="mono w-14 shrink-0 text-[10.5px] text-[var(--text-3)]">{commit.shortSha}</span>
+              <span className="truncate">{commit.subject}</span>
+              <span className="ml-auto shrink-0 text-[10px] text-[var(--text-3)]">{index + 1}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -673,7 +726,7 @@ function SignatureRow({
 }
 
 function shouldShowCommitter(detail: GitRepositoryDetail): boolean {
-  if (detail.kind === 'wip') {
+  if (detail.kind !== 'commit') {
     return false;
   }
 

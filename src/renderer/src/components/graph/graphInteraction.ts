@@ -68,6 +68,37 @@ export function toggleSelectedCommit(selectedShas: readonly string[], sha: strin
     : [...selectedShas, sha];
 }
 
+export function selectCommitRange(
+  rows: CommitGraphRow[],
+  anchorSha: string,
+  targetSha: string
+): string[] {
+  const rowsBySha = new Map(rows.filter(isCommit).map((row) => [row.sha, row]));
+
+  if (!rowsBySha.has(anchorSha) || !rowsBySha.has(targetSha)) {
+    return rowsBySha.has(targetSha) ? [targetSha] : [];
+  }
+
+  const ancestryPath =
+    findAncestryPath(rowsBySha, anchorSha, targetSha) ??
+    findAncestryPath(rowsBySha, targetSha, anchorSha);
+
+  if (ancestryPath) {
+    const selection = new Set(ancestryPath);
+    return rows.filter((row) => selection.has(row.sha) && isCommit(row)).map((row) => row.sha);
+  }
+
+  const anchorIndex = rows.findIndex((row) => row.sha === anchorSha);
+  const targetIndex = rows.findIndex((row) => row.sha === targetSha);
+  const startIndex = Math.min(anchorIndex, targetIndex);
+  const endIndex = Math.max(anchorIndex, targetIndex);
+
+  return rows
+    .slice(startIndex, endIndex + 1)
+    .filter(isCommit)
+    .map((row) => row.sha);
+}
+
 export function orderSelectedCommitsForCherryPick(
   rows: CommitGraphRow[],
   selectedShas: readonly string[]
@@ -167,4 +198,38 @@ export function preferredBranchName(row: CommitGraphRow): string | undefined {
 
 function isCommit(row: CommitGraphRow): boolean {
   return row.node.kind !== 'wip' && row.node.kind !== 'stash';
+}
+
+function findAncestryPath(
+  rowsBySha: ReadonlyMap<string, CommitGraphRow>,
+  descendantSha: string,
+  ancestorSha: string
+): string[] | undefined {
+  const pending: Array<{ sha: string; path: string[] }> = [
+    { sha: descendantSha, path: [descendantSha] }
+  ];
+  const visited = new Set<string>();
+
+  while (pending.length > 0) {
+    const current = pending.shift();
+
+    if (!current || visited.has(current.sha)) {
+      continue;
+    }
+
+    if (current.sha === ancestorSha) {
+      return current.path;
+    }
+
+    visited.add(current.sha);
+    const row = rowsBySha.get(current.sha);
+
+    for (const parentSha of row?.parentShas ?? []) {
+      if (rowsBySha.has(parentSha) && !visited.has(parentSha)) {
+        pending.push({ sha: parentSha, path: [...current.path, parentSha] });
+      }
+    }
+  }
+
+  return undefined;
 }

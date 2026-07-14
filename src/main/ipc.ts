@@ -35,6 +35,7 @@ import {
   discardAllChanges,
   discardFile,
   loadCommitDetail,
+  loadCommitSelectionDetail,
   loadFileDiff,
   loadWipDetail,
   stageAll,
@@ -65,7 +66,7 @@ import {
   updateSidebarCollapsed,
   updateSidebarWidth
 } from './store';
-import { openRepositoryFileInEditor, revealRepositoryFileInFinder } from './system';
+import { openCodexTaskForRepository, openRepositoryFileInEditor, revealRepositoryFileInFinder } from './system';
 
 type IpcHandler<TChannel extends IpcChannelName> = (
   event: IpcMainInvokeEvent,
@@ -195,6 +196,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     return loadCommitGraph(tab, limit);
   });
   handle('repo:commit-detail', async (_event, repoPath, sha) => loadCommitDetail(getOpenRepositoryTab(repoPath), sha));
+  handle('repo:commit-selection-detail', async (_event, repoPath, shas) =>
+    loadCommitSelectionDetail(getOpenRepositoryTab(repoPath), shas)
+  );
   handle('repo:wip-detail', async (_event, repoPath) => loadWipDetail(getOpenRepositoryTab(repoPath)));
   handle('repo:file-diff', async (_event, repoPath, request) => loadFileDiff(getOpenRepositoryTab(repoPath), request));
   handle('repo:file-history', async (_event, repoPath, path, limit) =>
@@ -223,6 +227,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   );
   handle('repo:open-file', async (_event, repoPath, path) => openRepositoryFileInEditor(getOpenRepositoryTab(repoPath), path));
   handle('repo:reveal-file', async (_event, repoPath, path) => revealRepositoryFileInFinder(getOpenRepositoryTab(repoPath), path));
+  handle('system:open-codex-task', async (_event, repoPath, prompt) =>
+    openCodexTaskForRepository(getOpenRepositoryTab(repoPath), prompt)
+  );
   handle('repo:stage-all', async (_event, repoPath) => inRepositoryTransaction(repoPath, stageAll));
   handle('repo:unstage-all', async (_event, repoPath) => inRepositoryTransaction(repoPath, unstageAll));
   handle('repo:commit', async (_event, repoPath, input) =>

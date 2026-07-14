@@ -55,7 +55,8 @@ export function selectWipScope(file: GitFileChangeDetail, storedScope: WipDiffSc
 export function createDiffRequest(
   row: CommitGraphRow | undefined,
   file: GitFileChangeDetail | undefined,
-  scope: WipDiffScope
+  scope: WipDiffScope,
+  selectedShas: readonly string[] = []
 ): GitFileDiffRequest | undefined {
   if (!row || !file) {
     return undefined;
@@ -66,6 +67,15 @@ export function createDiffRequest(
       kind: 'wip',
       path: file.path,
       staged: scope === 'staged'
+    };
+  }
+
+  if (selectedShas.length > 1) {
+    return {
+      kind: 'selection',
+      shas: [...selectedShas],
+      path: file.path,
+      originalPath: file.originalPath
     };
   }
 

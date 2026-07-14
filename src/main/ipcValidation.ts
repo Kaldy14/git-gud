@@ -1,4 +1,5 @@
 import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
+import { MAX_CODEX_DEEP_LINK_PROMPT_LENGTH } from '@shared/codex';
 import type {
   AppSettingsInput,
   GitCheckoutTarget,
@@ -49,6 +50,8 @@ const validators = {
   'repo:overview': (args) => readOnlyArg(args, 'repo:overview', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
+  'repo:commit-selection-detail': (args) =>
+    readStringAndStringArray(args, 'repo:commit-selection-detail', 'repoPath', 'shas'),
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
   'repo:file-history': (args) => readRepoPathAndPathWithOptionalLimit(args),
@@ -61,6 +64,7 @@ const validators = {
   'repo:discard-all': (args) => readOnlyArg(args, 'repo:discard-all', 'repoPath', readString),
   'repo:open-file': (args) => readStringPair(args, 'repo:open-file', 'repoPath', 'path'),
   'repo:reveal-file': (args) => readStringPair(args, 'repo:reveal-file', 'repoPath', 'path'),
+  'system:open-codex-task': (args) => readCodexTaskArgs(args),
   'repo:stage-all': (args) => readOnlyArg(args, 'repo:stage-all', 'repoPath', readString),
   'repo:unstage-all': (args) => readOnlyArg(args, 'repo:unstage-all', 'repoPath', readString),
   'repo:commit': (args) => readRepoPathWithObject(args, 'repo:commit', readCommitInput),
@@ -141,6 +145,18 @@ function readStringPair(
 function readOperationCancellationArgs(args: readonly unknown[]): [string, string] {
   assertArgCount('repo:cancel-operation', args, 2);
   return [readString(args[0], 'repoPath'), readNonEmptyString(args[1], 'operationId')];
+}
+
+function readCodexTaskArgs(args: readonly unknown[]): [string, string] {
+  assertArgCount('system:open-codex-task', args, 2);
+  const repoPath = readString(args[0], 'repoPath');
+  const prompt = readNonEmptyString(args[1], 'prompt');
+
+  if (prompt.length > MAX_CODEX_DEEP_LINK_PROMPT_LENGTH) {
+    throw new Error(`prompt must be ${MAX_CODEX_DEEP_LINK_PROMPT_LENGTH.toLocaleString()} characters or fewer.`);
+  }
+
+  return [repoPath, prompt];
 }
 
 function readStringWithOptionalString(
@@ -383,12 +399,21 @@ function readConflictActionInput(value: unknown): GitConflictActionInput {
 
 function readFileDiffRequest(value: unknown): GitFileDiffRequest {
   const record = readRecord(value, 'file diff request');
-  const kind = readEnumProperty(record, 'kind', ['commit', 'wip']);
+  const kind = readEnumProperty(record, 'kind', ['commit', 'selection', 'wip']);
 
   if (kind === 'commit') {
     return {
       kind,
       sha: readStringProperty(record, 'sha'),
+      path: readStringProperty(record, 'path'),
+      originalPath: readOptionalStringProperty(record, 'originalPath')
+    };
+  }
+
+  if (kind === 'selection') {
+    return {
+      kind,
+      shas: readStringArray(record.shas, 'shas'),
       path: readStringProperty(record, 'path'),
       originalPath: readOptionalStringProperty(record, 'originalPath')
     };

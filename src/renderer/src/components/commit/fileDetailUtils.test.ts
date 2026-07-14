@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { findAdjacentFilePath } from './fileDetailUtils';
-import type { GitFileChangeDetail } from '@shared/types';
+import { createDiffRequest, findAdjacentFilePath } from './fileDetailUtils';
+import type { CommitGraphRow, GitFileChangeDetail } from '@shared/types';
 
 describe('findAdjacentFilePath', () => {
   const files = [
@@ -29,6 +29,19 @@ describe('findAdjacentFilePath', () => {
   });
 });
 
+describe('createDiffRequest', () => {
+  it('requests the combined diff for a multi-commit selection', () => {
+    const selectedFile = { ...file('src/app.ts'), originalPath: 'src/old-app.ts' };
+
+    expect(createDiffRequest(commitRow('newest'), selectedFile, 'unstaged', ['newest', 'older'])).toEqual({
+      kind: 'selection',
+      shas: ['newest', 'older'],
+      path: 'src/app.ts',
+      originalPath: 'src/old-app.ts'
+    });
+  });
+});
+
 function file(path: string): GitFileChangeDetail {
   return {
     path,
@@ -36,5 +49,18 @@ function file(path: string): GitFileChangeDetail {
     staged: false,
     unstaged: false,
     conflicted: false
+  };
+}
+
+function commitRow(sha: string): CommitGraphRow {
+  return {
+    sha,
+    parentShas: [],
+    subject: sha,
+    author: { name: 'Test', initials: 'T', color: '#ffffff' },
+    dateLabel: 'now',
+    node: { lane: 0, kind: 'commit' },
+    rails: [],
+    files: []
   };
 }

@@ -1,8 +1,9 @@
-import type { KeyboardEvent, ReactElement } from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import type { KeyboardEvent, MouseEvent, ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FileDiffOptions } from '@pierre/diffs';
 import { PatchDiff } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import {
   Check,
   ChevronLeft,
@@ -15,10 +16,17 @@ import {
   Minus,
   RotateCcw,
   Rows3,
+  Sparkles,
   X
 } from 'lucide-react';
 
-import { invalidateRepositoryQueries, useCommitDetail, useFileDiff, useWipDetail } from '@renderer/queries/repository';
+import {
+  invalidateRepositoryQueries,
+  useCommitDetail,
+  useCommitSelectionDetail,
+  useFileDiff,
+  useWipDetail
+} from '@renderer/queries/repository';
 import {
   createDiffRequest,
   DIFF_OPTIONS_BASE,
@@ -30,11 +38,23 @@ import {
   type WipDiffScope
 } from '@renderer/components/commit/fileDetailUtils';
 import { FILE_STATUS_COLORS } from '@shared/graph';
-import type { CommitGraphRow, GitFileChangeDetail, GitRepositoryDetail, GitStatusCode } from '@shared/types';
+import type {
+  CommitGraphRow,
+  GitFileChangeDetail,
+  GitFileDiffSegment,
+  GitRepositoryDetail,
+  GitStatusCode
+} from '@shared/types';
+import { CodexReviewDialog } from '@renderer/components/diff/CodexReviewDialog';
+import {
+  normalizeCodexSelection,
+  type CodexReviewSelection
+} from '@renderer/components/diff/codexReviewPrompt';
 
 type FileFocusViewProps = {
   repoPath?: string;
   row?: CommitGraphRow;
+  selectedShas?: string[];
   selectedFile?: string;
   diffStyle: DiffStyle;
   wipScopeByPath: Record<string, WipDiffScope>;
@@ -48,6 +68,7 @@ type FileFocusViewProps = {
 export function FileFocusView({
   repoPath,
   row,
+  selectedShas = [],
   selectedFile,
   diffStyle,
   wipScopeByPath,
@@ -59,18 +80,24 @@ export function FileFocusView({
 }: FileFocusViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
+  const [contextSelection, setContextSelection] = useState<CodexReviewSelection>();
+  const [codexDialogSelection, setCodexDialogSelection] = useState<CodexReviewSelection>();
   const isWip = row?.node.kind === 'wip';
-  const commitQuery = useCommitDetail(repoPath, row && !isWip ? row.sha : undefined);
+  const isCommitSelection = !isWip && selectedShas.length > 1;
+  const commitQuery = useCommitDetail(repoPath, row && !isWip && !isCommitSelection ? row.sha : undefined);
+  const commitSelectionQuery = useCommitSelectionDetail(repoPath, isCommitSelection ? selectedShas : []);
   const wipQuery = useWipDetail(repoPath, Boolean(row && isWip));
-  const detail = (isWip ? wipQuery.data : commitQuery.data) as GitRepositoryDetail | undefined;
-  const detailError = isWip ? wipQuery.error : commitQuery.error;
-  const isDetailLoading = isWip ? wipQuery.isLoading : commitQuery.isLoading;
+  const detail = (
+    isWip ? wipQuery.data : isCommitSelection ? commitSelectionQuery.data : commitQuery.data
+  ) as GitRepositoryDetail | undefined;
+  const detailError = isWip ? wipQuery.error : isCommitSelection ? commitSelectionQuery.error : commitQuery.error;
+  const isDetailLoading = isWip ? wipQuery.isLoading : isCommitSelection ? commitSelectionQuery.isLoading : commitQuery.isLoading;
   const files = detail?.files ?? [];
   const selectedFileDetail = findFile(files, selectedFile);
   const selectedWipScope = selectedFileDetail ? selectWipScope(selectedFileDetail, wipScopeByPath[selectedFileDetail.path]) : 'unstaged';
   const diffRequest = useMemo(
-    () => createDiffRequest(row, selectedFileDetail, selectedWipScope),
-    [row, selectedFileDetail, selectedWipScope]
+    () => createDiffRequest(row, selectedFileDetail, selectedWipScope, selectedShas),
+    [row, selectedFileDetail, selectedShas, selectedWipScope]
   );
   const diffQuery = useFileDiff(repoPath, diffRequest);
   const stageableHunks = useMemo(() => parseStageablePatchHunks(diffQuery.data?.stageablePatch), [diffQuery.data?.stageablePatch]);
@@ -140,14 +167,42 @@ export function FileFocusView({
     onSelectFile(nextPath);
   }
 
+  function handleDiffContextMenu(event: MouseEvent<HTMLDivElement>): void {
+    const normalizedSelection = normalizeCodexSelection(window.getSelection()?.toString() ?? '');
+
+    if (!eventIncludesDiff(event) || !normalizedSelection || !selectedFileDetail || !row) {
+      event.preventDefault();
+      setContextSelection(undefined);
+      return;
+    }
+
+    const revision = row.node.kind === 'wip'
+      ? detail?.kind === 'wip'
+        ? `Working directory on ${detail.branch.head}`
+        : 'Working directory'
+      : detail?.kind === 'selection'
+        ? `${detail.shas.length} selected commits (${detail.shas.at(-1)?.slice(0, 8)}..${detail.shas[0]?.slice(0, 8)})`
+        : row.sha;
+
+    setContextSelection({
+      ...normalizedSelection,
+      filePath: selectedFileDetail.path,
+      revision,
+      subject: detail?.kind === 'selection' ? selectedCommitSubjects(detail.commits) : row.subject
+    });
+  }
+
   return (
-    <section ref={sectionRef} className="file-focus" tabIndex={0} onKeyDown={handleKeyDown}>
+    <>
+      <section ref={sectionRef} className="file-focus" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="file-focus-pathbar">
         <div className="flex min-w-0 items-center gap-2">
           <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} title="Back to commit graph" aria-label="Back to commit graph">
             <ChevronLeft size={14} />
           </button>
-          <span className="shrink-0 text-[11px] text-[var(--text-3)]">{isWip ? 'Working directory' : 'History'}</span>
+          <span className="shrink-0 text-[11px] text-[var(--text-3)]">
+            {isWip ? 'Working directory' : isCommitSelection ? `${selectedShas.length} commits` : 'History'}
+          </span>
           <span className="text-[var(--text-3)]" aria-hidden="true">/</span>
           {selectedFileDetail ? <StatusIcon status={selectedFileDetail.status} /> : <FileText size={13} className="text-[var(--text-3)]" />}
           {directory ? <span className="truncate text-[var(--text-3)]">{directory}</span> : null}
@@ -171,6 +226,10 @@ export function FileFocusView({
               </button>
             </div>
           ) : null}
+          <span className="flex items-center gap-1.5 text-[10.5px] text-[var(--text-3)] max-[920px]:hidden">
+            <Sparkles size={11} className="text-[var(--ai-text)]" />
+            Select code, then right-click
+          </span>
         </div>
 
         <div className="file-focus-toolbar-group justify-center">
@@ -190,30 +249,67 @@ export function FileFocusView({
       </div>
 
       <div className="file-focus-content">
-        <div className="diff-shell diff-shell-main">
-          {renderDiffContent({
-            detail,
-            isDetailLoading,
-            detailErrorMessage,
-            selectedFile,
-            selectedFileDetail,
-            diffStyle,
-            diffOptions,
-            diffQuery,
-            hunkStaging:
-              isWip && selectedFileDetail && isPatchStageableFile(selectedFileDetail)
-                ? {
-                    hunks: stageableHunks,
-                    mode: patchMode,
-                    isMutating: patchApplyMutation.isPending,
-                    errorMessage: patchApplyMutation.error instanceof Error ? patchApplyMutation.error.message : undefined,
-                    onApplyHunk: (hunk) => patchApplyMutation.mutate(hunk)
-                  }
-                : undefined
-          })}
-        </div>
+        <ContextMenuPrimitive.Root onOpenChange={(open) => !open && setContextSelection(undefined)}>
+          <ContextMenuPrimitive.Trigger asChild>
+            <div className="diff-shell diff-shell-main" onContextMenu={handleDiffContextMenu}>
+              {renderDiffContent({
+                detail,
+                isDetailLoading,
+                detailErrorMessage,
+                selectedFile,
+                selectedFileDetail,
+                diffStyle,
+                diffOptions,
+                diffQuery,
+                hunkStaging:
+                  isWip && selectedFileDetail && isPatchStageableFile(selectedFileDetail)
+                    ? {
+                        hunks: stageableHunks,
+                        mode: patchMode,
+                        isMutating: patchApplyMutation.isPending,
+                        errorMessage: patchApplyMutation.error instanceof Error ? patchApplyMutation.error.message : undefined,
+                        onApplyHunk: (hunk) => patchApplyMutation.mutate(hunk)
+                      }
+                    : undefined
+              })}
+            </div>
+          </ContextMenuPrimitive.Trigger>
+          <ContextMenuPrimitive.Portal>
+            <ContextMenuPrimitive.Content className="z-50 min-w-56 overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 text-[var(--text-2)] shadow-2xl shadow-black/60 outline-none">
+              <ContextMenuPrimitive.Label className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
+                Code selection
+              </ContextMenuPrimitive.Label>
+              <ContextMenuPrimitive.Item
+                className="flex cursor-default select-none items-center gap-2.5 rounded-md px-2.5 py-2 outline-none focus:bg-[var(--bg-hover)] focus:text-[var(--text-1)] data-[disabled]:opacity-50"
+                disabled={!contextSelection}
+                onSelect={() => contextSelection && setCodexDialogSelection(contextSelection)}
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-[var(--ai-border)] bg-[var(--ai-bg)] text-[var(--ai-text)]">
+                  <Sparkles size={13} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-[var(--text-1)]">Ask Codex</span>
+                  <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">Explain this change in project context</span>
+                </span>
+              </ContextMenuPrimitive.Item>
+              {contextSelection ? (
+                <p className="mx-2 mt-1 border-t border-[var(--border)] pt-1.5 text-[10px] text-[var(--text-3)]">
+                  {contextSelection.lineCount} selected line{contextSelection.lineCount === 1 ? '' : 's'}
+                </p>
+              ) : null}
+            </ContextMenuPrimitive.Content>
+          </ContextMenuPrimitive.Portal>
+        </ContextMenuPrimitive.Root>
       </div>
-    </section>
+      </section>
+      {repoPath && codexDialogSelection ? (
+        <CodexReviewDialog
+          repoPath={repoPath}
+          selection={codexDialogSelection}
+          onClose={() => setCodexDialogSelection(undefined)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -266,6 +362,10 @@ function renderDiffContent({
     return <FileFocusMessage icon={<RotateCcw size={15} />} label={diffErrorMessage} />;
   }
 
+  if (diffQuery.data?.segments) {
+    return renderSelectionDiffSegments(diffQuery.data.segments, diffStyle, diffOptions);
+  }
+
   if (diffQuery.data?.omittedReason === 'too-large') {
     return <FileFocusMessage icon={<FilePen size={15} />} label="This diff exceeds the 8 MiB preview limit. Open the file in your editor to inspect it." />;
   }
@@ -289,6 +389,43 @@ function renderDiffContent({
   }
 
   return <FileFocusMessage icon={<FilePen size={15} />} label="No textual diff for this selection." />;
+}
+
+function renderSelectionDiffSegments(
+  segments: GitFileDiffSegment[],
+  diffStyle: DiffStyle,
+  diffOptions: FileDiffOptions<undefined>
+): ReactElement {
+  if (segments.length === 0) {
+    return <FileFocusMessage icon={<FilePen size={15} />} label="No textual diff for this selection." />;
+  }
+
+  return (
+    <div className="space-y-3 pb-3" data-testid="selection-diff-segments">
+      {segments.map((segment) => (
+        <section key={segment.sha} data-testid="selection-diff-segment">
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 text-[11px]">
+            <span className="mono shrink-0 text-[var(--accent-2)]">{segment.shortSha}</span>
+            <span className="truncate text-[var(--text-2)]">{segment.subject}</span>
+          </div>
+          {segment.omittedReason === 'too-large' ? (
+            <FileFocusMessage icon={<FilePen size={15} />} label="This commit's diff exceeds the 8 MiB preview limit." />
+          ) : segment.isBinary || segment.omittedReason === 'binary' ? (
+            <FileFocusMessage icon={<FilePen size={15} />} label="Binary preview is unavailable for this commit." />
+          ) : segment.patch ? (
+            <PatchDiff
+              key={`${segment.sha}:${diffStyle}`}
+              className="gg-diff gg-diff-main"
+              patch={segment.patch}
+              options={diffOptions}
+            />
+          ) : (
+            <FileFocusMessage icon={<FilePen size={15} />} label="No textual diff in this commit." />
+          )}
+        </section>
+      ))}
+    </div>
+  );
 }
 
 type StageablePatchHunk = {
@@ -437,6 +574,19 @@ function ensureTrailingNewline(value: string): string {
 
 function isPatchStageableFile(file: GitFileChangeDetail): boolean {
   return !file.conflicted && file.status !== 'renamed' && file.status !== 'copied';
+}
+
+function eventIncludesDiff(event: MouseEvent<HTMLElement>): boolean {
+  return event.nativeEvent.composedPath().some(
+    (target: EventTarget) => target instanceof HTMLElement && target.tagName.toLowerCase() === 'diffs-container'
+  );
+}
+
+function selectedCommitSubjects(commits: Extract<GitRepositoryDetail, { kind: 'selection' }>['commits']): string {
+  const visibleCommits = commits.slice(0, 5);
+  const summary = visibleCommits.map((commit) => `${commit.shortSha} ${commit.subject}`).join(' | ');
+  const hiddenCount = commits.length - visibleCommits.length;
+  return hiddenCount > 0 ? `${summary} | +${hiddenCount} more` : summary;
 }
 
 function FileFocusMessage({ icon, label }: { icon: ReactElement; label: string }): ReactElement {

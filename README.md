@@ -18,7 +18,7 @@
 Git Gud is a focused desktop Git client inspired by the strongest parts of GitKraken's local workflow. It uses your installed Git, existing SSH agent, credential helpers, and repository configuration. No hosted account is required.
 
 > [!IMPORTANT]
-> macOS is currently the only supported release platform, not a fundamental limitation of the Electron application. The current source version is `0.2.1`; Windows and Linux builds have not yet been adapted or release-tested.
+> macOS is currently the only supported release platform, not a fundamental limitation of the Electron application. The current source version is `0.3.0`; Windows and Linux builds have not yet been adapted or release-tested.
 
 ## Highlights
 
@@ -76,8 +76,8 @@ Release archives are ad-hoc signed for local use. They are not Apple-notarized y
 To prepare a release, update `package.json` and [CHANGELOG.md](CHANGELOG.md), commit the changes, and push a matching tag:
 
 ```bash
-git tag v0.2.1
-git push origin v0.2.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ## Build the macOS app locally

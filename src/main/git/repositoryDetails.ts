@@ -1,6 +1,7 @@
 import type {
   GitCommitDetail,
   GitCommitInput,
+  GitCommitSelectionDetail,
   GitFileChange,
   GitFileChangeDetail,
   GitFileDiff,
@@ -24,6 +25,7 @@ import { gravatarUrlForEmail } from './gravatar';
 type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
 
 const MAX_DIFF_OUTPUT_BYTES = 8 * 1024 * 1024;
+const MAX_COMMIT_SELECTION_SIZE = 100;
 
 export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<GitCommitDetail> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
@@ -44,6 +46,53 @@ export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<Git
     message: metadata.message,
     author: metadata.author,
     committer: metadata.committer,
+    stats,
+    files,
+    loadedAt: new Date().toISOString()
+  };
+}
+
+export async function loadCommitSelectionDetail(
+  tab: DetailTab,
+  shas: string[]
+): Promise<GitCommitSelectionDetail> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const selection = await resolveCommitSelection(tab.path, shas, env);
+  let files: GitFileChangeDetail[];
+  let stats: GitCommitDetail['stats'];
+
+  if (selection.range) {
+    [files, stats] = await Promise.all([
+      loadCommitRangeFiles(tab.path, selection.range.baseSha, selection.range.headSha, env),
+      loadCommitRangeStats(tab.path, selection.range.baseSha, selection.range.headSha, env)
+    ]);
+  } else {
+    const details = await Promise.all(
+      selection.metadata.map(async (metadata) => ({
+        files: await loadCommitFiles(tab.path, metadata.sha, env),
+        stats: await loadCommitStats(tab.path, metadata.sha, env)
+      }))
+    );
+    files = combineSelectionFiles(details.map((detail) => detail.files));
+    stats = {
+      filesChanged: files.length,
+      additions: details.reduce((total, detail) => total + detail.stats.additions, 0),
+      deletions: details.reduce((total, detail) => total + detail.stats.deletions, 0)
+    };
+  }
+
+  return {
+    kind: 'selection',
+    repoPath: tab.path,
+    shas: selection.metadata.map((metadata) => metadata.sha),
+    commits: selection.metadata.map((metadata) => ({
+      sha: metadata.sha,
+      shortSha: metadata.sha.slice(0, 8),
+      subject: metadata.subject,
+      author: metadata.author,
+      committer: metadata.committer
+    })),
+    isContiguous: Boolean(selection.range),
     stats,
     files,
     loadedAt: new Date().toISOString()
@@ -72,6 +121,10 @@ export async function loadFileDiff(tab: DetailTab, request: GitFileDiffRequest):
 
   if (request.kind === 'commit') {
     return loadCommitFileDiff(tab.path, request, env);
+  }
+
+  if (request.kind === 'selection') {
+    return loadCommitSelectionFileDiff(tab.path, request, env);
   }
 
   return loadWipFileDiff(tab.path, request, env);
@@ -258,6 +311,139 @@ type CommitMetadata = Pick<
   'sha' | 'parentShas' | 'subject' | 'body' | 'message' | 'author' | 'committer'
 >;
 
+type ResolvedCommitSelection = {
+  metadata: CommitMetadata[];
+  range?: {
+    baseSha: string;
+    headSha: string;
+  };
+};
+
+async function resolveCommitSelection(
+  repoPath: string,
+  shas: string[],
+  env: NodeJS.ProcessEnv | undefined
+): Promise<ResolvedCommitSelection> {
+  assertValidCommitSelection(shas);
+  const metadata = await Promise.all(shas.map((sha) => loadCommitMetadata(repoPath, sha, env)));
+  const canonicalShas = metadata.map((commit) => commit.sha);
+
+  if (new Set(canonicalShas).size !== canonicalShas.length) {
+    throw new Error('Commit selection must not contain duplicates.');
+  }
+
+  const newest = metadata[0];
+  const oldest = metadata.at(-1);
+
+  if (!newest || !oldest) {
+    throw new Error('Select at least two commits.');
+  }
+
+  const oldestParentSha = oldest.parentShas[0];
+  const revListArgs = ['rev-list', '--first-parent', newest.sha];
+
+  if (oldestParentSha) {
+    revListArgs.push(`^${oldestParentSha}`);
+  }
+
+  const chainResult = await gitExecutor.run(revListArgs, { cwd: repoPath, env });
+  const chainShas = chainResult.stdout.trim().split('\n').filter(Boolean);
+  const isContiguous =
+    chainShas.length === canonicalShas.length &&
+    chainShas.every((sha, index) => sha === canonicalShas[index]);
+
+  if (!isContiguous) {
+    return { metadata };
+  }
+
+  return {
+    metadata,
+    range: {
+      baseSha: oldestParentSha ?? (await loadEmptyTreeSha(repoPath, env)),
+      headSha: newest.sha
+    }
+  };
+}
+
+function assertValidCommitSelection(shas: string[]): void {
+  if (shas.length < 2) {
+    throw new Error('Select at least two commits.');
+  }
+
+  if (shas.length > MAX_COMMIT_SELECTION_SIZE) {
+    throw new Error(`Select no more than ${MAX_COMMIT_SELECTION_SIZE} commits at once.`);
+  }
+}
+
+async function loadEmptyTreeSha(
+  repoPath: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<string> {
+  const result = await gitExecutor.run(['hash-object', '-t', 'tree', '--stdin'], {
+    cwd: repoPath,
+    env,
+    input: ''
+  });
+  const sha = result.stdout.trim();
+
+  if (!sha) {
+    throw new Error('Git could not resolve the empty tree.');
+  }
+
+  return sha;
+}
+
+async function loadCommitRangeFiles(
+  repoPath: string,
+  baseSha: string,
+  headSha: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitFileChangeDetail[]> {
+  const result = await gitExecutor.run(
+    ['diff', '--name-status', '-z', '--find-renames', '--find-copies', baseSha, headSha],
+    { cwd: repoPath, env }
+  );
+  return parseNameStatus(result.stdout);
+}
+
+async function loadCommitRangeStats(
+  repoPath: string,
+  baseSha: string,
+  headSha: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitCommitDetail['stats']> {
+  const result = await gitExecutor.run(['diff', '--shortstat', baseSha, headSha], {
+    cwd: repoPath,
+    env
+  });
+  return parseShortStat(result.stdout);
+}
+
+function combineSelectionFiles(fileGroups: GitFileChangeDetail[][]): GitFileChangeDetail[] {
+  const filesByPath = new Map<string, GitFileChangeDetail>();
+
+  for (const files of fileGroups) {
+    for (const file of files) {
+      const existing = filesByPath.get(file.path);
+
+      if (!existing) {
+        filesByPath.set(file.path, file);
+        continue;
+      }
+
+      if (!existing.originalPath && file.originalPath) {
+        filesByPath.set(file.path, {
+          ...existing,
+          originalPath: file.originalPath,
+          status: existing.status === 'deleted' ? existing.status : file.status
+        });
+      }
+    }
+  }
+
+  return [...filesByPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
 async function loadCommitMetadata(
   repoPath: string,
   sha: string,
@@ -384,6 +570,135 @@ async function loadCommitFileDiff(
     isBinary: false,
     loadedAt: new Date().toISOString()
   };
+}
+
+async function loadCommitSelectionFileDiff(
+  repoPath: string,
+  request: Extract<GitFileDiffRequest, { kind: 'selection' }>,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitFileDiff> {
+  assertDiffPathsAreSafe(request.path, request.originalPath);
+  const selection = await resolveCommitSelection(repoPath, request.shas, env);
+
+  if (selection.range) {
+    return loadCommitRangeFileDiff(repoPath, request, selection.range, env);
+  }
+
+  const segments = (
+    await Promise.all(
+      selection.metadata.slice().reverse().map(async (metadata) => {
+        const files = await loadCommitFiles(repoPath, metadata.sha, env);
+        const file = findSelectionFile(files, request.path, request.originalPath);
+
+        if (!file) {
+          return undefined;
+        }
+
+        const diff = await loadCommitFileDiff(
+          repoPath,
+          {
+            kind: 'commit',
+            sha: metadata.sha,
+            path: file.path,
+            originalPath: file.originalPath
+          },
+          env
+        );
+
+        return {
+          sha: metadata.sha,
+          shortSha: metadata.sha.slice(0, 8),
+          subject: metadata.subject,
+          patch: diff.patch,
+          isBinary: diff.isBinary,
+          omittedReason: diff.omittedReason
+        };
+      })
+    )
+  ).filter((segment) => segment !== undefined);
+
+  return {
+    repoPath,
+    path: request.path,
+    originalPath: request.originalPath,
+    mode: 'selection',
+    patch: '',
+    segments,
+    isBinary: false,
+    loadedAt: new Date().toISOString()
+  };
+}
+
+async function loadCommitRangeFileDiff(
+  repoPath: string,
+  request: Extract<GitFileDiffRequest, { kind: 'selection' }>,
+  range: NonNullable<ResolvedCommitSelection['range']>,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitFileDiff> {
+  const pathspec = createDiffPathspec(request.path, request.originalPath);
+  const binaryResult = await gitExecutor.run(
+    withLiteralPathspec(
+      'diff',
+      '--numstat',
+      '--find-renames',
+      '--find-copies',
+      range.baseSha,
+      range.headSha,
+      '--',
+      ...pathspec
+    ),
+    { cwd: repoPath, env }
+  );
+
+  if (isBinaryNumstat(binaryResult.stdout)) {
+    return createOmittedDiff(repoPath, request.path, request.originalPath, 'selection', 'binary');
+  }
+
+  try {
+    const patch = (
+      await gitExecutor.run(
+        withLiteralPathspec(
+          'diff',
+          '--binary',
+          '--patch',
+          '--find-renames',
+          '--find-copies',
+          range.baseSha,
+          range.headSha,
+          '--',
+          ...pathspec
+        ),
+        { cwd: repoPath, env, maxStdoutBytes: MAX_DIFF_OUTPUT_BYTES }
+      )
+    ).stdout;
+
+    return {
+      repoPath,
+      path: request.path,
+      originalPath: request.originalPath,
+      mode: 'selection',
+      patch,
+      isBinary: false,
+      loadedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    if (error instanceof GitOutputLimitError) {
+      return createOmittedDiff(repoPath, request.path, request.originalPath, 'selection', 'too-large');
+    }
+
+    throw error;
+  }
+}
+
+function findSelectionFile(
+  files: GitFileChangeDetail[],
+  path: string,
+  originalPath: string | undefined
+): GitFileChangeDetail | undefined {
+  const candidatePaths = new Set([path, originalPath].filter((candidate): candidate is string => Boolean(candidate)));
+  return files.find(
+    (file) => candidatePaths.has(file.path) || Boolean(file.originalPath && candidatePaths.has(file.originalPath))
+  );
 }
 
 async function loadWipFileDiff(

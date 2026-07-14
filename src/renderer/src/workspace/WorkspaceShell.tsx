@@ -76,6 +76,7 @@ import type {
 import { createDefaultAppSettings } from '@shared/settings';
 
 const emptyGraphRows: CommitGraphRow[] = [];
+const emptySelectedShas: string[] = [];
 const FileFocusView = lazy(async () => {
   const module = await import('@renderer/components/diff/FileFocusView');
   return { default: module.FileFocusView };
@@ -151,6 +152,7 @@ export function WorkspaceShell(): ReactElement {
     clearError
   } = useWorkspaceStore();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
+  const [bulkSelectionByTab, setBulkSelectionByTab] = useState<Record<string, string[]>>({});
   const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
   const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
   const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
@@ -248,6 +250,19 @@ export function WorkspaceShell(): ReactElement {
     () => resolveSelectedGraphRow(graphRows, selectedSha),
     [graphRows, selectedSha]
   );
+  const activeBulkSelectedShas = activeTab
+    ? (bulkSelectionByTab[activeTab.id] ?? emptySelectedShas)
+    : emptySelectedShas;
+  const selectedCommitShas = useMemo(() => {
+    if (activeBulkSelectedShas.length < 2) {
+      return [];
+    }
+
+    const selection = new Set(activeBulkSelectedShas);
+    return graphRows
+      .filter((row) => selection.has(row.sha) && row.node.kind !== 'wip' && row.node.kind !== 'stash')
+      .map((row) => row.sha);
+  }, [activeBulkSelectedShas, graphRows]);
   const parentSha = selectedRow?.parentShas[0];
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
@@ -400,6 +415,28 @@ export function WorkspaceShell(): ReactElement {
       void selectCommit(activeTab.id, sha);
     }
   }
+
+  const handleBulkSelectionChange = useCallback((shas: string[]): void => {
+    const tabId = activeTab?.id;
+
+    if (!tabId) {
+      return;
+    }
+
+    const nextSelection = shas.length > 1 ? shas : [];
+    setBulkSelectionByTab((current) => {
+      const currentSelection = current[tabId] ?? [];
+
+      if (
+        currentSelection.length === nextSelection.length &&
+        currentSelection.every((sha, index) => sha === nextSelection[index])
+      ) {
+        return current;
+      }
+
+      return { ...current, [tabId]: nextSelection };
+    });
+  }, [activeTab?.id]);
 
   function handleOpenCommitSearch(): void {
     if (!activeTab) {
@@ -562,6 +599,7 @@ export function WorkspaceShell(): ReactElement {
 
     clearRepositoryQueries(queryClient, tab.path);
     setGraphLimitByTab((value) => withoutRecordKey(value, tabId));
+    setBulkSelectionByTab((value) => withoutRecordKey(value, tabId));
     setDiffStyleByTab((value) => withoutRecordKey(value, tabId));
     setWipScopeByTab((value) => withoutRecordKey(value, tabId));
     setCommitComposerFocusByTab((value) => withoutRecordKey(value, tabId));
@@ -615,6 +653,7 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
+    handleBulkSelectionChange([]);
     void selectCommit(activeTab.id, 'wip');
     setCommitComposerFocusByTab((value) => ({
       ...value,
@@ -627,6 +666,7 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
+    handleBulkSelectionChange([]);
     void selectFile(activeTab.id, undefined);
     void selectCommit(activeTab.id, 'wip');
   }
@@ -637,6 +677,7 @@ export function WorkspaceShell(): ReactElement {
     }
 
     const tabId = activeTab.id;
+    handleBulkSelectionChange([]);
     setFileFocusByTab((value) => ({
       ...value,
       [tabId]: (value[tabId] ?? 0) + 1
@@ -1730,6 +1771,7 @@ export function WorkspaceShell(): ReactElement {
                   <FileFocusView
                     repoPath={activeTab.path}
                     row={selectedRow}
+                    selectedShas={selectedCommitShas}
                     selectedFile={activeTab.selectedFile}
                     diffStyle={activeDiffStyle}
                     wipScopeByPath={activeWipScopeByPath}
@@ -1745,11 +1787,13 @@ export function WorkspaceShell(): ReactElement {
                   rows={graphRows}
                   linkedWorktreeBranches={linkedWorktreeBranches}
                   selectedSha={selectedRow?.sha}
+                  bulkSelectedShas={activeBulkSelectedShas}
                   isLoading={graphQuery.isLoading}
                   isFetching={graphQuery.isFetching}
                   errorMessage={graphError}
                   hasMore={graphQuery.data?.hasMore ?? false}
                   onSelectRow={handleSelectRow}
+                  onBulkSelectionChange={handleBulkSelectionChange}
                   onLoadMore={handleLoadMoreGraphRows}
                   onStageAllWip={handleStageAllWip}
                   onOpenWipCommitComposer={handleOpenWipCommitComposer}
@@ -1787,6 +1831,7 @@ export function WorkspaceShell(): ReactElement {
               <CommitDetailPanel
                 repoPath={activeTab.path}
                 row={selectedRow}
+                selectedShas={selectedCommitShas}
                 parentSha={parentSha}
                 selectedFile={activeTab.selectedFile}
                 wipDirtyCount={repositoryQuery.data?.status.dirtyCount}

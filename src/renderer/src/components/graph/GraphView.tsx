@@ -40,6 +40,7 @@ import {
   preferredBranchName,
   registerRefClick,
   resolveBulkSquashSelection,
+  selectCommitRange,
   toggleSelectedCommit,
   type RefClickState
 } from '@renderer/components/graph/graphInteraction';
@@ -97,11 +98,13 @@ type GraphViewProps = {
   rows: CommitGraphRow[];
   linkedWorktreeBranches: ReadonlySet<string>;
   selectedSha?: string;
+  bulkSelectedShas: string[];
   isLoading: boolean;
   isFetching: boolean;
   errorMessage?: string;
   hasMore: boolean;
   onSelectRow: (sha: string) => void;
+  onBulkSelectionChange: (shas: string[]) => void;
   onLoadMore: () => void;
   onStageAllWip?: () => Promise<void> | void;
   onOpenWipCommitComposer?: () => void;
@@ -169,11 +172,13 @@ export function GraphView({
   rows,
   linkedWorktreeBranches,
   selectedSha,
+  bulkSelectedShas,
   isLoading,
   isFetching,
   errorMessage,
   hasMore,
   onSelectRow,
+  onBulkSelectionChange,
   onLoadMore,
   onStageAllWip,
   onOpenWipCommitComposer,
@@ -211,6 +216,7 @@ export function GraphView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const graphScrollerRef = useRef<HTMLDivElement>(null);
   const lastRefClickRef = useRef<RefClickState | undefined>(undefined);
+  const selectionAnchorShaRef = useRef<string | undefined>(selectedSha);
   const resizeStateRef = useRef<ColumnResizeState | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const [columnWidths, setColumnWidths] = useState<GraphColumnWidths>(loadStoredGraphColumnWidths);
@@ -220,7 +226,6 @@ export function GraphView({
   const [firstVisibleRowIndex, setFirstVisibleRowIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchSha, setActiveSearchSha] = useState<string>();
-  const [bulkSelectedShas, setBulkSelectedShas] = useState<string[]>([]);
   const visibleColumns = useMemo(
     () => fitGraphColumnVisibility(columns, graphContainerWidth),
     [columns, graphContainerWidth]
@@ -270,11 +275,12 @@ export function GraphView({
         .map((row) => row.sha)
     );
 
-    setBulkSelectedShas((current) => {
-      const next = current.filter((sha) => selectableShas.has(sha));
-      return next.length === current.length ? current : next;
-    });
-  }, [rows]);
+    const next = bulkSelectedShas.filter((sha) => selectableShas.has(sha));
+
+    if (next.length !== bulkSelectedShas.length) {
+      onBulkSelectionChange(next.length > 1 ? next : []);
+    }
+  }, [bulkSelectedShas, onBulkSelectionChange, rows]);
 
   useEffect(() => {
     if (!selectedSha) {
@@ -287,6 +293,12 @@ export function GraphView({
       rowVirtualizer.scrollToIndex(selectedIndex, { align: 'auto' });
     }
   }, [rowVirtualizer, rows, selectedSha]);
+
+  useEffect(() => {
+    if (bulkSelectedShas.length < 2) {
+      selectionAnchorShaRef.current = selectedSha;
+    }
+  }, [bulkSelectedShas.length, selectedSha]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -404,6 +416,8 @@ export function GraphView({
 
   function handleContextMenu(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
     event.preventDefault();
+    selectionAnchorShaRef.current = row.sha;
+    onBulkSelectionChange([]);
     onSelectRow(row.sha);
     setContextMenu({
       kind: 'commit',
@@ -416,13 +430,41 @@ export function GraphView({
   function handleRowClick(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
     const isCommit = row.node.kind !== 'wip' && row.node.kind !== 'stash';
 
-    if ((event.metaKey || event.ctrlKey) && isCommit) {
-      setBulkSelectedShas((current) => toggleSelectedCommit(current, row.sha));
+    if (event.shiftKey && isCommit) {
+      const anchorSha = selectionAnchorShaRef.current ?? selectedSha ?? row.sha;
+      const range = selectCommitRange(rows, anchorSha, row.sha);
+      const next = event.metaKey || event.ctrlKey
+        ? [...new Set([...bulkSelectedShas, ...range])]
+        : range;
+
+      onBulkSelectionChange(next.length > 1 ? next : []);
       onSelectRow(row.sha);
       return;
     }
 
-    setBulkSelectedShas([]);
+    if ((event.metaKey || event.ctrlKey) && isCommit) {
+      const focusedCommit = rows.find((candidate) => candidate.sha === selectedSha && candidate.node.kind !== 'wip' && candidate.node.kind !== 'stash');
+      const initialSelection = bulkSelectedShas.length > 1
+        ? bulkSelectedShas
+        : focusedCommit
+          ? [focusedCommit.sha]
+          : [];
+      const next = toggleSelectedCommit(initialSelection, row.sha);
+
+      if (next.length > 1) {
+        onBulkSelectionChange(next);
+        onSelectRow(next.includes(row.sha) ? row.sha : (next.at(-1) ?? row.sha));
+      } else {
+        const remainingSha = next[0] ?? row.sha;
+        selectionAnchorShaRef.current = remainingSha;
+        onBulkSelectionChange([]);
+        onSelectRow(remainingSha);
+      }
+      return;
+    }
+
+    selectionAnchorShaRef.current = row.sha;
+    onBulkSelectionChange([]);
     onSelectRow(row.sha);
   }
 
@@ -433,6 +475,8 @@ export function GraphView({
 
     event.preventDefault();
     event.stopPropagation();
+    selectionAnchorShaRef.current = row.sha;
+    onBulkSelectionChange([]);
     onSelectRow(row.sha);
     setContextMenu({
       kind: 'branch',
@@ -444,6 +488,8 @@ export function GraphView({
   }
 
   function handleRefClick(row: CommitGraphRow, ref: GraphRefChip): void {
+    selectionAnchorShaRef.current = row.sha;
+    onBulkSelectionChange([]);
     onSelectRow(row.sha);
 
     const result = registerRefClick(lastRefClickRef.current, ref, Date.now());
@@ -465,7 +511,7 @@ export function GraphView({
   function handleListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
     if (event.key === 'Escape' && bulkSelectedShas.length > 0) {
       event.preventDefault();
-      setBulkSelectedShas([]);
+      onBulkSelectionChange([]);
       return;
     }
 
@@ -499,7 +545,8 @@ export function GraphView({
     const nextRow = rows[nextIndex];
 
     if (nextRow) {
-      setBulkSelectedShas([]);
+      selectionAnchorShaRef.current = nextRow.sha;
+      onBulkSelectionChange([]);
       onSelectRow(nextRow.sha);
       rowVirtualizer.scrollToIndex(nextIndex, { align: 'auto' });
     }
@@ -546,6 +593,8 @@ export function GraphView({
     setActiveSearchSha(nextMatch?.sha);
 
     if (nextMatch) {
+      selectionAnchorShaRef.current = nextMatch.sha;
+      onBulkSelectionChange([]);
       onSelectRow(nextMatch.sha);
     }
   }
@@ -561,6 +610,8 @@ export function GraphView({
 
     if (nextMatch) {
       setActiveSearchSha(nextMatch.sha);
+      selectionAnchorShaRef.current = nextMatch.sha;
+      onBulkSelectionChange([]);
       onSelectRow(nextMatch.sha);
     }
   }
@@ -631,7 +682,7 @@ export function GraphView({
         tabIndex={0}
         role="listbox"
         aria-label="Commit history"
-        aria-multiselectable={bulkSelectedShas.length > 0 ? true : undefined}
+        aria-multiselectable="true"
         aria-busy={isLoading || isFetching}
         aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
@@ -709,7 +760,7 @@ export function GraphView({
         </div>
       ) : null}
 
-      {bulkSelectedShas.length > 0 ? (
+      {bulkSelectedShas.length > 1 ? (
         <BulkCommitActions
           count={bulkSelectedShas.length}
           canCherryPick={Boolean(onCherryPickCommits) && cherryPickShas.length > 0}
@@ -723,7 +774,7 @@ export function GraphView({
               void onSquashCommits?.(squashSelection.baseSha, squashSelection.squashShas);
             }
           }}
-          onClear={() => setBulkSelectedShas([])}
+          onClear={() => onBulkSelectionChange([])}
           canSquash={Boolean(onSquashCommits)}
         />
       ) : null}
@@ -911,10 +962,10 @@ function GraphRowView({
         height: ROW_HEIGHT,
         gridTemplateColumns,
         background: rowBackground,
-        boxShadow: isSelected
-          ? 'inset 0 0 0 1px rgba(36, 196, 222, 0.72)'
-          : isBulkSelected
-            ? 'inset 3px 0 0 rgba(36, 196, 222, 0.82), inset 0 0 0 1px rgba(36, 196, 222, 0.28)'
+        boxShadow: isBulkSelected
+          ? `inset 3px 0 0 rgba(36, 196, 222, 0.82), inset 0 0 0 1px rgba(36, 196, 222, ${isSelected ? '0.72' : '0.28'})`
+          : isSelected
+            ? 'inset 0 0 0 1px rgba(36, 196, 222, 0.72)'
           : row.dateMarker
             ? 'inset 0 1px 0 0 var(--border-strong)'
             : undefined
@@ -1225,12 +1276,12 @@ function graphRowBackground(
   isSearchMatch = false,
   isBulkSelected = false
 ): string | undefined {
-  if (isSelected) {
-    return 'linear-gradient(90deg, rgba(34, 77, 145, 0.58), rgba(31, 65, 120, 0.50) 64%, rgba(28, 45, 76, 0.50))';
-  }
-
   if (isBulkSelected) {
     return 'linear-gradient(90deg, rgba(20, 91, 111, 0.58), rgba(22, 69, 91, 0.48) 64%, rgba(24, 45, 62, 0.46))';
+  }
+
+  if (isSelected) {
+    return 'linear-gradient(90deg, rgba(34, 77, 145, 0.58), rgba(31, 65, 120, 0.50) 64%, rgba(28, 45, 76, 0.50))';
   }
 
   if (isSearchMatch) {

@@ -4,6 +4,19 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-14
+
+### Added
+
+- Multi-commit inspection with aggregate metadata, combined file changes, and contiguous or per-commit diff previews.
+- Shift-range selection in the commit graph with synchronized selection details.
+- A diff context-menu handoff that opens a prefilled Codex task for the active repository, selected code, revision, and follow-up question.
+
+### Fixed
+
+- Preserved rename and copy paths while combining file changes across selected commits.
+- Rejected invalid, duplicate, or oversized commit selections before invoking Git.
+
 ## [0.2.1] - 2026-07-14
 
 ### Fixed

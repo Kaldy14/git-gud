@@ -103,6 +103,22 @@ export type GitCommitDetail = {
   loadedAt: string;
 };
 
+export type GitCommitSelectionItem = Pick<
+  GitCommitDetail,
+  'sha' | 'shortSha' | 'subject' | 'author' | 'committer'
+>;
+
+export type GitCommitSelectionDetail = {
+  kind: 'selection';
+  repoPath: string;
+  shas: string[];
+  commits: GitCommitSelectionItem[];
+  isContiguous: boolean;
+  stats: GitCommitStats;
+  files: GitFileChangeDetail[];
+  loadedAt: string;
+};
+
 export type GitWipDetail = {
   kind: 'wip';
   repoPath: string;
@@ -116,9 +132,9 @@ export type GitWipDetail = {
   loadedAt: string;
 };
 
-export type GitRepositoryDetail = GitCommitDetail | GitWipDetail;
+export type GitRepositoryDetail = GitCommitDetail | GitCommitSelectionDetail | GitWipDetail;
 
-type GitFileDiffMode = 'commit' | 'wip-staged' | 'wip-unstaged';
+type GitFileDiffMode = 'commit' | 'selection' | 'wip-staged' | 'wip-unstaged';
 
 export type GitFileDiffRequest =
   | {
@@ -128,10 +144,25 @@ export type GitFileDiffRequest =
       originalPath?: string;
     }
   | {
+      kind: 'selection';
+      shas: string[];
+      path: string;
+      originalPath?: string;
+    }
+  | {
       kind: 'wip';
       path: string;
       staged: boolean;
     };
+
+export type GitFileDiffSegment = {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  patch: string;
+  isBinary: boolean;
+  omittedReason?: 'binary' | 'too-large';
+};
 
 export type GitFileDiff = {
   repoPath: string;
@@ -139,6 +170,7 @@ export type GitFileDiff = {
   originalPath?: string;
   mode: GitFileDiffMode;
   patch: string;
+  segments?: GitFileDiffSegment[];
   stageablePatch?: string;
   isBinary: boolean;
   omittedReason?: 'binary' | 'too-large';

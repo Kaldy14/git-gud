@@ -3,6 +3,7 @@ import type {
   AppSettingsInput,
   CommitGraphPage,
   GitCommitDetail,
+  GitCommitSelectionDetail,
   GitCommitInput,
   GitCheckoutTarget,
   GitConflictActionInput,
@@ -94,6 +95,10 @@ export type IpcChannelMap = {
     args: [repoPath: string, sha: string];
     result: GitCommitDetail;
   };
+  'repo:commit-selection-detail': {
+    args: [repoPath: string, shas: string[]];
+    result: GitCommitSelectionDetail;
+  };
   'repo:wip-detail': {
     args: [repoPath: string];
     result: GitWipDetail;
@@ -141,6 +146,10 @@ export type IpcChannelMap = {
   'repo:reveal-file': {
     args: [repoPath: string, path: string];
     result: GitOperationResult;
+  };
+  'system:open-codex-task': {
+    args: [repoPath: string, prompt: string];
+    result: void;
   };
   'repo:stage-all': {
     args: [repoPath: string];
@@ -293,6 +302,7 @@ export type RendererApi = {
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
+  getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
   getFileHistory: (repoPath: string, path: string, limit?: number) => Promise<GitFileHistory>;
@@ -305,6 +315,7 @@ export type RendererApi = {
   discardAllChanges: (repoPath: string) => Promise<GitOperationResult>;
   openFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   revealFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  openCodexTask: (repoPath: string, prompt: string) => Promise<void>;
   stageAll: (repoPath: string) => Promise<GitOperationResult>;
   unstageAll: (repoPath: string) => Promise<GitOperationResult>;
   commitChanges: (repoPath: string, input: GitCommitInput) => Promise<GitOperationResult>;

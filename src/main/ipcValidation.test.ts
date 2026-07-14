@@ -42,6 +42,10 @@ describe('IPC argument validation', () => {
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
+    expect(validateIpcArgs('system:open-codex-task', ['/repo', 'Explain this selection.'])).toEqual([
+      '/repo',
+      'Explain this selection.'
+    ]);
     expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
     expect(validateIpcArgs('workspace:set-detail-panel-collapsed', [true])).toEqual([true]);
     expect(validateIpcArgs('workspace:set-detail-panel-width', [440])).toEqual([440]);
@@ -54,6 +58,16 @@ describe('IPC argument validation', () => {
       '/repo',
       ['older-sha', 'newer-sha']
     ]);
+    expect(validateIpcArgs('repo:commit-selection-detail', ['/repo', ['newer-sha', 'older-sha']])).toEqual([
+      '/repo',
+      ['newer-sha', 'older-sha']
+    ]);
+    expect(
+      validateIpcArgs('repo:file-diff', [
+        '/repo',
+        { kind: 'selection', shas: ['newer-sha', 'older-sha'], path: 'src/app.ts' }
+      ])[1]
+    ).toEqual({ kind: 'selection', shas: ['newer-sha', 'older-sha'], path: 'src/app.ts', originalPath: undefined });
     expect(
       validateIpcArgs('repo:stash-drop', [
         '/repo',
@@ -146,6 +160,9 @@ describe('IPC argument validation', () => {
       'shas must be an array of strings.'
     );
     expect(() =>
+      validateIpcArgs('repo:file-diff', ['/repo', { kind: 'selection', shas: 'not-an-array', path: 'file.ts' }])
+    ).toThrow('shas must be an array of strings.');
+    expect(() =>
       validateIpcArgs('repo:stash-drop', ['/repo', { selector: 'stash@{0}' }])
     ).toThrow('expectedSha must be a string.');
     expect(() => validateIpcArgs('repo:delete-branch', ['/repo', { force: false }])).toThrow(
@@ -162,6 +179,9 @@ describe('IPC argument validation', () => {
     );
     expect(() => validateIpcArgs('repo:cancel-operation', ['/repo', '   '])).toThrow(
       'operationId must not be empty.'
+    );
+    expect(() => validateIpcArgs('system:open-codex-task', ['/repo', '   '])).toThrow(
+      'prompt must not be empty.'
     );
     expect(() =>
       validateIpcArgs('settings:update', [
