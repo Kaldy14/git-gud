@@ -1143,7 +1143,7 @@ function RefChipStack({
         {overflowRefs.length > 0 ? (
           <span
             className="ref-overflow"
-            style={{ background: `${color}24`, borderColor: `${color}59`, color }}
+            style={{ background: hexToRgba(color, 0.3), color: 'var(--text-1)' }}
             title={title}
           >
             +{overflowRefs.length}
@@ -1195,9 +1195,10 @@ function RefChipView({
       <Pencil size={10} />
     );
 
-  const style = current
-    ? { background: color, borderColor: color, color: 'var(--text-1)' }
-    : { background: `${color}55`, borderColor: `${color}8c`, color: 'var(--text-1)' };
+  const style = {
+    background: hexToRgba(color, current ? 0.78 : 0.3),
+    color: 'var(--text-1)'
+  };
   const content = (
     <>
       {icon}

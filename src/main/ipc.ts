@@ -49,9 +49,10 @@ import type { RepoWatcherRegistry } from './git/watcher';
 import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { requestOperationCancellation } from './operationCancellation';
-import { assignProfileToRepository, listProfiles, saveProfile } from './profiles';
+import { assignProfileToRepository, listGitHubAccounts, listProfiles, saveProfile } from './profiles';
 import {
   activateWorkspaceTab,
+  activateWorkspaceProfile,
   closeWorkspaceTab,
   getAppSettings,
   getWorkspace,
@@ -297,7 +298,15 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('settings:get', () => getAppSettings());
   handle('settings:update', (_event, settings) => updateAppSettings(settings));
   handle('profiles:list', () => listProfiles());
+  handle('profiles:list-github-accounts', () => listGitHubAccounts());
   handle('profiles:save', (_event, profile) => saveProfile(profile));
+  handle('profiles:activate', (_event, profileId) => {
+    if (profileId && !listProfiles().some((profile) => profile.id === profileId)) {
+      throw new Error(`Profile ${profileId} does not exist.`);
+    }
+
+    return syncWorkspaceWatchers(activateWorkspaceProfile(profileId), repoWatchers);
+  });
   handle('repo:assign-profile', async (_event, repoPath, profileId) => {
     const tab = getOpenRepositoryTab(repoPath);
     return gitExecutor.transaction(repoPath, () => assignProfileToRepository(repoPath, profileId, tab.assignedProfileId));

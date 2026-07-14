@@ -8,6 +8,7 @@ import {
   ArrowDownAZ,
   Check,
   ChevronDown,
+  Copy,
   ExternalLink,
   FilePen,
   FolderOpen,
@@ -507,6 +508,26 @@ function PanelHeader({
 }): ReactElement {
   const isWip = row.node.kind === 'wip';
   const wipDetail = detail?.kind === 'wip' ? detail : undefined;
+  const [copyResult, setCopyResult] = useState<{ sha: string; status: 'copied' | 'failed' }>();
+  const copyStatus = copyResult?.sha === row.sha ? copyResult.status : undefined;
+
+  useEffect(() => {
+    if (!copyResult) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setCopyResult(undefined), 1600);
+    return () => window.clearTimeout(timeoutId);
+  }, [copyResult]);
+
+  async function handleCopySha(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(row.sha);
+      setCopyResult({ sha: row.sha, status: 'copied' });
+    } catch {
+      setCopyResult({ sha: row.sha, status: 'failed' });
+    }
+  }
 
   if (isWip) {
     const hasConflicts = (wipDetail?.conflictedCount ?? 0) > 0;
@@ -551,7 +572,22 @@ function PanelHeader({
       <span className="flex min-w-0 items-center gap-2">
         <FilePen size={14} className="shrink-0 text-[var(--text-3)]" />
         <span className="shrink-0">commit:</span>
-        <span className="mono min-w-0 truncate text-[var(--text-1)]">{row.sha.slice(0, 12)}</span>
+        <button
+          className="mono flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-[var(--text-1)] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-2)]"
+          type="button"
+          onClick={() => void handleCopySha()}
+          title={copyStatus === 'copied' ? 'Copied full commit SHA' : copyStatus === 'failed' ? 'Could not copy commit SHA' : 'Copy full commit SHA'}
+          aria-label={copyStatus === 'copied' ? 'Commit SHA copied' : copyStatus === 'failed' ? 'Could not copy commit SHA' : `Copy commit SHA ${row.sha}`}
+        >
+          <span className="min-w-0 truncate">{row.sha.slice(0, 12)}</span>
+          {copyStatus === 'copied' ? (
+            <Check size={12} className="shrink-0 text-[var(--success-text)]" aria-hidden="true" />
+          ) : copyStatus === 'failed' ? (
+            <AlertTriangle size={12} className="shrink-0 text-[var(--danger-text)]" aria-hidden="true" />
+          ) : (
+            <Copy size={12} className="shrink-0 text-[var(--text-3)]" aria-hidden="true" />
+          )}
+        </button>
       </span>
       <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
         <PanelRightClose size={14} />

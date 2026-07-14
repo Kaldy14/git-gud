@@ -13,6 +13,7 @@ import {
   createProfileCommandEnv,
   getRepoProfileState,
   normalizeStoredProfiles,
+  parseGitHubAuthStatus,
   saveProfile
 } from './profiles';
 
@@ -30,12 +31,37 @@ describe('repository profiles', () => {
         { ...valid, email: '' },
         { ...valid, sshKeyPath: 123 },
         { ...valid, ghConfigDir: [] },
+        { ...valid, githubLogin: 123 },
+        { ...valid, githubHost: false },
         { ...valid, signingKey: false },
         { ...valid, remoteUrlPatterns: 'github.com/wrong-shape' },
         { ...valid, remoteUrlPatterns: ['valid', 123] },
         null
       ])
     ).toEqual([valid]);
+  });
+
+  it('discovers only the active authenticated account in a GitHub CLI profile', () => {
+    const configDir = '/Users/example/.config/gh-work';
+    const output = JSON.stringify({
+      hosts: {
+        'github.com': [
+          { active: true, gitProtocol: 'https', login: 'work-user', state: 'success' },
+          { active: false, gitProtocol: 'https', login: 'personal-user', state: 'success' },
+          { active: true, gitProtocol: 'ssh', login: 'expired-user', state: 'failure' }
+        ]
+      }
+    });
+
+    expect(parseGitHubAuthStatus(output, configDir)).toEqual([
+      {
+        login: 'work-user',
+        host: 'github.com',
+        configDir,
+        gitProtocol: 'https'
+      }
+    ]);
+    expect(parseGitHubAuthStatus('not json', configDir)).toEqual([]);
   });
 
   it('switches profiles without retaining optional signing or SSH settings', async () => {
@@ -110,7 +136,7 @@ describe('repository profiles', () => {
       const repoPath = await createRepository(rootPath);
       const matchToken = `example-${Date.now()}.test`;
       const suggested = profile('suggested', {
-        ghConfigDir: '/tmp/gh-profile',
+        ghConfigDir: '/tmp/gh-work',
         remoteUrlPatterns: [matchToken]
       });
       saveProfile(suggested);
@@ -120,7 +146,7 @@ describe('repository profiles', () => {
         GIT_AUTHOR_EMAIL: suggested.email,
         GIT_COMMITTER_NAME: suggested.name,
         GIT_COMMITTER_EMAIL: suggested.email,
-        GH_CONFIG_DIR: '/tmp/gh-profile'
+        GH_CONFIG_DIR: '/tmp/gh-work'
       });
 
       const state = await getRepoProfileState(repoPath, undefined, [`git@${matchToken}:owner/repo.git`]);

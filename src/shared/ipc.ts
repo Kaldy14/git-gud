@@ -21,6 +21,7 @@ import type {
   GitOperationProgressEvent,
   GitPatchApplyInput,
   GitPullInput,
+  GitHubCliAccount,
   GitProfile,
   GitPushInput,
   GitRebaseInput,
@@ -257,9 +258,17 @@ export type IpcChannelMap = {
     args: [];
     result: GitProfile[];
   };
+  'profiles:list-github-accounts': {
+    args: [];
+    result: GitHubCliAccount[];
+  };
   'profiles:save': {
     args: [profile: GitProfile];
     result: GitProfile[];
+  };
+  'profiles:activate': {
+    args: [profileId: string | undefined];
+    result: WorkspaceState;
   };
   'repo:assign-profile': {
     args: [repoPath: string, profileId: string | undefined];
@@ -325,7 +334,9 @@ export type RendererApi = {
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;
   listProfiles: () => Promise<GitProfile[]>;
+  listGitHubAccounts: () => Promise<GitHubCliAccount[]>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
+  activateProfile: (profileId: string | undefined) => Promise<WorkspaceState>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;
   onRepositoryChanged: (listener: (event: RepoChangedEvent) => void) => () => void;
   onOperationProgress: (listener: (event: GitOperationProgressEvent) => void) => () => void;

@@ -1,10 +1,12 @@
-import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { constants } from 'node:fs';
+import { access, readdir, stat } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { stat } from 'node:fs/promises';
 
 import Store from 'electron-store';
 
-import type { GitIdentity, GitProfile, RepoProfileState, WorkspaceState } from '@shared/types';
+import type { GitHubCliAccount, GitIdentity, GitProfile, RepoProfileState, WorkspaceState } from '@shared/types';
 
 import { gitExecutor } from './git/exec';
 
@@ -34,6 +36,133 @@ export function listProfiles(): GitProfile[] {
   const storedProfiles: unknown = profileStore.get('profiles', []);
 
   return normalizeStoredProfiles(storedProfiles);
+}
+
+export async function listGitHubAccounts(): Promise<GitHubCliAccount[]> {
+  const [configDirs, ghExecutable] = await Promise.all([findGitHubCliConfigDirs(), findGhExecutable()]);
+  const accounts = (
+    await Promise.all(
+      configDirs.map(async (configDir) => {
+        try {
+          const output = await runGitHubAuthStatus(ghExecutable, configDir);
+          return parseGitHubAuthStatus(output, configDir);
+        } catch {
+          return [];
+        }
+      })
+    )
+  ).flat();
+  const uniqueAccounts = new Map<string, GitHubCliAccount>();
+
+  for (const account of accounts) {
+    const key = `${account.host}\0${account.login}`;
+
+    if (!uniqueAccounts.has(key)) {
+      uniqueAccounts.set(key, account);
+    }
+  }
+
+  return [...uniqueAccounts.values()].sort((first, second) => first.login.localeCompare(second.login));
+}
+
+export function parseGitHubAuthStatus(output: string, configDir: string): GitHubCliAccount[] {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(output) as unknown;
+  } catch {
+    return [];
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.hosts)) {
+    return [];
+  }
+
+  return Object.entries(parsed.hosts).flatMap(([host, value]) => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.flatMap((account) => {
+      if (
+        !isRecord(account) ||
+        account.active !== true ||
+        account.state !== 'success' ||
+        typeof account.login !== 'string' ||
+        typeof account.gitProtocol !== 'string'
+      ) {
+        return [];
+      }
+
+      return [{ login: account.login, host, configDir, gitProtocol: account.gitProtocol }];
+    });
+  });
+}
+
+async function findGitHubCliConfigDirs(): Promise<string[]> {
+  const configRoot = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  const configDirs = new Set<string>();
+
+  try {
+    const entries = await readdir(configRoot, { withFileTypes: true });
+    const scopedProfiles = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith('gh-'));
+
+    for (const entry of scopedProfiles) {
+      configDirs.add(join(configRoot, entry.name));
+    }
+
+    if (entries.some((entry) => entry.isDirectory() && entry.name === 'gh')) {
+      configDirs.add(join(configRoot, 'gh'));
+    }
+  } catch {
+    // A missing config root simply means there are no local GitHub CLI profiles.
+  }
+
+  if (process.env.GH_CONFIG_DIR) {
+    configDirs.add(process.env.GH_CONFIG_DIR);
+  }
+
+  return [...configDirs];
+}
+
+async function findGhExecutable(): Promise<string> {
+  for (const candidate of ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', '/usr/bin/gh']) {
+    try {
+      await access(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Continue through the common macOS install locations.
+    }
+  }
+
+  throw new Error('GitHub CLI was not found. Install gh to connect an account.');
+}
+
+function runGitHubAuthStatus(executable: string, configDir: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      executable,
+      ['auth', 'status', '--json', 'hosts'],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          GH_CONFIG_DIR: configDir
+        },
+        maxBuffer: 1024 * 1024,
+        timeout: 8_000,
+        windowsHide: true
+      },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(stdout);
+      }
+    );
+  });
 }
 
 export function normalizeStoredProfiles(storedProfiles: unknown): GitProfile[] {
@@ -491,6 +620,8 @@ function normalizeProfile(profile: GitProfile): GitProfile {
     avatarColor: profile.avatarColor || '#5fd6c3',
     sshKeyPath: normalizeOptionalValue(profile.sshKeyPath),
     ghConfigDir: normalizeOptionalValue(profile.ghConfigDir),
+    githubLogin: normalizeOptionalValue(profile.githubLogin),
+    githubHost: normalizeOptionalValue(profile.githubHost),
     signingKey: normalizeOptionalValue(profile.signingKey),
     remoteUrlPatterns: profile.remoteUrlPatterns
       ?.map((pattern) => pattern.trim())
@@ -526,6 +657,8 @@ function isGitProfile(value: unknown): value is GitProfile {
     typeof value.avatarColor === 'string' &&
     isOptionalString(value.sshKeyPath) &&
     isOptionalString(value.ghConfigDir) &&
+    isOptionalString(value.githubLogin) &&
+    isOptionalString(value.githubHost) &&
     isOptionalString(value.signingKey) &&
     (value.remoteUrlPatterns === undefined ||
       (Array.isArray(value.remoteUrlPatterns) &&

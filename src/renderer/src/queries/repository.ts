@@ -184,6 +184,14 @@ export async function invalidateRepositoryQueries(
   await Promise.all(invalidations);
 }
 
+export function clearRepositoryQueries(queryClient: QueryClient, repoPath: string): void {
+  const matchesRepository = (query: { queryKey: readonly unknown[] }): boolean =>
+    query.queryKey[1] === repoPath;
+
+  void queryClient.cancelQueries({ predicate: matchesRepository });
+  queryClient.removeQueries({ predicate: matchesRepository });
+}
+
 const allRepositoryInvalidations: readonly GitQueryInvalidation[] = [
   'overview',
   'graph',

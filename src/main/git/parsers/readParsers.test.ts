@@ -64,6 +64,9 @@ describe('git read parsers', () => {
         ['refs/tags/v0.1.0', 'v0.1.0', 'ccc', '', '', '', '2026-07-01T09:00:00+02:00', 'commit', '', ''].join(
           '\0'
         ),
+        ['refs/tags/v0.10.0', 'v0.10.0', 'ddd', '', '', '', '2026-07-01T11:00:00+02:00', 'commit', '', ''].join(
+          '\0'
+        ),
         [
           'refs/tags/v0.2.0',
           'v0.2.0',
@@ -83,8 +86,8 @@ describe('git read parsers', () => {
     expect(refs.localBranches[0]).toMatchObject({ name: 'main', current: true, ahead: 1, behind: 2 });
     expect(refs.remoteBranches).toHaveLength(1);
     expect(refs.remoteBranches[0]).toMatchObject({ name: 'origin/main', remote: 'origin' });
-    expect(refs.tags[0]).toMatchObject({ name: 'v0.1.0', sha: 'ccc' });
-    expect(refs.tags[1]).toMatchObject({ name: 'v0.2.0', sha: 'peeled-commit' });
+    expect(refs.tags.map((tag) => tag.name)).toEqual(['v0.10.0', 'v0.2.0', 'v0.1.0']);
+    expect(refs.tags[1]).toMatchObject({ sha: 'peeled-commit' });
     expect(remotes).toEqual([
       {
         name: 'origin',

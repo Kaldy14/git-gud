@@ -45,6 +45,7 @@ import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
+  clearRepositoryQueries,
   invalidateRepositoryQueries,
   useCommitGraph,
   useRepositoryChangeInvalidation,
@@ -62,6 +63,7 @@ import type {
   GitInteractiveRebasePlan,
   GitOperationResult,
   GitProfile,
+  RepoProfileState,
   GitResetInput,
   GitStashRefInput,
   AppSettings
@@ -124,7 +126,7 @@ export function WorkspaceShell(): ReactElement {
     setSidebarWidth,
     setDetailPanelCollapsed,
     setDetailPanelWidth,
-    assignProfile,
+    activateProfile,
     clearError
   } = useWorkspaceStore();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
@@ -137,6 +139,7 @@ export function WorkspaceShell(): ReactElement {
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogState>();
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
+  const [profiles, setProfiles] = useState<GitProfile[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
@@ -178,6 +181,30 @@ export function WorkspaceShell(): ReactElement {
   const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? settings.graphPageSize) : settings.graphPageSize;
   const repositoryQuery = useRepositoryOverview(activeTab?.path);
   const graphQuery = useCommitGraph(activeTab?.path, graphLimit);
+  const activeWorkspaceProfile = useMemo(
+    () => profiles.find((profile) => profile.id === workspace.activeProfileId),
+    [profiles, workspace.activeProfileId]
+  );
+  const workspaceProfileState = useMemo<RepoProfileState>(() => {
+    const repositoryProfileState = repositoryQuery.data?.profileState;
+    const activeProfile = activeWorkspaceProfile ?? repositoryProfileState?.activeProfile;
+
+    return {
+      profiles,
+      activeProfile,
+      suggestedProfile: repositoryProfileState?.suggestedProfile,
+      effectiveIdentity:
+        repositoryProfileState?.effectiveIdentity ??
+        (activeProfile
+          ? {
+              name: activeProfile.name,
+              email: activeProfile.email,
+              source: 'profile'
+            }
+          : { source: 'unknown' }),
+      identityMatchesActiveProfile: repositoryProfileState?.identityMatchesActiveProfile
+    };
+  }, [activeWorkspaceProfile, profiles, repositoryQuery.data?.profileState]);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
@@ -250,6 +277,13 @@ export function WorkspaceShell(): ReactElement {
       .catch((error: unknown) => {
         setSettingsErrorMessage(error instanceof Error ? error.message : 'Unable to load settings.');
       });
+  }, []);
+
+  useEffect(() => {
+    window.api
+      .listProfiles()
+      .then(setProfiles)
+      .catch(() => setProfiles([]));
   }, []);
 
   useEffect(() => {
@@ -410,18 +444,38 @@ export function WorkspaceShell(): ReactElement {
     void repositoryQuery.refetch();
   }
 
-  async function handleAssignProfile(profileId: string | undefined): Promise<void> {
-    if (!activeTab) {
+  async function handleActivateProfile(profileId: string | undefined): Promise<void> {
+    for (const tab of workspace.tabs) {
+      clearRepositoryQueries(queryClient, tab.path);
+    }
+
+    setGraphLimitByTab({});
+    setDiffStyleByTab({});
+    setWipScopeByTab({});
+    setCommitComposerFocusByTab({});
+    setFileFocusByTab({});
+    await activateProfile(profileId);
+  }
+
+  async function handleSaveAndActivateProfile(profile: GitProfile): Promise<void> {
+    setProfiles(await window.api.saveProfile(profile));
+    await handleActivateProfile(profile.id);
+  }
+
+  function handleCloseTab(tabId: string): void {
+    const tab = workspace.tabs.find((candidate) => candidate.id === tabId);
+    void closeTab(tabId);
+
+    if (!tab) {
       return;
     }
 
-    await assignProfile(activeTab.path, profileId);
-    await repositoryQuery.refetch();
-  }
-
-  async function handleSaveAndAssignProfile(profile: GitProfile): Promise<void> {
-    await window.api.saveProfile(profile);
-    await handleAssignProfile(profile.id);
+    clearRepositoryQueries(queryClient, tab.path);
+    setGraphLimitByTab((value) => withoutRecordKey(value, tabId));
+    setDiffStyleByTab((value) => withoutRecordKey(value, tabId));
+    setWipScopeByTab((value) => withoutRecordKey(value, tabId));
+    setCommitComposerFocusByTab((value) => withoutRecordKey(value, tabId));
+    setFileFocusByTab((value) => withoutRecordKey(value, tabId));
   }
 
   function handleSetDiffStyle(style: DiffStyle): void {
@@ -1398,17 +1452,16 @@ export function WorkspaceShell(): ReactElement {
       <TabStrip
         tabs={workspace.tabs}
         activeTabId={workspace.activeTabId}
-        activeRepoPath={activeTab?.path}
         recentRepos={workspace.recentRepos}
-        profileState={repositoryQuery.data?.profileState}
+        profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void activateTab(tabId)}
-        onCloseTab={(tabId) => void closeTab(tabId)}
+        onCloseTab={handleCloseTab}
         onOpenRepository={() => void openRepository()}
         onOpenRecentRepository={(repoPath) => void openRepositoryAtPath(repoPath)}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onAssignProfile={handleAssignProfile}
-        onSaveAndAssignProfile={handleSaveAndAssignProfile}
+        onActivateProfile={handleActivateProfile}
+        onSaveAndActivateProfile={handleSaveAndActivateProfile}
       />
 
       <Toolbar
@@ -1639,6 +1692,10 @@ function createLogId(): string {
   }
 
   return `${Date.now()}:${Math.random().toString(16).slice(2)}`;
+}
+
+function withoutRecordKey<TValue>(record: Record<string, TValue>, key: string): Record<string, TValue> {
+  return Object.fromEntries(Object.entries(record).filter(([candidate]) => candidate !== key));
 }
 
 function defaultLocalNameForRemoteBranch(remoteBranchName: string): string {

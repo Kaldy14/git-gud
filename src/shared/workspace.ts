@@ -1,6 +1,7 @@
 import type { RecentRepository, RepoTab, RepositorySummary, WorkspaceState } from './types';
 
 const MAX_RECENT_REPOS = 12;
+const GIT_CONFIG_WORKSPACE_KEY = 'git-config';
 export const DEFAULT_SIDEBAR_WIDTH = 382;
 export const MIN_SIDEBAR_WIDTH = 220;
 export const MAX_SIDEBAR_WIDTH = 560;
@@ -8,8 +9,14 @@ export const DEFAULT_DETAIL_PANEL_WIDTH = 382;
 export const MIN_DETAIL_PANEL_WIDTH = 300;
 export const MAX_DETAIL_PANEL_WIDTH = 620;
 
-export function createDefaultWorkspaceState(): WorkspaceState {
+export type ProfileWorkspaceCollection = {
+  activeProfileId?: string;
+  workspacesByProfile: Record<string, WorkspaceState>;
+};
+
+export function createDefaultWorkspaceState(activeProfileId?: string): WorkspaceState {
   return {
+    activeProfileId,
     tabs: [],
     recentRepos: [],
     sidebarCollapsed: false,
@@ -36,6 +43,7 @@ export function normalizeWorkspaceState(value: unknown): WorkspaceState {
     : [];
 
   return {
+    activeProfileId: typeof value.activeProfileId === 'string' ? value.activeProfileId : undefined,
     tabs,
     activeTabId,
     recentRepos,
@@ -47,6 +55,80 @@ export function normalizeWorkspaceState(value: unknown): WorkspaceState {
         ? value.detailPanelCollapsed
         : defaults.detailPanelCollapsed,
     detailPanelWidth: normalizeDetailPanelWidth(readOptionalNumber(value.detailPanelWidth))
+  };
+}
+
+export function profileWorkspaceKey(profileId: string | undefined): string {
+  return profileId ? `profile:${profileId}` : GIT_CONFIG_WORKSPACE_KEY;
+}
+
+export function partitionWorkspaceByProfile(
+  value: unknown,
+  resolveProfileId: (repoPath: string, assignedProfileId?: string) => string | undefined = (
+    _repoPath,
+    assignedProfileId
+  ) => assignedProfileId
+): ProfileWorkspaceCollection {
+  const workspace = normalizeWorkspaceState(value);
+  const profileIdByTab = new Map(
+    workspace.tabs.map((tab) => [tab.id, resolveProfileId(tab.path, tab.assignedProfileId)] as const)
+  );
+  const activeProfileId = workspace.activeTabId
+    ? profileIdByTab.get(workspace.activeTabId)
+    : workspace.activeProfileId;
+  const tabsByWorkspace = new Map<string, RepoTab[]>();
+
+  for (const tab of workspace.tabs) {
+    const profileId = profileIdByTab.get(tab.id);
+    const key = profileWorkspaceKey(profileId);
+    const tabs = tabsByWorkspace.get(key) ?? [];
+    tabs.push({ ...tab, assignedProfileId: profileId });
+    tabsByWorkspace.set(key, tabs);
+  }
+
+  if (tabsByWorkspace.size === 0) {
+    tabsByWorkspace.set(profileWorkspaceKey(activeProfileId), []);
+  }
+
+  const activeWorkspaceKey = profileWorkspaceKey(activeProfileId);
+  const recentReposByWorkspace = new Map<string, RecentRepository[]>();
+
+  for (const recentRepo of workspace.recentRepos) {
+    const profileId = resolveProfileId(recentRepo.path) ?? activeProfileId;
+    const key = profileWorkspaceKey(profileId);
+    const recentRepos = recentReposByWorkspace.get(key) ?? [];
+    recentRepos.push(recentRepo);
+    recentReposByWorkspace.set(key, recentRepos);
+
+    if (!tabsByWorkspace.has(key)) {
+      tabsByWorkspace.set(key, []);
+    }
+  }
+
+  const workspacesByProfile = Object.fromEntries(
+    [...tabsByWorkspace.entries()].map(([key, tabs]) => {
+      const recentRepos = recentReposByWorkspace.get(key) ?? [];
+      const activeTabId = tabs.some((tab) => tab.id === workspace.activeTabId)
+        ? workspace.activeTabId
+        : tabs[0]?.id;
+      const profileId = tabs[0]?.assignedProfileId ?? (key === activeWorkspaceKey ? activeProfileId : undefined);
+
+      return [
+        key,
+        {
+          ...workspace,
+          activeProfileId: profileId,
+          tabs,
+          activeTabId,
+          recentRepos
+        }
+      ];
+    })
+  );
+
+  return {
+    activeProfileId,
+    workspacesByProfile
   };
 }
 

@@ -56,7 +56,7 @@ export function parseForEachRef(output: string): GitRefsSummary {
 
   localBranches.sort((a, b) => Number(b.current) - Number(a.current) || a.name.localeCompare(b.name));
   remoteBranches.sort((a, b) => a.name.localeCompare(b.name));
-  tags.sort((a, b) => a.name.localeCompare(b.name));
+  tags.sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   return {
     localBranches,

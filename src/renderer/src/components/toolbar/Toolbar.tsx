@@ -214,10 +214,10 @@ function ActionsMenu({
           title="Git actions for the selected commit"
           disabled={disabled}
         >
+          <span className="tb-action-label">Actions</span>
           <span className="tb-action-icon">
             <MoreHorizontal size={17} />
           </span>
-          <span className="tb-action-label">Actions</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

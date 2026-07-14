@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { WorkspaceState } from '@shared/types';
 import {
   createDefaultWorkspaceState,
+  closeRepositoryTab,
   normalizeDetailPanelWidth,
   normalizeSidebarWidth
 } from '@shared/workspace';
@@ -22,6 +23,7 @@ type WorkspaceStore = {
   setSidebarWidth: (width: number) => Promise<void>;
   setDetailPanelCollapsed: (collapsed: boolean) => Promise<void>;
   setDetailPanelWidth: (width: number) => Promise<void>;
+  activateProfile: (profileId: string | undefined) => Promise<void>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
 };
@@ -42,7 +44,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     await runWorkspaceAction(set, () => window.api.activateTab(tabId));
   },
   async closeTab(tabId) {
-    await runWorkspaceAction(set, () => window.api.closeTab(tabId));
+    let previousWorkspace = createDefaultWorkspaceState();
+    set((state) => {
+      previousWorkspace = state.workspace;
+      return {
+        workspace: closeRepositoryTab(state.workspace, tabId),
+        isLoading: false,
+        errorMessage: undefined
+      };
+    });
+
+    try {
+      const workspace = await window.api.closeTab(tabId);
+      set({ workspace });
+    } catch (error) {
+      set({
+        workspace: previousWorkspace,
+        errorMessage: workspaceActionErrorMessage(error)
+      });
+    }
   },
   async selectCommit(tabId, selectedCommit) {
     await runWorkspaceAction(set, () => window.api.selectCommit(tabId, selectedCommit));
@@ -89,6 +109,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     } catch (error) {
       set({ errorMessage: workspaceActionErrorMessage(error) });
     }
+  },
+  async activateProfile(profileId) {
+    await runWorkspaceAction(set, () => window.api.activateProfile(profileId), false, true);
   },
   async assignProfile(repoPath, profileId) {
     await runWorkspaceAction(set, () => window.api.assignProfile(repoPath, profileId), false, true);

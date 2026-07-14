@@ -7,6 +7,8 @@ import {
   createDefaultWorkspaceState,
   createRepoTabId,
   normalizeWorkspaceState,
+  partitionWorkspaceByProfile,
+  profileWorkspaceKey,
   selectRepositoryCommit,
   setDetailPanelCollapsed,
   setDetailPanelWidth,
@@ -104,5 +106,31 @@ describe('workspace state', () => {
     expect(normalized.sidebarWidth).toBe(382);
     expect(normalized.detailPanelCollapsed).toBe(true);
     expect(normalized.detailPanelWidth).toBe(620);
+  });
+
+  it('partitions legacy tabs and recents into independent profile workspaces', () => {
+    const withAlpha = assignRepositoryProfile(
+      upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z'),
+      alphaRepo.path,
+      'profile:wrong'
+    );
+    const legacy = upsertRepositoryTab(withAlpha, betaRepo, '2026-07-02T10:01:00.000Z');
+    const partitioned = partitionWorkspaceByProfile(legacy, (repoPath) =>
+      repoPath === alphaRepo.path ? 'profile:kaldy' : 'profile:vaclav'
+    );
+
+    expect(partitioned.activeProfileId).toBe('profile:vaclav');
+    expect(partitioned.workspacesByProfile[profileWorkspaceKey('profile:kaldy')]?.tabs).toEqual([
+      expect.objectContaining({ path: alphaRepo.path, assignedProfileId: 'profile:kaldy' })
+    ]);
+    expect(partitioned.workspacesByProfile[profileWorkspaceKey('profile:vaclav')]?.tabs).toEqual([
+      expect.objectContaining({ path: betaRepo.path, assignedProfileId: 'profile:vaclav' })
+    ]);
+    expect(
+      partitioned.workspacesByProfile[profileWorkspaceKey('profile:kaldy')]?.recentRepos.map((repo) => repo.path)
+    ).toEqual([alphaRepo.path]);
+    expect(
+      partitioned.workspacesByProfile[profileWorkspaceKey('profile:vaclav')]?.recentRepos.map((repo) => repo.path)
+    ).toEqual([betaRepo.path]);
   });
 });

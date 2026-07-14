@@ -24,6 +24,7 @@ export type RecentRepository = {
 };
 
 export type WorkspaceState = {
+  activeProfileId?: string;
   tabs: RepoTab[];
   activeTabId?: string;
   recentRepos: RecentRepository[];
@@ -544,8 +545,17 @@ export type GitProfile = {
   avatarColor: string;
   sshKeyPath?: string;
   ghConfigDir?: string;
+  githubLogin?: string;
+  githubHost?: string;
   signingKey?: string;
   remoteUrlPatterns?: string[];
+};
+
+export type GitHubCliAccount = {
+  login: string;
+  host: string;
+  configDir: string;
+  gitProtocol: string;
 };
 
 type GitIdentitySource = 'profile' | 'repo-config' | 'global-config' | 'unknown';

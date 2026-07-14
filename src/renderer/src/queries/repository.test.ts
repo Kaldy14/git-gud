@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RepoChangedEvent } from '@shared/types';
 
 import {
+  clearRepositoryQueries,
   invalidateRepositoryQueries,
   repositoryOverviewQueryKey,
   scopesForRepositoryChange,
@@ -65,6 +66,20 @@ describe('graph cache pruning', () => {
 });
 
 describe('repository query invalidation', () => {
+  it('drops cached data for a closed repository without touching other repositories', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['commit-graph', '/repo', 1500], { rows: [] });
+    queryClient.setQueryData(['commit-detail', '/repo', 'abc'], { sha: 'abc' });
+    queryClient.setQueryData(['commit-graph', '/other', 1500], { rows: [] });
+
+    clearRepositoryQueries(queryClient, '/repo');
+
+    expect(queryClient.getQueryData(['commit-graph', '/repo', 1500])).toBeUndefined();
+    expect(queryClient.getQueryData(['commit-detail', '/repo', 'abc'])).toBeUndefined();
+    expect(queryClient.getQueryData(['commit-graph', '/other', 1500])).toEqual({ rows: [] });
+    queryClient.clear();
+  });
+
   it('reuses an in-flight refresh instead of cancelling and restarting it', async () => {
     const queryClient = new QueryClient();
     const queryKey = repositoryOverviewQueryKey('/repo');

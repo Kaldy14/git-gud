@@ -14,7 +14,8 @@ import {
   Plus,
   Minus,
   RotateCcw,
-  Rows3
+  Rows3,
+  X
 } from 'lucide-react';
 
 import { invalidateRepositoryQueries, useCommitDetail, useFileDiff, useWipDetail } from '@renderer/queries/repository';
@@ -153,9 +154,9 @@ export function FileFocusView({
           <span className="truncate font-semibold text-[var(--text-1)]">{basename}</span>
           {selectedFileDetail?.originalPath ? <span className="truncate text-[11px] text-[var(--text-3)]">from {selectedFileDetail.originalPath}</span> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-3 text-[11px] text-[var(--text-3)]">
-          <span>UTF-8</span>
-        </div>
+        <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} title="Close diff" aria-label="Close diff">
+          <X size={14} />
+        </button>
       </div>
 
       <div className="file-focus-toolbar">

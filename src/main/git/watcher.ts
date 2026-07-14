@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, watch, type FSWatcher as NativeFsWatcher } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 
-import chokidar, { type FSWatcher } from 'chokidar';
+import chokidar, { type FSWatcher as ChokidarWatcher } from 'chokidar';
 
 import type { RepoChangedEvent, RepositorySummary } from '@shared/types';
 
@@ -15,11 +15,13 @@ type WatchTarget = {
 
 type ActiveRepoWatch = {
   repoPath: string;
-  watchers: FSWatcher[];
+  watchers: CloseableWatcher[];
   pendingTimer?: NodeJS.Timeout;
   pendingReasons: Set<WatchReason>;
   pendingPaths: Set<string>;
 };
+
+type CloseableWatcher = Pick<ChokidarWatcher, 'close'> | Pick<NativeFsWatcher, 'close'>;
 
 export class RepoWatcherRegistry {
   private readonly watches = new Map<string, ActiveRepoWatch>();
@@ -134,9 +136,16 @@ export class RepoWatcherRegistry {
 const repoChangeDebounceMs = 350;
 const maxPendingPaths = 32;
 
-function createWatcher(target: WatchTarget, onChange: (changedPath: string | undefined) => void): FSWatcher | undefined {
+function createWatcher(
+  target: WatchTarget,
+  onChange: (changedPath: string | undefined) => void
+): CloseableWatcher | undefined {
   if (!existsSync(target.path)) {
     return undefined;
+  }
+
+  if (target.reason === 'worktree') {
+    return createNativeWorktreeWatcher(target.path, onChange);
   }
 
   const watcher = chokidar.watch(target.path, {
@@ -151,6 +160,31 @@ function createWatcher(target: WatchTarget, onChange: (changedPath: string | und
   watcher.on('error', () => undefined);
 
   return watcher;
+}
+
+function createNativeWorktreeWatcher(
+  repoPath: string,
+  onChange: (changedPath: string | undefined) => void
+): NativeFsWatcher | undefined {
+  try {
+    const watcher = watch(repoPath, { recursive: true }, (_eventType, filename) => {
+      const changedPath = filename
+        ? isAbsolute(filename)
+          ? filename
+          : join(repoPath, filename)
+        : undefined;
+
+      if (changedPath && shouldIgnoreWorktreePath(changedPath)) {
+        return;
+      }
+
+      onChange(changedPath);
+    });
+    watcher.on('error', () => undefined);
+    return watcher;
+  } catch {
+    return undefined;
+  }
 }
 
 function gitMetadataTargets(gitRoot: string, reason: WatchReason): WatchTarget[] {

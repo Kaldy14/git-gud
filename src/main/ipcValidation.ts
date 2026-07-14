@@ -90,7 +90,9 @@ const validators = {
   'settings:get': (args) => noArgs('settings:get', args),
   'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
   'profiles:list': (args) => noArgs('profiles:list', args),
+  'profiles:list-github-accounts': (args) => noArgs('profiles:list-github-accounts', args),
   'profiles:save': (args) => readOnlyArg(args, 'profiles:save', 'profile', readProfile),
+  'profiles:activate': (args) => readOnlyArg(args, 'profiles:activate', 'profileId', readOptionalString),
   'repo:assign-profile': (args) => readStringWithOptionalString(args, 'repo:assign-profile', 'repoPath', 'profileId')
 } satisfies IpcArgValidators;
 
@@ -411,6 +413,8 @@ function readProfile(value: unknown): GitProfile {
     avatarColor: readStringProperty(record, 'avatarColor'),
     sshKeyPath: readOptionalStringProperty(record, 'sshKeyPath'),
     ghConfigDir: readOptionalStringProperty(record, 'ghConfigDir'),
+    githubLogin: readOptionalStringProperty(record, 'githubLogin'),
+    githubHost: readOptionalStringProperty(record, 'githubHost'),
     signingKey: readOptionalStringProperty(record, 'signingKey'),
     remoteUrlPatterns: readOptionalStringArrayProperty(record, 'remoteUrlPatterns')
   };

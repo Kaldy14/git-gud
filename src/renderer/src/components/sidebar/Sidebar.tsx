@@ -84,6 +84,8 @@ const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
   { id: 'tags', title: 'Tags', icon: <Tag size={14} /> }
 ];
 
+const SIDEBAR_REF_PAGE_SIZE = 10;
+
 export function Sidebar({
   activeTab,
   repositoryOverview,
@@ -330,6 +332,7 @@ export function Sidebar({
               </button>
               {isExpanded ? (
                 <SectionRows
+                  key={`${repositoryOverview?.repoPath ?? 'empty'}:${section.id}`}
                   sectionId={section.id}
                   repositoryOverview={repositoryOverview}
                   filter={filter}
@@ -482,9 +485,9 @@ function SectionRows({
 
   if (sectionId === 'local') {
     const rows = repositoryOverview.refs.localBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
-    return rows.length > 0 ? (
-      <div className="py-1">
-        {rows.map((branch) => (
+    return (
+      <PaginatedRefRows
+        items={rows.map((branch) => (
           <SidebarRow
             key={branch.fullName}
             icon={<GitBranch size={12} />}
@@ -501,17 +504,18 @@ function SectionRows({
             }}
           />
         ))}
-      </div>
-    ) : (
-      <EmptySection label="No local branches." />
+        emptyLabel="No local branches."
+        itemLabel="local branches"
+        isFiltering={normalizedFilter.length > 0}
+      />
     );
   }
 
   if (sectionId === 'remote') {
     const rows = repositoryOverview.refs.remoteBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
-    return rows.length > 0 ? (
-      <div className="py-1">
-        {rows.map((branch) => (
+    return (
+      <PaginatedRefRows
+        items={rows.map((branch) => (
           <SidebarRow
             key={branch.fullName}
             icon={<Cloud size={12} />}
@@ -523,9 +527,10 @@ function SectionRows({
             onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
           />
         ))}
-      </div>
-    ) : (
-      <EmptySection label="No remote branches." />
+        emptyLabel="No remote branches."
+        itemLabel="remote branches"
+        isFiltering={normalizedFilter.length > 0}
+      />
     );
   }
 
@@ -579,9 +584,9 @@ function SectionRows({
   }
 
   const rows = repositoryOverview.refs.tags.filter((tag) => matchesFilter(tag.name, normalizedFilter));
-  return rows.length > 0 ? (
-    <div className="py-1">
-      {rows.map((tag) => (
+  return (
+    <PaginatedRefRows
+      items={rows.map((tag) => (
         <SidebarRow
           key={tag.fullName}
           icon={<Tag size={12} />}
@@ -590,9 +595,83 @@ function SectionRows({
           onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
         />
       ))}
+      emptyLabel="No tags."
+      itemLabel="tags"
+      isFiltering={normalizedFilter.length > 0}
+    />
+  );
+}
+
+function PaginatedRefRows({
+  items,
+  emptyLabel,
+  itemLabel,
+  isFiltering
+}: {
+  items: ReactElement[];
+  emptyLabel: string;
+  itemLabel: string;
+  isFiltering: boolean;
+}): ReactElement {
+  const [visibleCount, setVisibleCount] = useState(SIDEBAR_REF_PAGE_SIZE);
+
+  if (items.length === 0) {
+    return <EmptySection label={emptyLabel} />;
+  }
+
+  const visibleItems = isFiltering ? items : items.slice(0, visibleCount);
+  const remainingCount = items.length - visibleItems.length;
+  const nextPageSize = Math.min(SIDEBAR_REF_PAGE_SIZE, remainingCount);
+  const canShowLess = !isFiltering && visibleItems.length > SIDEBAR_REF_PAGE_SIZE;
+  const hasDisplayControls = canShowLess || remainingCount > 0;
+
+  return (
+    <div className="py-1">
+      {visibleItems}
+      {hasDisplayControls ? (
+        <div className="side-ref-controls" role="group" aria-label={`${itemLabel} display controls`}>
+          {canShowLess ? (
+            <button
+              className="side-ref-action"
+              type="button"
+              role="treeitem"
+              aria-level={2}
+              aria-label={`Show only the first ${SIDEBAR_REF_PAGE_SIZE} ${itemLabel}`}
+              onClick={() => setVisibleCount(SIDEBAR_REF_PAGE_SIZE)}
+              onKeyDown={handleSidebarTreeKeyDown}
+            >
+              Show less
+            </button>
+          ) : null}
+          {remainingCount > 0 ? (
+            <button
+              className="side-ref-action"
+              type="button"
+              role="treeitem"
+              aria-level={2}
+              aria-label={`Show ${nextPageSize} more ${itemLabel}`}
+              onClick={() => setVisibleCount((count) => Math.min(count + SIDEBAR_REF_PAGE_SIZE, items.length))}
+              onKeyDown={handleSidebarTreeKeyDown}
+            >
+              Show more
+            </button>
+          ) : null}
+          {remainingCount > SIDEBAR_REF_PAGE_SIZE ? (
+            <button
+              className="side-ref-action"
+              type="button"
+              role="treeitem"
+              aria-level={2}
+              aria-label={`Show all ${items.length} ${itemLabel}`}
+              onClick={() => setVisibleCount(items.length)}
+              onKeyDown={handleSidebarTreeKeyDown}
+            >
+              Show all
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
-  ) : (
-    <EmptySection label="No tags." />
   );
 }
 

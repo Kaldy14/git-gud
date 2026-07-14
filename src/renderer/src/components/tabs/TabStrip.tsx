@@ -15,7 +15,6 @@ import type { GitProfile, RecentRepository, RepoProfileState, RepoTab } from '@s
 type TabStripProps = {
   tabs: RepoTab[];
   activeTabId?: string;
-  activeRepoPath?: string;
   recentRepos: RecentRepository[];
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
@@ -24,14 +23,13 @@ type TabStripProps = {
   onOpenRepository: () => void;
   onOpenRecentRepository: (repoPath: string) => void;
   onOpenSettings: () => void;
-  onAssignProfile: (profileId: string | undefined) => Promise<void>;
-  onSaveAndAssignProfile: (profile: GitProfile) => Promise<void>;
+  onActivateProfile: (profileId: string | undefined) => Promise<void>;
+  onSaveAndActivateProfile: (profile: GitProfile) => Promise<void>;
 };
 
 export function TabStrip({
   tabs,
   activeTabId,
-  activeRepoPath,
   recentRepos,
   profileState,
   activeRepoDirty = false,
@@ -40,8 +38,8 @@ export function TabStrip({
   onOpenRepository,
   onOpenRecentRepository,
   onOpenSettings,
-  onAssignProfile,
-  onSaveAndAssignProfile
+  onActivateProfile,
+  onSaveAndActivateProfile
 }: TabStripProps): ReactElement {
   return (
     <div className="drag-region flex h-[48px] shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
@@ -126,10 +124,9 @@ export function TabStrip({
           <Settings size={15} />
         </button>
         <ProfileMenu
-          repoPath={activeRepoPath}
           profileState={profileState}
-          onAssignProfile={onAssignProfile}
-          onSaveAndAssignProfile={onSaveAndAssignProfile}
+          onActivateProfile={onActivateProfile}
+          onSaveAndActivateProfile={onSaveAndActivateProfile}
         />
       </div>
     </div>
