@@ -91,8 +91,9 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
 
     trimTrailingFreeLanes(expectedByLane, styleByLane);
 
-    const day = dayKey(commit.authoredAt ?? commit.committedAt);
-    const dateMarker = day && day !== previousDay ? formatDateMarker(commit.authoredAt ?? commit.committedAt) : undefined;
+    const displayDate = commit.committedAt ?? commit.authoredAt;
+    const day = dayKey(displayDate);
+    const dateMarker = day && day !== previousDay ? formatDateMarker(displayDate) : undefined;
 
     if (day) {
       previousDay = day;
@@ -112,7 +113,7 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
       },
       authoredAt: commit.authoredAt,
       committedAt: commit.committedAt,
-      dateLabel: commit.dateLabel ?? formatDateLabel(commit.authoredAt ?? commit.committedAt),
+      dateLabel: commit.dateLabel ?? formatDateLabel(displayDate),
       node: {
         lane,
         kind: commit.kind ?? (commit.parentShas.length > 1 ? 'merge' : 'commit')

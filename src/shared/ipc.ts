@@ -211,7 +211,7 @@ export type IpcChannelMap = {
     result: GitOperationResult;
   };
   'repo:cherry-pick': {
-    args: [repoPath: string, sha: string];
+    args: [repoPath: string, shas: string[]];
     result: GitOperationResult;
   };
   'repo:revert': {
@@ -322,7 +322,7 @@ export type RendererApi = {
   stashApply: (repoPath: string, input: GitStashRefInput) => Promise<GitOperationResult>;
   stashPop: (repoPath: string, input: GitStashRefInput) => Promise<GitOperationResult>;
   stashDrop: (repoPath: string, input: GitStashRefInput) => Promise<GitOperationResult>;
-  cherryPick: (repoPath: string, sha: string) => Promise<GitOperationResult>;
+  cherryPick: (repoPath: string, shas: string[]) => Promise<GitOperationResult>;
   revertCommit: (repoPath: string, sha: string) => Promise<GitOperationResult>;
   resetToCommit: (repoPath: string, input: GitResetInput) => Promise<GitOperationResult>;
   rebaseOnto: (repoPath: string, input: GitRebaseInput) => Promise<GitOperationResult>;

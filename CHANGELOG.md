@@ -4,6 +4,24 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-14
+
+### Added
+
+- Multi-select commit workflows for ordered cherry-picks and contiguous commit squashing.
+- Commit-history search and expanded branch lifecycle actions.
+- Per-profile workspace state for open tabs, recent repositories, and GitHub CLI identities.
+
+### Changed
+
+- Improved commit ordering, date presentation, branch-label display, and commit-detail layout.
+- Polished repository navigation, graph interactions, and operation feedback.
+
+### Fixed
+
+- Prevented commit-detail content from overflowing or losing access to file changes.
+- Hardened bulk Git operation validation and undo behavior.
+
 ## [0.1.0] - 2026-07-14
 
 ### Added

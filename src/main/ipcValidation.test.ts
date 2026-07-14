@@ -50,6 +50,10 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('repo:file-history', ['/repo', 'src/app.ts', 50])).toEqual(['/repo', 'src/app.ts', 50]);
     expect(validateIpcArgs('repo:file-blame', ['/repo', 'src/app.ts'])).toEqual(['/repo', 'src/app.ts', undefined]);
     expect(validateIpcArgs('repo:compare', ['/repo', 'main', 'feature/test'])).toEqual(['/repo', 'main', 'feature/test']);
+    expect(validateIpcArgs('repo:cherry-pick', ['/repo', ['older-sha', 'newer-sha']])).toEqual([
+      '/repo',
+      ['older-sha', 'newer-sha']
+    ]);
     expect(
       validateIpcArgs('repo:stash-drop', [
         '/repo',
@@ -138,6 +142,9 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('workspace:set-detail-panel-collapsed', ['yes'])).toThrow('collapsed must be a boolean.');
     expect(() => validateIpcArgs('repo:file-history', ['/repo', 'file.ts', 1.5])).toThrow('limit must be a positive integer.');
     expect(() => validateIpcArgs('repo:compare', ['/repo', 'main'])).toThrow('repo:compare expected 3 arguments');
+    expect(() => validateIpcArgs('repo:cherry-pick', ['/repo', 'not-an-array'])).toThrow(
+      'shas must be an array of strings.'
+    );
     expect(() =>
       validateIpcArgs('repo:stash-drop', ['/repo', { selector: 'stash@{0}' }])
     ).toThrow('expectedSha must be a string.');

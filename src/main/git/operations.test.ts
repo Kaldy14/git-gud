@@ -8,6 +8,7 @@ import { GitCommandError, gitExecutor } from './exec';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './commands/rebase';
 import {
   cherryPickCommit,
+  cherryPickCommits,
   checkoutRef,
   createBranch,
   createTag,
@@ -707,6 +708,56 @@ describe('git operations', () => {
 
       expect(await readFile(join(repoPath, 'generated/output.txt'), 'utf8')).toBe('ignored local value\n');
       expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('ignore generated output');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('cherry-picks multiple commits in one ordered operation with one undo entry', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const base = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', '-b', 'feature/bulk-pick']);
+      await commitFile(repoPath, 'first.txt', 'first\n', 'first selected commit');
+      const firstSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'second.txt', 'second\n', 'second selected commit');
+      const secondSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+
+      const result = await cherryPickCommits(tab, [firstSha, secondSha]);
+
+      expect(await logSubjects(repoPath, base)).toEqual(['first selected commit', 'second selected commit']);
+      expect(result.operation).toMatchObject({ label: 'Cherry-pick 2 commits', status: 'completed' });
+      expect(result.undoEntry).toMatchObject({
+        operation: 'commit',
+        label: 'Undo cherry-pick 2 commits',
+        headBefore: base
+      });
+
+      if (!result.undoEntry) {
+        throw new Error('Expected bulk cherry-pick to record one undo entry.');
+      }
+
+      await undoOperation(tab, result.undoEntry.id);
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(base);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects empty or duplicate bulk cherry-pick selections', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const head = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      await expect(cherryPickCommits(tab, [])).rejects.toThrow('Select at least one commit');
+      await expect(cherryPickCommits(tab, [head, head])).rejects.toThrow('only be cherry-picked once');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

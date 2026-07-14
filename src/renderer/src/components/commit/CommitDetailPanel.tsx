@@ -609,16 +609,16 @@ function SummarySection({
 
   return (
     <>
-      <div className="max-h-40 shrink-0 overflow-y-auto border-b border-[var(--border)] px-5 py-4">
+      <div className="max-h-40 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-4">
         <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">{detail.subject}</h2>
         {detail.body ? (
           <div className="mt-3 pr-2 text-[13px] leading-5 text-[var(--text-2)]">
-            <p className="whitespace-pre-wrap">{detail.body}</p>
+            <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{detail.body}</p>
           </div>
         ) : null}
       </div>
 
-      <div className="shrink-0 space-y-2 border-b border-[var(--border)] px-5 py-3">
+      <div className="shrink-0 space-y-1.5 px-5 py-2.5">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <SignatureRow
             person={detail.author}
@@ -638,20 +638,6 @@ function SummarySection({
             remoteAvatars={remoteAvatars}
           />
         ) : null}
-        <div className="flex flex-wrap items-center gap-4 pt-1 text-[12px] text-[var(--text-2)]">
-          <span className="flex items-center gap-1.5">
-            <FilePen size={13} className="text-[var(--text-3)]" />
-            {detail.stats.filesChanged} changed
-          </span>
-          <span className="flex items-center gap-1.5 text-[var(--success-text)]">
-            <Plus size={13} />
-            {detail.stats.additions} added
-          </span>
-          <span className="flex items-center gap-1.5 text-[var(--danger-text)]">
-            <Minus size={13} />
-            {detail.stats.deletions} deleted
-          </span>
-        </div>
       </div>
     </>
   );
@@ -834,7 +820,7 @@ function FilesToolbar({
   }
 
   return (
-    <div className="shrink-0 space-y-2 border-b border-[var(--border)] px-4 py-2.5">
+    <div className="shrink-0 space-y-1.5 border-b border-[var(--border)] px-5 pb-2 pt-1">
       <div className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
         <StatusCount status="modified" count={counts.modified} />
         <StatusCount status="added" count={counts.added} />

@@ -10,7 +10,7 @@ import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from '
 import { gitExecutor } from './git/exec';
 import {
   checkoutRef,
-  cherryPickCommit,
+  cherryPickCommits,
   createBranch,
   createTag,
   deleteBranch,
@@ -268,8 +268,8 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('repo:stash-drop', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => stashDrop(tab, input))
   );
-  handle('repo:cherry-pick', async (_event, repoPath, sha) =>
-    inRepositoryTransaction(repoPath, (tab) => cherryPickCommit(tab, sha))
+  handle('repo:cherry-pick', async (_event, repoPath, shas) =>
+    inRepositoryTransaction(repoPath, (tab) => cherryPickCommits(tab, shas))
   );
   handle('repo:revert', async (_event, repoPath, sha) =>
     inRepositoryTransaction(repoPath, (tab) => revertCommit(tab, sha))

@@ -83,6 +83,7 @@ const FileFocusView = lazy(async () => {
 
 type InteractiveRebaseDialogState = {
   base: string;
+  initialSquashShas?: string[];
   plan?: GitInteractiveRebasePlan;
   isLoading: boolean;
   isRunning: boolean;
@@ -1232,13 +1233,27 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleCherryPickCommit(sha: string): void {
+    handleCherryPickCommits([sha]);
+  }
+
+  function handleCherryPickCommits(shas: string[]): void {
+    if (shas.length === 0) {
+      return;
+    }
+
+    const isBulk = shas.length > 1;
+    const label = isBulk ? `${shas.length} commits` : shas[0]?.slice(0, 8) ?? 'commit';
+
     openCommandDialog({
-      title: 'Cherry-pick commit',
-      description: `Apply ${sha.slice(0, 8)} onto the current branch.`,
+      title: isBulk ? 'Cherry-pick selected commits' : 'Cherry-pick commit',
+      description: isBulk
+        ? `Apply ${shas.length} selected commits onto the current branch, oldest to newest.`
+        : `Apply ${label} onto the current branch.`,
+      detail: isBulk ? shas.map((sha) => sha.slice(0, 8)).join('\n') : undefined,
       confirmLabel: 'Cherry-pick',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Cherry-pick ${sha.slice(0, 8)}`, (repoPath) => window.api.cherryPick(repoPath, sha));
+        void runRepositoryOperation(`Cherry-pick ${label}`, (repoPath) => window.api.cherryPick(repoPath, shas));
       }
     });
   }
@@ -1315,13 +1330,14 @@ export function WorkspaceShell(): ReactElement {
     handleRebaseOntoRef(name, name);
   }
 
-  function handleInteractiveRebase(base: string): void {
+  function handleInteractiveRebase(base: string, initialSquashShas?: string[]): void {
     if (!activeTab) {
       return;
     }
 
     setInteractiveRebaseDialog({
       base,
+      initialSquashShas,
       isLoading: true,
       isRunning: false
     });
@@ -1333,6 +1349,7 @@ export function WorkspaceShell(): ReactElement {
           state?.base === base
             ? {
                 base,
+                initialSquashShas,
                 plan,
                 isLoading: false,
                 isRunning: false
@@ -1345,6 +1362,7 @@ export function WorkspaceShell(): ReactElement {
           state?.base === base
             ? {
                 base,
+                initialSquashShas,
                 isLoading: false,
                 isRunning: false,
                 errorMessage: error instanceof Error ? error.message : 'Unable to prepare interactive rebase.'
@@ -1360,6 +1378,10 @@ export function WorkspaceShell(): ReactElement {
 
   function handleInteractiveRebaseOntoBranch(name: string): void {
     handleInteractiveRebase(name);
+  }
+
+  function handleSquashCommits(baseSha: string, squashShas: string[]): void {
+    handleInteractiveRebase(baseSha, squashShas);
   }
 
   async function handleRunInteractiveRebase(input: GitInteractiveRebaseInput): Promise<void> {
@@ -1665,6 +1687,7 @@ export function WorkspaceShell(): ReactElement {
           interactiveRebaseDialog ? (
             <InteractiveRebaseDialog
               plan={interactiveRebaseDialog.plan}
+              initialSquashShas={interactiveRebaseDialog.initialSquashShas}
               isLoading={interactiveRebaseDialog.isLoading}
               isRunning={interactiveRebaseDialog.isRunning}
               errorMessage={interactiveRebaseDialog.errorMessage}
@@ -1748,6 +1771,8 @@ export function WorkspaceShell(): ReactElement {
                   onRebaseOntoCommit={handleRebaseOntoCommit}
                   onInteractiveRebaseFromCommit={handleInteractiveRebaseFromCommit}
                   onCherryPickCommit={handleCherryPickCommit}
+                  onCherryPickCommits={handleCherryPickCommits}
+                  onSquashCommits={handleSquashCommits}
                   onRevertCommit={handleRevertCommit}
                   onResetToCommit={handleResetToCommit}
                   isOperationBusy={isOperationBusy}

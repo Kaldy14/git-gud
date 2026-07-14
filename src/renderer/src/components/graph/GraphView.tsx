@@ -25,7 +25,8 @@ import {
   TreePine,
   Trash2,
   Undo2,
-  Workflow
+  Workflow,
+  X
 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -35,9 +36,14 @@ import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/compo
 import {
   findCurrentBranchName,
   findSelectedContextMenuRow,
+  orderSelectedCommitsForCherryPick,
+  preferredBranchName,
   registerRefClick,
+  resolveBulkSquashSelection,
+  toggleSelectedCommit,
   type RefClickState
 } from '@renderer/components/graph/graphInteraction';
+import { branchNameFromRemoteRef } from '@renderer/components/graph/refPresentation';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
 import type { CommitGraphRow, GitStashRefInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
@@ -117,6 +123,8 @@ type GraphViewProps = {
   onRebaseOntoCommit?: (sha: string) => Promise<void> | void;
   onInteractiveRebaseFromCommit?: (sha: string) => Promise<void> | void;
   onCherryPickCommit?: (sha: string) => Promise<void> | void;
+  onCherryPickCommits?: (shas: string[]) => Promise<void> | void;
+  onSquashCommits?: (baseSha: string, squashShas: string[]) => Promise<void> | void;
   onRevertCommit?: (sha: string) => Promise<void> | void;
   onResetToCommit?: (sha: string) => Promise<void> | void;
   isOperationBusy?: boolean;
@@ -187,6 +195,8 @@ export function GraphView({
   onRebaseOntoCommit,
   onInteractiveRebaseFromCommit,
   onCherryPickCommit,
+  onCherryPickCommits,
+  onSquashCommits,
   onRevertCommit,
   onResetToCommit,
   isOperationBusy = false,
@@ -210,6 +220,7 @@ export function GraphView({
   const [firstVisibleRowIndex, setFirstVisibleRowIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchSha, setActiveSearchSha] = useState<string>();
+  const [bulkSelectedShas, setBulkSelectedShas] = useState<string[]>([]);
   const visibleColumns = useMemo(
     () => fitGraphColumnVisibility(columns, graphContainerWidth),
     [columns, graphContainerWidth]
@@ -230,6 +241,15 @@ export function GraphView({
   const searchMatchShas = useMemo(() => new Set(searchMatches.map((row) => row.sha)), [searchMatches]);
   const activeSearchMatchIndex = searchMatches.findIndex((row) => row.sha === activeSearchSha);
   const isSearchFiltering = isSearchOpen && searchQuery.trim().length > 0;
+  const bulkSelection = useMemo(() => new Set(bulkSelectedShas), [bulkSelectedShas]);
+  const cherryPickShas = useMemo(
+    () => orderSelectedCommitsForCherryPick(rows, bulkSelectedShas),
+    [bulkSelectedShas, rows]
+  );
+  const squashSelection = useMemo(
+    () => resolveBulkSquashSelection(rows, bulkSelectedShas),
+    [bulkSelectedShas, rows]
+  );
   // TanStack Virtual is the row windowing layer for M2; the virtualizer stays local to this component.
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
@@ -242,6 +262,19 @@ export function GraphView({
   const selectedRowIsMounted = virtualRows.some(
     (virtualRow) => rows[virtualRow.index]?.sha === selectedSha
   );
+
+  useEffect(() => {
+    const selectableShas = new Set(
+      rows
+        .filter((row) => row.node.kind !== 'wip' && row.node.kind !== 'stash')
+        .map((row) => row.sha)
+    );
+
+    setBulkSelectedShas((current) => {
+      const next = current.filter((sha) => selectableShas.has(sha));
+      return next.length === current.length ? current : next;
+    });
+  }, [rows]);
 
   useEffect(() => {
     if (!selectedSha) {
@@ -380,6 +413,19 @@ export function GraphView({
     });
   }
 
+  function handleRowClick(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
+    const isCommit = row.node.kind !== 'wip' && row.node.kind !== 'stash';
+
+    if ((event.metaKey || event.ctrlKey) && isCommit) {
+      setBulkSelectedShas((current) => toggleSelectedCommit(current, row.sha));
+      onSelectRow(row.sha);
+      return;
+    }
+
+    setBulkSelectedShas([]);
+    onSelectRow(row.sha);
+  }
+
   function handleBranchContextMenu(event: MouseEvent<HTMLElement>, row: CommitGraphRow, branchName: string): void {
     if (!currentBranchName) {
       return;
@@ -417,6 +463,12 @@ export function GraphView({
   }
 
   function handleListKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'Escape' && bulkSelectedShas.length > 0) {
+      event.preventDefault();
+      setBulkSelectedShas([]);
+      return;
+    }
+
     if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       const row = findSelectedContextMenuRow(rows, selectedSha);
 
@@ -447,6 +499,7 @@ export function GraphView({
     const nextRow = rows[nextIndex];
 
     if (nextRow) {
+      setBulkSelectedShas([]);
       onSelectRow(nextRow.sha);
       rowVirtualizer.scrollToIndex(nextIndex, { align: 'auto' });
     }
@@ -578,6 +631,7 @@ export function GraphView({
         tabIndex={0}
         role="listbox"
         aria-label="Commit history"
+        aria-multiselectable={bulkSelectedShas.length > 0 ? true : undefined}
         aria-busy={isLoading || isFetching}
         aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
@@ -617,10 +671,11 @@ export function GraphView({
                       visibleColumns={visibleColumns}
                       remoteAvatars={remoteAvatars}
                       isSelected={row.sha === selectedSha}
+                      isBulkSelected={bulkSelection.has(row.sha)}
                       isSearchMatch={searchMatchShas.has(row.sha)}
                       isSearchFiltering={isSearchFiltering}
                       rowIndex={virtualRow.index}
-                      onSelect={() => onSelectRow(row.sha)}
+                      onSelect={(event) => handleRowClick(event, row)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
                       onRefClick={(ref) => handleRefClick(row, ref)}
                       onBranchContextMenu={(event, branchName) => handleBranchContextMenu(event, row, branchName)}
@@ -652,6 +707,25 @@ export function GraphView({
         >
           <div style={{ width: graphContentWidth, height: 1 }} />
         </div>
+      ) : null}
+
+      {bulkSelectedShas.length > 0 ? (
+        <BulkCommitActions
+          count={bulkSelectedShas.length}
+          canCherryPick={Boolean(onCherryPickCommits) && cherryPickShas.length > 0}
+          squashSelection={squashSelection}
+          isOperationBusy={isOperationBusy}
+          onCherryPick={() => {
+            void onCherryPickCommits?.(cherryPickShas);
+          }}
+          onSquash={() => {
+            if (squashSelection.canSquash) {
+              void onSquashCommits?.(squashSelection.baseSha, squashSelection.squashShas);
+            }
+          }}
+          onClear={() => setBulkSelectedShas([])}
+          canSquash={Boolean(onSquashCommits)}
+        />
       ) : null}
 
       {contextMenu?.kind === 'branch' ? (
@@ -710,10 +784,11 @@ type GraphRowViewProps = {
   visibleColumns: GraphColumnVisibility;
   remoteAvatars: boolean;
   isSelected: boolean;
+  isBulkSelected: boolean;
   isSearchMatch: boolean;
   isSearchFiltering: boolean;
   rowIndex: number;
-  onSelect: () => void;
+  onSelect: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -806,6 +881,7 @@ function GraphRowView({
   visibleColumns,
   remoteAvatars,
   isSelected,
+  isBulkSelected,
   isSearchMatch,
   isSearchFiltering,
   rowIndex,
@@ -817,16 +893,17 @@ function GraphRowView({
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
   const visibleRefs = isWip ? [] : (row.refs ?? []);
-  const rowBackground = graphRowBackground(row, isSelected, rowIndex, isSearchMatch);
-  const bandBackground = graphRowBandBackground(row, nodeColor, isSelected);
+  const rowBackground = graphRowBackground(row, isSelected, rowIndex, isSearchMatch, isBulkSelected);
+  const bandBackground = graphRowBandBackground(row, nodeColor, isSelected || isBulkSelected);
 
   return (
     <div
       id={graphRowDomId(row.sha)}
       className="graph-row group relative grid cursor-pointer items-center"
       role="option"
-      aria-selected={isSelected}
+      aria-selected={isSelected || isBulkSelected}
       aria-label={graphRowAriaLabel(row)}
+      data-bulk-selected={isBulkSelected ? 'true' : undefined}
       data-search-match={isSearchFiltering && isSearchMatch ? 'true' : undefined}
       data-search-muted={isSearchFiltering && !isSearchMatch ? 'true' : undefined}
       tabIndex={-1}
@@ -836,6 +913,8 @@ function GraphRowView({
         background: rowBackground,
         boxShadow: isSelected
           ? 'inset 0 0 0 1px rgba(36, 196, 222, 0.72)'
+          : isBulkSelected
+            ? 'inset 3px 0 0 rgba(36, 196, 222, 0.82), inset 0 0 0 1px rgba(36, 196, 222, 0.28)'
           : row.dateMarker
             ? 'inset 0 1px 0 0 var(--border-strong)'
             : undefined
@@ -1143,10 +1222,15 @@ function graphRowBackground(
   row: CommitGraphRow,
   isSelected: boolean,
   rowIndex: number,
-  isSearchMatch = false
+  isSearchMatch = false,
+  isBulkSelected = false
 ): string | undefined {
   if (isSelected) {
     return 'linear-gradient(90deg, rgba(34, 77, 145, 0.58), rgba(31, 65, 120, 0.50) 64%, rgba(28, 45, 76, 0.50))';
+  }
+
+  if (isBulkSelected) {
+    return 'linear-gradient(90deg, rgba(20, 91, 111, 0.58), rgba(22, 69, 91, 0.48) 64%, rgba(24, 45, 62, 0.46))';
   }
 
   if (isSearchMatch) {
@@ -1282,18 +1366,17 @@ function RefChipView({
   const { current, kind, label, remotePeerLabels } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
   const isLinkedWorktree = kind === 'branch' && linkedWorktreeBranches.has(label);
+  const displayLabel = kind === 'remote' ? branchNameFromRemoteRef(label) : label;
   const title = refChipTitle(chip);
   const ariaLabel = `${label}${current ? ', checked out' : isLinkedWorktree ? ', checked out in a linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
-  const icon =
+  const leadingIcon =
     current ? (
       <Check size={12} />
-    ) : kind === 'remote' ? (
-      <Cloud size={10} />
     ) : kind === 'tag' ? (
       <Tag size={10} />
     ) : kind === 'stash' ? (
       <Archive size={10} />
-    ) : (
+    ) : kind === 'remote' ? null : (
       <Pencil size={10} />
     );
 
@@ -1303,8 +1386,9 @@ function RefChipView({
   };
   const content = (
     <>
-      {icon}
-      <span className="ref-chip-label" title={label}>{label}</span>
+      {leadingIcon}
+      <span className="ref-chip-label" title={label}>{displayLabel}</span>
+      {kind === 'remote' ? <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
       {kind === 'branch' ? (
         isLinkedWorktree ? (
           <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
@@ -1361,7 +1445,7 @@ function coalesceRemotePeers(refs: GraphRefChip[]): RefChipDisplay[] {
       continue;
     }
 
-    const localBranchName = localBranchNameForRemoteRef(ref.label);
+    const localBranchName = branchNameFromRemoteRef(ref.label);
 
     if (!localBranchLabels.has(localBranchName)) {
       continue;
@@ -1373,7 +1457,7 @@ function coalesceRemotePeers(refs: GraphRefChip[]): RefChipDisplay[] {
   }
 
   return refs.flatMap((ref) => {
-    if (ref.kind === 'remote' && localBranchLabels.has(localBranchNameForRemoteRef(ref.label))) {
+    if (ref.kind === 'remote' && localBranchLabels.has(branchNameFromRemoteRef(ref.label))) {
       return [];
     }
 
@@ -1385,11 +1469,6 @@ function coalesceRemotePeers(refs: GraphRefChip[]): RefChipDisplay[] {
 
     return [{ ...ref, ...(remotePeerLabels?.length ? { remotePeerLabels } : {}) }];
   });
-}
-
-function localBranchNameForRemoteRef(label: string): string {
-  const slashIndex = label.indexOf('/');
-  return slashIndex === -1 ? label : label.slice(slashIndex + 1);
 }
 
 function refChipTitle(chip: RefChipDisplay): string {
@@ -1647,6 +1726,77 @@ function GraphMessage({ icon, label }: { icon: ReactElement; label: string }): R
   );
 }
 
+function BulkCommitActions({
+  count,
+  canCherryPick,
+  canSquash,
+  squashSelection,
+  isOperationBusy,
+  onCherryPick,
+  onSquash,
+  onClear
+}: {
+  count: number;
+  canCherryPick: boolean;
+  canSquash: boolean;
+  squashSelection: ReturnType<typeof resolveBulkSquashSelection>;
+  isOperationBusy: boolean;
+  onCherryPick: () => void;
+  onSquash: () => void;
+  onClear: () => void;
+}): ReactElement {
+  const squashTitle = !canSquash
+    ? 'Squash is unavailable.'
+    : squashSelection.canSquash
+      ? `Squash ${count} selected commits`
+      : squashSelection.reason;
+
+  return (
+    <div
+      className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-[var(--select-border)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/70"
+      role="toolbar"
+      aria-label="Bulk commit actions"
+      data-testid="bulk-commit-actions"
+    >
+      <span className="flex h-7 items-center gap-2 whitespace-nowrap border-r border-[var(--border)] pl-2 pr-3 text-xs font-semibold text-[var(--text-1)]">
+        <span className="grid h-5 min-w-5 place-items-center rounded bg-[var(--accent)] px-1 text-[10px] font-bold text-[var(--bg-field)]">
+          {count}
+        </span>
+        {count === 1 ? 'commit selected' : 'commits selected'}
+      </span>
+      <button
+        className="btn-subtle h-7 whitespace-nowrap text-[11px]"
+        type="button"
+        disabled={!canCherryPick || isOperationBusy}
+        onClick={onCherryPick}
+        title={`Cherry-pick ${count} selected ${count === 1 ? 'commit' : 'commits'} oldest to newest`}
+      >
+        <Cherry size={13} />
+        <span>Cherry-pick</span>
+      </button>
+      <button
+        className="btn-subtle h-7 whitespace-nowrap text-[11px]"
+        type="button"
+        disabled={!canSquash || !squashSelection.canSquash || isOperationBusy}
+        onClick={onSquash}
+        title={squashTitle}
+      >
+        <GitMerge size={13} />
+        <span>Squash</span>
+      </button>
+      <button
+        className="icon-btn h-7 w-7"
+        type="button"
+        onClick={onClear}
+        aria-label="Clear commit selection"
+        title="Clear selection (Esc)"
+      >
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
 function MenuSeparator(): ReactElement {
   return <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />;
 }
@@ -1831,6 +1981,7 @@ function GraphContextMenu({
   const isWip = state.row.node.kind === 'wip';
   const isStash = state.row.node.kind === 'stash';
   const stashSelector = stashSelectorForRow(state.row);
+  const branchName = preferredBranchName(state.row);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -1849,6 +2000,15 @@ function GraphContextMenu({
 
   async function copySha(): Promise<void> {
     await navigator.clipboard.writeText(state.row.sha);
+    onClose();
+  }
+
+  async function copyBranchName(): Promise<void> {
+    if (!branchName) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(branchName);
     onClose();
   }
 
@@ -1959,7 +2119,7 @@ function GraphContextMenu({
           <MenuSeparator />
           <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
             <Copy size={14} />
-            <span>Copy SHA</span>
+            <span>Copy stash SHA</span>
           </button>
         </>
       ) : (
@@ -2086,7 +2246,18 @@ function GraphContextMenu({
           <MenuSeparator />
           <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
             <Copy size={14} />
-            <span>Copy SHA</span>
+            <span>Copy commit SHA</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={!branchName}
+            title={branchName ? `Copy ${branchName}` : 'No branch points to this commit'}
+            onClick={() => void copyBranchName()}
+          >
+            <GitBranch size={14} />
+            <span>Copy branch name</span>
           </button>
         </>
       )}

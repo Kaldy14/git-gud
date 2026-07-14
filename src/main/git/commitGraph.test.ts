@@ -77,6 +77,42 @@ describe('loadCommitGraph', () => {
     }
   });
 
+  it('interleaves branch histories by committer date', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-'));
+
+    try {
+      const repoPath = join(rootPath, 'repo');
+      await mkdir(repoPath);
+      await git(repoPath, ['init']);
+      await git(repoPath, ['config', 'user.name', 'Graph Test']);
+      await git(repoPath, ['config', 'user.email', 'graph@example.test']);
+      await commitRepoFileAt(repoPath, 'base.txt', 'base\n', 'base', '2026-07-14T10:00:00+02:00');
+      await git(repoPath, ['checkout', '-B', 'main']);
+
+      await git(repoPath, ['checkout', '-b', 'feature-a']);
+      await commitRepoFileAt(repoPath, 'a.txt', 'old\n', 'feature-a old', '2026-07-14T11:00:00+02:00');
+      await commitRepoFileAt(repoPath, 'a.txt', 'new\n', 'feature-a new', '2026-07-14T14:00:00+02:00');
+
+      await git(repoPath, ['checkout', 'main']);
+      await git(repoPath, ['checkout', '-b', 'feature-b']);
+      await commitRepoFileAt(repoPath, 'b.txt', 'old\n', 'feature-b old', '2026-07-14T12:00:00+02:00');
+      await commitRepoFileAt(repoPath, 'b.txt', 'new\n', 'feature-b new', '2026-07-14T13:00:00+02:00');
+      await git(repoPath, ['checkout', 'main']);
+
+      const page = await loadCommitGraph({ path: repoPath });
+
+      expect(page.rows.map((row) => row.subject)).toEqual([
+        'feature-a new',
+        'feature-b new',
+        'feature-b old',
+        'feature-a old',
+        'base'
+      ]);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('loads remote history when the local HEAD is unborn', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-'));
 
@@ -147,8 +183,23 @@ async function writeRepoFile(repoPath: string, relativePath: string, contents: s
   await writeFile(filePath, contents);
 }
 
-async function git(cwd: string, args: string[]) {
-  return gitExecutor.run(args, { cwd, kind: 'mutation' });
+async function commitRepoFileAt(
+  repoPath: string,
+  relativePath: string,
+  contents: string,
+  message: string,
+  committedAt: string
+): Promise<void> {
+  await writeRepoFile(repoPath, relativePath, contents);
+  await git(repoPath, ['add', relativePath]);
+  await git(repoPath, ['commit', '-m', message], {
+    GIT_AUTHOR_DATE: committedAt,
+    GIT_COMMITTER_DATE: committedAt
+  });
+}
+
+async function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv) {
+  return gitExecutor.run(args, { cwd, kind: 'mutation', env });
 }
 
 async function fastImportHistory(repoPath: string, commitCount: number): Promise<void> {

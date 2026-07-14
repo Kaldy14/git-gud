@@ -38,6 +38,23 @@ describe('buildCommitGraphRows', () => {
     );
   });
 
+  it('groups and labels rows by committer date', () => {
+    const rows = buildCommitGraphRows([
+      commit('c2', ['c1'], {
+        authoredAt: '2026-07-10T10:00:00.000Z',
+        committedAt: '2026-07-14T10:00:00.000Z'
+      }),
+      commit('c1', [], {
+        authoredAt: '2026-07-09T10:00:00.000Z',
+        committedAt: '2026-07-14T09:00:00.000Z'
+      })
+    ]);
+
+    expect(rows[0]?.dateMarker).toBe('Jul 14, 2026');
+    expect(rows[0]?.dateLabel).toContain('Jul 14, 2026');
+    expect(rows[1]?.dateMarker).toBeUndefined();
+  });
+
   it('creates an outgoing lane for merge parents', () => {
     const rows = buildCommitGraphRows([
       commit('merge', ['left', 'right']),

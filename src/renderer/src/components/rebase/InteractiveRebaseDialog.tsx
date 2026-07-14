@@ -31,6 +31,7 @@ import type {
 
 type InteractiveRebaseDialogProps = {
   plan?: GitInteractiveRebasePlan;
+  initialSquashShas?: string[];
   isLoading: boolean;
   isRunning: boolean;
   errorMessage?: string;
@@ -53,17 +54,22 @@ const actionOptions: Array<{ value: GitInteractiveRebaseAction; label: string; s
 
 export function InteractiveRebaseDialog({
   plan,
+  initialSquashShas,
   isLoading,
   isRunning,
   errorMessage,
   onClose,
   onRun
 }: InteractiveRebaseDialogProps): ReactElement {
+  const isSquashMode = (initialSquashShas?.length ?? 0) > 0;
+
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]">
       <header className="flex min-h-9 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
         <Workflow size={17} className="text-[var(--accent-2)]" />
-        <h2 className="shrink-0 text-sm font-semibold text-[var(--text-1)]">Interactive Rebase</h2>
+        <h2 className="shrink-0 text-sm font-semibold text-[var(--text-1)]">
+          {isSquashMode ? 'Squash Commits' : 'Interactive Rebase'}
+        </h2>
         <div className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-2)]">
           {plan ? (
             <>
@@ -79,7 +85,7 @@ export function InteractiveRebaseDialog({
           onClick={onClose}
           disabled={isRunning}
         >
-          Cancel Rebase
+          {isSquashMode ? 'Cancel Squash' : 'Cancel Rebase'}
         </button>
       </header>
 
@@ -92,7 +98,14 @@ export function InteractiveRebaseDialog({
       ) : errorMessage ? (
         <InactiveDialogBody icon={<AlertTriangle size={15} />} label={errorMessage} onClose={onClose} />
       ) : plan ? (
-        <InteractiveRebaseEditor key={`${plan.base}:${plan.headSha}`} plan={plan} isRunning={isRunning} onClose={onClose} onRun={onRun} />
+        <InteractiveRebaseEditor
+          key={`${plan.base}:${plan.headSha}:${initialSquashShas?.join(',') ?? ''}`}
+          plan={plan}
+          initialSquashShas={initialSquashShas}
+          isRunning={isRunning}
+          onClose={onClose}
+          onRun={onRun}
+        />
       ) : (
         <InactiveDialogBody icon={<AlertTriangle size={15} />} label="Interactive rebase plan is unavailable." onClose={onClose} />
       )}
@@ -110,17 +123,20 @@ function RebasePill({ children }: { children: string }): ReactElement {
 
 function InteractiveRebaseEditor({
   plan,
+  initialSquashShas,
   isRunning,
   onClose,
   onRun
 }: {
   plan: GitInteractiveRebasePlan;
+  initialSquashShas?: string[];
   isRunning: boolean;
   onClose: () => void;
   onRun: (input: GitInteractiveRebaseInput) => Promise<void>;
 }): ReactElement {
   const shellRef = useRef<HTMLDivElement>(null);
-  const initialDraft = useMemo(() => createInitialDraft(plan), [plan]);
+  const initialDraft = useMemo(() => createInitialDraft(plan, initialSquashShas), [initialSquashShas, plan]);
+  const isSquashMode = (initialSquashShas?.length ?? 0) > 0;
   const [draft, setDraft] = useState<RebaseDraftItem[]>(() => initialDraft);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [draggedSha, setDraggedSha] = useState<string>();
@@ -372,11 +388,11 @@ function InteractiveRebaseEditor({
             onClick={onClose}
             disabled={isRunning}
           >
-            Cancel Rebase
+            {isSquashMode ? 'Cancel Squash' : 'Cancel Rebase'}
           </button>
           <button className="btn-primary h-9 text-xs" type="button" onClick={() => void handleRun()} disabled={!canRun}>
             {isRunning ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-            Start Rebase
+            {isSquashMode ? 'Squash Commits' : 'Start Rebase'}
           </button>
         </div>
       </footer>
@@ -776,10 +792,12 @@ function formatDate(value: string | undefined): string {
   }).format(date);
 }
 
-function createInitialDraft(plan: GitInteractiveRebasePlan): RebaseDraftItem[] {
+function createInitialDraft(plan: GitInteractiveRebasePlan, initialSquashShas?: string[]): RebaseDraftItem[] {
+  const squashShas = new Set(initialSquashShas);
+
   return plan.commits.map((commit) => ({
     ...commit,
-    action: 'pick',
+    action: squashShas.has(commit.sha) ? 'squash' : 'pick',
     message: commit.message
   }));
 }

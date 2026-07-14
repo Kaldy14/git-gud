@@ -121,7 +121,7 @@ async function loadLogCommits(
         'log',
         `--max-count=${limit}`,
         ...revisions,
-        '--topo-order',
+        '--date-order',
         '-z',
         '--date=iso-strict',
         '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%D%x00%s%x00%b'

@@ -78,7 +78,7 @@ const validators = {
   'repo:stash-apply': (args) => readRepoPathWithObject(args, 'repo:stash-apply', readStashRefInput),
   'repo:stash-pop': (args) => readRepoPathWithObject(args, 'repo:stash-pop', readStashRefInput),
   'repo:stash-drop': (args) => readRepoPathWithObject(args, 'repo:stash-drop', readStashRefInput),
-  'repo:cherry-pick': (args) => readStringPair(args, 'repo:cherry-pick', 'repoPath', 'sha'),
+  'repo:cherry-pick': (args) => readStringAndStringArray(args, 'repo:cherry-pick', 'repoPath', 'shas'),
   'repo:revert': (args) => readStringPair(args, 'repo:revert', 'repoPath', 'sha'),
   'repo:reset': (args) => readRepoPathWithObject(args, 'repo:reset', readResetInput),
   'repo:rebase': (args) => readRepoPathWithObject(args, 'repo:rebase', readRebaseInput),
@@ -116,6 +116,16 @@ function readOnlyArg<TValue>(
 ): [TValue] {
   assertArgCount(channel, args, 1);
   return [read(args[0], label)];
+}
+
+function readStringAndStringArray(
+  args: readonly unknown[],
+  channel: string,
+  stringLabel: string,
+  arrayLabel: string
+): [string, string[]] {
+  assertArgCount(channel, args, 2);
+  return [readString(args[0], stringLabel), readStringArray(args[1], arrayLabel)];
 }
 
 function readStringPair(
@@ -516,6 +526,14 @@ function readOptionalStringArrayProperty(record: Record<string, unknown>, proper
   }
 
   return value.map((item, index) => readString(item, `${property}[${index}]`));
+}
+
+function readStringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array of strings.`);
+  }
+
+  return value.map((item, index) => readString(item, `${label}[${index}]`));
 }
 
 function readString(value: unknown, label: string): string {

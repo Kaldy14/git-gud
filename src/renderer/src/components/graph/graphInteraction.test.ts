@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommitGraphRow } from '@shared/types';
 
-import { findCurrentBranchName, findSelectedContextMenuRow, registerRefClick } from './graphInteraction';
+import {
+  findCurrentBranchName,
+  findSelectedContextMenuRow,
+  orderSelectedCommitsForCherryPick,
+  preferredBranchName,
+  registerRefClick,
+  resolveBulkSquashSelection,
+  toggleSelectedCommit
+} from './graphInteraction';
 
 const newestRow = { sha: 'newest' } as CommitGraphRow;
 
@@ -52,3 +60,92 @@ describe('graph ref double-click targeting', () => {
     expect(registerRefClick(first.nextState, { kind: 'remote', label: 'origin/main' }, 1600).activate).toBe(false);
   });
 });
+
+describe('graph bulk commit selection', () => {
+  it('toggles commits without disturbing the existing selection order', () => {
+    expect(toggleSelectedCommit(['newest'], 'older')).toEqual(['newest', 'older']);
+    expect(toggleSelectedCommit(['newest', 'older'], 'newest')).toEqual(['older']);
+  });
+
+  it('orders cherry-picks oldest to newest regardless of click order', () => {
+    const rows = [commitRow('newest', ['middle']), commitRow('middle', ['oldest']), commitRow('oldest', ['base'])];
+
+    expect(orderSelectedCommitsForCherryPick(rows, ['newest', 'oldest', 'middle'])).toEqual([
+      'oldest',
+      'middle',
+      'newest'
+    ]);
+  });
+
+  it('builds a squash plan for contiguous commits on the checked-out branch', () => {
+    const rows = [
+      commitRow('head', ['newer'], true),
+      commitRow('newer', ['older']),
+      commitRow('older', ['base']),
+      commitRow('base', [])
+    ];
+
+    expect(resolveBulkSquashSelection(rows, ['newer', 'older'])).toEqual({
+      canSquash: true,
+      baseSha: 'base',
+      squashShas: ['newer']
+    });
+  });
+
+  it('rejects non-contiguous or off-branch squash selections', () => {
+    const rows = [
+      commitRow('head', ['middle'], true),
+      commitRow('middle', ['oldest']),
+      commitRow('oldest', ['base']),
+      commitRow('side', ['base'])
+    ];
+
+    expect(resolveBulkSquashSelection(rows, ['head', 'oldest'])).toMatchObject({
+      canSquash: false,
+      reason: 'Selected commits must be contiguous.'
+    });
+    expect(resolveBulkSquashSelection(rows, ['head', 'side'])).toMatchObject({
+      canSquash: false,
+      reason: 'Selected commits must be on the checked-out branch.'
+    });
+  });
+});
+
+describe('commit branch name copy target', () => {
+  it('prefers the checked-out local branch and falls back to a display remote branch name', () => {
+    expect(
+      preferredBranchName({
+        ...commitRow('head', []),
+        refs: [
+          { kind: 'branch', label: 'feature/secondary' },
+          { kind: 'branch', label: 'main', current: true },
+          { kind: 'remote', label: 'origin/main' }
+        ]
+      })
+    ).toBe('main');
+    expect(
+      preferredBranchName({
+        ...commitRow('remote', []),
+        refs: [{ kind: 'remote', label: 'upstream/feature/deep-path' }]
+      })
+    ).toBe('feature/deep-path');
+  });
+
+  it('returns undefined when the commit has no branch ref', () => {
+    expect(preferredBranchName(commitRow('detached', []))).toBeUndefined();
+  });
+});
+
+function commitRow(sha: string, parentShas: string[], current = false): CommitGraphRow {
+  return {
+    sha,
+    parentShas,
+    subject: sha,
+    author: { name: 'Test', initials: 'T', color: '#ffffff' },
+    dateLabel: 'now',
+    node: { lane: 0, kind: 'commit' },
+    rails: [],
+    refs: current ? [{ kind: 'branch', label: 'main', current: true }] : [],
+    files: []
+  };
+}

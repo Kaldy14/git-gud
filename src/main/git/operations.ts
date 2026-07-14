@@ -360,26 +360,47 @@ export async function stashDrop(tab: OperationTab, input: GitStashRefInput): Pro
 }
 
 export async function cherryPickCommit(tab: OperationTab, sha: string): Promise<GitOperationResult> {
+  return cherryPickCommits(tab, [sha]);
+}
+
+export async function cherryPickCommits(tab: OperationTab, shas: string[]): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const targetSha = normalizeRequiredName(sha, 'Commit SHA');
+  const targetShas = shas.map((sha, index) => normalizeRequiredName(sha, `Commit SHA ${index + 1}`));
+  const firstTargetSha = targetShas[0];
+
+  if (!firstTargetSha) {
+    throw new Error('Select at least one commit to cherry-pick.');
+  }
+
+  if (new Set(targetShas).size !== targetShas.length) {
+    throw new Error('Each commit can only be cherry-picked once per operation.');
+  }
+
+  const operationLabel =
+    targetShas.length === 1
+      ? `Cherry-pick ${firstTargetSha.slice(0, 8)}`
+      : `Cherry-pick ${targetShas.length} commits`;
+  const writePaths = (await Promise.all(
+    targetShas.map((targetSha) => commitWritePaths(tab.path, targetSha, 'apply', env))
+  )).flat();
   await assertNoIgnoredPathCollisions(
     tab.path,
-    await commitWritePaths(tab.path, targetSha, 'apply', env),
+    writePaths,
     env,
-    `Cherry-pick ${targetSha.slice(0, 8)}`
+    operationLabel
   );
   const headBefore = await revParseOptional(tab.path, 'HEAD', env);
-  const { conflictState } = await runMutationAllowingConflicts(tab, ['cherry-pick', targetSha], env);
+  const { conflictState } = await runMutationAllowingConflicts(tab, ['cherry-pick', ...targetShas], env);
   const headAfter = await revParseOptional(tab.path, 'HEAD', env);
   const undoEntry =
     !conflictState.isActive && headBefore && headAfter && headBefore !== headAfter
-      ? recordUndo(tab, 'commit', `Undo cherry-pick ${targetSha.slice(0, 8)}`, {
+      ? recordUndo(tab, 'commit', `Undo ${operationLabel.toLowerCase()}`, {
           headBefore,
           headAfter
         })
       : undefined;
 
-  return createOperationResult(tab, env, 'cherry-pick', `Cherry-pick ${targetSha.slice(0, 8)}`, undoEntry, conflictState);
+  return createOperationResult(tab, env, 'cherry-pick', operationLabel, undoEntry, conflictState);
 }
 
 export async function revertCommit(tab: OperationTab, sha: string): Promise<GitOperationResult> {
