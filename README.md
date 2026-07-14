@@ -23,7 +23,8 @@ Git Gud is a focused desktop Git client inspired by the strongest parts of GitKr
 ## Highlights
 
 - **Readable history:** a virtualized commit graph with branches, remotes, tags, worktrees, stashes, and working-directory state.
-- **Focused review:** commit metadata, changed-file path/tree views, file history, blame, ref comparison, and unified or split diffs.
+- **Focused review:** commit metadata, changed-file path/tree views, file history, blame, ref comparison, unified or split diffs, and aggregate inspection across a selected commit range.
+- **Codex handoff:** select code in a diff, right-click, add a follow-up question, and open a prefilled task in Codex for the same local repository.
 - **Precise staging:** stage or unstage files, hunks, and line groups; discard changes with confirmation; commit and amend in place.
 - **Everyday Git operations:** fetch, pull, push, branch, checkout, merge, tag, stash, cherry-pick, revert, and reset.
 - **Rebase workflows:** standard and interactive rebase with reorder, reword, squash, fixup, drop, and conflict recovery.
@@ -50,6 +51,7 @@ Press <kbd>⌘</kbd> <kbd>P</kbd> to search actions, commits, branches, reposito
 - [Git](https://git-scm.com/) available on `PATH`
 - Node.js `^20.19.0` or `>=22.12.0`
 - pnpm `11.9.0` (Corepack recommended)
+- [Codex](https://openai.com/codex/) desktop app (optional, for the diff handoff)
 
 ## Run from source
 
@@ -134,7 +136,7 @@ See [docs/README.md](docs/README.md) for the renderer map and graph model, [PROD
 
 ## Project scope
 
-Git Gud deliberately prioritizes local repository work. Pull-request dashboards, issue tracking, teams, cloud patches, AI features, auto-updates, and App Store distribution are not current goals. Windows and Linux support is possible, but requires platform-specific system integration, packaging, and CI coverage before those builds can be supported.
+Git Gud deliberately prioritizes local repository work. Pull-request dashboards, issue tracking, teams, cloud patches, embedded AI generation, auto-updates, and App Store distribution are not current goals. The Codex integration is an explicit handoff to the separately installed desktop app: Git Gud prepares repository and code context, but does not submit the prompt or run an AI model itself. Windows and Linux support is possible, but requires platform-specific system integration, packaging, and CI coverage before those builds can be supported.
 
 ## Contributing
 
