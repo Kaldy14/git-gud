@@ -1,7 +1,7 @@
 {
   "name": "git-gud",
   "productName": "Git Gud",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "A fast, local-first desktop Git client currently supported on macOS.",
   "main": "./out/main/index.js",
   "private": true,
