@@ -27,6 +27,7 @@ type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
 
 const MAX_DIFF_OUTPUT_BYTES = 8 * 1024 * 1024;
 const MAX_COMMIT_SELECTION_SIZE = 100;
+const SPARSE_SELECTION_CONCURRENCY = 3;
 const WIP_QUERY_INVALIDATIONS: readonly GitQueryInvalidation[] = ['overview', 'wip-detail', 'file-diff'];
 
 export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<GitCommitDetail> {
@@ -69,11 +70,13 @@ export async function loadCommitSelectionDetail(
       loadCommitRangeStats(tab.path, selection.range.baseSha, selection.range.headSha, env)
     ]);
   } else {
-    const details = await Promise.all(
-      selection.metadata.map(async (metadata) => ({
+    const details = await mapWithConcurrency(
+      selection.metadata,
+      SPARSE_SELECTION_CONCURRENCY,
+      async (metadata) => ({
         files: await loadCommitFiles(tab.path, metadata.sha, env),
         stats: await loadCommitStats(tab.path, metadata.sha, env)
-      }))
+      })
     );
     files = combineSelectionFiles(details.map((detail) => detail.files));
     stats = {
@@ -587,8 +590,10 @@ async function loadCommitSelectionFileDiff(
   }
 
   const segments = (
-    await Promise.all(
-      selection.metadata.slice().reverse().map(async (metadata) => {
+    await mapWithConcurrency(
+      selection.metadata.slice().reverse(),
+      SPARSE_SELECTION_CONCURRENCY,
+      async (metadata) => {
         const files = await loadCommitFiles(repoPath, metadata.sha, env);
         const file = findSelectionFile(files, request.path, request.originalPath);
 
@@ -615,7 +620,7 @@ async function loadCommitSelectionFileDiff(
           isBinary: diff.isBinary,
           omittedReason: diff.omittedReason
         };
-      })
+      }
     )
   ).filter((segment) => segment !== undefined);
 
@@ -1028,6 +1033,27 @@ async function loadMutationPathStatus(
   )
     ? fullStatus
     : scopedStatus;
+}
+
+async function mapWithConcurrency<Value, Result>(
+  values: readonly Value[],
+  concurrency: number,
+  mapper: (value: Value, index: number) => Promise<Result>
+): Promise<Result[]> {
+  const results = new Array<Result>(values.length);
+  const workerCount = Math.min(Math.max(1, concurrency), values.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]!, index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
 }
 
 function createOperationResult(

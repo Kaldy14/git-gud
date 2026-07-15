@@ -490,7 +490,8 @@ function SectionRows({
     const rows = repositoryOverview.refs.localBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
     return (
       <PaginatedRefRows
-        items={rows.map((branch) => (
+        items={rows}
+        renderItem={(branch) => (
           <SidebarRow
             key={branch.fullName}
             icon={<GitBranch size={12} />}
@@ -506,7 +507,7 @@ function SectionRows({
               }
             }}
           />
-        ))}
+        )}
         emptyLabel="No local branches."
         itemLabel="local branches"
         isFiltering={normalizedFilter.length > 0}
@@ -518,7 +519,8 @@ function SectionRows({
     const rows = repositoryOverview.refs.remoteBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
     return (
       <PaginatedRefRows
-        items={rows.map((branch) => (
+        items={rows}
+        renderItem={(branch) => (
           <SidebarRow
             key={branch.fullName}
             icon={<Cloud size={12} />}
@@ -529,7 +531,7 @@ function SectionRows({
             onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
             onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
           />
-        ))}
+        )}
         emptyLabel="No remote branches."
         itemLabel="remote branches"
         isFiltering={normalizedFilter.length > 0}
@@ -589,7 +591,8 @@ function SectionRows({
   const rows = repositoryOverview.refs.tags.filter((tag) => matchesFilter(tag.name, normalizedFilter));
   return (
     <PaginatedRefRows
-      items={rows.map((tag) => (
+      items={rows}
+      renderItem={(tag) => (
         <SidebarRow
           key={tag.fullName}
           icon={<Tag size={12} />}
@@ -597,7 +600,7 @@ function SectionRows({
           meta={tag.sha.slice(0, 7)}
           onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
         />
-      ))}
+      )}
       emptyLabel="No tags."
       itemLabel="tags"
       isFiltering={normalizedFilter.length > 0}
@@ -605,13 +608,15 @@ function SectionRows({
   );
 }
 
-function PaginatedRefRows({
+function PaginatedRefRows<Item>({
   items,
+  renderItem,
   emptyLabel,
   itemLabel,
   isFiltering
 }: {
-  items: ReactElement[];
+  items: readonly Item[];
+  renderItem: (item: Item) => ReactElement;
   emptyLabel: string;
   itemLabel: string;
   isFiltering: boolean;
@@ -630,7 +635,7 @@ function PaginatedRefRows({
 
   return (
     <div className="py-1">
-      {visibleItems}
+      {visibleItems.map(renderItem)}
       {hasDisplayControls ? (
         <div className="side-ref-controls" role="group" aria-label={`${itemLabel} display controls`}>
           {canShowLess ? (

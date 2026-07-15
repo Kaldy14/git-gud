@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+const MAX_GRAVATAR_URL_CACHE_ENTRIES = 4_096;
 const gravatarUrlCache = new Map<string, string>();
 
 export function gravatarUrlForEmail(email: string | undefined, size = 64): string | undefined {
@@ -12,7 +13,9 @@ export function gravatarUrlForEmail(email: string | undefined, size = 64): strin
   const cacheKey = `${normalizedEmail}:${size}`;
   const cachedUrl = gravatarUrlCache.get(cacheKey);
 
-  if (cachedUrl) {
+  if (cachedUrl !== undefined) {
+    gravatarUrlCache.delete(cacheKey);
+    gravatarUrlCache.set(cacheKey, cachedUrl);
     return cachedUrl;
   }
 
@@ -25,5 +28,14 @@ export function gravatarUrlForEmail(email: string | undefined, size = 64): strin
 
   const url = `https://www.gravatar.com/avatar/${hash}?${params.toString()}`;
   gravatarUrlCache.set(cacheKey, url);
+
+  if (gravatarUrlCache.size > MAX_GRAVATAR_URL_CACHE_ENTRIES) {
+    const oldestCacheKey = gravatarUrlCache.keys().next().value;
+
+    if (oldestCacheKey !== undefined) {
+      gravatarUrlCache.delete(oldestCacheKey);
+    }
+  }
+
   return url;
 }

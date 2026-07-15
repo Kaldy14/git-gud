@@ -151,10 +151,16 @@ describe('repository details integration', () => {
       await commitFile(repoPath, 'review.txt', 'one\n', 'add review file');
       const oldestSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
       await commitFile(repoPath, 'review.txt', 'two\n', 'refine review file');
-      const middleSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
       await commitFile(repoPath, 'review.txt', 'three\n', 'finish review file');
+      const thirdSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'review.txt', 'four\n', 'polish review file');
+      await commitFile(repoPath, 'review.txt', 'five\n', 'extend review file');
+      const fifthSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'review.txt', 'six\n', 'prepare review file');
+      const sixthSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'review.txt', 'seven\n', 'complete review file');
       const newestSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
-      const contiguousShas = [newestSha, middleSha, oldestSha];
+      const contiguousShas = [newestSha, sixthSha, fifthSha];
 
       const contiguousDetail = await loadCommitSelectionDetail({ path: repoPath }, contiguousShas);
       const contiguousDiff = await loadFileDiff(
@@ -166,15 +172,15 @@ describe('repository details integration', () => {
         kind: 'selection',
         isContiguous: true,
         shas: contiguousShas,
-        stats: { filesChanged: 1, additions: 1, deletions: 0 }
+        stats: { filesChanged: 1, additions: 1, deletions: 1 }
       });
       expect(contiguousDetail.files.map((file) => file.path)).toEqual(['review.txt']);
       expect(contiguousDiff).toMatchObject({ mode: 'selection', isBinary: false });
       expect(contiguousDiff.segments).toBeUndefined();
-      expect(contiguousDiff.patch).toContain('+three');
-      expect(contiguousDiff.patch).not.toContain('+one');
+      expect(contiguousDiff.patch).toContain('+seven');
+      expect(contiguousDiff.patch).not.toContain('+five');
 
-      const sparseShas = [newestSha, oldestSha];
+      const sparseShas = [newestSha, fifthSha, thirdSha, oldestSha];
       const sparseDetail = await loadCommitSelectionDetail({ path: repoPath }, sparseShas);
       const sparseDiff = await loadFileDiff(
         { path: repoPath },
@@ -184,10 +190,14 @@ describe('repository details integration', () => {
       expect(sparseDetail.isContiguous).toBe(false);
       expect(sparseDiff.segments?.map((segment) => segment.subject)).toEqual([
         'add review file',
-        'finish review file'
+        'finish review file',
+        'extend review file',
+        'complete review file'
       ]);
       expect(sparseDiff.segments?.[0]?.patch).toContain('+one');
       expect(sparseDiff.segments?.[1]?.patch).toContain('+three');
+      expect(sparseDiff.segments?.[2]?.patch).toContain('+five');
+      expect(sparseDiff.segments?.[3]?.patch).toContain('+seven');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

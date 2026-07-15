@@ -238,7 +238,10 @@ export function GraphView({
   const refCellWidth = columnWidths.refs;
   const gridTemplateColumns = graphGridTemplate(refCellWidth, graphWidth, visibleColumns);
   const currentDateMarker = dateMarkersByRow[firstVisibleRowIndex];
-  const commitSearchIndex = useMemo(() => buildCommitSearchIndex(rows), [rows]);
+  const commitSearchIndex = useMemo(
+    () => (isSearchOpen ? buildCommitSearchIndex(rows) : []),
+    [isSearchOpen, rows]
+  );
   const searchMatches = useMemo(
     () => findCommitSearchMatches(commitSearchIndex, searchQuery),
     [commitSearchIndex, searchQuery]

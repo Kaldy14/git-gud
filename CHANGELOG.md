@@ -4,6 +4,14 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-07-15
+
+### Changed
+
+- Bounded the Gravatar URL cache and deferred commit-search indexing until search is opened.
+- Reduced large-sidebar rendering work and made stageable patch parsing scale linearly with hunk count.
+- Capped sparse multi-commit detail pipelines to lower peak Git subprocess and memory pressure.
+
 ## [0.3.1] - 2026-07-15
 
 ### Changed
