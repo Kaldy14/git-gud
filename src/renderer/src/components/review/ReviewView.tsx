@@ -324,7 +324,7 @@ function ReviewBody({
             <header className="review-unit-header">
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">{selectedUnit.unit.title}</h2>
-                <p className="mt-1 text-xs text-[var(--text-3)]">
+                <p className="mt-0.5 text-xs text-[var(--text-3)]">
                   {selectedUnit.unit.reason}
                   {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}
                 </p>
