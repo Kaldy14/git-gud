@@ -74,26 +74,29 @@ export function Toolbar({
   const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
 
   return (
-    <div className="app-toolbar flex h-[56px] shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
+    <div className="app-toolbar flex h-12 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
       <div className="tb-context flex h-full min-w-0 items-center">
         <button className="tb-select" type="button" disabled={!hasRepo} title={activeTab?.path} onClick={onOpenQuickJump}>
           <span className="tb-select-label">repository</span>
           <span className="tb-select-value">
             <FolderGit2 size={13} className="shrink-0 text-[var(--text-3)]" />
-            <span className="min-w-0 truncate">{activeTab?.name ?? 'No repository'}</span>
+            <span className="min-w-0 flex-1 truncate whitespace-nowrap">{activeTab?.name ?? 'No repository'}</span>
             <ChevronDown size={12} className="shrink-0 text-[var(--text-3)]" />
           </span>
         </button>
         <ChevronRight size={14} className="mx-0.5 shrink-0 text-[var(--text-3)]" />
-        <button className="tb-select" type="button" disabled={!hasRepo || isBusy} title="Switch branch" onClick={onOpenQuickJump}>
+        <button className="tb-select tb-select-branch" type="button" disabled={!hasRepo || isBusy} title="Switch branch" onClick={onOpenQuickJump}>
           <span className="tb-select-label">branch</span>
           <span className="tb-select-value">
             <GitBranch size={13} className="shrink-0 text-[var(--text-3)]" />
-            <span className={hasRepo ? 'text-[var(--text-2)]' : 'text-[var(--text-3)]'}>
+            <span
+              className={`min-w-0 flex-1 truncate whitespace-nowrap ${hasRepo ? 'text-[var(--text-2)]' : 'text-[var(--text-3)]'}`}
+              title={branchLabel}
+            >
               {branchLabel}
             </span>
             {dirtyCount > 0 ? (
-              <span className="rounded border border-[var(--border-strong)] px-1 text-[10px] text-[var(--accent-2)]">
+              <span className="shrink-0 rounded border border-[var(--border-strong)] px-1 text-[10px] text-[var(--accent-2)]">
                 {dirtyCount}
               </span>
             ) : null}

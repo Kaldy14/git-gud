@@ -489,7 +489,7 @@ function WorkingDirectoryBanner({
   }
 
   return (
-    <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--select-border)] bg-[var(--worktree-banner-bg)] px-4 text-[13px] font-semibold text-[var(--text-1)]">
+    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--select-border)] bg-[var(--worktree-banner-bg)] px-4 text-[13px] font-semibold text-[var(--text-1)]">
       <span className="min-w-0 truncate">{formatFileChangeLabel(dirtyCount)} in working directory</span>
       <button
         className="h-7 shrink-0 rounded border border-[var(--control-active-border)] bg-[var(--control-active-bg)] px-3 text-xs font-semibold text-[var(--text-1)] transition hover:bg-[var(--bg-hover)] disabled:opacity-65"
@@ -550,7 +550,7 @@ function PanelHeader({
       : 'Discard all uncommitted changes';
 
     return (
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
         <button
           className="icon-btn h-7 w-7 shrink-0 rounded border border-[var(--danger-border)] text-[var(--danger-text)]"
           type="button"
@@ -582,7 +582,7 @@ function PanelHeader({
 
   if (selectionCount > 1) {
     return (
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+      <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
         <span className="flex min-w-0 items-center gap-2">
           <GitCommit size={14} className="shrink-0 text-[var(--accent-2)]" />
           <span className="truncate font-semibold text-[var(--text-1)]">
@@ -597,7 +597,7 @@ function PanelHeader({
   }
 
   return (
-    <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
       <span className="flex min-w-0 items-center gap-2">
         <FilePen size={14} className="shrink-0 text-[var(--text-3)]" />
         <span className="shrink-0">commit:</span>
@@ -643,7 +643,7 @@ function SummarySection({
     const oldest = detail.commits.at(-1);
 
     return (
-      <div className="max-h-48 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-3.5">
+      <div className="max-h-48 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-2.5">
         <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">
           Combined changes
         </h2>
@@ -667,7 +667,7 @@ function SummarySection({
 
   return (
     <>
-      <div className="max-h-40 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-4">
+      <div className="max-h-40 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-2.5">
         <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">{detail.subject}</h2>
         {detail.body ? (
           <div className="mt-3 pr-2 text-[13px] leading-5 text-[var(--text-2)]">

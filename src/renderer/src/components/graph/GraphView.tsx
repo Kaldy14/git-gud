@@ -641,7 +641,7 @@ export function GraphView({
         />
       ) : null}
       <div
-        className="grid h-8 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-semibold uppercase text-[var(--text-3)]"
+        className="grid h-7 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-semibold uppercase text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
       >
         <div className="graph-column-header flex h-full items-center border-r border-[var(--border)] pl-5 leading-none tracking-[0.02em]">

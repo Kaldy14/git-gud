@@ -42,7 +42,7 @@ export function TabStrip({
   onSaveAndActivateProfile
 }: TabStripProps): ReactElement {
   return (
-    <div className="drag-region flex h-[48px] shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
+    <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
       <div className="no-drag relative flex min-w-0 flex-1 items-stretch">
         <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Open repositories">
           {tabs.map((tab, tabIndex) => {
