@@ -45,6 +45,29 @@ describe('loadWorktrees', () => {
 });
 
 describe('loadStatus', () => {
+  it('scopes single-file status reads with a literal pathspec', async () => {
+    const repoPath = '/repos/path-scoped-status';
+    const run = vi
+      .spyOn(gitExecutor, 'run')
+      .mockResolvedValue(createGitResult(repoPath, [], '# branch.head main\0# branch.oid abc123\0'));
+
+    await loadStatus(repoPath, undefined, [':(top)**']);
+
+    expect(run).toHaveBeenCalledWith(
+      [
+        '--literal-pathspecs',
+        'status',
+        '--porcelain=v2',
+        '--branch',
+        '--untracked-files=all',
+        '-z',
+        '--',
+        ':(top)**'
+      ],
+      { cwd: repoPath, env: undefined }
+    );
+  });
+
   it('does not coalesce a transaction read with an external read queued behind it', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-overview-'));
     const repoPath = join(rootPath, 'repo');

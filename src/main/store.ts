@@ -42,6 +42,10 @@ const store = new Store<StoreShape>({
   }
 });
 
+const SELECTION_PERSIST_DELAY_MS = 150;
+const pendingWorkspaceWrites = new Map<string, WorkspaceState>();
+const pendingWorkspaceWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function getWorkspace(): WorkspaceState {
   const workspacesByProfile = getProfileWorkspaces();
   const activeProfileId = getActiveProfileId();
@@ -72,11 +76,11 @@ export function closeWorkspaceTab(tabId: string): WorkspaceState {
 }
 
 export function selectWorkspaceCommit(tabId: string, selectedCommit: string | undefined): WorkspaceState {
-  return saveWorkspace(selectRepositoryCommit(getWorkspace(), tabId, selectedCommit));
+  return saveWorkspace(selectRepositoryCommit(getWorkspace(), tabId, selectedCommit), true);
 }
 
 export function selectWorkspaceFile(tabId: string, selectedFile: string | undefined): WorkspaceState {
-  return saveWorkspace(selectRepositoryFile(getWorkspace(), tabId, selectedFile));
+  return saveWorkspace(selectRepositoryFile(getWorkspace(), tabId, selectedFile), true);
 }
 
 export function updateSidebarCollapsed(collapsed: boolean): WorkspaceState {
@@ -109,13 +113,39 @@ export function updateAppSettings(settings: AppSettingsInput): AppSettings {
   return nextSettings;
 }
 
-function saveWorkspace(workspace: WorkspaceState): WorkspaceState {
+export function flushPendingWorkspaceWrites(): void {
+  if (pendingWorkspaceWrites.size === 0) {
+    return;
+  }
+
+  for (const timer of pendingWorkspaceWriteTimers.values()) {
+    clearTimeout(timer);
+  }
+
+  pendingWorkspaceWriteTimers.clear();
+  const stored = normalizeStoredProfileWorkspaces(store.get('workspacesByProfile', {}));
+  store.set('workspacesByProfile', {
+    ...stored,
+    ...Object.fromEntries(pendingWorkspaceWrites)
+  });
+  pendingWorkspaceWrites.clear();
+}
+
+function saveWorkspace(workspace: WorkspaceState, deferPersistence = false): WorkspaceState {
   const workspacesByProfile = getProfileWorkspaces();
   const activeProfileId = getActiveProfileId();
+  const workspaceKey = profileWorkspaceKey(activeProfileId);
   const normalized = workspaceForProfile(normalizeWorkspaceState(workspace), activeProfileId);
+
+  if (deferPersistence) {
+    scheduleWorkspaceWrite(workspaceKey, normalized);
+    return normalized;
+  }
+
+  cancelPendingWorkspaceWrite(workspaceKey);
   store.set('workspacesByProfile', {
     ...workspacesByProfile,
-    [profileWorkspaceKey(activeProfileId)]: normalized
+    [workspaceKey]: normalized
   });
   return normalized;
 }
@@ -124,7 +154,7 @@ function getProfileWorkspaces(): Record<string, WorkspaceState> {
   const stored = normalizeStoredProfileWorkspaces(store.get('workspacesByProfile', {}));
 
   if (Object.keys(stored).length > 0) {
-    return stored;
+    return overlayPendingWorkspaceWrites(stored);
   }
 
   const profiles = listProfiles();
@@ -134,7 +164,58 @@ function getProfileWorkspaces(): Record<string, WorkspaceState> {
   );
   store.set('workspacesByProfile', migrated.workspacesByProfile);
   setActiveProfileId(migrated.activeProfileId);
-  return migrated.workspacesByProfile;
+  return overlayPendingWorkspaceWrites(migrated.workspacesByProfile);
+}
+
+function scheduleWorkspaceWrite(workspaceKey: string, workspace: WorkspaceState): void {
+  pendingWorkspaceWrites.set(workspaceKey, workspace);
+  const previousTimer = pendingWorkspaceWriteTimers.get(workspaceKey);
+
+  if (previousTimer) {
+    clearTimeout(previousTimer);
+  }
+
+  const timer = setTimeout(() => {
+    pendingWorkspaceWriteTimers.delete(workspaceKey);
+    const latestWorkspace = pendingWorkspaceWrites.get(workspaceKey);
+
+    if (!latestWorkspace) {
+      return;
+    }
+
+    pendingWorkspaceWrites.delete(workspaceKey);
+    const stored = normalizeStoredProfileWorkspaces(store.get('workspacesByProfile', {}));
+    store.set('workspacesByProfile', {
+      ...stored,
+      [workspaceKey]: latestWorkspace
+    });
+  }, SELECTION_PERSIST_DELAY_MS);
+  timer.unref();
+  pendingWorkspaceWriteTimers.set(workspaceKey, timer);
+}
+
+function cancelPendingWorkspaceWrite(workspaceKey: string): void {
+  const timer = pendingWorkspaceWriteTimers.get(workspaceKey);
+
+  if (timer) {
+    clearTimeout(timer);
+    pendingWorkspaceWriteTimers.delete(workspaceKey);
+  }
+
+  pendingWorkspaceWrites.delete(workspaceKey);
+}
+
+function overlayPendingWorkspaceWrites(
+  workspacesByProfile: Record<string, WorkspaceState>
+): Record<string, WorkspaceState> {
+  if (pendingWorkspaceWrites.size === 0) {
+    return workspacesByProfile;
+  }
+
+  return {
+    ...workspacesByProfile,
+    ...Object.fromEntries(pendingWorkspaceWrites)
+  };
 }
 
 function normalizeStoredProfileWorkspaces(value: unknown): Record<string, WorkspaceState> {

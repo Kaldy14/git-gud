@@ -10,6 +10,9 @@ export type GitCommandOptions = {
   input?: string;
   allowedExitCodes?: readonly number[];
   maxStdoutBytes?: number;
+  maxStderrBytes?: number;
+  timeoutMs?: number;
+  deadlineAt?: number;
   cancellable?: boolean;
   reportStdoutProgress?: boolean;
   onStdout?: (chunk: string) => void;
@@ -29,6 +32,16 @@ type LockKind = 'read' | 'write';
 type LockWaiter = {
   kind: LockKind;
   resolve: (release: () => void) => void;
+  reject: (error: Error) => void;
+  operationContext?: OperationContext;
+  cancellable: boolean;
+  timeoutTimer?: NodeJS.Timeout;
+};
+
+type LockWaitOptions = {
+  cancellable?: boolean;
+  deadlineAt?: number;
+  timeoutError?: () => Error;
 };
 
 type RepoLockState = {
@@ -111,6 +124,25 @@ export class GitOutputLimitError extends Error {
   }
 }
 
+export class GitCommandTimeoutError extends Error {
+  readonly args: string[];
+  readonly cwd: string;
+  readonly timeoutMs?: number;
+  readonly deadlineAt?: number;
+
+  constructor(args: string[], cwd: string, options: Pick<GitCommandOptions, 'timeoutMs' | 'deadlineAt'>) {
+    const detail = options.timeoutMs !== undefined
+      ? `timed out after ${Math.max(0, Math.floor(options.timeoutMs))}ms`
+      : 'exceeded its deadline';
+    super(`Git command ${detail}.`);
+    this.name = 'GitCommandTimeoutError';
+    this.args = args;
+    this.cwd = cwd;
+    this.timeoutMs = options.timeoutMs;
+    this.deadlineAt = options.deadlineAt;
+  }
+}
+
 export class GitOperationCancelledError extends Error {
   readonly operationId: string;
 
@@ -141,21 +173,26 @@ export class GitExecutor {
 
   async run(args: string[], options: GitCommandOptions): Promise<GitCommandResult> {
     const kind = options.kind ?? 'read';
+    const effectiveOptions = withAbsoluteTimeoutDeadline(withDefaultReadTimeout(options, kind));
     this.throwIfCurrentOperationCancelled();
 
     if (this.isInTransaction(options.cwd)) {
-      return this.spawnGit(args, options, kind);
+      return this.spawnGit(args, effectiveOptions, kind);
     }
 
     if (kind === 'mutation') {
-      return this.transaction(options.cwd, () => this.spawnGit(args, options, kind));
+      return this.transaction(options.cwd, () => this.spawnGit(args, effectiveOptions, kind));
     }
 
-    const release = await this.acquire(options.cwd, 'read');
+    const release = await this.acquire(options.cwd, 'read', {
+      cancellable: effectiveOptions.cancellable ?? true,
+      deadlineAt: effectiveOptions.deadlineAt,
+      timeoutError: () => new GitCommandTimeoutError(args, options.cwd, effectiveOptions)
+    });
 
     try {
       this.throwIfCurrentOperationCancelled();
-      return await this.spawnGit(args, options, kind);
+      return await this.spawnGit(args, effectiveOptions, kind);
     } finally {
       release();
     }
@@ -246,11 +283,12 @@ export class GitExecutor {
 
     const commands = [...context.activeCommands];
 
-    if (commands.some((command) => !command.cancellable)) {
+    if (commands.some((command) => !command.cancellable) || this.hasNonCancellableQueuedWaiter(context)) {
       return false;
     }
 
     context.cancelRequested = true;
+    this.rejectQueuedWaiters(context);
 
     for (const command of commands) {
       this.signalCommand(command, 'SIGTERM');
@@ -293,14 +331,14 @@ export class GitExecutor {
     await this.waitForIdleWithin(Math.min(100, Math.max(20, Math.floor(graceMs / 4))));
 
     for (const command of commands) {
-      if (command.ownsProcessGroup || this.activeCommands.has(command)) {
+      if (this.activeCommands.has(command)) {
         this.signalCommand(command, 'SIGKILL');
       }
     }
     await this.waitForIdleWithin(100);
   }
 
-  private acquire(cwd: string, kind: LockKind): Promise<() => void> {
+  private acquire(cwd: string, kind: LockKind, options: LockWaitOptions = {}): Promise<() => void> {
     const state = this.locks.get(cwd) ?? {
       activeReaders: 0,
       writerActive: false,
@@ -308,7 +346,12 @@ export class GitExecutor {
     };
     this.locks.set(cwd, state);
 
-    if (kind === 'read' && !state.writerActive && !state.queue.some((waiter) => waiter.kind === 'write')) {
+    if (
+      kind === 'read' &&
+      !state.writerActive &&
+      state.queue.length === 0 &&
+      state.activeReaders < maxConcurrentReadsPerRepository
+    ) {
       state.activeReaders += 1;
       return Promise.resolve(this.createRelease(cwd, kind));
     }
@@ -318,8 +361,35 @@ export class GitExecutor {
       return Promise.resolve(this.createRelease(cwd, kind));
     }
 
-    return new Promise((resolve) => {
-      state.queue.push({ kind, resolve });
+    if (options.deadlineAt !== undefined && options.deadlineAt <= Date.now()) {
+      return Promise.reject(options.timeoutError?.() ?? new Error('Repository lock wait exceeded its deadline.'));
+    }
+
+    return new Promise((resolve, reject) => {
+      const waiter: LockWaiter = {
+        kind,
+        resolve,
+        reject,
+        operationContext: this.progressContext.getStore(),
+        cancellable: options.cancellable ?? true
+      };
+      state.queue.push(waiter);
+
+      if (options.deadlineAt !== undefined) {
+        waiter.timeoutTimer = setTimeout(() => {
+          const waiterIndex = state.queue.indexOf(waiter);
+
+          if (waiterIndex === -1) {
+            return;
+          }
+
+          state.queue.splice(waiterIndex, 1);
+          reject(options.timeoutError?.() ?? new Error('Repository lock wait exceeded its deadline.'));
+          this.drainLock(cwd, state);
+          this.notifyIdleIfNeeded();
+        }, Math.max(0, options.deadlineAt - Date.now()));
+        waiter.timeoutTimer.unref();
+      }
     });
   }
 
@@ -350,39 +420,66 @@ export class GitExecutor {
   }
 
   private drainLock(cwd: string, state: RepoLockState): void {
-    if (state.writerActive || state.activeReaders > 0) {
+    if (state.writerActive) {
       return;
     }
 
     const first = state.queue[0];
 
     if (!first) {
-      this.locks.delete(cwd);
+      if (state.activeReaders === 0) {
+        this.locks.delete(cwd);
+      }
       return;
     }
 
     if (first.kind === 'write') {
+      if (state.activeReaders > 0) {
+        return;
+      }
+
       state.queue.shift();
       state.writerActive = true;
+      clearWaiterTimeout(first);
       first.resolve(this.createRelease(cwd, 'write'));
       return;
     }
 
-    while (state.queue[0]?.kind === 'read') {
+    while (
+      state.activeReaders < maxConcurrentReadsPerRepository &&
+      state.queue[0]?.kind === 'read'
+    ) {
       const reader = state.queue.shift();
 
       if (!reader) {
         break;
       }
 
+      if (reader.operationContext?.cancelRequested && reader.cancellable) {
+        clearWaiterTimeout(reader);
+        reader.reject(new GitOperationCancelledError(reader.operationContext.operationId));
+        continue;
+      }
+
       state.activeReaders += 1;
+      clearWaiterTimeout(reader);
       reader.resolve(this.createRelease(cwd, 'read'));
+    }
+
+    if (state.activeReaders === 0 && state.queue.length === 0) {
+      this.locks.delete(cwd);
     }
   }
 
   private spawnGit(args: string[], options: GitCommandOptions, kind: GitCommandKind): Promise<GitCommandResult> {
     const operationContext = this.progressContext.getStore();
     this.throwIfOperationCancelled(operationContext);
+    const timeoutDeadlineAt = commandTimeoutDeadlineAt(options);
+
+    if (timeoutDeadlineAt !== undefined && timeoutDeadlineAt <= Date.now()) {
+      return Promise.reject(new GitCommandTimeoutError(args, options.cwd, options));
+    }
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...options.env
@@ -406,10 +503,60 @@ export class GitExecutor {
       };
       const operationId = operationContext?.operationId;
       const stdoutChunks: Buffer[] = [];
-      const stderrChunks: Buffer[] = [];
+      const stderrTail = new BoundedBufferTail(stderrByteLimit(options.maxStderrBytes));
+      const pendingProgress = new Map<GitProgressEventOutputStream, string>();
       let stdoutBytes = 0;
       let outputLimitError: GitOutputLimitError | undefined;
+      let timeoutError: GitCommandTimeoutError | undefined;
       let spawnError: Error | undefined;
+      let timeoutTimer: NodeJS.Timeout | undefined;
+      let progressTimer: NodeJS.Timeout | undefined;
+
+      const flushProgress = (): void => {
+        if (progressTimer) {
+          clearTimeout(progressTimer);
+          progressTimer = undefined;
+        }
+
+        for (const stream of progressStreamOrder) {
+          const chunk = pendingProgress.get(stream);
+
+          if (!chunk) {
+            continue;
+          }
+
+          pendingProgress.delete(stream);
+          this.emitProgress({
+            type: 'output',
+            cwd: options.cwd,
+            kind,
+            processId: child.pid,
+            operationId,
+            stream,
+            chunk
+          });
+        }
+      };
+
+      const queueProgress = (stream: GitProgressEventOutputStream, text: string): void => {
+        const sanitized = sanitizeProgressChunk(text);
+
+        if (!sanitized) {
+          return;
+        }
+
+        pendingProgress.set(
+          stream,
+          appendStringTail(pendingProgress.get(stream) ?? '', sanitized, maxProgressChunkCharacters)
+        );
+
+        if (progressTimer) {
+          return;
+        }
+
+        progressTimer = setTimeout(flushProgress, progressFlushIntervalMs);
+        progressTimer.unref();
+      };
 
       this.activeCommands.add(activeCommand);
       operationContext?.activeCommands.add(activeCommand);
@@ -421,13 +568,22 @@ export class GitExecutor {
         operationId
       });
 
+      if (timeoutDeadlineAt !== undefined) {
+        timeoutTimer = setTimeout(() => {
+          timeoutError ??= new GitCommandTimeoutError(args, options.cwd, options);
+          this.signalCommand(activeCommand, 'SIGTERM');
+          this.forceTerminateAfter([activeCommand], forceTerminationDelayMs);
+        }, Math.max(0, timeoutDeadlineAt - Date.now()));
+        timeoutTimer.unref();
+      }
+
       child.stdout.on('data', (chunk: Buffer) => {
         stdoutBytes += chunk.byteLength;
 
         if (options.maxStdoutBytes !== undefined && stdoutBytes > options.maxStdoutBytes) {
           outputLimitError ??= new GitOutputLimitError(args, options.cwd, options.maxStdoutBytes);
           this.signalCommand(activeCommand, 'SIGTERM');
-          this.forceTerminateAfter([activeCommand], 750);
+          this.forceTerminateAfter([activeCommand], forceTerminationDelayMs);
           return;
         }
 
@@ -435,30 +591,14 @@ export class GitExecutor {
         const text = chunk.toString('utf8');
         options.onStdout?.(text);
         if (options.reportStdoutProgress ?? kind === 'mutation') {
-          this.emitProgress({
-            type: 'output',
-            cwd: options.cwd,
-            kind,
-            processId: child.pid,
-            operationId,
-            stream: 'stdout',
-            chunk: sanitizeProgressChunk(text)
-          });
+          queueProgress('stdout', text);
         }
       });
       child.stderr.on('data', (chunk: Buffer) => {
-        stderrChunks.push(chunk);
+        stderrTail.append(chunk);
         const text = chunk.toString('utf8');
         options.onStderr?.(text);
-        this.emitProgress({
-          type: 'output',
-          cwd: options.cwd,
-          kind,
-          processId: child.pid,
-          operationId,
-          stream: 'stderr',
-          chunk: sanitizeProgressChunk(text)
-        });
+        queueProgress('stderr', text);
       });
       child.stdin.on('error', (error: NodeJS.ErrnoException) => {
         if (error.code !== 'EPIPE') {
@@ -469,6 +609,11 @@ export class GitExecutor {
         spawnError = error;
       });
       child.on('close', (exitCode) => {
+        if (timeoutTimer) {
+          clearTimeout(timeoutTimer);
+          timeoutTimer = undefined;
+        }
+        flushProgress();
         this.activeCommands.delete(activeCommand);
         operationContext?.activeCommands.delete(activeCommand);
         this.emitProgress({
@@ -486,6 +631,11 @@ export class GitExecutor {
           return;
         }
 
+        if (timeoutError) {
+          reject(timeoutError);
+          return;
+        }
+
         if (spawnError) {
           reject(spawnError);
           return;
@@ -495,7 +645,7 @@ export class GitExecutor {
           args,
           cwd: options.cwd,
           stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-          stderr: Buffer.concat(stderrChunks).toString('utf8'),
+          stderr: stderrTail.toString(),
           exitCode: exitCode ?? 1
         };
 
@@ -518,6 +668,32 @@ export class GitExecutor {
 
   private advanceMutationGeneration(cwd: string): void {
     this.mutationGenerations.set(cwd, this.getMutationGeneration(cwd) + 1);
+  }
+
+  private rejectQueuedWaiters(context: OperationContext): void {
+    for (const [cwd, state] of this.locks) {
+      for (let index = state.queue.length - 1; index >= 0; index -= 1) {
+        const waiter = state.queue[index];
+
+        if (waiter?.operationContext !== context || !waiter.cancellable) {
+          continue;
+        }
+
+        state.queue.splice(index, 1);
+        clearWaiterTimeout(waiter);
+        waiter.reject(new GitOperationCancelledError(context.operationId));
+      }
+
+      this.drainLock(cwd, state);
+    }
+
+    this.notifyIdleIfNeeded();
+  }
+
+  private hasNonCancellableQueuedWaiter(context: OperationContext): boolean {
+    return [...this.locks.values()].some((state) =>
+      state.queue.some((waiter) => waiter.operationContext === context && !waiter.cancellable)
+    );
   }
 
   private isIdle(): boolean {
@@ -587,7 +763,7 @@ export class GitExecutor {
   private forceTerminateAfter(commands: ActiveCommand[], delayMs: number): void {
     const timer = setTimeout(() => {
       for (const command of commands) {
-        if (command.ownsProcessGroup || this.activeCommands.has(command)) {
+        if (this.activeCommands.has(command)) {
           this.signalCommand(command, 'SIGKILL');
         }
       }
@@ -597,6 +773,16 @@ export class GitExecutor {
 }
 
 export const gitExecutor = new GitExecutor();
+
+const maxConcurrentReadsPerRepository = 6;
+const defaultMaxStderrBytes = 256 * 1024;
+const hardMaxStderrBytes = 1024 * 1024;
+const maxProgressChunkCharacters = 16 * 1024;
+const progressFlushIntervalMs = 50;
+const forceTerminationDelayMs = 750;
+const defaultReadTimeoutMs = 120_000;
+type GitProgressEventOutputStream = Extract<GitProgressEvent, { type: 'output' }>['stream'];
+const progressStreamOrder: readonly GitProgressEventOutputStream[] = ['stdout', 'stderr'];
 
 function createGitErrorMessage(args: string[], result: GitCommandResult): string {
   return result.stderr.trim() || `git ${args.join(' ')} failed with exit code ${result.exitCode}`;
@@ -611,11 +797,113 @@ function sanitizeProgressChunk(chunk: string): string {
     if (codePoint === 9 || codePoint === 10 || codePoint === 13 || (codePoint !== undefined && codePoint >= 32 && codePoint !== 127)) {
       sanitized += character;
     }
+  }
 
-    if (sanitized.length >= 16 * 1024) {
-      break;
+  return sanitized.length <= maxProgressChunkCharacters
+    ? sanitized
+    : sanitized.slice(-maxProgressChunkCharacters);
+}
+
+function appendStringTail(current: string, next: string, maxCharacters: number): string {
+  const combined = `${current}${next}`;
+  return combined.length <= maxCharacters ? combined : combined.slice(-maxCharacters);
+}
+
+function commandTimeoutDeadlineAt(options: Pick<GitCommandOptions, 'timeoutMs' | 'deadlineAt'>): number | undefined {
+  const candidates: number[] = [];
+
+  if (options.timeoutMs !== undefined && Number.isFinite(options.timeoutMs)) {
+    candidates.push(Date.now() + Math.max(0, Math.floor(options.timeoutMs)));
+  }
+
+  if (options.deadlineAt !== undefined && Number.isFinite(options.deadlineAt)) {
+    candidates.push(Math.floor(options.deadlineAt));
+  }
+
+  return candidates.length > 0 ? Math.min(...candidates) : undefined;
+}
+
+function withDefaultReadTimeout(options: GitCommandOptions, kind: GitCommandKind): GitCommandOptions {
+  if (kind !== 'read' || options.timeoutMs !== undefined || options.deadlineAt !== undefined) {
+    return options;
+  }
+
+  return { ...options, timeoutMs: defaultReadTimeoutMs };
+}
+
+function withAbsoluteTimeoutDeadline(options: GitCommandOptions): GitCommandOptions {
+  if (options.timeoutMs === undefined || !Number.isFinite(options.timeoutMs)) {
+    return options;
+  }
+
+  const timeoutDeadlineAt = Date.now() + Math.max(0, Math.floor(options.timeoutMs));
+  return {
+    ...options,
+    deadlineAt:
+      options.deadlineAt === undefined
+        ? timeoutDeadlineAt
+        : Math.min(options.deadlineAt, timeoutDeadlineAt)
+  };
+}
+
+function clearWaiterTimeout(waiter: LockWaiter): void {
+  if (waiter.timeoutTimer) {
+    clearTimeout(waiter.timeoutTimer);
+    waiter.timeoutTimer = undefined;
+  }
+}
+
+function stderrByteLimit(requestedLimit: number | undefined): number {
+  if (requestedLimit === undefined || !Number.isFinite(requestedLimit)) {
+    return defaultMaxStderrBytes;
+  }
+
+  return Math.min(hardMaxStderrBytes, Math.max(0, Math.floor(requestedLimit)));
+}
+
+class BoundedBufferTail {
+  private chunks: Buffer[] = [];
+  private byteLength = 0;
+
+  constructor(private readonly maxBytes: number) {}
+
+  append(chunk: Buffer): void {
+    if (this.maxBytes === 0 || chunk.byteLength === 0) {
+      return;
+    }
+
+    if (chunk.byteLength >= this.maxBytes) {
+      this.chunks = [Buffer.from(chunk.subarray(chunk.byteLength - this.maxBytes))];
+      this.byteLength = this.maxBytes;
+      return;
+    }
+
+    this.chunks.push(chunk);
+    this.byteLength += chunk.byteLength;
+    let overflow = this.byteLength - this.maxBytes;
+
+    while (overflow > 0) {
+      const first = this.chunks[0];
+
+      if (!first) {
+        this.byteLength = 0;
+        return;
+      }
+
+      if (first.byteLength <= overflow) {
+        this.chunks.shift();
+        this.byteLength -= first.byteLength;
+        overflow -= first.byteLength;
+        continue;
+      }
+
+      this.chunks[0] = Buffer.from(first.subarray(overflow));
+      this.byteLength -= overflow;
+      overflow = 0;
     }
   }
 
-  return sanitized;
+  toString(): string {
+    return Buffer.concat(this.chunks, this.byteLength).toString('utf8');
+  }
 }

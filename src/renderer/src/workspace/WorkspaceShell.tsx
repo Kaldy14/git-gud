@@ -55,7 +55,7 @@ import {
 } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
-import { resolveSelectedGraphRow } from '@renderer/workspace/selection';
+import { resolveSelectedGraphRow, syncWipGraphRow } from '@renderer/workspace/selection';
 import { resolveRemoteBranchActivation } from '@renderer/workspace/branchActivation';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
@@ -158,7 +158,9 @@ export function WorkspaceShell(): ReactElement {
   const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
   const [fileFocusByTab, setFileFocusByTab] = useState<Record<string, number>>({});
   const [operationLogEntries, setOperationLogEntries] = useState<OperationLogEntry[]>([]);
-  const [activeRepositoryOperation, setActiveRepositoryOperation] = useState<ActiveRepositoryOperation>();
+  const [activeRepositoryOperations, setActiveRepositoryOperations] = useState<
+    Record<string, ActiveRepositoryOperation>
+  >({});
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogState>();
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
@@ -188,7 +190,7 @@ export function WorkspaceShell(): ReactElement {
       }
     >()
   );
-  const operationStartGuardRef = useRef(false);
+  const operationStartGuardRef = useRef(new Set<string>());
   const shortcutStateRef = useRef<ShortcutState>({
     isBlocked: false,
     onFetch: () => {},
@@ -199,12 +201,12 @@ export function WorkspaceShell(): ReactElement {
     onFocusSidebarFilter: () => {}
   });
   const queryClient = useQueryClient();
-  const localMutationCount = useIsMutating();
 
   const activeTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId),
     [workspace.activeTabId, workspace.tabs]
   );
+  const localMutationCount = useIsMutating({ mutationKey: ['repository-mutation', activeTab?.path] });
   const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? settings.graphPageSize) : settings.graphPageSize;
   const repositoryQuery = useRepositoryOverview(activeTab?.path);
   const graphQuery = useCommitGraph(activeTab?.path, graphLimit);
@@ -235,7 +237,10 @@ export function WorkspaceShell(): ReactElement {
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
-  const graphRows = graphQuery.data?.rows ?? emptyGraphRows;
+  const graphRows = useMemo(
+    () => syncWipGraphRow(graphQuery.data?.rows ?? emptyGraphRows, repositoryQuery.data?.status),
+    [graphQuery.data?.rows, repositoryQuery.data?.status]
+  );
   const linkedWorktreeBranches = useMemo(
     () =>
       new Set(
@@ -270,8 +275,8 @@ export function WorkspaceShell(): ReactElement {
     (entry) => entry.repoPath === activeTab?.path && entry.status === 'pending'
   );
   const visibleActiveOperation: ActiveRepositoryOperation | undefined =
-    activeRepositoryOperation?.repoPath === activeTab?.path
-      ? activeRepositoryOperation
+    activeTab && activeRepositoryOperations[activeTab.path]
+      ? activeRepositoryOperations[activeTab.path]
       : pendingOperationForActiveRepo
         ? {
             id: pendingOperationForActiveRepo.id,
@@ -282,8 +287,8 @@ export function WorkspaceShell(): ReactElement {
         : undefined;
   const isOperationBusy =
     localMutationCount > 0 ||
-    Boolean(activeRepositoryOperation) ||
-    operationLogEntries.some((entry) => entry.status === 'pending');
+    Boolean(activeTab && activeRepositoryOperations[activeTab.path]) ||
+    Boolean(pendingOperationForActiveRepo);
   const usesCompactDetail = viewportWidth < 900;
   const usesCompactSidebar = viewportWidth < 700;
   const sidebarWidthCap = viewportWidth < 900 ? 230 : viewportWidth < 1200 ? 280 : 560;
@@ -712,19 +717,30 @@ export function WorkspaceShell(): ReactElement {
     const requestedRepoPath = options.repoPath ?? activeTab?.path;
     const retryable = options.retryable ?? false;
 
-    if (!requestedRepoPath || isOperationBusy || operationStartGuardRef.current) {
+    if (!requestedRepoPath) {
       return false;
     }
 
-    operationStartGuardRef.current = true;
+    const requestedRepoIsBusy =
+      Boolean(activeRepositoryOperations[requestedRepoPath]) ||
+      operationLogEntries.some((entry) => entry.repoPath === requestedRepoPath && entry.status === 'pending');
+
+    if (requestedRepoIsBusy || operationStartGuardRef.current.has(requestedRepoPath)) {
+      return false;
+    }
+
+    operationStartGuardRef.current.add(requestedRepoPath);
     const id = createLogId();
     const happenedAt = new Date().toISOString();
-    setActiveRepositoryOperation({
-      id,
-      repoPath: requestedRepoPath,
-      label,
-      phase: 'running'
-    });
+    setActiveRepositoryOperations((operations) => ({
+      ...operations,
+      [requestedRepoPath]: {
+        id,
+        repoPath: requestedRepoPath,
+        label,
+        phase: 'running'
+      }
+    }));
     if (retryable) {
       operationRetryActionsRef.current.set(id, { label, action, repoPath: requestedRepoPath, retryable: true });
     }
@@ -741,9 +757,12 @@ export function WorkspaceShell(): ReactElement {
 
     try {
       const result = await action(requestedRepoPath);
-      setActiveRepositoryOperation((operation) =>
-        operation?.id === id ? { ...operation, phase: 'refreshing' } : operation
-      );
+      setActiveRepositoryOperations((operations) => {
+        const operation = operations[requestedRepoPath];
+        return operation?.id === id
+          ? { ...operations, [requestedRepoPath]: { ...operation, phase: 'refreshing' } }
+          : operations;
+      });
       setOperationLogEntries((entries) =>
         entries.map((entry) =>
           entry.id === id
@@ -789,8 +808,16 @@ export function WorkspaceShell(): ReactElement {
       );
       return false;
     } finally {
-      operationStartGuardRef.current = false;
-      setActiveRepositoryOperation((operation) => (operation?.id === id ? undefined : operation));
+      operationStartGuardRef.current.delete(requestedRepoPath);
+      setActiveRepositoryOperations((operations) => {
+        if (operations[requestedRepoPath]?.id !== id) {
+          return operations;
+        }
+
+        const nextOperations = { ...operations };
+        delete nextOperations[requestedRepoPath];
+        return nextOperations;
+      });
     }
   }
 
@@ -1776,6 +1803,7 @@ export function WorkspaceShell(): ReactElement {
                     diffStyle={activeDiffStyle}
                     wipScopeByPath={activeWipScopeByPath}
                     focusSignal={fileFocusByTab[activeTab.id] ?? 0}
+                    isOperationBusy={isOperationBusy}
                     onSetDiffStyle={handleSetDiffStyle}
                     onChangeWipScope={handleChangeWipScope}
                     onSelectFile={handleSelectFile}

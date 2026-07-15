@@ -19,9 +19,15 @@ type ActiveRepoWatch = {
   pendingTimer?: NodeJS.Timeout;
   pendingReasons: Set<WatchReason>;
   pendingPaths: Set<string>;
+  mutationDepth: number;
+  mutationFailed: boolean;
+  suppressedReasons: Set<WatchReason>;
+  suppressedPaths: Set<string>;
 };
 
-type CloseableWatcher = Pick<ChokidarWatcher, 'close'> | Pick<NativeFsWatcher, 'close'>;
+type CloseableWatcher = {
+  close: () => void | Promise<void>;
+};
 
 export class RepoWatcherRegistry {
   private readonly watches = new Map<string, ActiveRepoWatch>();
@@ -62,6 +68,30 @@ export class RepoWatcherRegistry {
     await Promise.allSettled(closeOperations);
   }
 
+  async runDuringMutation<T>(repoPath: string, operation: () => Promise<T>): Promise<T> {
+    const activeWatch = this.watches.get(repoPath);
+
+    if (!activeWatch) {
+      return operation();
+    }
+
+    activeWatch.mutationDepth += 1;
+    let succeeded = false;
+
+    try {
+      const result = await operation();
+      succeeded = true;
+      return result;
+    } finally {
+      activeWatch.mutationDepth = Math.max(0, activeWatch.mutationDepth - 1);
+      activeWatch.mutationFailed ||= !succeeded;
+
+      if (activeWatch.mutationDepth === 0) {
+        this.finishMutation(activeWatch);
+      }
+    }
+  }
+
   private async closeActiveWatch(repoPath: string, activeWatch: ActiveRepoWatch): Promise<void> {
     this.watches.delete(repoPath);
 
@@ -69,6 +99,9 @@ export class RepoWatcherRegistry {
       clearTimeout(activeWatch.pendingTimer);
       activeWatch.pendingTimer = undefined;
     }
+
+    activeWatch.suppressedReasons.clear();
+    activeWatch.suppressedPaths.clear();
 
     await Promise.allSettled(activeWatch.watchers.map((watcher) => watcher.close()));
   }
@@ -83,7 +116,11 @@ export class RepoWatcherRegistry {
       repoPath: repository.path,
       watchers: [],
       pendingReasons: new Set(),
-      pendingPaths: new Set()
+      pendingPaths: new Set(),
+      mutationDepth: 0,
+      mutationFailed: false,
+      suppressedReasons: new Set(),
+      suppressedPaths: new Set()
     };
 
     for (const target of targets) {
@@ -102,12 +139,44 @@ export class RepoWatcherRegistry {
   }
 
   private enqueueChange(activeWatch: ActiveRepoWatch, reason: WatchReason, changedPath: string | undefined): void {
-    activeWatch.pendingReasons.add(reason);
-
-    if (changedPath && activeWatch.pendingPaths.size < maxPendingPaths) {
-      activeWatch.pendingPaths.add(changedPath);
+    if (activeWatch.mutationDepth > 0) {
+      recordChange(activeWatch.suppressedReasons, activeWatch.suppressedPaths, reason, changedPath);
+      return;
     }
 
+    recordChange(activeWatch.pendingReasons, activeWatch.pendingPaths, reason, changedPath);
+    this.schedulePendingChange(activeWatch);
+  }
+
+  private finishMutation(activeWatch: ActiveRepoWatch): void {
+    if (this.watches.get(activeWatch.repoPath) !== activeWatch) {
+      return;
+    }
+
+    if (activeWatch.mutationFailed) {
+      for (const reason of activeWatch.suppressedReasons) {
+        activeWatch.pendingReasons.add(reason);
+      }
+
+      for (const path of activeWatch.suppressedPaths) {
+        if (activeWatch.pendingPaths.size >= maxPendingPaths) {
+          break;
+        }
+
+        activeWatch.pendingPaths.add(path);
+      }
+
+      if (activeWatch.suppressedReasons.size > 0) {
+        this.schedulePendingChange(activeWatch);
+      }
+    }
+
+    activeWatch.mutationFailed = false;
+    activeWatch.suppressedReasons.clear();
+    activeWatch.suppressedPaths.clear();
+  }
+
+  private schedulePendingChange(activeWatch: ActiveRepoWatch): void {
     if (activeWatch.pendingTimer) {
       clearTimeout(activeWatch.pendingTimer);
     }
@@ -136,6 +205,19 @@ export class RepoWatcherRegistry {
 const repoChangeDebounceMs = 350;
 const maxPendingPaths = 32;
 
+function recordChange(
+  reasons: Set<WatchReason>,
+  paths: Set<string>,
+  reason: WatchReason,
+  changedPath: string | undefined
+): void {
+  reasons.add(reason);
+
+  if (changedPath && paths.size < maxPendingPaths) {
+    paths.add(changedPath);
+  }
+}
+
 function createWatcher(
   target: WatchTarget,
   onChange: (changedPath: string | undefined) => void
@@ -148,6 +230,19 @@ function createWatcher(
     return createNativeWorktreeWatcher(target.path, onChange);
   }
 
+  const nativeWatcher = createNativeGitMetadataWatcher(target, onChange);
+
+  if (nativeWatcher) {
+    return nativeWatcher;
+  }
+
+  return createChokidarWatcher(target, onChange);
+}
+
+function createChokidarWatcher(
+  target: WatchTarget,
+  onChange: (changedPath: string | undefined) => void
+): ChokidarWatcher {
   const watcher = chokidar.watch(target.path, {
     ignoreInitial: true,
     ...(typeof target.depth === 'number' ? { depth: target.depth } : {}),
@@ -160,6 +255,46 @@ function createWatcher(
   watcher.on('error', () => undefined);
 
   return watcher;
+}
+
+function createNativeGitMetadataWatcher(
+  target: WatchTarget,
+  onChange: (changedPath: string | undefined) => void
+): CloseableWatcher | undefined {
+  try {
+    let closed = false;
+    let fallbackWatcher: ChokidarWatcher | undefined;
+    const nativeWatcher = watch(target.path, { recursive: target.depth !== 0 }, (_eventType, filename) => {
+      const changedPath = filename
+        ? isAbsolute(filename)
+          ? filename
+          : join(target.path, filename)
+        : undefined;
+
+      if (changedPath && shouldIgnoreWatchPath(target, changedPath)) {
+        return;
+      }
+
+      onChange(changedPath);
+    });
+    nativeWatcher.on('error', () => {
+      if (closed || fallbackWatcher) {
+        return;
+      }
+
+      nativeWatcher.close();
+      fallbackWatcher = createChokidarWatcher(target, onChange);
+    });
+    return {
+      close() {
+        closed = true;
+        nativeWatcher.close();
+        return fallbackWatcher?.close();
+      }
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function createNativeWorktreeWatcher(

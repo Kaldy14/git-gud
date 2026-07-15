@@ -6,19 +6,18 @@ import type { GitConflictOperation, GitConflictState, GitFileChange, GitFileChan
 import { gitExecutor } from './exec';
 import { parseStatusPorcelainV2 } from './parsers/status';
 
+const CONFLICT_GIT_PATHS = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'] as const;
+
 export async function loadConflictState(
   repoPath: string,
   env?: NodeJS.ProcessEnv,
   status?: GitStatusSummary
 ): Promise<GitConflictState> {
   const resolvedStatus = status ?? (await loadConflictStatus(repoPath, env));
-  const [rebaseMerge, rebaseApply, mergeHead, cherryPickHead, revertHead] = await Promise.all([
-    gitPathExists(repoPath, 'rebase-merge', env),
-    gitPathExists(repoPath, 'rebase-apply', env),
-    gitPathExists(repoPath, 'MERGE_HEAD', env),
-    gitPathExists(repoPath, 'CHERRY_PICK_HEAD', env),
-    gitPathExists(repoPath, 'REVERT_HEAD', env)
-  ]);
+  const [rebaseMerge, rebaseApply, mergeHead, cherryPickHead, revertHead] = await loadGitPathPresence(
+    repoPath,
+    env
+  );
   const operation = selectConflictOperation({
     rebaseMerge,
     rebaseApply,
@@ -41,7 +40,7 @@ export async function loadConflictState(
 }
 
 async function loadConflictStatus(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<GitStatusSummary> {
-  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'], {
+  const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=no', '-z'], {
     cwd: repoPath,
     env
   });
@@ -74,20 +73,29 @@ function selectConflictOperation(paths: {
   return undefined;
 }
 
-async function gitPathExists(repoPath: string, pathName: string, env: NodeJS.ProcessEnv | undefined): Promise<boolean> {
-  const result = await gitExecutor.run(['rev-parse', '--git-path', pathName], { cwd: repoPath, env });
-  const gitPath = result.stdout.trim();
+async function loadGitPathPresence(repoPath: string, env: NodeJS.ProcessEnv | undefined): Promise<boolean[]> {
+  const result = await gitExecutor.run(
+    ['rev-parse', ...CONFLICT_GIT_PATHS.flatMap((pathName) => ['--git-path', pathName])],
+    { cwd: repoPath, env }
+  );
+  const gitPaths = result.stdout.trimEnd().split('\n');
 
-  if (!gitPath) {
-    return false;
-  }
+  return Promise.all(
+    CONFLICT_GIT_PATHS.map(async (_pathName, index) => {
+      const gitPath = gitPaths[index];
 
-  try {
-    await access(resolve(repoPath, gitPath));
-    return true;
-  } catch {
-    return false;
-  }
+      if (!gitPath) {
+        return false;
+      }
+
+      try {
+        await access(resolve(repoPath, gitPath));
+        return true;
+      } catch {
+        return false;
+      }
+    })
+  );
 }
 
 function conflictedFileToDetail(file: GitFileChange): GitFileChangeDetail {

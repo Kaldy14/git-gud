@@ -1,5 +1,26 @@
 import { laneColor } from '@shared/graph';
-import type { CommitGraphRow } from '@shared/types';
+import type { CommitGraphRow, GitStatusCode, GitStatusSummary, GraphFileStatus } from '@shared/types';
+
+export function syncWipGraphRow(
+  rows: CommitGraphRow[],
+  status: GitStatusSummary | undefined
+): CommitGraphRow[] {
+  if (!status || !rows.some((row) => row.node.kind === 'wip')) {
+    return rows;
+  }
+
+  return rows.map((row) =>
+    row.node.kind === 'wip'
+      ? {
+          ...row,
+          parentShas: status.branch.oid ? [status.branch.oid] : [],
+          files: status.files
+            .filter((file) => file.status !== 'ignored')
+            .map((file) => ({ path: file.path, status: graphFileStatus(file.status) }))
+        }
+      : row
+  );
+}
 
 export function resolveSelectedGraphRow(
   rows: CommitGraphRow[],
@@ -33,4 +54,12 @@ export function resolveSelectedGraphRow(
     rails: [],
     files: []
   };
+}
+
+function graphFileStatus(status: GitStatusCode): GraphFileStatus {
+  if (status === 'added' || status === 'untracked' || status === 'copied') {
+    return 'added';
+  }
+
+  return status === 'deleted' ? 'deleted' : 'modified';
 }

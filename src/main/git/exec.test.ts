@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  GitCommandTimeoutError,
   GitExecutor,
   GitOperationCancelledError,
   GitOutputLimitError,
@@ -8,6 +9,61 @@ import {
 } from './exec';
 
 describe('GitExecutor coordination', () => {
+  it.runIf(process.platform !== 'win32')('caps concurrent reads per repository at six', async () => {
+    const executor = new GitExecutor();
+    const cwd = process.cwd();
+    let activeReads = 0;
+    let maxActiveReads = 0;
+    const unsubscribe = executor.onProgress((event) => {
+      if (event.type === 'start') {
+        activeReads += 1;
+        maxActiveReads = Math.max(maxActiveReads, activeReads);
+      } else if (event.type === 'close') {
+        activeReads -= 1;
+      }
+    });
+
+    const reads = Array.from({ length: 12 }, () =>
+      executor.run(['-c', 'alias.pause=!sleep 0.1', 'pause'], { cwd })
+    );
+
+    await Promise.all(reads);
+    unsubscribe();
+
+    expect(maxActiveReads).toBe(6);
+    expect(activeReads).toBe(0);
+    await executor.waitForIdle();
+  });
+
+  it.runIf(process.platform !== 'win32')('keeps writer preference while the read pool is saturated', async () => {
+    const executor = new GitExecutor();
+    const cwd = process.cwd();
+    const events: string[] = [];
+    let startedReads = 0;
+    const unsubscribe = executor.onProgress((event) => {
+      if (event.type === 'start') {
+        startedReads += 1;
+      }
+    });
+    const initialReads = Array.from({ length: 6 }, () =>
+      executor.run(['-c', 'alias.pause=!sleep 0.1', 'pause'], { cwd })
+    );
+
+    await until(() => startedReads === 6);
+    const writer = executor.transaction(cwd, async () => {
+      events.push('writer');
+    });
+    const lateRead = executor.run(['--version'], { cwd }).then(() => {
+      events.push('late-read');
+    });
+
+    await Promise.all([...initialReads, writer, lateRead]);
+    unsubscribe();
+
+    expect(events).toEqual(['writer', 'late-read']);
+    await executor.waitForIdle();
+  });
+
   it('keeps a multi-command transaction exclusive from reads and writes', async () => {
     const executor = new GitExecutor();
     const cwd = process.cwd();
@@ -147,16 +203,200 @@ describe('GitExecutor coordination', () => {
         await executor.run(['--version'], { cwd, kind: 'mutation', cancellable: true });
       })
     );
+    const queuedError = queuedOperation.catch((error: unknown) => error);
 
     await nextTask();
     expect(executor.cancelOperation('other-operation')).toBe(false);
     expect(executor.cancelOperation('queued-fetch')).toBe(true);
 
     await expect(uncorrelatedRead).resolves.toMatchObject({ exitCode: 0 });
-    await expect(queuedOperation).rejects.toBeInstanceOf(GitOperationCancelledError);
+    await expect(queuedError).resolves.toBeInstanceOf(GitOperationCancelledError);
     expect(queuedBodyStarted).toBe(false);
     expect(events.some((event) => event.type === 'start' && event.operationId === 'queued-fetch')).toBe(false);
     unsubscribe();
+  });
+
+  it.runIf(process.platform !== 'win32')('cancels a queued read without waiting for a pool slot', async () => {
+    const executor = new GitExecutor();
+    const cwd = process.cwd();
+    let startedReads = 0;
+    const operationStarts: string[] = [];
+    const unsubscribe = executor.onProgress((event) => {
+      if (event.type === 'start') {
+        startedReads += 1;
+        if (event.operationId) {
+          operationStarts.push(event.operationId);
+        }
+      }
+    });
+    const activeReads = Array.from({ length: 6 }, () =>
+      executor.run(['-c', 'alias.pause=!sleep 0.2', 'pause'], { cwd })
+    );
+
+    await until(() => startedReads === 6);
+    const queuedRead = executor.withProgressContext('queued-read', () =>
+      executor.run(['--version'], { cwd, cancellable: true })
+    );
+    await nextTask();
+
+    expect(executor.cancelOperation('queued-read')).toBe(true);
+    await expect(queuedRead).rejects.toBeInstanceOf(GitOperationCancelledError);
+    expect(operationStarts).not.toContain('queued-read');
+    await Promise.all(activeReads);
+    await executor.waitForIdle();
+    unsubscribe();
+  });
+
+  it.runIf(process.platform !== 'win32')('times out a command and terminates its process group', async () => {
+    const executor = new GitExecutor();
+    const startedAt = Date.now();
+
+    await expect(
+      executor.run(['-c', 'alias.pause=!sleep 5', 'pause'], {
+        cwd: process.cwd(),
+        timeoutMs: 25
+      })
+    ).rejects.toBeInstanceOf(GitCommandTimeoutError);
+
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    await executor.waitForIdle();
+  });
+
+  it('enforces an absolute deadline while a read waits for the repository lock', async () => {
+    const executor = new GitExecutor();
+    const cwd = process.cwd();
+    let releaseWriter: () => void = () => {};
+    let markWriterStarted: () => void = () => {};
+    const writerGate = new Promise<void>((resolve) => {
+      releaseWriter = resolve;
+    });
+    const writerStarted = new Promise<void>((resolve) => {
+      markWriterStarted = resolve;
+    });
+    const writer = executor.transaction(cwd, async () => {
+      markWriterStarted();
+      await writerGate;
+    });
+    await writerStarted;
+
+    await expect(
+      executor.run(['--version'], { cwd, deadlineAt: Date.now() + 25 })
+    ).rejects.toBeInstanceOf(GitCommandTimeoutError);
+    releaseWriter();
+    await writer;
+    await executor.waitForIdle();
+  });
+
+  it('does not cancel a queued read marked non-cancellable', async () => {
+    const executor = new GitExecutor();
+    const cwd = process.cwd();
+    let releaseWriter: () => void = () => {};
+    let markWriterStarted: () => void = () => {};
+    const writerGate = new Promise<void>((resolve) => {
+      releaseWriter = resolve;
+    });
+    const writerStarted = new Promise<void>((resolve) => {
+      markWriterStarted = resolve;
+    });
+    const writer = executor.transaction(cwd, async () => {
+      markWriterStarted();
+      await writerGate;
+    });
+    await writerStarted;
+    const queuedRead = executor.withProgressContext('non-cancellable-read', () =>
+      executor.run(['--version'], { cwd, cancellable: false })
+    );
+    await nextTask();
+
+    expect(executor.cancelOperation('non-cancellable-read')).toBe(false);
+    releaseWriter();
+    await writer;
+    await expect(queuedRead).resolves.toMatchObject({ exitCode: 0 });
+    await executor.waitForIdle();
+  });
+
+  it.runIf(process.platform !== 'win32')('releases mutation transactions after a timeout', async () => {
+    const executor = new GitExecutor();
+    const cwd = process.cwd();
+
+    await expect(
+      executor.run(['-c', 'alias.pause=!sleep 5', 'pause'], {
+        cwd,
+        kind: 'mutation',
+        timeoutMs: 25
+      })
+    ).rejects.toBeInstanceOf(GitCommandTimeoutError);
+
+    expect(executor.getMutationGeneration(cwd)).toBe(2);
+    await expect(executor.run(['--version'], { cwd })).resolves.toMatchObject({ exitCode: 0 });
+    await executor.waitForIdle();
+  });
+
+  it('rejects an expired deadline before spawning Git', async () => {
+    const executor = new GitExecutor();
+    const events: GitProgressEvent[] = [];
+    const unsubscribe = executor.onProgress((event) => events.push(event));
+
+    await expect(
+      executor.run(['--version'], {
+        cwd: process.cwd(),
+        deadlineAt: Date.now() - 1
+      })
+    ).rejects.toBeInstanceOf(GitCommandTimeoutError);
+    unsubscribe();
+
+    expect(events).toEqual([]);
+    await executor.waitForIdle();
+  });
+
+  it.runIf(process.platform !== 'win32')('retains only the configured stderr tail', async () => {
+    const executor = new GitExecutor();
+    const result = await executor.run(
+      [
+        '-c',
+        "alias.fail=!sh -c 'printf \"discard-this-prefix-0123456789012345678901234567890123456789\" >&2; printf \"final-marker\" >&2; exit 7' -",
+        'fail'
+      ],
+      {
+        cwd: process.cwd(),
+        allowedExitCodes: [7],
+        maxStderrBytes: 32
+      }
+    );
+
+    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(32);
+    expect(result.stderr).toContain('final-marker');
+    expect(result.stderr).not.toContain('discard-this-prefix');
+  });
+
+  it.runIf(process.platform !== 'win32')('coalesces progress output and preserves its final text', async () => {
+    const executor = new GitExecutor();
+    const outputs: string[] = [];
+    let rawChunks = 0;
+    const unsubscribe = executor.onProgress((event) => {
+      if (event.type === 'output' && event.stream === 'stdout') {
+        outputs.push(event.chunk);
+      }
+    });
+
+    await executor.run(
+      [
+        '-c',
+        "alias.progress=!sh -c 'for step in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do printf \"step-$step\\n\"; sleep 0.005; done' -",
+        'progress'
+      ],
+      {
+        cwd: process.cwd(),
+        kind: 'mutation',
+        onStdout: () => {
+          rawChunks += 1;
+        }
+      }
+    );
+    unsubscribe();
+
+    expect(rawChunks).toBeGreaterThan(outputs.length);
+    expect(outputs.join('')).toContain('step-20');
   });
 
   it.runIf(process.platform !== 'win32')('escalates cancellation for a process group that ignores TERM', async () => {

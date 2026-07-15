@@ -8,7 +8,7 @@ import { RepoWatcherRegistry } from './git/watcher';
 import { gitExecutor } from './git/exec';
 import { registerIpcHandlers } from './ipc';
 import { isTrustedRendererUrl } from './ipcSecurity';
-import { getWorkspace } from './store';
+import { flushPendingWorkspaceWrites, getWorkspace } from './store';
 
 const quitCleanupTimeoutMs = 1500;
 const hardQuitTimeoutMs = 3000;
@@ -187,6 +187,7 @@ function requestQuit(): void {
 
 async function quitAfterCleanup(): Promise<void> {
   try {
+    flushPendingWorkspaceWrites();
     await Promise.race([
       gitExecutor.shutdown(quitCleanupTimeoutMs - 250),
       wait(quitCleanupTimeoutMs)

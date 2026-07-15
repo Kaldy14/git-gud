@@ -4,6 +4,20 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-15
+
+### Changed
+
+- Bounded per-repository Git read concurrency, prioritized queued mutations, and added cancellation deadlines with bounded progress and error buffering.
+- Reduced checkout, conflict inspection, and working-tree mutation subprocess work while batching and capping bulk cherry-pick preflight.
+- Replaced recursive Git metadata watching with targeted native watchers and mutation-aware refresh coalescing.
+
+### Fixed
+
+- Prevented stale commit and file selection responses from overriding newer renderer selections.
+- Preserved working-directory rename metadata without reloading immutable history and flushed deferred selection persistence on quit.
+- Scoped busy state per repository and blocked file or hunk actions while a mutation is active.
+
 ## [0.3.0] - 2026-07-14
 
 ### Added

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CommitGraphRow } from '@shared/types';
+import type { CommitGraphRow, GitStatusSummary } from '@shared/types';
 
-import { resolveSelectedGraphRow } from './selection';
+import { resolveSelectedGraphRow, syncWipGraphRow } from './selection';
 
 const firstRow: CommitGraphRow = {
   sha: 'a'.repeat(40),
@@ -26,5 +26,50 @@ describe('selected graph row resolution', () => {
 
   it('uses the first graph row when no explicit selection exists', () => {
     expect(resolveSelectedGraphRow([firstRow], undefined)).toBe(firstRow);
+  });
+});
+
+describe('WIP graph synchronization', () => {
+  it('updates path cardinality from overview status after unstaging a rename', () => {
+    const wipRow: CommitGraphRow = {
+      ...firstRow,
+      sha: 'wip',
+      node: { lane: 0, kind: 'wip' },
+      files: [{ path: 'renamed.txt', status: 'modified' }]
+    };
+    const status: GitStatusSummary = {
+      branch: { head: 'main', oid: firstRow.sha, ahead: 0, behind: 0, isDetached: false },
+      files: [
+        {
+          path: 'source.txt',
+          indexStatus: 'unmodified',
+          worktreeStatus: 'deleted',
+          status: 'deleted',
+          staged: false,
+          unstaged: true,
+          conflicted: false
+        },
+        {
+          path: 'renamed.txt',
+          indexStatus: 'untracked',
+          worktreeStatus: 'untracked',
+          status: 'untracked',
+          staged: false,
+          unstaged: true,
+          conflicted: false
+        }
+      ],
+      stagedCount: 0,
+      unstagedCount: 2,
+      untrackedCount: 1,
+      conflictedCount: 0,
+      dirtyCount: 2,
+      isDirty: true
+    };
+
+    expect(syncWipGraphRow([wipRow, firstRow], status)[0]?.files).toEqual([
+      { path: 'source.txt', status: 'deleted' },
+      { path: 'renamed.txt', status: 'added' }
+    ]);
   });
 });

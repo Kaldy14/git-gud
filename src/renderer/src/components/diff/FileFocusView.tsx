@@ -59,6 +59,7 @@ type FileFocusViewProps = {
   diffStyle: DiffStyle;
   wipScopeByPath: Record<string, WipDiffScope>;
   focusSignal: number;
+  isOperationBusy: boolean;
   onSetDiffStyle: (style: DiffStyle) => void;
   onChangeWipScope: (path: string, scope: WipDiffScope) => void;
   onSelectFile: (path: string) => void;
@@ -73,6 +74,7 @@ export function FileFocusView({
   diffStyle,
   wipScopeByPath,
   focusSignal,
+  isOperationBusy,
   onSetDiffStyle,
   onChangeWipScope,
   onSelectFile,
@@ -103,6 +105,7 @@ export function FileFocusView({
   const stageableHunks = useMemo(() => parseStageablePatchHunks(diffQuery.data?.stageablePatch), [diffQuery.data?.stageablePatch]);
   const patchMode = selectedWipScope === 'staged' ? 'unstage' : 'stage';
   const patchApplyMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
     mutationFn: async (hunk: StageablePatchHunk) => {
       if (!repoPath || !selectedFileDetail) {
         throw new Error('A selected WIP file is required.');
@@ -266,9 +269,13 @@ export function FileFocusView({
                     ? {
                         hunks: stageableHunks,
                         mode: patchMode,
-                        isMutating: patchApplyMutation.isPending,
+                        isMutating: isOperationBusy || patchApplyMutation.isPending,
                         errorMessage: patchApplyMutation.error instanceof Error ? patchApplyMutation.error.message : undefined,
-                        onApplyHunk: (hunk) => patchApplyMutation.mutate(hunk)
+                        onApplyHunk: (hunk) => {
+                          if (!isOperationBusy) {
+                            patchApplyMutation.mutate(hunk);
+                          }
+                        }
                       }
                     : undefined
               })}

@@ -3,7 +3,7 @@ import type { GitStatusSummary } from '@shared/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GitCommandOptions, GitCommandResult } from './exec';
-import { discardAllChanges, discardFile, loadFileDiff, unstageFile } from './repositoryDetails';
+import { discardAllChanges, discardFile, loadFileDiff, stageFile, unstageFile } from './repositoryDetails';
 
 const mocks = vi.hoisted(() => ({
   loadStatus: vi.fn<() => Promise<GitStatusSummary>>(),
@@ -31,6 +31,12 @@ describe('loadFileDiff', () => {
     mocks.loadStatus.mockReset();
     mocks.run.mockReset();
     mocks.run.mockImplementation(async (args, options) => createGitResult(args, options.cwd, 'diff patch'));
+  });
+
+  it('keeps staging refreshes scoped away from commit history', async () => {
+    const result = await stageFile({ path: '/repo' }, 'changed.txt');
+
+    expect(result.invalidates).toEqual(['overview', 'wip-detail', 'file-diff']);
   });
 
   it('requests commit rename patches with both rename paths', async () => {
@@ -62,6 +68,7 @@ describe('loadFileDiff', () => {
     mocks.loadStatus.mockResolvedValue({
       branch: {
         head: 'main',
+        oid: 'abc123',
         ahead: 0,
         behind: 0,
         isDetached: false
@@ -109,6 +116,7 @@ describe('loadFileDiff', () => {
     mocks.loadStatus.mockResolvedValue({
       branch: {
         head: 'main',
+        oid: 'abc123',
         ahead: 0,
         behind: 0,
         isDetached: false
@@ -133,9 +141,9 @@ describe('loadFileDiff', () => {
       isDirty: true
     });
 
-    await unstageFile({ path: '/repo' }, 'renamed.txt');
+    const result = await unstageFile({ path: '/repo' }, 'renamed.txt');
 
-    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
       '--literal-pathspecs',
       'restore',
       '--staged',
@@ -143,6 +151,7 @@ describe('loadFileDiff', () => {
       'source.txt',
       'renamed.txt'
     ]);
+    expect(result.invalidates).not.toContain('graph');
   });
 });
 
@@ -170,7 +179,7 @@ describe('discardFile', () => {
 
     await discardFile({ path: '/repo' }, 'deleted.txt');
 
-    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
       '--literal-pathspecs',
       'restore',
       '--staged',
@@ -178,7 +187,7 @@ describe('discardFile', () => {
       '--',
       'deleted.txt'
     ]);
-    expect(mocks.run.mock.calls[2]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
       '--literal-pathspecs',
       'restore',
       '--worktree',
@@ -205,7 +214,7 @@ describe('discardFile', () => {
 
     await discardFile({ path: '/repo' }, 'new.txt');
 
-    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
       '--literal-pathspecs',
       'restore',
       '--staged',
@@ -213,7 +222,7 @@ describe('discardFile', () => {
       '--',
       'new.txt'
     ]);
-    expect(mocks.run.mock.calls[2]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
       '--literal-pathspecs',
       'clean',
       '-f',
@@ -241,7 +250,7 @@ describe('discardFile', () => {
 
     await discardFile({ path: '/repo' }, 'renamed.txt');
 
-    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
       '--literal-pathspecs',
       'restore',
       '--staged',
@@ -250,7 +259,7 @@ describe('discardFile', () => {
       'source.txt',
       'renamed.txt'
     ]);
-    expect(mocks.run.mock.calls[2]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
       '--literal-pathspecs',
       'restore',
       '--worktree',
@@ -258,7 +267,7 @@ describe('discardFile', () => {
       '--',
       'source.txt'
     ]);
-    expect(mocks.run.mock.calls[3]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[2]?.[0]).toEqual([
       '--literal-pathspecs',
       'clean',
       '-f',
@@ -285,7 +294,7 @@ describe('discardFile', () => {
 
     await discardFile({ path: '/repo' }, 'scratch.txt');
 
-    expect(mocks.run.mock.calls[1]?.[0]).toEqual([
+    expect(mocks.run.mock.calls[0]?.[0]).toEqual([
       '--literal-pathspecs',
       'clean',
       '-f',
@@ -327,13 +336,13 @@ describe('discardAllChanges', () => {
       ])
     );
 
-    await discardAllChanges({ path: '/repo' });
+    const result = await discardAllChanges({ path: '/repo' });
 
     expect(mocks.run.mock.calls.map(([args]) => args)).toEqual([
-      ['rev-parse', '--verify', 'HEAD'],
       ['reset', '--hard', 'HEAD'],
       ['clean', '-f', '-d', '--', '.']
     ]);
+    expect(result.invalidates).toContain('graph');
   });
 
   it('blocks bulk discard while the repository has conflicts', async () => {
@@ -362,6 +371,7 @@ function createStatusSummary(files: StatusFile[]): GitStatusSummary {
   return {
     branch: {
       head: 'main',
+      oid: 'abc123',
       ahead: 0,
       behind: 0,
       isDetached: false

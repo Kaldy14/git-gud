@@ -5,7 +5,9 @@ import {
   createDefaultWorkspaceState,
   closeRepositoryTab,
   normalizeDetailPanelWidth,
-  normalizeSidebarWidth
+  normalizeSidebarWidth,
+  selectRepositoryCommit,
+  selectRepositoryFile
 } from '@shared/workspace';
 
 type WorkspaceStore = {
@@ -65,10 +67,28 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     }
   },
   async selectCommit(tabId, selectedCommit) {
-    await runWorkspaceAction(set, () => window.api.selectCommit(tabId, selectedCommit));
+    set((state) => ({
+      workspace: selectRepositoryCommit(state.workspace, tabId, selectedCommit),
+      errorMessage: undefined
+    }));
+
+    try {
+      await window.api.selectCommit(tabId, selectedCommit);
+    } catch (error) {
+      set({ errorMessage: workspaceActionErrorMessage(error) });
+    }
   },
   async selectFile(tabId, selectedFile) {
-    await runWorkspaceAction(set, () => window.api.selectFile(tabId, selectedFile));
+    set((state) => ({
+      workspace: selectRepositoryFile(state.workspace, tabId, selectedFile),
+      errorMessage: undefined
+    }));
+
+    try {
+      await window.api.selectFile(tabId, selectedFile);
+    } catch (error) {
+      set({ errorMessage: workspaceActionErrorMessage(error) });
+    }
   },
   async setSidebarCollapsed(collapsed) {
     await runWorkspaceAction(set, () => window.api.setSidebarCollapsed(collapsed));

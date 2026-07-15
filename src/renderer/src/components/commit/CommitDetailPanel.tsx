@@ -117,6 +117,7 @@ export function CommitDetailPanel({
   const files = detail?.files ?? [];
   const selectedFileDetail = findFile(files, selectedFile);
   const stageFileMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
     mutationFn: async (path: string) => {
       if (!repoPath) {
         throw new Error('Repository path is required.');
@@ -129,6 +130,7 @@ export function CommitDetailPanel({
     }
   });
   const unstageFileMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
     mutationFn: async (path: string) => {
       if (!repoPath) {
         throw new Error('Repository path is required.');
@@ -141,6 +143,7 @@ export function CommitDetailPanel({
     }
   });
   const stageAllMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
     mutationFn: async () => {
       if (!repoPath) {
         throw new Error('Repository path is required.');
@@ -153,6 +156,7 @@ export function CommitDetailPanel({
     }
   });
   const unstageAllMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
     mutationFn: async () => {
       if (!repoPath) {
         throw new Error('Repository path is required.');
@@ -165,6 +169,7 @@ export function CommitDetailPanel({
     }
   });
   const commitMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
     mutationFn: async () => {
       if (!repoPath) {
         throw new Error('Repository path is required.');

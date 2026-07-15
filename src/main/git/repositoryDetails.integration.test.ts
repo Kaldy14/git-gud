@@ -11,10 +11,27 @@ import {
   loadCommitDetail,
   loadCommitSelectionDetail,
   loadFileDiff,
-  stageFile
+  stageFile,
+  unstageFile
 } from './repositoryDetails';
 
 describe('repository details integration', () => {
+  it('preserves staged rename detection while using path-scoped status reads', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await git(repoPath, ['mv', 'ordinary.txt', 'renamed.txt']);
+
+      await unstageFile({ path: repoPath }, 'renamed.txt');
+
+      expect((await git(repoPath, ['diff', '--cached', '--name-only'])).stdout).toBe('');
+      expect(await readFile(join(repoPath, 'renamed.txt'), 'utf8')).toBe('ordinary base\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('treats pathspec-magic filenames literally across stage, diff, and discard', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
 

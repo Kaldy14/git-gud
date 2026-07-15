@@ -160,6 +160,12 @@ describe('IPC argument validation', () => {
       'shas must be an array of strings.'
     );
     expect(() =>
+      validateIpcArgs(
+        'repo:cherry-pick',
+        ['/repo', Array.from({ length: 101 }, (_, index) => `sha-${index}`)]
+      )
+    ).toThrow('shas must contain no more than 100 entries.');
+    expect(() =>
       validateIpcArgs('repo:file-diff', ['/repo', { kind: 'selection', shas: 'not-an-array', path: 'file.ts' }])
     ).toThrow('shas must be an array of strings.');
     expect(() =>

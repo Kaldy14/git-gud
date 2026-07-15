@@ -42,10 +42,19 @@ type ConflictAwareMutationResult = {
 };
 
 const ZERO_SHA = '0000000000000000000000000000000000000000';
+const MAX_BULK_CHERRY_PICK_COMMITS = 100;
+const COMMIT_WRITE_PATH_BATCH_SIZE = 50;
+const NETWORK_GIT_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function fetchRepository(tab: OperationTab): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  await gitExecutor.run(['fetch', '--prune', '--all'], { cwd: tab.path, kind: 'mutation', env, cancellable: true });
+  await gitExecutor.run(['fetch', '--prune', '--all'], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
   return createOperationResult(tab, env, 'fetch', gitCommandLabel('fetch'));
 }
 
@@ -53,7 +62,13 @@ export async function pullRepository(tab: OperationTab, input: GitPullInput): Pr
   const env = createProfileCommandEnv(tab.assignedProfileId);
 
   return gitExecutor.transaction(tab.path, async () => {
-    await gitExecutor.run(['fetch'], { cwd: tab.path, kind: 'mutation', env });
+    await gitExecutor.run(['fetch'], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env,
+      cancellable: true,
+      timeoutMs: NETWORK_GIT_TIMEOUT_MS
+    });
     const upstreamCommit = await resolvePullUpstream(tab.path, env);
 
     if (input.mode === 'rebase') {
@@ -102,7 +117,13 @@ export async function pushRepository(tab: OperationTab, input: GitPushInput): Pr
     }
   }
 
-  await gitExecutor.run(args, { cwd: tab.path, kind: 'mutation', env });
+  await gitExecutor.run(args, {
+    cwd: tab.path,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
   return createOperationResult(tab, env, 'push', input.forceWithLease ? 'Push with lease' : 'Push');
 }
 
@@ -199,7 +220,13 @@ export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInpu
 
   try {
     if (remote) {
-      await gitExecutor.run(['push', remote.name, '--delete', remote.branch], { cwd: tab.path, kind: 'mutation', env });
+      await gitExecutor.run(['push', remote.name, '--delete', remote.branch], {
+        cwd: tab.path,
+        kind: 'mutation',
+        env,
+        cancellable: true,
+        timeoutMs: NETWORK_GIT_TIMEOUT_MS
+      });
     }
   } catch (error) {
     if (localName && localSnapshot) {
@@ -228,23 +255,21 @@ export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInpu
 
 export async function checkoutRef(tab: OperationTab, target: GitCheckoutTarget): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const [headBefore, branchBefore] = await Promise.all([
-    revParseOptional(tab.path, 'HEAD', env),
-    currentBranchName(tab.path, env)
-  ]);
+  const before = await currentHeadState(tab.path, env);
   const args = checkoutArgs(target);
   await gitExecutor.run(args, { cwd: tab.path, kind: 'mutation', env });
-  const [headAfter, branchAfter] = await Promise.all([
-    revParseOptional(tab.path, 'HEAD', env),
-    currentBranchName(tab.path, env)
-  ]);
-  const shouldRecordUndo = Boolean(headBefore && headAfter && (headBefore !== headAfter || branchBefore !== branchAfter));
+  const after = await currentHeadState(tab.path, env);
+  const shouldRecordUndo = Boolean(
+    before.head &&
+      after.head &&
+      (before.head !== after.head || before.branch !== after.branch)
+  );
   const undoEntry = shouldRecordUndo
     ? recordUndo(tab, 'checkout', 'Undo checkout', {
-        headBefore,
-        headAfter,
-        branchBefore,
-        branchAfter
+        headBefore: before.head,
+        headAfter: after.head,
+        branchBefore: before.branch,
+        branchAfter: after.branch
       })
     : undefined;
 
@@ -372,6 +397,10 @@ export async function cherryPickCommits(tab: OperationTab, shas: string[]): Prom
     throw new Error('Select at least one commit to cherry-pick.');
   }
 
+  if (targetShas.length > MAX_BULK_CHERRY_PICK_COMMITS) {
+    throw new Error(`Select no more than ${MAX_BULK_CHERRY_PICK_COMMITS} commits to cherry-pick at once.`);
+  }
+
   if (new Set(targetShas).size !== targetShas.length) {
     throw new Error('Each commit can only be cherry-picked once per operation.');
   }
@@ -380,9 +409,7 @@ export async function cherryPickCommits(tab: OperationTab, shas: string[]): Prom
     targetShas.length === 1
       ? `Cherry-pick ${firstTargetSha.slice(0, 8)}`
       : `Cherry-pick ${targetShas.length} commits`;
-  const writePaths = (await Promise.all(
-    targetShas.map((targetSha) => commitWritePaths(tab.path, targetSha, 'apply', env))
-  )).flat();
+  const writePaths = await commitsWritePaths(tab.path, targetShas, env);
   await assertNoIgnoredPathCollisions(
     tab.path,
     writePaths,
@@ -938,19 +965,34 @@ async function assertNoIgnoredPathCollisions(
       env
     }
   );
-  const ignoredPaths = parseNulPaths(ignoredResult.stdout).map(stripDirectoryMarker);
-  const collisions = ignoredPaths.filter((ignoredPath) =>
-    writePaths.some((writePath) => pathsCollide(ignoredPath, writePath))
-  );
+  const uniqueWritePaths = [...new Set(writePaths)];
+  const ignoredPaths = [...new Set(parseNulPaths(ignoredResult.stdout).map(stripDirectoryMarker))];
+  const writePathSet = new Set(uniqueWritePaths);
+  const ignoredPathSet = new Set(ignoredPaths);
+  const collisions = new Set<string>();
 
-  if (collisions.length === 0) {
+  for (const ignoredPath of ignoredPaths) {
+    if (writePathSet.has(ignoredPath) || findAncestorPath(ignoredPath, writePathSet)) {
+      collisions.add(ignoredPath);
+    }
+  }
+
+  for (const writePath of uniqueWritePaths) {
+    const ignoredAncestor = findAncestorPath(writePath, ignoredPathSet);
+
+    if (ignoredAncestor) {
+      collisions.add(ignoredAncestor);
+    }
+  }
+
+  if (collisions.size === 0) {
     return;
   }
 
-  const displayedPaths = collisions.slice(0, 3).map((path) => JSON.stringify(path)).join(', ');
-  const remainder = collisions.length > 3 ? ` and ${collisions.length - 3} more` : '';
+  const displayedPaths = [...collisions].slice(0, 3).map((path) => JSON.stringify(path)).join(', ');
+  const remainder = collisions.size > 3 ? ` and ${collisions.size - 3} more` : '';
   throw new Error(
-    `${operationLabel} is blocked because it would overwrite ignored ${collisions.length === 1 ? 'path' : 'paths'} ${displayedPaths}${remainder}. Move or remove the colliding path first.`
+    `${operationLabel} is blocked because it would overwrite ignored ${collisions.size === 1 ? 'path' : 'paths'} ${displayedPaths}${remainder}. Move or remove the colliding path first.`
   );
 }
 
@@ -1032,6 +1074,38 @@ async function commitWritePaths(
   return parent ? diffWritePaths(repoPath, commit, parent, env) : [];
 }
 
+async function commitsWritePaths(
+  repoPath: string,
+  revisions: string[],
+  env: NodeJS.ProcessEnv | undefined
+): Promise<string[]> {
+  const writePaths = new Set<string>();
+
+  for (let offset = 0; offset < revisions.length; offset += COMMIT_WRITE_PATH_BATCH_SIZE) {
+    const revisionBatch = revisions.slice(offset, offset + COMMIT_WRITE_PATH_BATCH_SIZE);
+    const result = await gitExecutor.run(
+      [
+        'show',
+        '--format=',
+        '--name-only',
+        '-z',
+        '--diff-filter=ACMRTUXB',
+        '--no-renames',
+        '--end-of-options',
+        ...revisionBatch.map((revision) => `${revision}^{commit}`),
+        '--'
+      ],
+      { cwd: repoPath, env }
+    );
+
+    for (const path of parseNulPaths(result.stdout)) {
+      writePaths.add(path);
+    }
+  }
+
+  return [...writePaths];
+}
+
 async function stashWritePaths(
   repoPath: string,
   selector: string,
@@ -1067,8 +1141,20 @@ function parseNulPaths(output: string): string[] {
   return output.split('\0').filter((path) => path.length > 0);
 }
 
-function pathsCollide(leftPath: string, rightPath: string): boolean {
-  return leftPath === rightPath || leftPath.startsWith(`${rightPath}/`) || rightPath.startsWith(`${leftPath}/`);
+function findAncestorPath(path: string, candidates: Set<string>): string | undefined {
+  let separatorIndex = path.lastIndexOf('/');
+
+  while (separatorIndex > 0) {
+    const ancestor = path.slice(0, separatorIndex);
+
+    if (candidates.has(ancestor)) {
+      return ancestor;
+    }
+
+    separatorIndex = ancestor.lastIndexOf('/');
+  }
+
+  return undefined;
 }
 
 function stripDirectoryMarker(path: string): string {
@@ -1092,6 +1178,31 @@ async function revParseOptional(repoPath: string, rev: string, env: NodeJS.Proce
   } catch (error) {
     if (error instanceof GitCommandError) {
       return undefined;
+    }
+
+    throw error;
+  }
+}
+
+async function currentHeadState(
+  repoPath: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<{ head?: string; branch?: string }> {
+  try {
+    const result = await gitExecutor.run(['rev-parse', 'HEAD', '--symbolic-full-name', 'HEAD'], {
+      cwd: repoPath,
+      env
+    });
+    const [head, symbolicHead] = result.stdout.trim().split('\n');
+    return {
+      ...(head ? { head } : {}),
+      ...(symbolicHead?.startsWith('refs/heads/')
+        ? { branch: symbolicHead.slice('refs/heads/'.length) }
+        : {})
+    };
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return {};
     }
 
     throw error;

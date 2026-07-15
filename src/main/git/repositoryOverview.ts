@@ -45,10 +45,19 @@ export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assign
 
 export async function loadStatus(
   repoPath: string,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
+  paths: readonly string[] = []
 ): Promise<GitRepositoryOverview['status']> {
-  return coalesceGitRead(repoPath, `status:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
-    const result = await gitExecutor.run(['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'], { cwd: repoPath, env });
+  const pathCacheKey = paths.join('\0');
+  return coalesceGitRead(repoPath, `status:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}:${pathCacheKey}`, async () => {
+    const args = ['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'];
+
+    if (paths.length > 0) {
+      args.unshift('--literal-pathspecs');
+      args.push('--', ...paths);
+    }
+
+    const result = await gitExecutor.run(args, { cwd: repoPath, env });
     return parseStatusPorcelainV2(result.stdout);
   });
 }

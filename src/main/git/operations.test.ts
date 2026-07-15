@@ -26,6 +26,28 @@ import {
 } from './operations';
 
 describe('git operations', () => {
+  it('checks out and captures undo state with three Git subprocesses', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      await git(repoPath, ['branch', 'target']);
+      const run = vi.spyOn(gitExecutor, 'run');
+
+      await checkoutRef({ path: repoPath, assignedProfileId: undefined }, { kind: 'local', name: 'target' });
+
+      expect(run.mock.calls.map(([args]) => args)).toEqual([
+        ['rev-parse', 'HEAD', '--symbolic-full-name', 'HEAD'],
+        ['checkout', '--no-overwrite-ignore', 'target'],
+        ['rev-parse', 'HEAD', '--symbolic-full-name', 'HEAD']
+      ]);
+      run.mockRestore();
+    } finally {
+      vi.restoreAllMocks();
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('creates, checks out, and safely undoes a branch', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 
@@ -713,6 +735,30 @@ describe('git operations', () => {
     }
   });
 
+  it('blocks cherry-pick when an ignored file is an ancestor of a target path', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, '.gitignore', 'generated\n', 'ignore generated output');
+      await git(repoPath, ['checkout', '-b', 'feature/cherry-pick-directory']);
+      await writeRepoFile(repoPath, 'generated/output.txt', 'tracked target\n');
+      await git(repoPath, ['add', '-f', 'generated/output.txt']);
+      await git(repoPath, ['commit', '-m', 'add generated directory']);
+      const targetCommit = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'generated', 'ignored local value\n');
+
+      await expect(cherryPickCommit(tab, targetCommit)).rejects.toThrow('overwrite ignored path');
+
+      expect(await readFile(join(repoPath, 'generated'), 'utf8')).toBe('ignored local value\n');
+      expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('ignore generated output');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('cherry-picks multiple commits in one ordered operation with one undo entry', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 
@@ -727,24 +773,89 @@ describe('git operations', () => {
       const secondSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
       await git(repoPath, ['checkout', 'main']);
 
-      const result = await cherryPickCommits(tab, [firstSha, secondSha]);
+      const runSpy = vi.spyOn(gitExecutor, 'run');
 
-      expect(await logSubjects(repoPath, base)).toEqual(['first selected commit', 'second selected commit']);
-      expect(result.operation).toMatchObject({ label: 'Cherry-pick 2 commits', status: 'completed' });
-      expect(result.undoEntry).toMatchObject({
-        operation: 'commit',
-        label: 'Undo cherry-pick 2 commits',
-        headBefore: base
-      });
+      try {
+        const result = await cherryPickCommits(tab, [firstSha, secondSha]);
+        const writePathPreflights = runSpy.mock.calls
+          .map(([args]) => args)
+          .filter((args) => args[0] === 'show' && args.includes('--name-only'));
 
-      if (!result.undoEntry) {
-        throw new Error('Expected bulk cherry-pick to record one undo entry.');
+        expect(writePathPreflights).toEqual([
+          [
+            'show',
+            '--format=',
+            '--name-only',
+            '-z',
+            '--diff-filter=ACMRTUXB',
+            '--no-renames',
+            '--end-of-options',
+            `${firstSha}^{commit}`,
+            `${secondSha}^{commit}`,
+            '--'
+          ]
+        ]);
+        expect(await logSubjects(repoPath, base)).toEqual(['first selected commit', 'second selected commit']);
+        expect(result.operation).toMatchObject({ label: 'Cherry-pick 2 commits', status: 'completed' });
+        expect(result.undoEntry).toMatchObject({
+          operation: 'commit',
+          label: 'Undo cherry-pick 2 commits',
+          headBefore: base
+        });
+
+        if (!result.undoEntry) {
+          throw new Error('Expected bulk cherry-pick to record one undo entry.');
+        }
+
+        await undoOperation(tab, result.undoEntry.id);
+        expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(base);
+      } finally {
+        runSpy.mockRestore();
       }
-
-      await undoOperation(tab, result.undoEntry.id);
-      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(base);
     } finally {
       await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('batches bulk cherry-pick write-path inspection instead of fanning out per commit', async () => {
+    const shas = Array.from({ length: 51 }, (_, index) => index.toString(16).padStart(40, '0'));
+    const headBefore = 'a'.repeat(40);
+    const headAfter = 'b'.repeat(40);
+    let headReads = 0;
+    const runSpy = vi.spyOn(gitExecutor, 'run').mockImplementation(async (args, options) => {
+      let stdout = '';
+
+      if (args[0] === 'rev-parse' && args[1] === '--verify' && args[2] === 'HEAD') {
+        headReads += 1;
+        stdout = `${headReads === 1 ? headBefore : headAfter}\n`;
+      } else if (args[0] === 'status') {
+        stdout = `# branch.oid ${headAfter}\0# branch.head main\0`;
+      } else if (args[0] === 'rev-parse' && args[1] === '--git-path') {
+        stdout = `.git/${args[2] ?? ''}\n`;
+      }
+
+      return {
+        args,
+        cwd: options.cwd,
+        stdout,
+        stderr: '',
+        exitCode: 0
+      };
+    });
+
+    try {
+      const result = await cherryPickCommits({ path: '/repo/batched-preflight', assignedProfileId: undefined }, shas);
+      const writePathPreflights = runSpy.mock.calls
+        .map(([args]) => args)
+        .filter((args) => args[0] === 'show' && args.includes('--name-only'));
+
+      expect(writePathPreflights).toHaveLength(2);
+      expect(writePathPreflights[0]?.filter((arg) => arg.endsWith('^{commit}'))).toHaveLength(50);
+      expect(writePathPreflights[1]?.filter((arg) => arg.endsWith('^{commit}'))).toHaveLength(1);
+      expect(runSpy.mock.calls.some(([args]) => args[0] === 'rev-list')).toBe(false);
+      expect(result.operation).toMatchObject({ label: 'Cherry-pick 51 commits', status: 'completed' });
+    } finally {
+      runSpy.mockRestore();
     }
   });
 
@@ -757,6 +868,9 @@ describe('git operations', () => {
       const head = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
 
       await expect(cherryPickCommits(tab, [])).rejects.toThrow('Select at least one commit');
+      await expect(cherryPickCommits(tab, Array.from({ length: 101 }, () => head))).rejects.toThrow(
+        'Select no more than 100 commits'
+      );
       await expect(cherryPickCommits(tab, [head, head])).rejects.toThrow('only be cherry-picked once');
     } finally {
       await rm(rootPath, { recursive: true, force: true });

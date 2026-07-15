@@ -8,6 +8,7 @@ import type {
   GitFileDiffRequest,
   GitOperationResult,
   GitPatchApplyInput,
+  GitQueryInvalidation,
   GitUndoEntry,
   GitWipDetail,
   RepoTab
@@ -26,6 +27,7 @@ type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
 
 const MAX_DIFF_OUTPUT_BYTES = 8 * 1024 * 1024;
 const MAX_COMMIT_SELECTION_SIZE = 100;
+const WIP_QUERY_INVALIDATIONS: readonly GitQueryInvalidation[] = ['overview', 'wip-detail', 'file-diff'];
 
 export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<GitCommitDetail> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
@@ -145,7 +147,7 @@ export async function applyWipPatch(tab: DetailTab, input: GitPatchApplyInput): 
     input: patch
   });
 
-  return createOperationResult(tab.path);
+  return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
 }
 
 export async function stageFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
@@ -155,23 +157,23 @@ export async function stageFile(tab: DetailTab, path: string): Promise<GitOperat
     kind: 'mutation',
     env: createProfileCommandEnv(tab.assignedProfileId)
   });
-  return createOperationResult(tab.path);
+  return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
 }
 
 export async function unstageFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
   assertSafeRelativePath(path);
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const status = await loadStatus(tab.path, env);
+  const status = await loadMutationPathStatus(tab.path, path, env);
   const statusFile = status.files.find((file) => file.path === path);
   const pathspec = createDiffPathspec(path, statusFile?.originalPath);
 
-  if (await hasHead(tab.path)) {
+  if (status.branch.oid) {
     await gitExecutor.run(withLiteralPathspec('restore', '--staged', '--', ...pathspec), {
       cwd: tab.path,
       kind: 'mutation',
       env
     });
-    return createOperationResult(tab.path);
+    return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
   }
 
   await gitExecutor.run(withLiteralPathspec('rm', '--cached', '--quiet', '--', ...pathspec), {
@@ -179,13 +181,13 @@ export async function unstageFile(tab: DetailTab, path: string): Promise<GitOper
     kind: 'mutation',
     env
   });
-  return createOperationResult(tab.path);
+  return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
 }
 
 export async function discardFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
   assertSafeRelativePath(path);
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const status = await loadStatus(tab.path, env);
+  const status = await loadMutationPathStatus(tab.path, path, env);
   const statusFile = status.files.find((file) => file.path === path);
 
   if (!statusFile || statusFile.status === 'ignored') {
@@ -196,7 +198,7 @@ export async function discardFile(tab: DetailTab, path: string): Promise<GitOper
     throw new Error('Discarding conflicted files is not supported. Resolve or abort the in-progress operation first.');
   }
 
-  const headExists = await hasHead(tab.path);
+  const headExists = Boolean(status.branch.oid);
   const pathspec = createDiffPathspec(path, statusFile.originalPath);
 
   if (statusFile.staged) {
@@ -248,7 +250,7 @@ export async function discardAllChanges(tab: DetailTab): Promise<GitOperationRes
     throw new Error('Discarding all changes is blocked during a conflict. Resolve or abort the in-progress operation first.');
   }
 
-  if (await hasHead(tab.path)) {
+  if (status.branch.oid) {
     await gitExecutor.run(['reset', '--hard', 'HEAD'], { cwd: tab.path, kind: 'mutation', env });
   } else if (status.stagedCount > 0) {
     await gitExecutor.run(['rm', '--cached', '-r', '--quiet', '--', '.'], { cwd: tab.path, kind: 'mutation', env });
@@ -264,7 +266,7 @@ export async function stageAll(tab: DetailTab): Promise<GitOperationResult> {
     kind: 'mutation',
     env: createProfileCommandEnv(tab.assignedProfileId)
   });
-  return createOperationResult(tab.path);
+  return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
 }
 
 export async function unstageAll(tab: DetailTab): Promise<GitOperationResult> {
@@ -272,11 +274,11 @@ export async function unstageAll(tab: DetailTab): Promise<GitOperationResult> {
 
   if (await hasHead(tab.path)) {
     await gitExecutor.run(['reset', '-q', 'HEAD', '--'], { cwd: tab.path, kind: 'mutation', env });
-    return createOperationResult(tab.path);
+    return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
   }
 
   await gitExecutor.run(['rm', '--cached', '-r', '--quiet', '--', '.'], { cwd: tab.path, kind: 'mutation', env });
-  return createOperationResult(tab.path);
+  return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
 }
 
 export async function commitChanges(tab: DetailTab, input: GitCommitInput): Promise<GitOperationResult> {
@@ -1005,11 +1007,38 @@ async function hasHead(repoPath: string): Promise<boolean> {
   }
 }
 
-function createOperationResult(repoPath: string, undoEntry?: GitUndoEntry): GitOperationResult {
+async function loadMutationPathStatus(
+  repoPath: string,
+  path: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<Awaited<ReturnType<typeof loadStatus>>> {
+  const scopedStatus = await loadStatus(repoPath, env, [path]);
+  const scopedFile = scopedStatus.files.find((file) => file.path === path);
+
+  if (
+    !scopedFile?.staged ||
+    (scopedFile.indexStatus !== 'added' && scopedFile.indexStatus !== 'deleted')
+  ) {
+    return scopedStatus;
+  }
+
+  const fullStatus = await loadStatus(repoPath, env);
+  return fullStatus.files.some(
+    (file) => file.path === path && file.originalPath
+  )
+    ? fullStatus
+    : scopedStatus;
+}
+
+function createOperationResult(
+  repoPath: string,
+  undoEntry?: GitUndoEntry,
+  invalidates: readonly GitQueryInvalidation[] = ['overview', 'graph', 'wip-detail', 'file-diff']
+): GitOperationResult {
   return {
     repoPath,
     happenedAt: new Date().toISOString(),
     undoEntry,
-    invalidates: ['overview', 'graph', 'wip-detail', 'file-diff']
+    invalidates: [...invalidates]
   };
 }

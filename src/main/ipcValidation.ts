@@ -32,6 +32,8 @@ type IpcArgValidators = {
   [TChannel in IpcChannelName]: IpcArgValidator<TChannel>;
 };
 
+const MAX_BULK_CHERRY_PICK_COMMITS = 100;
+
 const validators = {
   'workspace:get': (args) => noArgs('workspace:get', args),
   'repo:open-dialog': (args) => noArgs('repo:open-dialog', args),
@@ -82,7 +84,14 @@ const validators = {
   'repo:stash-apply': (args) => readRepoPathWithObject(args, 'repo:stash-apply', readStashRefInput),
   'repo:stash-pop': (args) => readRepoPathWithObject(args, 'repo:stash-pop', readStashRefInput),
   'repo:stash-drop': (args) => readRepoPathWithObject(args, 'repo:stash-drop', readStashRefInput),
-  'repo:cherry-pick': (args) => readStringAndStringArray(args, 'repo:cherry-pick', 'repoPath', 'shas'),
+  'repo:cherry-pick': (args) =>
+    readStringAndLimitedStringArray(
+      args,
+      'repo:cherry-pick',
+      'repoPath',
+      'shas',
+      MAX_BULK_CHERRY_PICK_COMMITS
+    ),
   'repo:revert': (args) => readStringPair(args, 'repo:revert', 'repoPath', 'sha'),
   'repo:reset': (args) => readRepoPathWithObject(args, 'repo:reset', readResetInput),
   'repo:rebase': (args) => readRepoPathWithObject(args, 'repo:rebase', readRebaseInput),
@@ -130,6 +139,22 @@ function readStringAndStringArray(
 ): [string, string[]] {
   assertArgCount(channel, args, 2);
   return [readString(args[0], stringLabel), readStringArray(args[1], arrayLabel)];
+}
+
+function readStringAndLimitedStringArray(
+  args: readonly unknown[],
+  channel: string,
+  stringLabel: string,
+  arrayLabel: string,
+  maxLength: number
+): [string, string[]] {
+  const [stringValue, arrayValue] = readStringAndStringArray(args, channel, stringLabel, arrayLabel);
+
+  if (arrayValue.length > maxLength) {
+    throw new Error(`${arrayLabel} must contain no more than ${maxLength} entries.`);
+  }
+
+  return [stringValue, arrayValue];
 }
 
 function readStringPair(

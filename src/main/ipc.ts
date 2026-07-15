@@ -117,6 +117,16 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
 };
 
 export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
+  function inRepositoryTransaction<T>(
+    repoPath: string,
+    operation: (tab: WorkspaceState['tabs'][number]) => Promise<T>
+  ): Promise<T> {
+    const tab = getOpenRepositoryTab(repoPath);
+    return gitExecutor.transaction(repoPath, () =>
+      repoWatchers.runDuringMutation(repoPath, () => operation(tab))
+    );
+  }
+
   gitExecutor.onProgress((event) => {
     const operation = activeOperations.get(event.cwd);
 
@@ -315,8 +325,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     return syncWorkspaceWatchers(activateWorkspaceProfile(profileId), repoWatchers);
   });
   handle('repo:assign-profile', async (_event, repoPath, profileId) => {
-    const tab = getOpenRepositoryTab(repoPath);
-    return gitExecutor.transaction(repoPath, () => assignProfileToRepository(repoPath, profileId, tab.assignedProfileId));
+    return inRepositoryTransaction(repoPath, (tab) =>
+      assignProfileToRepository(repoPath, profileId, tab.assignedProfileId)
+    );
   });
 }
 
@@ -444,12 +455,4 @@ function getOpenRepositoryTab(repoPath: string): WorkspaceState['tabs'][number] 
   }
 
   return tab;
-}
-
-function inRepositoryTransaction<T>(
-  repoPath: string,
-  operation: (tab: WorkspaceState['tabs'][number]) => Promise<T>
-): Promise<T> {
-  const tab = getOpenRepositoryTab(repoPath);
-  return gitExecutor.transaction(repoPath, () => operation(tab));
 }
