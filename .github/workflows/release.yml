@@ -138,6 +138,7 @@ jobs:
             -s \
             -k "$keychain_password" \
             "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
 
           signing_identity="$(
             security find-identity -v -p codesigning "$keychain_path" \
