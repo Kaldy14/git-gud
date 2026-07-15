@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
+import { sign } from '@electron/osx-sign';
 import { createRequire } from 'node:module';
-import { stdout } from 'node:process';
+import { env, stdout } from 'node:process';
 import {
   chmodSync,
   copyFileSync,
@@ -32,6 +33,7 @@ const resourcesPath = join(contentsPath, 'Resources');
 const bundledAppPath = join(resourcesPath, 'app');
 const macOsPath = join(contentsPath, 'MacOS');
 const infoPlistPath = join(contentsPath, 'Info.plist');
+const deployedAppPath = join(distDir, '.deployed-app');
 
 assertExists(join(repoRoot, 'out'), 'Build output is missing. Run pnpm build first.');
 assertExists(join(repoRoot, 'node_modules'), 'node_modules is missing. Run pnpm install first.');
@@ -47,7 +49,7 @@ renameExecutable();
 installAppPayload();
 installIcons();
 updateInfoPlist();
-adHocSign();
+await signApp();
 
 stdout.write(`Built ${appPath}\n`);
 
@@ -65,14 +67,22 @@ function renameExecutable() {
 function installAppPayload() {
   rmSync(join(resourcesPath, 'default_app.asar'), { force: true });
   rmSync(join(resourcesPath, 'app'), { force: true, recursive: true });
+  rmSync(deployedAppPath, { force: true, recursive: true });
   mkdirSync(bundledAppPath, { recursive: true });
 
+  execFileSync(
+    'pnpm',
+    ['--filter', packageJson.name, 'deploy', '--prod', deployedAppPath],
+    { cwd: repoRoot, stdio: 'inherit' }
+  );
+
   cpSync(join(repoRoot, 'out'), join(bundledAppPath, 'out'), { force: true, recursive: true });
-  cpSync(join(repoRoot, 'node_modules'), join(bundledAppPath, 'node_modules'), {
+  cpSync(join(deployedAppPath, 'node_modules'), join(bundledAppPath, 'node_modules'), {
     force: true,
     recursive: true,
     verbatimSymlinks: true
   });
+  rmSync(deployedAppPath, { force: true, recursive: true });
 
   writeFileSync(
     join(bundledAppPath, 'package.json'),
@@ -114,6 +124,24 @@ function setPlistValue(key, type, value) {
   } catch {
     execFileSync(plistBuddy, ['-c', `Add :${key} ${type} ${value}`, infoPlistPath], { stdio: 'ignore' });
   }
+}
+
+async function signApp() {
+  const identity = env.MACOS_SIGNING_IDENTITY?.trim();
+
+  if (!identity) {
+    adHocSign();
+    stdout.write('Applied an ad-hoc signature (MACOS_SIGNING_IDENTITY is not set).\n');
+    return;
+  }
+
+  await sign({
+    app: appPath,
+    identity,
+    keychain: env.MACOS_SIGNING_KEYCHAIN?.trim() || undefined,
+    platform: 'darwin'
+  });
+  stdout.write(`Signed with Developer ID identity: ${identity}\n`);
 }
 
 function adHocSign() {
