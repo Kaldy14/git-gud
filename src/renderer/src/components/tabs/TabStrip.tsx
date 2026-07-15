@@ -43,7 +43,7 @@ export function TabStrip({
 }: TabStripProps): ReactElement {
   return (
     <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
-      <div className="no-drag relative flex min-w-0 flex-1 items-stretch">
+      <div className="relative flex min-w-0 flex-1 items-stretch">
         <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Open repositories">
           {tabs.map((tab, tabIndex) => {
             const isActive = tab.id === activeTabId;
@@ -51,7 +51,7 @@ export function TabStrip({
             return (
               <div
                 key={tab.id}
-                className="repo-tab group"
+                className="no-drag repo-tab group"
                 data-active={isActive}
                 title={tab.path}
               >
@@ -87,7 +87,7 @@ export function TabStrip({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="grid w-10 shrink-0 place-items-center rounded-none text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+              className="no-drag grid w-10 shrink-0 place-items-center rounded-none text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
               type="button"
               aria-label="Open repository"
             >
@@ -117,6 +117,8 @@ export function TabStrip({
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <div className="drag-region min-w-0 flex-1" aria-hidden="true" />
       </div>
 
       <div className="no-drag flex shrink-0 items-center gap-0.5 px-2">

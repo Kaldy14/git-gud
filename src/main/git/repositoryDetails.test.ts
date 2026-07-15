@@ -36,7 +36,7 @@ describe('loadFileDiff', () => {
   it('keeps staging refreshes scoped away from commit history', async () => {
     const result = await stageFile({ path: '/repo' }, 'changed.txt');
 
-    expect(result.invalidates).toEqual(['overview', 'wip-detail', 'file-diff']);
+    expect(result.invalidates).toEqual(['overview', 'wip-detail', 'file-diff', 'review-plan']);
   });
 
   it('requests commit rename patches with both rename paths', async () => {
