@@ -58,7 +58,7 @@ jobs:
     name: Build macOS (${{ matrix.arch }})
     needs: verify
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

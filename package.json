@@ -32,7 +32,6 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
-    "@electron/notarize": "3.1.1",
     "@electron/osx-sign": "2.5.0",
     "@eslint/js": "10.0.1",
     "@tailwindcss/vite": "4.3.2",
