@@ -11,6 +11,7 @@ import {
   loadCommitDetail,
   loadCommitSelectionDetail,
   loadFileDiff,
+  loadReviewPlan,
   stageFile,
   unstageFile
 } from './repositoryDetails';
@@ -198,6 +199,62 @@ describe('repository details integration', () => {
       expect(sparseDiff.segments?.[1]?.patch).toContain('+three');
       expect(sparseDiff.segments?.[2]?.patch).toContain('+five');
       expect(sparseDiff.segments?.[3]?.patch).toContain('+seven');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('builds contextual review plans for commits and combined WIP changes', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await writeRepoFile(repoPath, 'src/config.ts', 'export const DEFAULT_TIMEOUT = 5000;\n');
+      await writeRepoFile(repoPath, 'src/client.ts', 'export const connect = () => open(DEFAULT_TIMEOUT);\n');
+      await writeRepoFile(repoPath, 'src/client.test.ts', 'expect(connect(DEFAULT_TIMEOUT)).toBeDefined();\n');
+      await git(repoPath, ['add', '.']);
+      await git(repoPath, ['commit', '-m', 'add timeout']);
+      const commitSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      const commitPlan = await loadReviewPlan({ path: repoPath }, { kind: 'commit', sha: commitSha });
+      const timeoutUnit = commitPlan.units.find((unit) => unit.symbol === 'DEFAULT_TIMEOUT');
+      const configContext = commitPlan.fileContexts.find((context) => context.path === 'src/config.ts');
+
+      expect(timeoutUnit?.chunks.map((chunk) => chunk.path)).toEqual([
+        'src/config.ts',
+        'src/client.ts',
+        'src/client.test.ts'
+      ]);
+      expect(configContext).toMatchObject({
+        source: 'commit',
+        oldContents: '',
+        newContents: 'export const DEFAULT_TIMEOUT = 5000;\n'
+      });
+
+      await writeRepoFile(repoPath, 'src/staged.ts', 'export const stagedValue = true;\n');
+      await git(repoPath, ['add', 'src/staged.ts']);
+      await writeRepoFile(repoPath, 'spec/wip_spec.rb', 'expect(wip_value).to be_present\n');
+
+      const wipPlan = await loadReviewPlan({ path: repoPath }, { kind: 'wip', scope: 'all' });
+      const wipChunks = wipPlan.units.flatMap((unit) => unit.chunks);
+      const stagedContext = wipPlan.fileContexts.find((context) => context.path === 'src/staged.ts');
+      const unstagedContext = wipPlan.fileContexts.find((context) => context.path === 'spec/wip_spec.rb');
+
+      expect(wipChunks.find((chunk) => chunk.path === 'src/staged.ts')?.source).toBe('staged');
+      expect(wipChunks.find((chunk) => chunk.path === 'spec/wip_spec.rb')).toMatchObject({
+        source: 'unstaged',
+        category: 'spec'
+      });
+      expect(stagedContext).toMatchObject({
+        source: 'staged',
+        oldContents: '',
+        newContents: 'export const stagedValue = true;\n'
+      });
+      expect(unstagedContext).toMatchObject({
+        source: 'unstaged',
+        oldContents: '',
+        newContents: 'expect(wip_value).to be_present\n'
+      });
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

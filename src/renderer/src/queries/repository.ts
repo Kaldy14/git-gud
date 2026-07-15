@@ -10,6 +10,8 @@ import type {
   GitFileDiffRequest,
   GitRepositoryOverview,
   GitQueryInvalidation,
+  GitReviewPlan,
+  GitReviewTarget,
   GitWipDetail,
   RepoChangedEvent
 } from '@shared/types';
@@ -54,6 +56,16 @@ const fileDiffQueryKey = (
   request.path,
   request.kind === 'commit' ? request.sha : request.kind === 'selection' ? request.shas.join('\0') : undefined,
   request.kind === 'wip' ? request.staged : undefined
+];
+
+export const reviewPlanQueryKey = (
+  repoPath: string,
+  target: GitReviewTarget
+): readonly ['review-plan', string, GitReviewTarget['kind'], string] => [
+  'review-plan',
+  repoPath,
+  target.kind,
+  target.kind === 'commit' ? target.sha : target.scope
 ];
 
 export function useRepositoryOverview(repoPath: string | undefined) {
@@ -189,6 +201,24 @@ export function useFileDiff(repoPath: string | undefined, request: GitFileDiffRe
   });
 }
 
+export function useReviewPlan(repoPath: string | undefined, target: GitReviewTarget | undefined) {
+  return useQuery({
+    queryKey:
+      repoPath && target
+        ? reviewPlanQueryKey(repoPath, target)
+        : ['review-plan', 'none', 'commit', 'none'],
+    queryFn: async (): Promise<GitReviewPlan> => {
+      if (!repoPath || !target) {
+        throw new Error('Repository path and review target are required.');
+      }
+
+      return window.api.getReviewPlan(repoPath, target);
+    },
+    enabled: Boolean(repoPath && target),
+    staleTime: target?.kind === 'commit' ? immutableGitObjectStaleTime : 1000
+  });
+}
+
 export function useRepositoryChangeInvalidation(): void {
   const queryClient = useQueryClient();
 
@@ -231,6 +261,12 @@ export async function invalidateRepositoryQueries(
     );
   }
 
+  if (requested.has('review-plan')) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: ['review-plan', repoPath, 'wip'] }, { cancelRefetch: false })
+    );
+  }
+
   await Promise.all(invalidations);
 }
 
@@ -246,7 +282,8 @@ const allRepositoryInvalidations: readonly GitQueryInvalidation[] = [
   'overview',
   'graph',
   'wip-detail',
-  'file-diff'
+  'file-diff',
+  'review-plan'
 ];
 
 export function scopesForRepositoryChange(event: RepoChangedEvent): readonly GitQueryInvalidation[] {
@@ -275,7 +312,7 @@ export function scopesForRepositoryChange(event: RepoChangedEvent): readonly Git
   }
 
   if (hasWorktreeChange || hasIndexOrOperationChange) {
-    return ['overview', 'graph', 'wip-detail', 'file-diff'];
+    return ['overview', 'graph', 'wip-detail', 'file-diff', 'review-plan'];
   }
 
   return ['overview', 'graph'];

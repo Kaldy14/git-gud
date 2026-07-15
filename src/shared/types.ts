@@ -177,6 +177,67 @@ export type GitFileDiff = {
   loadedAt: string;
 };
 
+export type GitReviewTarget =
+  | {
+      kind: 'commit';
+      sha: string;
+    }
+  | {
+      kind: 'wip';
+      scope: 'all' | 'staged' | 'unstaged';
+    };
+
+export type GitReviewChunk = {
+  id: string;
+  path: string;
+  originalPath?: string;
+  fileContextId?: string;
+  patch: string;
+  header: string;
+  startLine: number;
+  additions: number;
+  deletions: number;
+  role: 'anchor' | 'usage' | 'related';
+  category: 'source' | 'test' | 'spec';
+  changeType: 'added' | 'deleted' | 'modified';
+  contentKind: 'code' | 'imports';
+  source: 'commit' | 'staged' | 'unstaged';
+  omittedReason?: 'binary' | 'too-large' | 'no-text';
+};
+
+export type GitReviewFileContext = {
+  id: string;
+  path: string;
+  originalPath?: string;
+  source: GitReviewChunk['source'];
+  oldContents: string;
+  newContents: string;
+};
+
+export type GitReviewUnit = {
+  id: string;
+  title: string;
+  reason: string;
+  symbol?: string;
+  chunks: GitReviewChunk[];
+};
+
+export type GitReviewPlan = {
+  repoPath: string;
+  target: GitReviewTarget;
+  targetKey: string;
+  units: GitReviewUnit[];
+  fileContexts: GitReviewFileContext[];
+  reviewedChunkIds: string[];
+  loadedAt: string;
+};
+
+export type GitReviewProgressUpdate = {
+  targetKey: string;
+  chunkIds: string[];
+  viewed: boolean;
+};
+
 export type GitFileHistoryCommit = {
   sha: string;
   shortSha: string;
@@ -365,7 +426,8 @@ export type GitQueryInvalidation =
   | 'overview'
   | 'graph'
   | 'wip-detail'
-  | 'file-diff';
+  | 'file-diff'
+  | 'review-plan';
 
 export type GitUndoOperation =
   | 'commit'

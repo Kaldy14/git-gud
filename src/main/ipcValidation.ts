@@ -16,6 +16,8 @@ import type {
   GitPullInput,
   GitPushInput,
   GitRebaseInput,
+  GitReviewProgressUpdate,
+  GitReviewTarget,
   GitRenameBranchInput,
   GitResetInput,
   GitStashPushInput,
@@ -56,6 +58,9 @@ const validators = {
     readStringAndStringArray(args, 'repo:commit-selection-detail', 'repoPath', 'shas'),
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
+  'repo:review-plan': (args) => readRepoPathWithObject(args, 'repo:review-plan', readReviewTarget),
+  'repo:set-review-progress': (args) =>
+    readRepoPathWithObject(args, 'repo:set-review-progress', readReviewProgressUpdate),
   'repo:file-history': (args) => readRepoPathAndPathWithOptionalLimit(args),
   'repo:file-blame': (args) => readStringPairWithOptionalString(args, 'repo:file-blame', 'repoPath', 'path', 'revision'),
   'repo:compare': (args) => readStringTriple(args, 'repo:compare', 'repoPath', 'base', 'head'),
@@ -252,6 +257,43 @@ function readCommitInput(value: unknown): GitCommitInput {
   return {
     message: readStringProperty(record, 'message'),
     amend: readBooleanProperty(record, 'amend')
+  };
+}
+
+function readReviewTarget(value: unknown): GitReviewTarget {
+  const record = readRecord(value, 'review target');
+  const kind = readEnumProperty(record, 'kind', ['commit', 'wip']);
+
+  if (kind === 'commit') {
+    return {
+      kind,
+      sha: readNonEmptyString(record.sha, 'sha')
+    };
+  }
+
+  return {
+    kind,
+    scope: readEnumProperty(record, 'scope', ['all', 'staged', 'unstaged'])
+  };
+}
+
+function readReviewProgressUpdate(value: unknown): GitReviewProgressUpdate {
+  const record = readRecord(value, 'review progress update');
+  const targetKey = readNonEmptyString(record.targetKey, 'targetKey');
+  const chunkIds = readStringArray(record.chunkIds, 'chunkIds');
+
+  if (targetKey.length > 256) {
+    throw new Error('targetKey must be 256 characters or fewer.');
+  }
+
+  if (chunkIds.length === 0 || chunkIds.some((chunkId) => !/^[a-f0-9]{64}$/.test(chunkId))) {
+    throw new Error('chunkIds must contain SHA-256 identifiers.');
+  }
+
+  return {
+    targetKey,
+    chunkIds,
+    viewed: readBooleanProperty(record, 'viewed')
   };
 }
 

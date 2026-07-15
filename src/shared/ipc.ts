@@ -27,6 +27,9 @@ import type {
   GitPushInput,
   GitRebaseInput,
   GitRepositoryOverview,
+  GitReviewPlan,
+  GitReviewProgressUpdate,
+  GitReviewTarget,
   GitRenameBranchInput,
   GitResetInput,
   GitStashPushInput,
@@ -106,6 +109,14 @@ export type IpcChannelMap = {
   'repo:file-diff': {
     args: [repoPath: string, request: GitFileDiffRequest];
     result: GitFileDiff;
+  };
+  'repo:review-plan': {
+    args: [repoPath: string, target: GitReviewTarget];
+    result: GitReviewPlan;
+  };
+  'repo:set-review-progress': {
+    args: [repoPath: string, update: GitReviewProgressUpdate];
+    result: string[];
   };
   'repo:file-history': {
     args: [repoPath: string, path: string, limit?: number];
@@ -305,6 +316,8 @@ export type RendererApi = {
   getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
+  getReviewPlan: (repoPath: string, target: GitReviewTarget) => Promise<GitReviewPlan>;
+  setReviewProgress: (repoPath: string, update: GitReviewProgressUpdate) => Promise<string[]>;
   getFileHistory: (repoPath: string, path: string, limit?: number) => Promise<GitFileHistory>;
   getFileBlame: (repoPath: string, path: string, revision?: string) => Promise<GitFileBlame>;
   compareRefs: (repoPath: string, base: string, head: string) => Promise<GitComparison>;

@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowDownAZ,
+  BookOpenCheck,
   Check,
   ChevronDown,
   Copy,
@@ -63,10 +64,12 @@ type CommitDetailPanelProps = {
   width?: number;
   isCollapsed?: boolean;
   remoteAvatars?: boolean;
+  isReviewOpen?: boolean;
   onToggleCollapsed?: () => void;
   onResize?: (width: number) => void;
   onResizeCommit?: (width: number) => void;
   onSelectFile: (path: string | undefined) => void;
+  onSetReviewOpen: (open: boolean) => void;
   onOpenWipChanges: () => void;
   onDiscardAllWip: () => void;
   onDiscardWipFile: (file: GitFileChangeDetail) => void;
@@ -87,10 +90,12 @@ export function CommitDetailPanel({
   width = 382,
   isCollapsed = false,
   remoteAvatars = false,
+  isReviewOpen = false,
   onToggleCollapsed,
   onResize,
   onResizeCommit,
   onSelectFile,
+  onSetReviewOpen,
   onOpenWipChanges,
   onDiscardAllWip,
   onDiscardWipFile,
@@ -306,7 +311,13 @@ export function CommitDetailPanel({
           counts={counts}
           fileView={fileView}
           isWip={isWip}
-          onSetFileView={setFileView}
+          isReviewOpen={isReviewOpen}
+          canReview={Boolean(row && !isCommitSelection && row.node.kind !== 'stash')}
+          onSetFileView={(view) => {
+            setFileView(view);
+            onSetReviewOpen(false);
+          }}
+          onOpenReview={() => onSetReviewOpen(true)}
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-1">
@@ -858,20 +869,32 @@ type FilesToolbarProps = {
   counts: FileStatusCounts;
   fileView: FileViewMode;
   isWip: boolean;
+  isReviewOpen: boolean;
+  canReview: boolean;
   onSetFileView: (view: FileViewMode) => void;
+  onOpenReview: () => void;
 };
 
 function FilesToolbar({
   counts,
   fileView,
   isWip,
-  onSetFileView
+  isReviewOpen,
+  canReview,
+  onSetFileView,
+  onOpenReview
 }: FilesToolbarProps): ReactElement {
   if (isWip) {
     return (
       <div className="shrink-0 border-b border-[var(--border)] px-4 py-2">
         <div className="flex items-center justify-between gap-3">
-          <FileListControls fileView={fileView} onSetFileView={onSetFileView} />
+          <FileListControls
+            fileView={fileView}
+            isReviewOpen={isReviewOpen}
+            canReview={canReview}
+            onSetFileView={onSetFileView}
+            onOpenReview={onOpenReview}
+          />
         </div>
       </div>
     );
@@ -886,44 +909,72 @@ function FilesToolbar({
         {counts.renamed > 0 ? <span className="text-[var(--text-2)]">{counts.renamed} renamed</span> : null}
         {counts.conflicted > 0 ? <span className="text-[var(--danger-text)]">{counts.conflicted} conflicted</span> : null}
       </div>
-      <FileListControls fileView={fileView} onSetFileView={onSetFileView} />
+      <FileListControls
+        fileView={fileView}
+        isReviewOpen={isReviewOpen}
+        canReview={canReview}
+        onSetFileView={onSetFileView}
+        onOpenReview={onOpenReview}
+      />
     </div>
   );
 }
 
 function FileListControls({
   fileView,
-  onSetFileView
+  isReviewOpen,
+  canReview,
+  onSetFileView,
+  onOpenReview
 }: {
   fileView: FileViewMode;
+  isReviewOpen: boolean;
+  canReview: boolean;
   onSetFileView: (view: FileViewMode) => void;
+  onOpenReview: () => void;
 }): ReactElement {
   return (
     <div className="flex w-full shrink-0 items-center justify-between gap-3">
       <span className="inline-flex h-7 items-center gap-1.5 text-[11px] font-semibold uppercase text-[var(--text-3)]" title="Sorted by path">
         <ArrowDownAZ size={14} />
       </span>
-      <FileViewToggle fileView={fileView} onSetFileView={onSetFileView} />
+      <FileViewToggle
+        fileView={fileView}
+        isReviewOpen={isReviewOpen}
+        canReview={canReview}
+        onSetFileView={onSetFileView}
+        onOpenReview={onOpenReview}
+      />
     </div>
   );
 }
 
 function FileViewToggle({
   fileView,
-  onSetFileView
+  isReviewOpen,
+  canReview,
+  onSetFileView,
+  onOpenReview
 }: {
   fileView: FileViewMode;
+  isReviewOpen: boolean;
+  canReview: boolean;
   onSetFileView: (view: FileViewMode) => void;
+  onOpenReview: () => void;
 }): ReactElement {
   return (
     <div className="segmented shrink-0">
-      <button type="button" data-active={fileView === 'path'} onClick={() => onSetFileView('path')} title="Path list">
+      <button type="button" data-active={!isReviewOpen && fileView === 'path'} onClick={() => onSetFileView('path')} title="Path list">
         <List size={12} />
         Path
       </button>
-      <button type="button" data-active={fileView === 'tree'} onClick={() => onSetFileView('tree')} title="File tree">
+      <button type="button" data-active={!isReviewOpen && fileView === 'tree'} onClick={() => onSetFileView('tree')} title="File tree">
         <FolderTree size={12} />
         Tree
+      </button>
+      <button type="button" data-active={isReviewOpen} disabled={!canReview} onClick={onOpenReview} title="Context review">
+        <BookOpenCheck size={12} />
+        Review
       </button>
     </div>
   );

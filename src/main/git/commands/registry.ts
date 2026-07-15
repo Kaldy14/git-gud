@@ -36,7 +36,7 @@ export type GitCommandDescriptor = {
   invalidates: readonly GitQueryInvalidation[];
 };
 
-const allMutableRepositoryQueries = ['overview', 'graph', 'wip-detail', 'file-diff'] as const;
+const allMutableRepositoryQueries = ['overview', 'graph', 'wip-detail', 'file-diff', 'review-plan'] as const;
 
 export const GIT_COMMANDS = {
   fetch: command('fetch', 'Fetch', 'remote', 'none', 'none', ['overview', 'graph']),

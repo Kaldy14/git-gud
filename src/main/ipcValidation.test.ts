@@ -68,6 +68,23 @@ describe('IPC argument validation', () => {
         { kind: 'selection', shas: ['newer-sha', 'older-sha'], path: 'src/app.ts' }
       ])[1]
     ).toEqual({ kind: 'selection', shas: ['newer-sha', 'older-sha'], path: 'src/app.ts', originalPath: undefined });
+    expect(validateIpcArgs('repo:review-plan', ['/repo', { kind: 'commit', sha: 'abc123' }])).toEqual([
+      '/repo',
+      { kind: 'commit', sha: 'abc123' }
+    ]);
+    expect(validateIpcArgs('repo:review-plan', ['/repo', { kind: 'wip', scope: 'all' }])).toEqual([
+      '/repo',
+      { kind: 'wip', scope: 'all' }
+    ]);
+    expect(
+      validateIpcArgs('repo:set-review-progress', [
+        '/repo',
+        { targetKey: 'commit:abc123', chunkIds: ['a'.repeat(64)], viewed: true }
+      ])
+    ).toEqual([
+      '/repo',
+      { targetKey: 'commit:abc123', chunkIds: ['a'.repeat(64)], viewed: true }
+    ]);
     expect(
       validateIpcArgs('repo:stash-drop', [
         '/repo',
@@ -168,6 +185,15 @@ describe('IPC argument validation', () => {
     expect(() =>
       validateIpcArgs('repo:file-diff', ['/repo', { kind: 'selection', shas: 'not-an-array', path: 'file.ts' }])
     ).toThrow('shas must be an array of strings.');
+    expect(() => validateIpcArgs('repo:review-plan', ['/repo', { kind: 'wip', scope: 'index' }])).toThrow(
+      'scope must be one of: all, staged, unstaged.'
+    );
+    expect(() =>
+      validateIpcArgs('repo:set-review-progress', [
+        '/repo',
+        { targetKey: 'wip:all', chunkIds: ['not-a-hash'], viewed: true }
+      ])
+    ).toThrow('chunkIds must contain SHA-256 identifiers.');
     expect(() =>
       validateIpcArgs('repo:stash-drop', ['/repo', { selector: 'stash@{0}' }])
     ).toThrow('expectedSha must be a string.');

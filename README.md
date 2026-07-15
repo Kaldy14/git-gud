@@ -73,7 +73,17 @@ Every pushed version tag matching `v*` runs the [release workflow](.github/workf
 - An Intel (`x64`) macOS application archive
 - A SHA-256 checksum for each archive
 
-Release archives are ad-hoc signed for local use. They are not Apple-notarized yet, so macOS may require explicit approval before the first launch.
+Release archives are signed with a Developer ID Application certificate, notarized by Apple, and stapled before they are published. This allows Gatekeeper to verify the application when users install it, including when they are offline.
+
+The release workflow requires these GitHub Actions secrets:
+
+- `MACOS_CERTIFICATE_P12_BASE64`: a base64-encoded, password-protected `.p12` containing the Developer ID Application certificate and private key
+- `MACOS_CERTIFICATE_PASSWORD`: the `.p12` export password
+- `APPLE_API_KEY_P8_BASE64`: a base64-encoded App Store Connect Team API `.p8` key with App Manager access
+- `APPLE_API_KEY_ID`: the App Store Connect API key ID
+- `APPLE_API_ISSUER`: the App Store Connect API issuer UUID
+
+The `.p12` performs code signing. The App Store Connect `.p8` key is separate and is used only to authenticate notarization. Configure these values under **Repository settings → Secrets and variables → Actions** before pushing a release tag.
 
 To prepare a release, update `package.json` and [CHANGELOG.md](CHANGELOG.md), commit the changes, and push a matching tag:
 
@@ -89,7 +99,13 @@ pnpm dist
 open "dist/mac/Git Gud.app"
 ```
 
-`pnpm dist` runs the full production build, assembles `dist/mac/Git Gud.app`, and applies an ad-hoc signature for local use. Tag-driven builds are packaged and published by GitHub Actions.
+`pnpm dist` runs the full production build, assembles `dist/mac/Git Gud.app`, and applies an ad-hoc signature for local use. To make a local Developer ID build, install the certificate in a keychain and set its identity before running the command:
+
+```bash
+MACOS_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" pnpm dist
+```
+
+Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-default keychain. Tag-driven builds import the certificate into an ephemeral CI keychain, sign with the hardened runtime enabled, notarize and staple the app, verify it with `codesign`, `stapler`, and Gatekeeper, then package and publish it.
 
 ## Development
 

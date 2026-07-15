@@ -9,11 +9,14 @@ import type {
   GitOperationResult,
   GitPatchApplyInput,
   GitQueryInvalidation,
+  GitReviewPlan,
+  GitReviewTarget,
   GitUndoEntry,
   GitWipDetail,
   RepoTab
 } from '@shared/types';
 
+import { readFile } from 'node:fs/promises';
 import pathModule from 'node:path';
 
 import { createProfileCommandEnv } from '../profiles';
@@ -22,13 +25,21 @@ import { createUndoEntryForCommit, getCurrentHead } from './operations';
 import { parseNameStatus, parseShortStat } from './parsers/details';
 import { loadStatus } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
+import { buildReviewPlan, type ReviewPatchInput } from './reviewPlan';
 
 type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
 
 const MAX_DIFF_OUTPUT_BYTES = 8 * 1024 * 1024;
+const MAX_REVIEW_PLAN_PATCH_BYTES = 24 * 1024 * 1024;
+const MAX_REVIEW_PLAN_CONTEXT_BYTES = 32 * 1024 * 1024;
 const MAX_COMMIT_SELECTION_SIZE = 100;
 const SPARSE_SELECTION_CONCURRENCY = 3;
-const WIP_QUERY_INVALIDATIONS: readonly GitQueryInvalidation[] = ['overview', 'wip-detail', 'file-diff'];
+const WIP_QUERY_INVALIDATIONS: readonly GitQueryInvalidation[] = [
+  'overview',
+  'wip-detail',
+  'file-diff',
+  'review-plan'
+];
 
 export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<GitCommitDetail> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
@@ -133,6 +144,73 @@ export async function loadFileDiff(tab: DetailTab, request: GitFileDiffRequest):
   }
 
   return loadWipFileDiff(tab.path, request, env);
+}
+
+export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): Promise<GitReviewPlan> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+
+  if (target.kind === 'commit') {
+    const detail = await loadCommitDetail(tab, target.sha);
+    const canonicalTarget: GitReviewTarget = { kind: 'commit', sha: detail.sha };
+    const patches = await mapWithConcurrency(detail.files, 6, async (file): Promise<ReviewPatchInput> => {
+      const diff = await loadFileDiff(tab, {
+        kind: 'commit',
+        sha: detail.sha,
+        path: file.path,
+        originalPath: file.originalPath
+      });
+
+      return {
+        path: file.path,
+        originalPath: file.originalPath,
+        status: file.status,
+        source: 'commit',
+        diff,
+        fileContext: diff.omittedReason
+          ? undefined
+          : await loadCommitReviewFileContext(
+              tab.path,
+              detail.sha,
+              detail.parentShas[0],
+              file,
+              env
+            )
+      };
+    });
+
+    return buildReviewPlan(tab.path, canonicalTarget, limitReviewPatchPayload(patches));
+  }
+
+  const status = await loadStatus(tab.path, env);
+  const requests = status.files.flatMap((file) => {
+    const sources: Array<{ staged: boolean; source: ReviewPatchInput['source'] }> = [];
+
+    if ((target.scope === 'all' || target.scope === 'staged') && file.staged) {
+      sources.push({ staged: true, source: 'staged' });
+    }
+
+    if ((target.scope === 'all' || target.scope === 'unstaged') && file.unstaged) {
+      sources.push({ staged: false, source: 'unstaged' });
+    }
+
+    return sources.map((source) => ({ file, ...source }));
+  });
+  const patches = await mapWithConcurrency(requests, 6, async ({ file, staged, source }): Promise<ReviewPatchInput> => {
+    const diff = await loadFileDiff(tab, { kind: 'wip', path: file.path, staged });
+
+    return {
+      path: file.path,
+      originalPath: file.originalPath,
+      status: staged ? file.indexStatus : file.worktreeStatus,
+      source,
+      diff,
+      fileContext: diff.omittedReason
+        ? undefined
+        : await loadWipReviewFileContext(tab.path, file, staged, env)
+    };
+  });
+
+  return buildReviewPlan(tab.path, target, limitReviewPatchPayload(patches));
 }
 
 export async function applyWipPatch(tab: DetailTab, input: GitPatchApplyInput): Promise<GitOperationResult> {
@@ -1056,10 +1134,138 @@ async function mapWithConcurrency<Value, Result>(
   return results;
 }
 
+async function loadCommitReviewFileContext(
+  repoPath: string,
+  sha: string,
+  parentSha: string | undefined,
+  file: GitFileChangeDetail,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<ReviewPatchInput['fileContext']> {
+  const oldContents = file.status === 'added'
+    ? ''
+    : parentSha
+      ? await loadGitObjectText(repoPath, `${parentSha}:${file.originalPath ?? file.path}`, env)
+      : '';
+  const newContents = file.status === 'deleted'
+    ? ''
+    : await loadGitObjectText(repoPath, `${sha}:${file.path}`, env);
+
+  if (oldContents === undefined || newContents === undefined) {
+    return undefined;
+  }
+
+  return { oldContents, newContents };
+}
+
+async function loadWipReviewFileContext(
+  repoPath: string,
+  file: GitFileChange,
+  staged: boolean,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<ReviewPatchInput['fileContext']> {
+  const status = staged ? file.indexStatus : file.worktreeStatus;
+  const oldContents = status === 'added' || status === 'untracked'
+    ? ''
+    : staged
+      ? await loadGitObjectText(repoPath, `HEAD:${file.originalPath ?? file.path}`, env)
+      : await loadGitObjectText(repoPath, `:${file.path}`, env);
+  const newContents = status === 'deleted'
+    ? ''
+    : staged
+      ? await loadGitObjectText(repoPath, `:${file.path}`, env)
+      : await loadWorktreeText(repoPath, file.path);
+
+  if (oldContents === undefined || newContents === undefined) {
+    return undefined;
+  }
+
+  return { oldContents, newContents };
+}
+
+async function loadGitObjectText(
+  repoPath: string,
+  object: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<string | undefined> {
+  try {
+    return (
+      await gitExecutor.run(['show', object], {
+        cwd: repoPath,
+        env,
+        maxStdoutBytes: MAX_DIFF_OUTPUT_BYTES
+      })
+    ).stdout;
+  } catch (error) {
+    if (error instanceof GitCommandError || error instanceof GitOutputLimitError) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+async function loadWorktreeText(repoPath: string, relativePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(pathModule.join(repoPath, relativePath), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+function limitReviewPatchPayload(patches: ReviewPatchInput[]): ReviewPatchInput[] {
+  let loadedPatchBytes = 0;
+  let loadedContextBytes = 0;
+
+  return patches.map((patch) => {
+    const patchBytes = Buffer.byteLength(patch.diff.patch);
+    let limitedPatch = patch;
+
+    if (loadedPatchBytes + patchBytes <= MAX_REVIEW_PLAN_PATCH_BYTES) {
+      loadedPatchBytes += patchBytes;
+    } else {
+      limitedPatch = {
+        ...patch,
+        fileContext: undefined,
+        diff: {
+          ...patch.diff,
+          patch: '',
+          stageablePatch: undefined,
+          isBinary: false,
+          omittedReason: 'too-large'
+        }
+      };
+    }
+
+    if (!limitedPatch.fileContext) {
+      return limitedPatch;
+    }
+
+    const contextBytes = Buffer.byteLength(limitedPatch.fileContext.oldContents) +
+      Buffer.byteLength(limitedPatch.fileContext.newContents);
+
+    if (loadedContextBytes + contextBytes > MAX_REVIEW_PLAN_CONTEXT_BYTES) {
+      return { ...limitedPatch, fileContext: undefined };
+    }
+
+    loadedContextBytes += contextBytes;
+    return limitedPatch;
+  });
+}
+
 function createOperationResult(
   repoPath: string,
   undoEntry?: GitUndoEntry,
-  invalidates: readonly GitQueryInvalidation[] = ['overview', 'graph', 'wip-detail', 'file-diff']
+  invalidates: readonly GitQueryInvalidation[] = [
+    'overview',
+    'graph',
+    'wip-detail',
+    'file-diff',
+    'review-plan'
+  ]
 ): GitOperationResult {
   return {
     repoPath,

@@ -34,8 +34,8 @@ function createWindow(): void {
     icon: iconPath,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: {
-      x: 16,
-      y: 10
+      x: 12,
+      y: 13
     },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

@@ -701,7 +701,7 @@ async function createOperationResult(
       message: resolvedConflictState.message
     },
     conflictState: resolvedConflictState,
-    invalidates: ['overview', 'graph', 'wip-detail', 'file-diff']
+    invalidates: ['overview', 'graph', 'wip-detail', 'file-diff', 'review-plan']
   };
 }
 

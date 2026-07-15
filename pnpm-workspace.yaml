@@ -1,3 +1,5 @@
+injectWorkspacePackages: true
+
 allowBuilds:
   electron: true
   esbuild: true

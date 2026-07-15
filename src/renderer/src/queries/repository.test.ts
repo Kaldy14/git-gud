@@ -29,7 +29,8 @@ describe('repository watcher invalidation', () => {
       'overview',
       'graph',
       'wip-detail',
-      'file-diff'
+      'file-diff',
+      'review-plan'
     ]);
   });
 
@@ -42,7 +43,7 @@ describe('repository watcher invalidation', () => {
           paths: ['/repo/.git/refs/heads/main']
         })
       )
-    ).toEqual(['overview', 'graph', 'wip-detail', 'file-diff']);
+    ).toEqual(['overview', 'graph', 'wip-detail', 'file-diff', 'review-plan']);
   });
 
   it('keeps generic Git metadata changes scoped away from WIP and diff caches', () => {
@@ -106,6 +107,20 @@ describe('repository query invalidation', () => {
     await Promise.all([firstInvalidation, secondInvalidation]);
 
     unsubscribe();
+    queryClient.clear();
+  });
+
+  it('invalidates WIP review plans without expiring immutable commit reviews', async () => {
+    const queryClient = new QueryClient();
+    const wipKey = ['review-plan', '/repo', 'wip', 'all'] as const;
+    const commitKey = ['review-plan', '/repo', 'commit', 'abc123'] as const;
+    queryClient.setQueryData(wipKey, { targetKey: 'wip:all' });
+    queryClient.setQueryData(commitKey, { targetKey: 'commit:abc123' });
+
+    await invalidateRepositoryQueries(queryClient, '/repo', ['review-plan']);
+
+    expect(queryClient.getQueryState(wipKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(commitKey)?.isInvalidated).toBe(false);
     queryClient.clear();
   });
 

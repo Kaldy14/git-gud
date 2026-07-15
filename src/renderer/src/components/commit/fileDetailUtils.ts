@@ -1,6 +1,7 @@
 import type { FileDiffOptions } from '@pierre/diffs';
 import type { GitStatusEntry } from '@pierre/trees';
 
+import { DIFF_THEME_CSS } from '@renderer/components/diff/diffTheme';
 import type { CommitGraphRow, GitFileChangeDetail, GitFileDiffRequest, GitStatusCode } from '@shared/types';
 
 export type FileViewMode = 'path' | 'tree';
@@ -15,7 +16,8 @@ export const DIFF_OPTIONS_BASE = {
   hunkSeparators: 'line-info',
   lineDiffType: 'word',
   overflow: 'wrap',
-  stickyHeader: true
+  stickyHeader: true,
+  unsafeCSS: DIFF_THEME_CSS
 } satisfies FileDiffOptions<undefined>;
 
 export function findFile(files: GitFileChangeDetail[], selectedFile: string | undefined): GitFileChangeDetail | undefined {

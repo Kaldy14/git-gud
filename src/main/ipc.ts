@@ -37,6 +37,7 @@ import {
   loadCommitDetail,
   loadCommitSelectionDetail,
   loadFileDiff,
+  loadReviewPlan,
   loadWipDetail,
   stageAll,
   stageFile,
@@ -51,6 +52,7 @@ import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { requestOperationCancellation } from './operationCancellation';
 import { assignProfileToRepository, listGitHubAccounts, listProfiles, saveProfile } from './profiles';
+import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
 import {
   activateWorkspaceTab,
   activateWorkspaceProfile,
@@ -211,6 +213,18 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   );
   handle('repo:wip-detail', async (_event, repoPath) => loadWipDetail(getOpenRepositoryTab(repoPath)));
   handle('repo:file-diff', async (_event, repoPath, request) => loadFileDiff(getOpenRepositoryTab(repoPath), request));
+  handle('repo:review-plan', async (_event, repoPath, target) => {
+    const plan = await loadReviewPlan(getOpenRepositoryTab(repoPath), target);
+    const validChunkIds = new Set(plan.units.flatMap((unit) => unit.chunks.map((chunk) => chunk.id)));
+    return {
+      ...plan,
+      reviewedChunkIds: loadReviewedChunks(repoPath, plan.targetKey, validChunkIds)
+    };
+  });
+  handle('repo:set-review-progress', (_event, repoPath, update) => {
+    getOpenRepositoryTab(repoPath);
+    return updateReviewProgress(repoPath, update);
+  });
   handle('repo:file-history', async (_event, repoPath, path, limit) =>
     loadFileHistory(getOpenRepositoryTab(repoPath), path, limit)
   );
