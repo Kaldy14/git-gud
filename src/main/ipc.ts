@@ -47,6 +47,7 @@ import {
 import { loadRepositoryOverview } from './git/repositoryOverview';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
 import { validateRepository } from './git/repoInspector';
+import { clearReviewSyntaxCache, clearReviewSyntaxCacheForRepository } from './git/reviewSyntax';
 import type { RepoWatcherRegistry } from './git/watcher';
 import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
@@ -182,7 +183,16 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   });
 
   handle('tabs:activate', (_event, tabId) => activateWorkspaceTab(tabId));
-  handle('tabs:close', (_event, tabId) => syncWorkspaceWatchers(closeWorkspaceTab(tabId), repoWatchers));
+  handle('tabs:close', (_event, tabId) => {
+    const repoPath = getWorkspace().tabs.find((tab) => tab.id === tabId)?.path;
+    const workspace = syncWorkspaceWatchers(closeWorkspaceTab(tabId), repoWatchers);
+
+    if (repoPath) {
+      clearReviewSyntaxCacheForRepository(repoPath);
+    }
+
+    return workspace;
+  });
   handle('tabs:select-commit', (_event, tabId, selectedCommit) => selectWorkspaceCommit(tabId, selectedCommit));
   handle('tabs:select-file', (_event, tabId, selectedFile) => selectWorkspaceFile(tabId, selectedFile));
   handle('workspace:set-sidebar-collapsed', (_event, collapsed) => updateSidebarCollapsed(collapsed));
@@ -336,6 +346,7 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
       throw new Error(`Profile ${profileId} does not exist.`);
     }
 
+    clearReviewSyntaxCache();
     return syncWorkspaceWatchers(activateWorkspaceProfile(profileId), repoWatchers);
   });
   handle('repo:assign-profile', async (_event, repoPath, profileId) => {

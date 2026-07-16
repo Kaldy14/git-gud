@@ -1,12 +1,19 @@
 import type { FileDiffMetadata, Hunk } from '@pierre/diffs';
 import { parseDiffFromFile, processFile } from '@pierre/diffs';
 
-import type { GitReviewChunk, GitReviewFileContext } from '@shared/types';
+import type {
+  GitReviewChunk,
+  GitReviewFileContext,
+  GitReviewSyntaxNode
+} from '@shared/types';
 
 export type ExpandableReviewDiff = {
   fileDiff: FileDiffMetadata;
   leadingContextLines: string[];
   trailingContextLines: string[];
+  leadingContextStartLine: number;
+  trailingContextStartLine: number;
+  syntaxNodes: GitReviewSyntaxNode[];
 };
 
 export function createExpandableReviewDiff(
@@ -74,9 +81,12 @@ export function createExpandableReviewDiff(
         unifiedLineCount: leadingLineCount + isolatedHunk.unifiedLineCount + trailingLineCount
       },
       leadingContextLines: additionLines.slice(0, leadingLineCount),
+      leadingContextStartLine: Math.max(hunk.additionStart - leadingLineCount, 1),
       trailingContextLines: additionLines.slice(
         isolatedHunk.additionLineIndex + isolatedHunk.additionCount
-      )
+      ),
+      trailingContextStartLine: hunk.additionStart + hunk.additionCount,
+      syntaxNodes: context.syntax?.newNodes ?? []
     };
   } catch {
     return undefined;
@@ -153,6 +163,85 @@ export function getSmartExpansionLineCount(
   }
 
   return count;
+}
+
+export function getSyntaxExpansionLineCount(
+  nodes: readonly GitReviewSyntaxNode[],
+  direction: 'before' | 'after',
+  boundaryLine: number,
+  remainingLineCount: number
+): number | undefined {
+  if (nodes.length === 0 || remainingLineCount <= 0) {
+    return undefined;
+  }
+
+  const candidate = direction === 'before'
+    ? syntaxNodeBefore(nodes, boundaryLine)
+    : syntaxNodeAfter(nodes, boundaryLine);
+
+  if (!candidate) {
+    return undefined;
+  }
+
+  const lineCount = direction === 'before'
+    ? boundaryLine - candidate.startLine
+    : candidate.endLine - boundaryLine + 1;
+
+  return lineCount > 0 ? Math.min(lineCount, remainingLineCount) : undefined;
+}
+
+function syntaxNodeBefore(
+  nodes: readonly GitReviewSyntaxNode[],
+  boundaryLine: number
+): GitReviewSyntaxNode | undefined {
+  const containing = nodes
+    .filter((node) => node.startLine < boundaryLine && node.endLine >= boundaryLine - 1)
+    .sort((left, right) =>
+      right.startLine - left.startLine ||
+      left.endLine - right.endLine ||
+      syntaxKindRank(left.kind) - syntaxKindRank(right.kind)
+    )[0];
+
+  if (containing) {
+    return containing;
+  }
+
+  return nodes
+    .filter((node) => node.endLine < boundaryLine)
+    .sort((left, right) =>
+      right.endLine - left.endLine ||
+      right.startLine - left.startLine ||
+      syntaxKindRank(left.kind) - syntaxKindRank(right.kind)
+    )[0];
+}
+
+function syntaxNodeAfter(
+  nodes: readonly GitReviewSyntaxNode[],
+  boundaryLine: number
+): GitReviewSyntaxNode | undefined {
+  const containing = nodes
+    .filter((node) => node.startLine <= boundaryLine && node.endLine >= boundaryLine)
+    .sort((left, right) =>
+      left.endLine - right.endLine ||
+      right.startLine - left.startLine ||
+      syntaxKindRank(left.kind) - syntaxKindRank(right.kind)
+    )[0];
+
+  if (containing) {
+    return containing;
+  }
+
+  return nodes
+    .filter((node) => node.startLine > boundaryLine)
+    .sort((left, right) =>
+      left.startLine - right.startLine ||
+      left.endLine - right.endLine ||
+      syntaxKindRank(left.kind) - syntaxKindRank(right.kind)
+    )[0];
+}
+
+function syntaxKindRank(kind: GitReviewSyntaxNode['kind']): number {
+  return kind === 'member' ? 0 : kind === 'block' ? 1 : 2;
 }
 
 function includeAttachedLeadingLines(

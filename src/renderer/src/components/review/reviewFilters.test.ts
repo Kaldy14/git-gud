@@ -57,6 +57,19 @@ describe('review filters and progress', () => {
     expect(presentation.units[0]?.visibleChunks[0]?.contentKind).toBe('code');
   });
 
+  it('skips generated chunks by default while retaining their source context', () => {
+    const plan = reviewPlan([
+      unit('sdk', [
+        chunk('source', 'modified', 'code', 'src/service.ts'),
+        chunk('source', 'modified', 'code', 'src/generated/sdk.ts', 'generated')
+      ])
+    ]);
+    const presentation = createReviewPresentation(plan, DEFAULT_REVIEW_PREFERENCES, new Set());
+
+    expect(presentation).toMatchObject({ totalCount: 2, skippedCount: 1, pendingCount: 1 });
+    expect(presentation.units[0]?.visibleChunks[0]?.path).toBe('src/service.ts');
+  });
+
   it('derives viewed units from the visible chunks only', () => {
     const sourceChunk = chunk('source', 'modified');
     const testChunk = chunk('test', 'modified');
@@ -94,6 +107,37 @@ describe('review filters and progress', () => {
     expect(presentation.units[0]?.visibleChunks[0]?.path).toBe('src/generator/client.ts');
   });
 
+  it('keeps every review filter independently switchable', () => {
+    const cases: Array<[keyof Pick<
+      typeof DEFAULT_REVIEW_PREFERENCES,
+      'skipTests' | 'skipImports' | 'skipGenerated' | 'skipDeletions' | 'skipFilePatterns'
+    >, GitReviewChunk]> = [
+      ['skipTests', chunk('test', 'modified')],
+      ['skipImports', chunk('source', 'modified', 'imports')],
+      ['skipGenerated', chunk('source', 'modified', 'code', 'src/gql/sdk.ts', 'generated')],
+      ['skipDeletions', chunk('source', 'deleted')],
+      ['skipFilePatterns', chunk('source', 'modified', 'code', 'dist/client.js')]
+    ];
+    const plan = reviewPlan(cases.map(([key, reviewChunk]) => unit(key, [reviewChunk])));
+
+    for (const [enabledKey] of cases) {
+      const preferences = {
+        ...DEFAULT_REVIEW_PREFERENCES,
+        skipTests: false,
+        skipImports: false,
+        skipGenerated: false,
+        skipDeletions: false,
+        skipFilePatterns: false,
+        filePatterns: ['dist/**'],
+        [enabledKey]: true
+      };
+      const presentation = createReviewPresentation(plan, preferences, new Set());
+
+      expect(presentation.skippedCount).toBe(1);
+      expect(presentation.pendingCount).toBe(cases.length - 1);
+    }
+  });
+
   it('supports root, recursive, basename, and Windows-style patterns', () => {
     expect(matchesReviewFilePattern('dist/client.js', ['dist/'])).toBe(true);
     expect(matchesReviewFilePattern('client.generated.ts', ['**/*.generated.ts'])).toBe(true);
@@ -121,6 +165,7 @@ describe('review filters and progress', () => {
       ...DEFAULT_REVIEW_PREFERENCES,
       skipTests: false,
       skipImports: true,
+      skipGenerated: false,
       skipDeletions: true,
       skipFilePatterns: true,
       filePatterns: ['dist/**']
@@ -163,7 +208,14 @@ function reviewPlan(units: GitReviewUnit[]): GitReviewPlan {
 }
 
 function unit(id: string, chunks: GitReviewChunk[]): GitReviewUnit {
-  return { id, title: id, reason: 'related changes', chunks };
+  return {
+    id,
+    title: id,
+    reason: 'related changes',
+    explanation: 'Same changed file',
+    confidence: 'context',
+    chunks
+  };
 }
 
 let chunkCounter = 0;
@@ -172,7 +224,8 @@ function chunk(
   category: GitReviewChunk['category'],
   changeType: GitReviewChunk['changeType'],
   contentKind: GitReviewChunk['contentKind'] = 'code',
-  path = category === 'source' ? 'src/client.ts' : `src/client.${category}.ts`
+  path = category === 'source' ? 'src/client.ts' : `src/client.${category}.ts`,
+  reviewSection: GitReviewChunk['reviewSection'] = 'other'
 ): GitReviewChunk {
   chunkCounter += 1;
   return {
@@ -184,6 +237,8 @@ function chunk(
     additions: 1,
     deletions: changeType === 'added' ? 0 : 1,
     role: 'related',
+    relationship: 'Same changed file',
+    reviewSection,
     category,
     changeType,
     contentKind,

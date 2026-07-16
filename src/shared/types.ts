@@ -198,6 +198,9 @@ export type GitReviewChunk = {
   additions: number;
   deletions: number;
   role: 'anchor' | 'usage' | 'related';
+  relationship: string;
+  reviewContext?: string;
+  reviewSection: 'storage' | 'definition' | 'api' | 'generated' | 'implementation' | 'tests' | 'translations' | 'other';
   category: 'source' | 'test' | 'spec';
   changeType: 'added' | 'deleted' | 'modified';
   contentKind: 'code' | 'imports';
@@ -212,12 +215,28 @@ export type GitReviewFileContext = {
   source: GitReviewChunk['source'];
   oldContents: string;
   newContents: string;
+  syntax?: GitReviewSyntaxContext;
+};
+
+export type GitReviewSyntaxNode = {
+  kind: 'declaration' | 'block' | 'member' | 'graphql';
+  startLine: number;
+  endLine: number;
+};
+
+export type GitReviewSyntaxContext = {
+  language: 'javascript' | 'jsx' | 'typescript' | 'tsx' | 'graphql';
+  oldNodes: GitReviewSyntaxNode[];
+  newNodes: GitReviewSyntaxNode[];
+  hasErrors: boolean;
 };
 
 export type GitReviewUnit = {
   id: string;
   title: string;
   reason: string;
+  explanation: string;
+  confidence: 'exact' | 'strong' | 'context';
   symbol?: string;
   chunks: GitReviewChunk[];
 };

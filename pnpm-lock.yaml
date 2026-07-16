@@ -27,6 +27,9 @@ importers:
       '@tanstack/react-virtual':
         specifier: 3.14.5
         version: 3.14.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@vscode/tree-sitter-wasm':
+        specifier: 0.3.1
+        version: 0.3.1
       chokidar:
         specifier: 5.0.0
         version: 5.0.0
@@ -51,6 +54,12 @@ importers:
       tailwind-merge:
         specifier: 3.6.0
         version: 3.6.0
+      tree-sitter-graphql-grammar-wasm:
+        specifier: 1.1.0
+        version: 1.1.0(web-tree-sitter@0.25.10)
+      web-tree-sitter:
+        specifier: 0.25.10
+        version: 0.25.10
       zustand:
         specifier: 5.0.14
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
@@ -1808,6 +1817,9 @@ packages:
   '@vitest/utils@4.1.9':
     resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
 
+  '@vscode/tree-sitter-wasm@0.3.1':
+    resolution: {integrity: sha512-RJFoomET6FajjG511fmQxeBQfU6M24a0aFZPqpid+ttIxanWf1VGytBG0UmsGjt07qmIPJS8U31D+aecuCucsQ==}
+
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
@@ -2585,6 +2597,14 @@ packages:
     resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
     engines: {node: '>=14.0.0'}
 
+  tree-sitter-graphql-grammar-wasm@1.1.0:
+    resolution: {integrity: sha512-bb4eVgg76OIxKGQRoTZa/SbL6znJVdYWfyeI0GVxoBDytuA84LSkbbrmZmZI8THBmeGJCqD5rgPYJAN/cUhfuQ==}
+    peerDependencies:
+      web-tree-sitter: ^0.25.0
+    peerDependenciesMeta:
+      web-tree-sitter:
+        optional: true
+
   trim-lines@3.0.1:
     resolution: {integrity: sha512-kRj8B+YHZCc9kQYdWfJB2/oUl9rA99qbowYYBtr4ui4mZyAQ2JpvVBd/6U2YloATfqBhBTSMhTpgBHtU0Mf3Rg==}
 
@@ -2765,6 +2785,14 @@ packages:
       happy-dom:
         optional: true
       jsdom:
+        optional: true
+
+  web-tree-sitter@0.25.10:
+    resolution: {integrity: sha512-Y09sF44/13XvgVKgO2cNDw5rGk6s26MgoZPXLESvMXeefBf7i6/73eFurre0IsTW6E14Y0ArIzhUMmjoc7xyzA==}
+    peerDependencies:
+      '@types/emscripten': ^1.40.0
+    peerDependenciesMeta:
+      '@types/emscripten':
         optional: true
 
   when-exit@2.1.5:
@@ -4436,6 +4464,8 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
+  '@vscode/tree-sitter-wasm@0.3.1': {}
+
   '@xmldom/xmldom@0.9.10': {}
 
   acorn-jsx@5.3.2(acorn@8.17.0):
@@ -5252,6 +5282,10 @@ snapshots:
 
   tinyrainbow@3.1.0: {}
 
+  tree-sitter-graphql-grammar-wasm@1.1.0(web-tree-sitter@0.25.10):
+    optionalDependencies:
+      web-tree-sitter: 0.25.10
+
   trim-lines@3.0.1: {}
 
   ts-api-utils@2.5.0(typescript@6.0.3):
@@ -5392,6 +5426,8 @@ snapshots:
       '@types/node': 26.1.0
     transitivePeerDependencies:
       - msw
+
+  web-tree-sitter@0.25.10: {}
 
   when-exit@2.1.5: {}
 

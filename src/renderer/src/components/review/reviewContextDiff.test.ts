@@ -4,7 +4,8 @@ import type { GitReviewChunk, GitReviewFileContext } from '@shared/types';
 
 import {
   createExpandableReviewDiff,
-  getSmartExpansionLineCount
+  getSmartExpansionLineCount,
+  getSyntaxExpansionLineCount
 } from './reviewContextDiff';
 
 describe('review context diffs', () => {
@@ -112,6 +113,18 @@ describe('smart context expansion', () => {
 
     expect(getSmartExpansionLineCount(lines, 'after', 'generated.txt')).toBe(80);
   });
+
+  it('expands to complete nested syntax nodes across repeated clicks', () => {
+    const nodes = [
+      { kind: 'declaration' as const, startLine: 2, endLine: 14 },
+      { kind: 'block' as const, startLine: 5, endLine: 12 }
+    ];
+
+    expect(getSyntaxExpansionLineCount(nodes, 'before', 9, 8)).toBe(4);
+    expect(getSyntaxExpansionLineCount(nodes, 'before', 5, 4)).toBe(3);
+    expect(getSyntaxExpansionLineCount(nodes, 'after', 9, 6)).toBe(4);
+    expect(getSyntaxExpansionLineCount(nodes, 'after', 13, 2)).toBe(2);
+  });
 });
 
 function reviewChunk(hunk: string): GitReviewChunk {
@@ -125,6 +138,8 @@ function reviewChunk(hunk: string): GitReviewChunk {
     additions: 1,
     deletions: 1,
     role: 'related',
+    relationship: 'Same changed file',
+    reviewSection: 'other',
     category: 'source',
     changeType: 'modified',
     contentKind: 'code',

@@ -2,6 +2,7 @@ import type { FileDiffOptions } from '@pierre/diffs';
 
 import {
   getSmartExpansionLineCount,
+  getSyntaxExpansionLineCount,
   type ExpandableReviewDiff
 } from './reviewContextDiff';
 
@@ -143,8 +144,18 @@ function getReviewExpansionRequest(
   const hiddenLines = isLeading
     ? contextLines.slice(0, boundedLineCount)
     : contextLines.slice(contextLines.length - boundedLineCount);
+  const syntaxDirection = isLeading ? 'before' : 'after';
+  const boundaryLine = isLeading
+    ? diff.leadingContextStartLine + remainingLineCount
+    : diff.trailingContextStartLine + (contextLines.length - remainingLineCount);
+  const syntaxLineCount = getSyntaxExpansionLineCount(
+    diff.syntaxNodes,
+    syntaxDirection,
+    boundaryLine,
+    boundedLineCount
+  );
   const lineCount = Math.max(
-    getSmartExpansionLineCount(hiddenLines, isLeading ? 'before' : 'after', filePath),
+    syntaxLineCount ?? getSmartExpansionLineCount(hiddenLines, syntaxDirection, filePath),
     1
   );
 

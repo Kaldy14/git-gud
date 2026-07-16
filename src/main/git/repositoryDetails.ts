@@ -16,7 +16,7 @@ import type {
   RepoTab
 } from '@shared/types';
 
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import pathModule from 'node:path';
 
 import { createProfileCommandEnv } from '../profiles';
@@ -26,6 +26,12 @@ import { parseNameStatus, parseShortStat } from './parsers/details';
 import { loadStatus } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
 import { buildReviewPlan, type ReviewPatchInput } from './reviewPlan';
+import { analyzeReviewStructure } from './reviewStructure';
+import {
+  canAnalyzeReviewSyntaxContext,
+  releaseReviewSyntaxDocument,
+  treeSitterReviewStructureProvider
+} from './reviewSyntax';
 
 type DetailTab = Pick<RepoTab, 'path' | 'assignedProfileId'>;
 
@@ -152,33 +158,40 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
   if (target.kind === 'commit') {
     const detail = await loadCommitDetail(tab, target.sha);
     const canonicalTarget: GitReviewTarget = { kind: 'commit', sha: detail.sha };
-    const patches = await mapWithConcurrency(detail.files, 6, async (file): Promise<ReviewPatchInput> => {
+    const loadedPatches = await mapWithConcurrency(detail.files, 6, async (file): Promise<ReviewPatchInput> => {
       const diff = await loadFileDiff(tab, {
         kind: 'commit',
         sha: detail.sha,
         path: file.path,
         originalPath: file.originalPath
       });
-
-      return {
+      const fileContext = diff.omittedReason
+        ? undefined
+        : await loadCommitReviewFileContext(
+            tab.path,
+            detail.sha,
+            detail.parentShas[0],
+            file,
+            env
+          );
+      const input: ReviewPatchInput = {
         path: file.path,
         originalPath: file.originalPath,
         status: file.status,
         source: 'commit',
         diff,
-        fileContext: diff.omittedReason
-          ? undefined
-          : await loadCommitReviewFileContext(
-              tab.path,
-              detail.sha,
-              detail.parentShas[0],
-              file,
-              env
-            )
+        fileContext
       };
-    });
 
-    return buildReviewPlan(tab.path, canonicalTarget, limitReviewPatchPayload(patches));
+      return input;
+    });
+    const patches = await mapWithConcurrency(
+      limitReviewPatchPayload(loadedPatches),
+      6,
+      (input) => attachReviewSyntax(tab.path, input)
+    );
+
+    return buildReviewPlan(tab.path, canonicalTarget, patches);
   }
 
   const status = await loadStatus(tab.path, env);
@@ -195,22 +208,60 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
 
     return sources.map((source) => ({ file, ...source }));
   });
-  const patches = await mapWithConcurrency(requests, 6, async ({ file, staged, source }): Promise<ReviewPatchInput> => {
-    const diff = await loadFileDiff(tab, { kind: 'wip', path: file.path, staged });
-
-    return {
-      path: file.path,
-      originalPath: file.originalPath,
-      status: staged ? file.indexStatus : file.worktreeStatus,
-      source,
-      diff,
-      fileContext: diff.omittedReason
+  const loadedPatches = await mapWithConcurrency(
+    requests,
+    6,
+    async ({ file, staged, source }): Promise<ReviewPatchInput> => {
+      const diff = await loadFileDiff(tab, { kind: 'wip', path: file.path, staged });
+      const fileContext = diff.omittedReason
         ? undefined
-        : await loadWipReviewFileContext(tab.path, file, staged, env)
-    };
-  });
+        : await loadWipReviewFileContext(tab.path, file, staged, env);
+      const input: ReviewPatchInput = {
+        path: file.path,
+        originalPath: file.originalPath,
+        status: staged ? file.indexStatus : file.worktreeStatus,
+        source,
+        diff,
+        fileContext
+      };
 
-  return buildReviewPlan(tab.path, target, limitReviewPatchPayload(patches));
+      return input;
+    }
+  );
+  const patches = await mapWithConcurrency(
+    limitReviewPatchPayload(loadedPatches),
+    6,
+    (input) => attachReviewSyntax(tab.path, input)
+  );
+
+  return buildReviewPlan(tab.path, target, patches);
+}
+
+async function attachReviewSyntax(repoPath: string, input: ReviewPatchInput): Promise<ReviewPatchInput> {
+  if (
+    !input.fileContext ||
+    input.diff.omittedReason ||
+    !canAnalyzeReviewSyntaxContext(input.fileContext)
+  ) {
+    return input;
+  }
+
+  const documentKey = `${repoPath}\0${input.source}\0${input.path}`;
+
+  try {
+    const syntax = await analyzeReviewStructure(treeSitterReviewStructureProvider, {
+      filePath: input.path,
+      patch: input.diff.patch,
+      context: input.fileContext,
+      documentKey
+    });
+
+    return syntax ? { ...input, syntax } : input;
+  } finally {
+    if (input.source === 'commit') {
+      releaseReviewSyntaxDocument(documentKey);
+    }
+  }
 }
 
 export async function applyWipPatch(tab: DetailTab, input: GitPatchApplyInput): Promise<GitOperationResult> {
@@ -1206,7 +1257,15 @@ async function loadGitObjectText(
 
 async function loadWorktreeText(repoPath: string, relativePath: string): Promise<string | undefined> {
   try {
-    return await readFile(pathModule.join(repoPath, relativePath), 'utf8');
+    const filePath = pathModule.join(repoPath, relativePath);
+    const fileStats = await stat(filePath);
+
+    if (fileStats.size > MAX_DIFF_OUTPUT_BYTES) {
+      return undefined;
+    }
+
+    const contents = await readFile(filePath, 'utf8');
+    return Buffer.byteLength(contents) <= MAX_DIFF_OUTPUT_BYTES ? contents : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return undefined;

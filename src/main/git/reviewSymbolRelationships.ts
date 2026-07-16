@@ -1,260 +1,337 @@
+import { isGraphqlReviewPath } from './reviewGraphqlRelationships';
 import {
-  identifierMatchesGraphqlSymbol,
-  identifiersShareSymbolShape,
-  isGraphqlReviewPath
-} from './reviewGraphqlRelationships';
+  buildReviewRelationshipGroups,
+  type IndexedRelationshipGroup,
+  type ReviewRelationshipChunk,
+  type ReviewRelationshipGroup
+} from './reviewRelationshipGroups';
+import {
+  codeMatchesGraphqlSymbol,
+  normalizeReviewSymbol,
+  reviewSymbolWords
+} from './reviewRelationshipFacts';
+import type { ReviewSyntaxIdentifier, ReviewSyntaxIdentifierRole } from './reviewStructure';
 
-export type ReviewRelationshipChunk = {
-  id: string;
-  path: string;
-  declarations: string[];
-  enclosingSymbols: string[];
-  graphqlSymbols: string[];
-  identifiers: Set<string>;
-};
+export type { ReviewRelationshipChunk, ReviewRelationshipGroup } from './reviewRelationshipGroups';
 
-type SymbolAnchor = {
-  anchorIds: Set<string>;
-  relatedIds: Set<string>;
-  graphqlRelationship?: boolean;
+export type ReviewGroupSelection = {
+  group: ReviewRelationshipGroup;
+  role: 'anchor' | 'usage';
+  relationship: string;
 };
 
 export type SymbolAnchorIndex = {
-  anchors: Map<string, SymbolAnchor>;
-  preferredSymbolsByChunkId: Map<string, string>;
+  selectionsByChunkId: Map<string, ReviewGroupSelection>;
 };
 
+type ScoredGroup = {
+  group: IndexedRelationshipGroup;
+  score: number;
+  evidenceRank: number;
+  role: ReviewGroupSelection['role'];
+  relationship: string;
+};
+
+const minimumRelationshipScore = 48;
+
 export function collectSymbolAnchors(chunks: ReviewRelationshipChunk[]): SymbolAnchorIndex {
-  const declarations = new Map<string, Set<string>>();
-  const enclosingOccurrences = new Map<string, Set<string>>();
-  const graphqlAnchors = new Map<string, Set<string>>();
-  const occurrences = new Map<string, Set<string>>();
+  const { groups, occurrences } = buildReviewRelationshipGroups(chunks);
+  const selectionsByChunkId = new Map<string, ReviewGroupSelection>();
 
   for (const chunk of chunks) {
-    addValues(occurrences, chunk.identifiers, chunk.id);
-    addValues(declarations, chunk.declarations, chunk.id);
-    addValues(enclosingOccurrences, chunk.enclosingSymbols, chunk.id);
-    addValues(graphqlAnchors, chunk.graphqlSymbols, chunk.id);
+    const selection = selectBestGroup(chunk, groups, occurrences);
+
+    if (selection) {
+      selectionsByChunkId.set(chunk.id, selection);
+    }
   }
 
-  const anchors = collectDeclarationAnchors(declarations, occurrences);
-  addEnclosingAnchors(anchors, declarations, enclosingOccurrences, occurrences, chunks);
-  addGraphqlAnchors(anchors, declarations, graphqlAnchors, chunks);
-
-  const preferredSymbolsByChunkId = linkEnclosingAnchorsToRenameGroups(
-    anchors,
-    declarations,
-    enclosingOccurrences,
-    occurrences
-  );
-
-  return { anchors, preferredSymbolsByChunkId };
+  return { selectionsByChunkId };
 }
 
-export function selectChunkSymbol(
+export function selectChunkReviewGroup(
   chunk: ReviewRelationshipChunk,
   index: SymbolAnchorIndex
-): string | undefined {
-  const graphqlChunk = isGraphqlReviewPath(chunk.path);
-  const candidates = [...index.anchors.entries()]
-    .filter(([symbol, anchor]) =>
-      anchor.anchorIds.has(chunk.id) ||
-      (!graphqlChunk && (chunk.identifiers.has(symbol) || chunk.enclosingSymbols.includes(symbol))) ||
-      (graphqlChunk && chunk.graphqlSymbols.includes(symbol)) ||
-      (anchor.graphqlRelationship && chunkMatchesGraphqlSymbol(chunk, symbol))
-    )
-    .map(([symbol]) => symbol)
-    .sort((left, right) => {
-      const leftAnchor = index.anchors.get(left)!;
-      const rightAnchor = index.anchors.get(right)!;
-      const preferredSymbol = index.preferredSymbolsByChunkId.get(chunk.id);
-      const leftPreferred = preferredSymbol === left ? 1 : 0;
-      const rightPreferred = preferredSymbol === right ? 1 : 0;
-      const leftDeclaredHere = leftAnchor.anchorIds.has(chunk.id) ? 1 : 0;
-      const rightDeclaredHere = rightAnchor.anchorIds.has(chunk.id) ? 1 : 0;
-
-      return (
-        rightPreferred - leftPreferred ||
-        rightAnchor.relatedIds.size - leftAnchor.relatedIds.size ||
-        rightDeclaredHere - leftDeclaredHere ||
-        right.length - left.length ||
-        left.localeCompare(right)
-      );
-    });
-
-  return candidates[0];
+): ReviewGroupSelection | undefined {
+  return index.selectionsByChunkId.get(chunk.id);
 }
 
-export function getSymbolAnchorIds(index: SymbolAnchorIndex, symbol: string): ReadonlySet<string> {
-  return index.anchors.get(symbol)?.anchorIds ?? new Set<string>();
-}
-
-function collectDeclarationAnchors(
-  declarations: Map<string, Set<string>>,
+function selectBestGroup(
+  chunk: ReviewRelationshipChunk,
+  groups: Map<string, IndexedRelationshipGroup>,
   occurrences: Map<string, Set<string>>
-): Map<string, SymbolAnchor> {
-  return new Map(
-    [...declarations.entries()]
-      .filter(([, anchorIds]) => anchorIds.size === 1)
-      .map(([symbol, anchorIds]) => [
-        symbol,
-        {
-          anchorIds: new Set(anchorIds),
-          relatedIds: new Set([...anchorIds, ...(occurrences.get(symbol) ?? [])])
-        }
-      ])
-  );
-}
-
-function addEnclosingAnchors(
-  anchors: Map<string, SymbolAnchor>,
-  declarations: Map<string, Set<string>>,
-  enclosingOccurrences: Map<string, Set<string>>,
-  occurrences: Map<string, Set<string>>,
-  chunks: ReviewRelationshipChunk[]
-): void {
-  for (const [symbol, enclosingIds] of enclosingOccurrences) {
-    const declarationIds = declarations.get(symbol);
-
-    if (declarationIds && declarationIds.size > 1) {
-      continue;
-    }
-
-    const anchorIds = new Set([...enclosingIds, ...(declarationIds ?? [])]);
-    const anchorPaths = new Set(
-      chunks.filter((chunk) => anchorIds.has(chunk.id)).map((chunk) => chunk.path)
+): ReviewGroupSelection | undefined {
+  const candidates = [...groups.values()]
+    .map((group) => scoreChunkForGroup(chunk, group, occurrences))
+    .filter((candidate): candidate is ScoredGroup => candidate !== undefined)
+    .sort((left, right) =>
+      right.evidenceRank - left.evidenceRank ||
+      right.group.relatedChunkCount - left.group.relatedChunkCount ||
+      right.score - left.score ||
+      right.group.aliasKeys.size - left.group.aliasKeys.size ||
+      right.group.symbol.length - left.group.symbol.length ||
+      left.group.title.localeCompare(right.group.title)
     );
-    const occurrenceIds = occurrences.get(symbol) ?? new Set<string>();
-    const hasExternalUsage = [...occurrenceIds].some((id) => !anchorIds.has(id));
+  let best = candidates[0];
 
-    if (anchorPaths.size !== 1 || !hasExternalUsage) {
-      continue;
-    }
-
-    anchors.set(symbol, {
-      anchorIds,
-      relatedIds: new Set([...anchorIds, ...occurrenceIds])
-    });
-  }
-}
-
-function addGraphqlAnchors(
-  anchors: Map<string, SymbolAnchor>,
-  declarations: Map<string, Set<string>>,
-  graphqlAnchors: Map<string, Set<string>>,
-  chunks: ReviewRelationshipChunk[]
-): void {
-  for (const [symbol, graphqlIds] of graphqlAnchors) {
-    const declarationIds = declarations.get(symbol);
-
-    if (declarationIds && declarationIds.size > 1) {
-      continue;
-    }
-
-    const relatedIds = new Set(graphqlIds);
-
-    for (const chunk of chunks) {
-      if (!isGraphqlReviewPath(chunk.path) && chunkMatchesGraphqlSymbol(chunk, symbol)) {
-        relatedIds.add(chunk.id);
-      }
-    }
-
-    if (relatedIds.size === graphqlIds.size) {
-      continue;
-    }
-
-    anchors.set(symbol, {
-      anchorIds: new Set([...graphqlIds, ...(declarationIds ?? [])]),
-      relatedIds,
-      graphqlRelationship: true
-    });
-  }
-}
-
-function linkEnclosingAnchorsToRenameGroups(
-  anchors: Map<string, SymbolAnchor>,
-  declarations: Map<string, Set<string>>,
-  enclosingOccurrences: Map<string, Set<string>>,
-  occurrences: Map<string, Set<string>>
-): Map<string, string> {
-  const preferredSymbolsByChunkId = new Map<string, string>();
-
-  for (const [symbol, enclosingIds] of enclosingOccurrences) {
-    const definitionIds = new Set([...enclosingIds, ...(declarations.get(symbol) ?? [])]);
-    const externalUsageIds = new Set(
-      [...(occurrences.get(symbol) ?? [])].filter((id) => !definitionIds.has(id))
-    );
-
-    if (externalUsageIds.size < 2) {
-      continue;
-    }
-
-    const candidates = [...anchors.entries()]
-      .filter(([candidate]) => candidate !== symbol && identifiersShareSymbolShape(symbol, candidate))
-      .map(([candidate, anchor]) => ({
-        anchor,
-        candidate,
-        overlap: intersectionSize(externalUsageIds, anchor.relatedIds)
-      }))
-      .filter(({ overlap }) => overlap >= 2 && overlap / externalUsageIds.size >= 0.5)
+  if (best && chunk.category !== 'source') {
+    const broaderProductionRelationship = candidates
+      .filter((candidate) =>
+        candidate.score >= minimumRelationshipScore &&
+        candidate.group.relatedChunkCount > best!.group.relatedChunkCount
+      )
       .sort((left, right) =>
-        right.overlap - left.overlap ||
-        right.anchor.relatedIds.size - left.anchor.relatedIds.size ||
-        Number(Boolean(right.anchor.graphqlRelationship)) - Number(Boolean(left.anchor.graphqlRelationship)) ||
-        right.candidate.length - left.candidate.length ||
-        left.candidate.localeCompare(right.candidate)
-      );
-    const preferred = candidates[0];
+        right.group.relatedChunkCount - left.group.relatedChunkCount ||
+        right.evidenceRank - left.evidenceRank ||
+        right.score - left.score ||
+        left.group.title.localeCompare(right.group.title)
+      )[0];
 
-    if (!preferred) {
-      continue;
-    }
-
-    for (const id of externalUsageIds) {
-      if (preferred.anchor.relatedIds.has(id)) {
-        preferredSymbolsByChunkId.set(id, preferred.candidate);
-      }
-    }
-
-    for (const id of definitionIds) {
-      preferred.anchor.anchorIds.add(id);
-      preferred.anchor.relatedIds.add(id);
-      preferredSymbolsByChunkId.set(id, preferred.candidate);
+    if (broaderProductionRelationship) {
+      best = broaderProductionRelationship;
     }
   }
 
-  return preferredSymbolsByChunkId;
+  if (best?.role === 'anchor' && best.group.renameKeys.size === 0) {
+    const broaderReference = candidates
+      .filter((candidate) =>
+        candidate.role === 'usage' &&
+        candidate.evidenceRank >= 2 &&
+        candidate.group.relatedChunkCount > best!.group.relatedChunkCount
+      )
+      .sort((left, right) =>
+        right.group.relatedChunkCount - left.group.relatedChunkCount ||
+        right.evidenceRank - left.evidenceRank ||
+        right.score - left.score ||
+        left.group.title.localeCompare(right.group.title)
+      )[0];
+
+    if (broaderReference) {
+      best = broaderReference;
+    }
+  }
+
+  const next = candidates[1];
+
+  if (!best || best.score < minimumRelationshipScore) {
+    return undefined;
+  }
+
+  if (
+    next &&
+    next.group.key !== best.group.key &&
+    best.evidenceRank === next.evidenceRank &&
+    best.group.relatedChunkCount === next.group.relatedChunkCount &&
+    best.score - next.score < 10
+  ) {
+    return undefined;
+  }
+
+  return {
+    group: best.group,
+    role: best.role,
+    relationship: best.relationship
+  };
 }
 
-function chunkMatchesGraphqlSymbol(chunk: ReviewRelationshipChunk, symbol: string): boolean {
-  return (
-    chunk.graphqlSymbols.includes(symbol) ||
-    [...chunk.identifiers, ...chunk.enclosingSymbols].some((identifier) =>
-      identifierMatchesGraphqlSymbol(identifier, symbol)
-    )
+function scoreChunkForGroup(
+  chunk: ReviewRelationshipChunk,
+  group: IndexedRelationshipGroup,
+  occurrences: Map<string, Set<string>>
+): ScoredGroup | undefined {
+  const declarationKeys = normalizedValues(chunk.declarations);
+  const enclosingKeys = normalizedValues(chunk.enclosingSymbols);
+  const qualifiedCodeKeys = normalizedValues(chunk.syntaxQualifiedSymbols);
+  const graphqlKeys = normalizedValues(chunk.graphqlSymbols);
+  const qualifiedGraphqlKeys = normalizedValues(chunk.graphqlQualifiedSymbols);
+  const identifierKeys = normalizedValues(chunk.identifiers);
+  const renamedHere = chunk.renameCandidates.some((rename) =>
+    group.renameKeys.has(normalizeReviewSymbol(rename.from)) &&
+    group.renameKeys.has(normalizeReviewSymbol(rename.to))
+  );
+  const declares = intersects(declarationKeys, group.aliasKeys);
+  const encloses = intersects(enclosingKeys, group.aliasKeys);
+  const qualifiedCode = intersects(qualifiedCodeKeys, group.aliasKeys);
+  const definesPrimary = declarationKeys.has(group.primaryKey) ||
+    enclosingKeys.has(group.primaryKey) ||
+    qualifiedCodeKeys.has(group.primaryKey);
+  const definesRename = intersects(declarationKeys, group.renameKeys) ||
+    intersects(enclosingKeys, group.renameKeys) ||
+    intersects(qualifiedCodeKeys, group.renameKeys);
+  const qualifiedGraphql = intersects(qualifiedGraphqlKeys, group.aliasKeys);
+  const graphql = intersects(graphqlKeys, group.aliasKeys);
+  const exactIdentifierKeys = isGraphqlReviewPath(chunk.path)
+    ? new Set<string>()
+    : intersection(identifierKeys, group.aliasKeys);
+  const syntaxRole = strongestMatchingSyntaxRole(chunk.syntaxIdentifiers, group.aliasKeys);
+  let score = 0;
+  let evidenceRank = 0;
+  let role: ReviewGroupSelection['role'] = 'usage';
+  let relationship = `References ${group.symbol}`;
+
+  if (renamedHere) {
+    score = 130;
+    evidenceRank = 4;
+    relationship = `Renames ${group.title}`;
+  }
+
+  if (declares || encloses) {
+    const isDefinition = !chunk.generated && (definesPrimary || definesRename);
+    score = Math.max(score, chunk.generated ? 92 : isDefinition ? (declares ? 120 : 110) : 96);
+    evidenceRank = Math.max(evidenceRank, isDefinition ? 4 : 3);
+    role = isDefinition ? 'anchor' : 'usage';
+    relationship = chunk.generated
+      ? `Generated from ${group.symbol}`
+      : isDefinition && declares
+        ? `Defines ${group.symbol}`
+        : isDefinition
+          ? `Changes ${group.symbol}`
+          : `References ${group.symbol}`;
+  }
+
+  if (qualifiedCode) {
+    const isDefinition = !chunk.generated && (definesPrimary || definesRename);
+    score = Math.max(score, isDefinition ? 115 : 98);
+    evidenceRank = Math.max(evidenceRank, isDefinition ? 4 : 3);
+    role = isDefinition ? 'anchor' : 'usage';
+    relationship = isDefinition
+      ? `Changes scoped symbol ${group.symbol}`
+      : `References scoped symbol ${group.symbol}`;
+  }
+
+  if (syntaxRole) {
+    const isDefinition = syntaxRole === 'declaration' || syntaxRole === 'member';
+    const roleScore = syntaxRoleScore(syntaxRole);
+    score = Math.max(score, chunk.generated ? Math.min(roleScore, 92) : roleScore);
+    evidenceRank = Math.max(evidenceRank, isDefinition ? 4 : syntaxRole === 'import' ? 2 : 3);
+    role = !chunk.generated && isDefinition ? 'anchor' : 'usage';
+    relationship = chunk.generated
+      ? `Generated from ${group.symbol}`
+      : syntaxRoleRelationship(syntaxRole, group.symbol);
+  }
+
+  if (qualifiedGraphql) {
+    score = Math.max(score, chunk.generated ? 92 : 105);
+    evidenceRank = Math.max(evidenceRank, chunk.generated ? 3 : 4);
+    role = chunk.generated ? 'usage' : 'anchor';
+    relationship = chunk.generated
+      ? `Generated from ${group.symbol}`
+      : `Changes GraphQL owner ${group.symbol}`;
+  } else if (graphql) {
+    score = Math.max(score, chunk.generated ? 76 : 82);
+    evidenceRank = Math.max(evidenceRank, 3);
+    role = chunk.generated ? 'usage' : 'anchor';
+    relationship = chunk.generated
+      ? `Generated from ${group.symbol}`
+      : `Changes GraphQL symbol ${group.symbol}`;
+  }
+
+  for (const key of exactIdentifierKeys) {
+    const frequency = occurrences.get(key)?.size ?? 1;
+    const exactScore = group.renameKeys.has(key) ? 50 : Math.max(42, 70 - frequency * 2);
+
+    score = Math.max(score, exactScore);
+    evidenceRank = Math.max(evidenceRank, group.renameKeys.has(key) ? 1 : 2);
+  }
+
+  if (
+    group.graphqlRelationship &&
+    group.renameKeys.size === 0 &&
+    score < 82 &&
+    chunkMatchesGraphqlGroup(chunk, group)
+  ) {
+    score = Math.max(score, 58);
+    evidenceRank = Math.max(evidenceRank, 2);
+    relationship = `Matches qualified GraphQL symbol ${group.symbol}`;
+  }
+
+  if (score >= minimumRelationshipScore) {
+    const symbolWords = new Set(reviewSymbolWords(group.symbol));
+    const pathOverlap = [...chunk.pathConcepts].filter((concept) => symbolWords.has(concept)).length;
+    score += Math.min(8, pathOverlap * 3);
+  }
+
+  return score > 0 ? { group, score, evidenceRank, role, relationship } : undefined;
+}
+
+function chunkMatchesGraphqlGroup(
+  chunk: ReviewRelationshipChunk,
+  group: IndexedRelationshipGroup
+): boolean {
+  return [...chunk.identifiers, ...chunk.enclosingSymbols, ...chunk.syntaxQualifiedSymbols].some((identifier) =>
+    [...group.aliases].some((alias) => codeMatchesGraphqlSymbol(identifier, alias))
   );
 }
 
-function addValues(
-  target: Map<string, Set<string>>,
-  values: Iterable<string>,
-  chunkId: string
-): void {
-  for (const value of values) {
-    const ids = target.get(value) ?? new Set<string>();
-    ids.add(chunkId);
-    target.set(value, ids);
-  }
+function normalizedValues(values: Iterable<string>): Set<string> {
+  return new Set([...values].map(normalizeReviewSymbol).filter(Boolean));
 }
 
-function intersectionSize(left: Set<string>, right: Set<string>): number {
-  let count = 0;
+function intersects(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return [...left].some((value) => right.has(value));
+}
 
-  for (const value of left) {
-    if (right.has(value)) {
-      count += 1;
-    }
-  }
+function intersection(left: ReadonlySet<string>, right: ReadonlySet<string>): Set<string> {
+  return new Set([...left].filter((value) => right.has(value)));
+}
 
-  return count;
+function strongestMatchingSyntaxRole(
+  identifiers: readonly ReviewSyntaxIdentifier[],
+  aliases: ReadonlySet<string>
+): ReviewSyntaxIdentifierRole | undefined {
+  return identifiers
+    .filter((identifier) =>
+      aliases.has(normalizeReviewSymbol(identifier.qualifiedName ?? '')) ||
+      aliases.has(normalizeReviewSymbol(identifier.name))
+    )
+    .map((identifier) => identifier.role)
+    .sort((left, right) => syntaxRoleRank(left) - syntaxRoleRank(right))[0];
+}
+
+function syntaxRoleRank(role: ReviewSyntaxIdentifierRole): number {
+  return role === 'declaration'
+    ? 0
+    : role === 'member'
+      ? 1
+      : role === 'type-reference'
+        ? 2
+        : role === 'decorator'
+          ? 3
+          : role === 'call'
+            ? 4
+            : role === 'reference'
+              ? 5
+              : 6;
+}
+
+function syntaxRoleScore(role: ReviewSyntaxIdentifierRole): number {
+  return role === 'declaration'
+    ? 120
+    : role === 'member'
+      ? 115
+      : role === 'type-reference'
+        ? 80
+        : role === 'decorator'
+          ? 76
+          : role === 'call'
+            ? 74
+            : role === 'reference'
+              ? 70
+              : 58;
+}
+
+function syntaxRoleRelationship(role: ReviewSyntaxIdentifierRole, symbol: string): string {
+  return role === 'declaration'
+    ? `Defines ${symbol}`
+    : role === 'member'
+      ? `Changes member ${symbol}`
+      : role === 'type-reference'
+        ? `Uses type ${symbol}`
+        : role === 'decorator'
+          ? `Uses decorator ${symbol}`
+          : role === 'call'
+            ? `Calls ${symbol}`
+            : role === 'import'
+              ? `Imports ${symbol}`
+              : `References ${symbol}`;
 }

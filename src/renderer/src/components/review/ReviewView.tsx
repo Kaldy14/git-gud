@@ -9,6 +9,7 @@ import {
   CheckCheck,
   Columns2,
   FileCode2,
+  FileCog,
   Loader2,
   PackageOpen,
   Rows3,
@@ -38,6 +39,7 @@ import {
 import { createExpandableReviewDiff } from './reviewContextDiff';
 import { createReviewContextOptions } from './reviewContextExpansion';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
+import { createReviewContexts } from './reviewSections';
 
 type ReviewViewProps = {
   repoPath: string;
@@ -179,6 +181,12 @@ export function ReviewView({
             onChange={(skipImports) => updatePreferences({ ...preferences, skipImports })}
           />
           <ReviewFilterToggle
+            checked={preferences.skipGenerated}
+            icon={<FileCog size={12} />}
+            label="Skip generated"
+            onChange={(skipGenerated) => updatePreferences({ ...preferences, skipGenerated })}
+          />
+          <ReviewFilterToggle
             checked={preferences.skipDeletions}
             icon={<Trash2 size={12} />}
             label="Skip deletions"
@@ -310,7 +318,7 @@ function ReviewBody({
               {candidate.isViewed ? <Check size={12} /> : index + 1}
             </span>
             <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-xs font-semibold text-[var(--text-1)]">{candidate.unit.title}</span>
+              <span className="block truncate text-xs font-semibold text-[var(--text-1)]" title={candidate.unit.explanation}>{candidate.unit.title}</span>
               <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">{candidate.unit.reason}</span>
             </span>
             <span className="badge-mini">{candidate.visibleChunks.length}</span>
@@ -323,9 +331,13 @@ function ReviewBody({
           <>
             <header className="review-unit-header">
               <div className="min-w-0">
-                <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">{selectedUnit.unit.title}</h2>
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">{selectedUnit.unit.title}</h2>
+                  <span className="badge-mini shrink-0" title="Grouping confidence">{selectedUnit.unit.confidence}</span>
+                </div>
                 <p className="mt-0.5 text-xs text-[var(--text-3)]">
                   {selectedUnit.unit.reason}
+                  {` · ${selectedUnit.unit.explanation}`}
                   {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}
                 </p>
               </div>
@@ -336,13 +348,33 @@ function ReviewBody({
             </header>
             {mutationError ? <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">{mutationError}</p> : null}
             <div className="review-chunks">
-              {selectedUnit.visibleChunks.map((chunk) => (
-                <ReviewChunk
-                  key={chunk.id}
-                  chunk={chunk}
-                  context={chunk.fileContextId ? fileContexts.get(chunk.fileContextId) : undefined}
-                  diffOptions={diffOptions}
-                />
+              {createReviewContexts(selectedUnit.visibleChunks).map((contextGroup, _contextIndex, contexts) => (
+                <section className="review-context-group" key={contextGroup.key}>
+                  {contexts.length > 1 ? (
+                    <div className="review-context-header">
+                      <span>{contextGroup.label}</span>
+                      <span>{contextGroup.chunkCount}</span>
+                    </div>
+                  ) : null}
+                  {contextGroup.sections.map((section, _sectionIndex, sections) => (
+                    <section className="review-chunk-section" data-only={sections.length === 1} key={section.key}>
+                      {sections.length > 1 ? (
+                        <div className="review-section-header">
+                          <span>{section.label}</span>
+                          <span>{section.chunks.length}</span>
+                        </div>
+                      ) : null}
+                      {section.chunks.map((chunk) => (
+                        <ReviewChunk
+                          key={chunk.id}
+                          chunk={chunk}
+                          context={chunk.fileContextId ? fileContexts.get(chunk.fileContextId) : undefined}
+                          diffOptions={diffOptions}
+                        />
+                      ))}
+                    </section>
+                  ))}
+                </section>
               ))}
             </div>
           </>
@@ -379,7 +411,7 @@ function ReviewChunk({
       <div className="review-chunk-header">
         <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
         <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{chunk.path}</span>
-        <span className="badge-mini">{chunk.role}</span>
+        <span className="badge-mini" title={chunk.relationship}>{chunk.role}</span>
         {chunk.source !== 'commit' ? <span className="badge-mini">{chunk.source}</span> : null}
         <span className="text-[var(--success-text)]">+{chunk.additions}</span>
         <span className="text-[var(--danger-text)]">-{chunk.deletions}</span>

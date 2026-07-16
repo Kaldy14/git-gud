@@ -1361,6 +1361,42 @@ button.ref-chip:active {
   overflow-y: auto;
 }
 
+.review-chunk-section + .review-chunk-section {
+  border-top: 1px solid var(--border-strong);
+}
+
+.review-context-group + .review-context-group {
+  border-top: 2px solid var(--border-strong);
+}
+
+.review-context-header {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+  padding: 0 10px;
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.review-section-header {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-field);
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .review-chunk {
   overflow: hidden;
   background: var(--bg-field);

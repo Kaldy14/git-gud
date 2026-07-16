@@ -3,6 +3,7 @@ import type { GitReviewChunk, GitReviewPlan, GitReviewUnit } from '@shared/types
 export type ReviewPreferences = {
   skipTests: boolean;
   skipImports: boolean;
+  skipGenerated: boolean;
   skipDeletions: boolean;
   skipFilePatterns: boolean;
   filePatterns: string[];
@@ -26,6 +27,7 @@ export type ReviewPresentation = {
 export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
   skipTests: true,
   skipImports: false,
+  skipGenerated: true,
   skipDeletions: false,
   skipFilePatterns: false,
   filePatterns: []
@@ -119,6 +121,10 @@ export function loadReviewPreferences(
         typeof parsed.skipImports === 'boolean'
           ? parsed.skipImports
           : DEFAULT_REVIEW_PREFERENCES.skipImports,
+      skipGenerated:
+        typeof parsed.skipGenerated === 'boolean'
+          ? parsed.skipGenerated
+          : DEFAULT_REVIEW_PREFERENCES.skipGenerated,
       skipDeletions:
         typeof parsed.skipDeletions === 'boolean'
           ? parsed.skipDeletions
@@ -177,6 +183,10 @@ function isChunkSkipped(
   }
 
   if (preferences.skipImports && chunk.contentKind === 'imports') {
+    return true;
+  }
+
+  if (preferences.skipGenerated && chunk.reviewSection === 'generated') {
     return true;
   }
 
