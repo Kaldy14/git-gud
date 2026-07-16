@@ -1256,7 +1256,16 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handleCreateTagAtCommit(sha: string): void {
+  async function handleCreateTagAtCommit(sha: string, name: string): Promise<boolean> {
+    return runRepositoryOperation(`Create tag ${name}`, (repoPath) =>
+      window.api.createTag(repoPath, {
+        name,
+        targetSha: sha
+      })
+    );
+  }
+
+  function handleOpenCreateTagDialog(sha: string): void {
     openCommandDialog({
       title: 'Create tag here',
       description: `Create a tag at ${sha.slice(0, 8)}.`,
@@ -1279,12 +1288,7 @@ export function WorkspaceShell(): ReactElement {
           return;
         }
 
-        void runRepositoryOperation(`Create tag ${name}`, (repoPath) =>
-          window.api.createTag(repoPath, {
-            name,
-            targetSha: sha
-          })
-        );
+        void handleCreateTagAtCommit(sha, name);
       }
     });
   }
@@ -1608,7 +1612,7 @@ export function WorkspaceShell(): ReactElement {
       icon: <Tag size={14} />,
       disabled: !selectedRow || selectedRow.node.kind === 'wip' || selectedRow.node.kind === 'stash' || isOperationBusy,
       disabledReason: !selectedRow ? 'Select a commit first' : isOperationBusy ? 'A Git operation is running' : undefined,
-      onSelect: () => selectedRow && handleCreateTagAtCommit(selectedRow.sha)
+      onSelect: () => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)
     },
     {
       id: 'file-history',
@@ -1753,7 +1757,7 @@ export function WorkspaceShell(): ReactElement {
         onMergeSelected={() => selectedRow && handleMergeCommit(selectedRow.sha)}
         onRebaseSelected={() => selectedRow && handleRebaseOntoCommit(selectedRow.sha)}
         onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
-        onTagSelected={() => selectedRow && handleCreateTagAtCommit(selectedRow.sha)}
+        onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
       />
 
       {errorMessage || repositoryError ? (

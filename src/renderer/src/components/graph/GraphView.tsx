@@ -1,4 +1,5 @@
 import type {
+  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -121,7 +122,7 @@ type GraphViewProps = {
   onDeleteBranch?: (name: string) => Promise<void> | void;
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
-  onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
+  onCreateTagAtCommit?: (sha: string, name: string) => Promise<boolean>;
   onMergeCommit?: (sha: string) => Promise<void> | void;
   onRebaseOntoCommit?: (sha: string) => Promise<void> | void;
   onInteractiveRebaseFromCommit?: (sha: string) => Promise<void> | void;
@@ -162,6 +163,7 @@ type BranchContextMenuState = {
   kind: 'branch';
   branchName: string;
   currentBranchName: string;
+  targetSha: string;
   x: number;
   y: number;
 };
@@ -219,6 +221,7 @@ export function GraphView({
   const selectionAnchorShaRef = useRef<string | undefined>(selectedSha);
   const resizeStateRef = useRef<ColumnResizeState | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
+  const [tagCreationTargetSha, setTagCreationTargetSha] = useState<string>();
   const [columnWidths, setColumnWidths] = useState<GraphColumnWidths>(loadStoredGraphColumnWidths);
   const [graphContainerWidth, setGraphContainerWidth] = useState<number>();
   const [resizingColumn, setResizingColumn] = useState<ResizableGraphColumn>();
@@ -302,6 +305,12 @@ export function GraphView({
       selectionAnchorShaRef.current = selectedSha;
     }
   }, [bulkSelectedShas.length, selectedSha]);
+
+  useEffect(() => {
+    if (tagCreationTargetSha && !rows.some((row) => row.sha === tagCreationTargetSha)) {
+      setTagCreationTargetSha(undefined);
+    }
+  }, [rows, tagCreationTargetSha]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -419,6 +428,7 @@ export function GraphView({
 
   function handleContextMenu(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
     event.preventDefault();
+    setTagCreationTargetSha(undefined);
     selectionAnchorShaRef.current = row.sha;
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
@@ -478,6 +488,7 @@ export function GraphView({
 
     event.preventDefault();
     event.stopPropagation();
+    setTagCreationTargetSha(undefined);
     selectionAnchorShaRef.current = row.sha;
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
@@ -485,9 +496,22 @@ export function GraphView({
       kind: 'branch',
       branchName,
       currentBranchName,
+      targetSha: row.sha,
       x: event.clientX,
       y: event.clientY
     });
+  }
+
+  function handleStartTagCreation(sha: string): void {
+    setTagCreationTargetSha(sha);
+  }
+
+  function handleCancelTagCreation(restoreGraphFocus = false): void {
+    setTagCreationTargetSha(undefined);
+
+    if (restoreGraphFocus) {
+      window.requestAnimationFrame(() => scrollRef.current?.focus({ preventScroll: true }));
+    }
   }
 
   function handleRefClick(row: CommitGraphRow, ref: GraphRefChip): void {
@@ -728,11 +752,18 @@ export function GraphView({
                       isBulkSelected={bulkSelection.has(row.sha)}
                       isSearchMatch={searchMatchShas.has(row.sha)}
                       isSearchFiltering={isSearchFiltering}
+                      isCreatingTag={row.sha === tagCreationTargetSha}
                       rowIndex={virtualRow.index}
                       onSelect={(event) => handleRowClick(event, row)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
                       onRefClick={(ref) => handleRefClick(row, ref)}
                       onBranchContextMenu={(event, branchName) => handleBranchContextMenu(event, row, branchName)}
+                      onCreateTag={
+                        onCreateTagAtCommit
+                          ? (name) => onCreateTagAtCommit(row.sha, name)
+                          : undefined
+                      }
+                      onCancelTagCreation={handleCancelTagCreation}
                     />
                   </div>
                 );
@@ -791,6 +822,7 @@ export function GraphView({
           }}
           onCheckoutBranch={onCheckoutBranch}
           onRenameBranch={onRenameBranch}
+          onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
           onMergeBranch={onMergeBranch}
           onRebaseOntoBranch={onRebaseOntoBranch}
           onInteractiveRebaseOntoBranch={onInteractiveRebaseOntoBranch}
@@ -812,7 +844,7 @@ export function GraphView({
           onStashDrop={onStashDrop}
           onCheckoutCommit={onCheckoutCommit}
           onCreateBranchAtCommit={onCreateBranchAtCommit}
-          onCreateTagAtCommit={onCreateTagAtCommit}
+          onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
           onMergeCommit={onMergeCommit}
           onRebaseOntoCommit={onRebaseOntoCommit}
           onInteractiveRebaseFromCommit={onInteractiveRebaseFromCommit}
@@ -841,11 +873,14 @@ type GraphRowViewProps = {
   isBulkSelected: boolean;
   isSearchMatch: boolean;
   isSearchFiltering: boolean;
+  isCreatingTag: boolean;
   rowIndex: number;
   onSelect: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
+  onCreateTag?: (name: string) => Promise<boolean>;
+  onCancelTagCreation: (restoreGraphFocus?: boolean) => void;
 };
 
 type GraphColumnResizeHandleProps = {
@@ -938,11 +973,14 @@ function GraphRowView({
   isBulkSelected,
   isSearchMatch,
   isSearchFiltering,
+  isCreatingTag,
   rowIndex,
   onSelect,
   onContextMenu,
   onRefClick,
-  onBranchContextMenu
+  onBranchContextMenu,
+  onCreateTag,
+  onCancelTagCreation
 }: GraphRowViewProps): ReactElement {
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
@@ -1014,6 +1052,15 @@ function GraphRowView({
         remoteAvatars={remoteAvatars}
       />
 
+      {isCreatingTag && onCreateTag ? (
+        <InlineTagEditor
+          targetSha={row.sha}
+          refCellWidth={refCellWidth}
+          onCreate={onCreateTag}
+          onCancel={onCancelTagCreation}
+        />
+      ) : null}
+
       <div className="relative flex min-w-0 items-center gap-2 pl-4 pr-3">
         {isWip ? (
           <>
@@ -1040,6 +1087,88 @@ function GraphRowView({
         </span>
       ) : null}
     </div>
+  );
+}
+
+function InlineTagEditor({
+  targetSha,
+  refCellWidth,
+  onCreate,
+  onCancel
+}: {
+  targetSha: string;
+  refCellWidth: number;
+  onCreate: (name: string) => Promise<boolean>;
+  onCancel: (restoreGraphFocus?: boolean) => void;
+}): ReactElement {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
+  const [name, setName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const editorLeft = 8;
+  const editorWidth = Math.max(112, refCellWidth - editorLeft - 6);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const tagName = name.trim();
+
+    if (!tagName || submittingRef.current) {
+      return;
+    }
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    const created = await onCreate(tagName);
+
+    if (created) {
+      onCancel();
+      return;
+    }
+
+    submittingRef.current = false;
+    setIsSubmitting(false);
+    window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  }
+
+  return (
+    <form
+      className="absolute inset-y-0 z-30 flex cursor-default items-center"
+      style={{ left: editorLeft, width: editorWidth }}
+      aria-label={`Create tag at ${targetSha.slice(0, 8)}`}
+      aria-busy={isSubmitting}
+      onSubmit={(event) => void handleSubmit(event)}
+      onClick={(event) => event.stopPropagation()}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onBlur={() => {
+        if (!submittingRef.current) {
+          onCancel();
+        }
+      }}
+    >
+      <input
+        ref={inputRef}
+        className="h-7 w-full cursor-text rounded-md border-2 border-[var(--select-border)] bg-[var(--bg-field)] px-3 text-[13px] text-[var(--text-1)] shadow-lg shadow-black/30 outline-none placeholder:text-[var(--text-3)] focus:ring-1 focus:ring-[var(--select-border)]"
+        type="text"
+        value={name}
+        placeholder="Enter tag name"
+        aria-label="Tag name"
+        autoFocus
+        disabled={isSubmitting}
+        spellCheck={false}
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            onCancel(true);
+          }
+        }}
+      />
+    </form>
   );
 }
 
@@ -1860,6 +1989,7 @@ function GraphBranchContextMenu({
   onClose,
   onCheckoutBranch,
   onRenameBranch,
+  onCreateTagAtCommit,
   onMergeBranch,
   onRebaseOntoBranch,
   onInteractiveRebaseOntoBranch,
@@ -1870,6 +2000,7 @@ function GraphBranchContextMenu({
   onClose: () => void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
+  onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
   onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -1930,6 +2061,19 @@ function GraphBranchContextMenu({
       >
         <Pencil size={14} />
         <span>Rename branch…</span>
+      </button>
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onCreateTagAtCommit || isOperationBusy}
+        onClick={() => {
+          void onCreateTagAtCommit?.(state.targetSha);
+          onClose();
+        }}
+      >
+        <Tag size={14} />
+        <span>Create tag here</span>
       </button>
       <MenuSeparator />
       <button
