@@ -74,7 +74,7 @@ export function Toolbar({
   const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
 
   return (
-    <div className="app-toolbar flex h-12 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
+    <div className="app-toolbar h-12 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
       <div className="tb-context flex h-full min-w-0 items-center">
         <button className="tb-select" type="button" disabled={!hasRepo} title={activeTab?.path} onClick={onOpenQuickJump}>
           <span className="tb-select-label">repository</span>
@@ -85,7 +85,13 @@ export function Toolbar({
           </span>
         </button>
         <ChevronRight size={14} className="mx-0.5 shrink-0 text-[var(--text-3)]" />
-        <button className="tb-select tb-select-branch" type="button" disabled={!hasRepo || isBusy} title="Switch branch" onClick={onOpenQuickJump}>
+        <button
+          className="tb-select tb-select-branch"
+          type="button"
+          disabled={!hasRepo || isBusy}
+          title="Switch branch"
+          onClick={onOpenQuickJump}
+        >
           <span className="tb-select-label">branch</span>
           <span className="tb-select-value">
             <GitBranch size={13} className="shrink-0 text-[var(--text-3)]" />
@@ -105,7 +111,7 @@ export function Toolbar({
         </button>
       </div>
 
-      <div className="flex h-full flex-1 items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <ToolbarAction
           label="Undo"
           icon={<Undo2 size={17} />}
@@ -161,7 +167,7 @@ export function Toolbar({
         />
       </div>
 
-      <div className="flex h-full shrink-0 items-center">
+      <div className="flex h-full shrink-0 items-center justify-self-end">
         <ActionsMenu
           disabled={!hasRepo || isBusy}
           hasSelectedCommit={hasSelectedCommit}

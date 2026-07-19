@@ -46,6 +46,7 @@ import {
   type RefClickState
 } from '@renderer/components/graph/graphInteraction';
 import { branchNameFromRemoteRef } from '@renderer/components/graph/refPresentation';
+import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
 import type { CommitGraphRow, GitStashRefInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
@@ -132,6 +133,7 @@ type GraphViewProps = {
   onRevertCommit?: (sha: string) => Promise<void> | void;
   onResetToCommit?: (sha: string) => Promise<void> | void;
   isOperationBusy?: boolean;
+  checkoutTransition?: CheckoutTransition;
   largeRepoMode?: boolean;
   columns?: GraphColumnVisibility;
   remoteAvatars?: boolean;
@@ -207,6 +209,7 @@ export function GraphView({
   onRevertCommit,
   onResetToCommit,
   isOperationBusy = false,
+  checkoutTransition,
   largeRepoMode = false,
   columns = DEFAULT_GRAPH_COLUMN_VISIBILITY,
   remoteAvatars = false,
@@ -748,6 +751,7 @@ export function GraphView({
                       gridTemplateColumns={gridTemplateColumns}
                       visibleColumns={visibleColumns}
                       remoteAvatars={remoteAvatars}
+                      pendingBranchName={checkoutTransition?.targetBranch}
                       isSelected={row.sha === selectedSha}
                       isBulkSelected={bulkSelection.has(row.sha)}
                       isSearchMatch={searchMatchShas.has(row.sha)}
@@ -869,6 +873,7 @@ type GraphRowViewProps = {
   gridTemplateColumns: string;
   visibleColumns: GraphColumnVisibility;
   remoteAvatars: boolean;
+  pendingBranchName?: string;
   isSelected: boolean;
   isBulkSelected: boolean;
   isSearchMatch: boolean;
@@ -969,6 +974,7 @@ function GraphRowView({
   gridTemplateColumns,
   visibleColumns,
   remoteAvatars,
+  pendingBranchName,
   isSelected,
   isBulkSelected,
   isSearchMatch,
@@ -1038,6 +1044,7 @@ function GraphRowView({
           refs={visibleRefs}
           linkedWorktreeBranches={linkedWorktreeBranches}
           color={nodeColor}
+          pendingBranchName={pendingBranchName}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
         />
@@ -1473,12 +1480,14 @@ function RefChipStack({
   refs,
   linkedWorktreeBranches,
   color,
+  pendingBranchName,
   onRefClick,
   onBranchContextMenu
 }: {
   refs: GraphRefChip[];
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
+  pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 }): ReactElement | null {
@@ -1502,6 +1511,7 @@ function RefChipStack({
           chip={primaryRef}
           linkedWorktreeBranches={linkedWorktreeBranches}
           color={color}
+          pendingBranchName={pendingBranchName}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
         />
@@ -1523,6 +1533,7 @@ function RefChipStack({
               chip={chip}
               linkedWorktreeBranches={linkedWorktreeBranches}
               color={color}
+              pendingBranchName={pendingBranchName}
               onRefClick={onRefClick}
               onBranchContextMenu={onBranchContextMenu}
             />
@@ -1537,23 +1548,28 @@ function RefChipView({
   chip,
   linkedWorktreeBranches,
   color,
+  pendingBranchName,
   onRefClick,
   onBranchContextMenu
 }: {
   chip: RefChipDisplay;
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
+  pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
 }): ReactElement {
   const { current, kind, label, remotePeerLabels } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
   const isLinkedWorktree = kind === 'branch' && linkedWorktreeBranches.has(label);
+  const isPending = kind === 'branch' && label === pendingBranchName;
   const displayLabel = kind === 'remote' ? branchNameFromRemoteRef(label) : label;
   const title = refChipTitle(chip);
-  const ariaLabel = `${label}${current ? ', checked out' : isLinkedWorktree ? ', checked out in a linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
+  const ariaLabel = `${label}${isPending ? ', checkout in progress' : current ? ', checked out' : isLinkedWorktree ? ', checked out in a linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
   const leadingIcon =
-    current ? (
+    isPending ? (
+      <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+    ) : current ? (
       <Check size={12} />
     ) : kind === 'tag' ? (
       <Tag size={10} />
@@ -1595,15 +1611,19 @@ function RefChipView({
     <button
       type="button"
       className="ref-chip"
+      data-pending={isPending ? 'true' : undefined}
       style={style}
       title={
-        current && kind === 'branch'
+        isPending
+          ? `Switching to ${label}…`
+          : current && kind === 'branch'
           ? `${title}\nRight-click for branch actions.`
           : current
             ? title
             : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
       }
       aria-label={ariaLabel}
+      aria-busy={isPending ? true : undefined}
       onClick={(event) => {
         event.stopPropagation();
         onRefClick(chip);

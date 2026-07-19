@@ -57,6 +57,7 @@ import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
 import { resolveSelectedGraphRow, syncWipGraphRow } from '@renderer/workspace/selection';
 import { resolveRemoteBranchActivation } from '@renderer/workspace/branchActivation';
+import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
   CommitGraphRow,
@@ -113,6 +114,7 @@ type RepositoryInspectorState = {
 type RepositoryOperationOptions = {
   repoPath?: string;
   retryable?: boolean;
+  checkout?: Omit<CheckoutTransition, 'phase'>;
 };
 
 type ActiveRepositoryOperation = {
@@ -120,6 +122,7 @@ type ActiveRepositoryOperation = {
   repoPath: string;
   label: string;
   phase: 'running' | 'refreshing';
+  checkout?: Omit<CheckoutTransition, 'phase'>;
 };
 
 type ProfileTransitionIdentity = {
@@ -291,6 +294,9 @@ export function WorkspaceShell(): ReactElement {
             phase: pendingOperationForActiveRepo.phase === 'refreshing' ? 'refreshing' : 'running'
           }
         : undefined;
+  const checkoutTransition: CheckoutTransition | undefined = visibleActiveOperation?.checkout
+    ? { ...visibleActiveOperation.checkout, phase: visibleActiveOperation.phase }
+    : undefined;
   const isOperationBusy =
     localMutationCount > 0 ||
     Boolean(activeTab && activeRepositoryOperations[activeTab.path]) ||
@@ -760,7 +766,8 @@ export function WorkspaceShell(): ReactElement {
         id,
         repoPath: requestedRepoPath,
         label,
-        phase: 'running'
+        phase: 'running',
+        checkout: options.checkout
       }
     }));
     if (retryable) {
@@ -1067,7 +1074,11 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleCheckoutBranch(name: string): void {
-    void runRepositoryOperation(`Checkout ${name}`, (repoPath) => window.api.checkoutRef(repoPath, { kind: 'local', name }));
+    void runRepositoryOperation(
+      `Checkout ${name}`,
+      (repoPath) => window.api.checkoutRef(repoPath, { kind: 'local', name }),
+      { checkout: { targetBranch: name } }
+    );
   }
 
   function handleCheckoutRemoteBranch(name: string): void {
@@ -1092,12 +1103,15 @@ export function WorkspaceShell(): ReactElement {
           return;
         }
 
-        void runRepositoryOperation(`Checkout ${localName}`, (repoPath) =>
-          window.api.checkoutRef(repoPath, {
-            kind: 'remote',
-            name,
-            localName
-          })
+        void runRepositoryOperation(
+          `Checkout ${localName}`,
+          (repoPath) =>
+            window.api.checkoutRef(repoPath, {
+              kind: 'remote',
+              name,
+              localName
+            }),
+          { checkout: { targetBranch: localName } }
         );
       }
     });
@@ -1127,10 +1141,14 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
-    void runRepositoryOperation(`Checkout and pull ${activation.branchName}`, async (repoPath) => {
-      await window.api.checkoutRef(repoPath, { kind: 'local', name: activation.branchName });
-      return window.api.pullRepository(repoPath, { mode: 'ff-only' });
-    });
+    void runRepositoryOperation(
+      `Checkout and pull ${activation.branchName}`,
+      async (repoPath) => {
+        await window.api.checkoutRef(repoPath, { kind: 'local', name: activation.branchName });
+        return window.api.pullRepository(repoPath, { mode: 'ff-only' });
+      },
+      { checkout: { targetBranch: activation.branchName } }
+    );
   }
 
   function handleCheckoutCommit(sha: string): void {
@@ -1891,6 +1909,7 @@ export function WorkspaceShell(): ReactElement {
                   onRevertCommit={handleRevertCommit}
                   onResetToCommit={handleResetToCommit}
                   isOperationBusy={isOperationBusy}
+                  checkoutTransition={checkoutTransition}
                   largeRepoMode={settings.largeRepoMode}
                   columns={settings.graphColumns}
                   remoteAvatars={settings.remoteAvatars}
@@ -1941,10 +1960,11 @@ export function WorkspaceShell(): ReactElement {
         repositoryOverview={repositoryQuery.data}
         isRepositoryLoading={repositoryQuery.isLoading}
         isRepositoryRefreshing={
+          !checkoutTransition &&
           Boolean(repositoryQuery.data || graphQuery.data) &&
           (repositoryQuery.isFetching || graphQuery.isFetching)
         }
-        activeOperation={visibleActiveOperation}
+        activeOperation={checkoutTransition ? undefined : visibleActiveOperation}
       />
       <OperationLog
         entries={operationLogEntries}

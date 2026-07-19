@@ -360,6 +360,11 @@ input {
 
 /* --- Toolbar --------------------------------------------------------- */
 
+.app-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
 .tb-action {
   display: flex;
   flex-direction: column;
@@ -869,6 +874,10 @@ button.ref-chip:hover {
 
 button.ref-chip:active {
   transform: translateY(1px);
+}
+
+.ref-chip[data-pending='true'] .ref-chip-extra-icon {
+  display: none;
 }
 
 .ref-chip svg {
