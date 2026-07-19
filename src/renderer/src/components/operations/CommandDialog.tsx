@@ -50,6 +50,7 @@ export type CommandDialogConfig = {
   title: string;
   description?: string;
   detail?: string;
+  detailItems?: string[];
   confirmLabel: string;
   cancelLabel?: string;
   tone?: CommandDialogTone;
@@ -85,7 +86,7 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
   return (
     <ModalSurface
       labelledBy={titleId}
-      describedBy={dialog.description || dialog.detail ? descriptionId : undefined}
+      describedBy={dialog.description || dialog.detail || dialog.detailItems?.length ? descriptionId : undefined}
       className="w-full max-w-[440px] rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
       onClose={onClose}
     >
@@ -106,7 +107,21 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
         </header>
 
         <div className="space-y-3 px-4 py-4">
-          {dialog.detail ? (
+          {dialog.detailItems?.length ? (
+            <ol
+              id={dialog.description ? undefined : descriptionId}
+              className="max-h-40 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg-field)] divide-y divide-[var(--border)]"
+            >
+              {dialog.detailItems.map((item, index) => (
+                <li key={`${index}-${item}`} className="flex items-start gap-2.5 px-3 py-2.5">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-[var(--select-border)] bg-[var(--select-bg)] text-[10px] font-semibold text-[var(--accent-2)]">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 break-words text-xs leading-5 text-[var(--text-1)]">{item}</span>
+                </li>
+              ))}
+            </ol>
+          ) : dialog.detail ? (
             <p id={dialog.description ? undefined : descriptionId} className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2 text-xs leading-5 text-[var(--text-2)]">
               {dialog.detail}
             </p>

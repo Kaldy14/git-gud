@@ -36,6 +36,7 @@ import type {
   GitStashRefInput,
   GitTagCreateInput,
   GitTagDeleteInput,
+  GitTagPushInput,
   GitWipDetail,
   RepoChangedEvent,
   WorkspaceState
@@ -210,6 +211,10 @@ export type IpcChannelMap = {
     args: [repoPath: string, input: GitTagCreateInput];
     result: GitOperationResult;
   };
+  'repo:push-tag': {
+    args: [repoPath: string, input: GitTagPushInput];
+    result: GitOperationResult;
+  };
   'repo:delete-tag': {
     args: [repoPath: string, input: GitTagDeleteInput];
     result: GitOperationResult;
@@ -341,6 +346,7 @@ export type RendererApi = {
   checkoutRef: (repoPath: string, target: GitCheckoutTarget) => Promise<GitOperationResult>;
   mergeRef: (repoPath: string, input: GitMergeInput) => Promise<GitOperationResult>;
   createTag: (repoPath: string, input: GitTagCreateInput) => Promise<GitOperationResult>;
+  pushTag: (repoPath: string, input: GitTagPushInput) => Promise<GitOperationResult>;
   deleteTag: (repoPath: string, input: GitTagDeleteInput) => Promise<GitOperationResult>;
   stashPush: (repoPath: string, input: GitStashPushInput) => Promise<GitOperationResult>;
   stashApply: (repoPath: string, input: GitStashRefInput) => Promise<GitOperationResult>;

@@ -55,7 +55,11 @@ import {
 } from '@renderer/queries/repository';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
-import { resolveSelectedGraphRow, syncWipGraphRow } from '@renderer/workspace/selection';
+import {
+  commitSubjectsForShas,
+  resolveSelectedGraphRow,
+  syncWipGraphRow
+} from '@renderer/workspace/selection';
 import { resolveRemoteBranchActivation } from '@renderer/workspace/branchActivation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
@@ -1324,6 +1328,12 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  function handlePushTag(name: string, remote: string): void {
+    void runRepositoryOperation(`Push tag ${name}`, (repoPath) =>
+      window.api.pushTag(repoPath, { name, remote })
+    );
+  }
+
   function handleMergeRef(ref: string, label: string): void {
     openCommandDialog({
       title: 'Merge into current branch',
@@ -1354,14 +1364,15 @@ export function WorkspaceShell(): ReactElement {
     }
 
     const isBulk = shas.length > 1;
-    const label = isBulk ? `${shas.length} commits` : shas[0]?.slice(0, 8) ?? 'commit';
+    const subjects = commitSubjectsForShas(graphRows, shas);
+    const label = isBulk ? `${shas.length} commits` : subjects[0] ?? 'commit';
 
     openCommandDialog({
       title: isBulk ? 'Cherry-pick selected commits' : 'Cherry-pick commit',
       description: isBulk
         ? `Apply ${shas.length} selected commits onto the current branch, oldest to newest.`
-        : `Apply ${label} onto the current branch.`,
-      detail: isBulk ? shas.map((sha) => sha.slice(0, 8)).join('\n') : undefined,
+        : `Apply \u201c${label}\u201d onto the current branch.`,
+      detailItems: isBulk ? subjects : undefined,
       confirmLabel: 'Cherry-pick',
       fields: [],
       onSubmit() {
@@ -1826,6 +1837,7 @@ export function WorkspaceShell(): ReactElement {
                 onRenameBranch={handleRenameBranch}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
+                onPushTag={handlePushTag}
                 onDeleteTag={handleDeleteTag}
                 onStashApply={handleStashApply}
                 onStashPop={handleStashPop}

@@ -10,6 +10,7 @@ export type GitCommandId =
   | 'checkout'
   | 'merge'
   | 'tag-create'
+  | 'tag-push'
   | 'tag-delete'
   | 'stash-push'
   | 'stash-apply'
@@ -48,6 +49,7 @@ export const GIT_COMMANDS = {
   checkout: command('checkout', 'Checkout', 'working-tree', 'conditional', 'none', allMutableRepositoryQueries),
   merge: command('merge', 'Merge', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
   'tag-create': command('tag-create', 'Create tag', 'refs', 'recorded', 'none', ['overview', 'graph']),
+  'tag-push': command('tag-push', 'Push tag', 'remote', 'none', 'none', ['overview']),
   'tag-delete': command('tag-delete', 'Delete tag', 'refs', 'recorded', 'none', ['overview', 'graph']),
   'stash-push': command('stash-push', 'Stash changes', 'working-tree', 'none', 'none', allMutableRepositoryQueries),
   'stash-apply': command('stash-apply', 'Apply stash', 'working-tree', 'none', 'detect-after-run', allMutableRepositoryQueries),

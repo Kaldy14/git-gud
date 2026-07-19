@@ -364,6 +364,11 @@ export type GitTagCreateInput = {
   targetSha?: string;
 };
 
+export type GitTagPushInput = {
+  name: string;
+  remote: string;
+};
+
 export type GitTagDeleteInput = {
   name: string;
 };

@@ -200,6 +200,9 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:delete-branch', ['/repo', { force: false }])).toThrow(
       'delete branch input must include a local or remote branch.'
     );
+    expect(() => validateIpcArgs('repo:push-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
+      'remote must be a string.'
+    );
     expect(() =>
       validateIpcArgs('repo:delete-branch', [
         '/repo',

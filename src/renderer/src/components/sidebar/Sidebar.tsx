@@ -15,7 +15,8 @@ import {
   Pencil,
   Search,
   Tag,
-  Trash2
+  Trash2,
+  Upload
 } from 'lucide-react';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
@@ -40,6 +41,7 @@ type SidebarProps = {
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
+  onPushTag: (name: string, remote: string) => void;
   onDeleteTag: (name: string) => void;
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
@@ -105,6 +107,7 @@ export function Sidebar({
   onRenameBranch,
   onDeleteBranch,
   onDeleteRemoteBranch,
+  onPushTag,
   onDeleteTag,
   onStashApply,
   onStashPop,
@@ -131,6 +134,7 @@ export function Sidebar({
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
   const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
+  const tagPushRemote = repositoryOverview?.remotes.find((remote) => remote.name === 'origin') ?? repositoryOverview?.remotes[0];
 
   useEffect(() => {
     if (filterFocusSignal > 0 && !isCollapsed) {
@@ -371,6 +375,8 @@ export function Sidebar({
           onRenameBranch={onRenameBranch}
           onDeleteBranch={onDeleteBranch}
           onDeleteRemoteBranch={onDeleteRemoteBranch}
+          tagPushRemote={tagPushRemote?.name}
+          onPushTag={onPushTag}
           onDeleteTag={onDeleteTag}
           onStashApply={onStashApply}
           onStashPop={onStashPop}
@@ -784,6 +790,8 @@ function SidebarContextMenu({
   onRenameBranch,
   onDeleteBranch,
   onDeleteRemoteBranch,
+  tagPushRemote,
+  onPushTag,
   onDeleteTag,
   onStashApply,
   onStashPop,
@@ -797,6 +805,8 @@ function SidebarContextMenu({
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
+  tagPushRemote?: string;
+  onPushTag: (name: string, remote: string) => void;
   onDeleteTag: (name: string) => void;
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
@@ -903,19 +913,38 @@ function SidebarContextMenu({
           </button>
         </>
       ) : state.kind === 'tag' ? (
-        <button
-          className="menu-row"
-          type="button"
-          role="menuitem"
-          disabled={isOperationBusy}
-          onClick={() => {
-            onDeleteTag(state.tag.name);
-            onClose();
-          }}
-        >
-          <Trash2 size={14} />
-          <span>Delete tag</span>
-        </button>
+        <>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy || !tagPushRemote}
+            title={tagPushRemote ? undefined : 'Configure a remote before pushing this tag'}
+            onClick={() => {
+              if (tagPushRemote) {
+                onPushTag(state.tag.name, tagPushRemote);
+                onClose();
+              }
+            }}
+          >
+            <Upload size={14} />
+            <span>{tagPushRemote ? `Push ${state.tag.name} to ${tagPushRemote}` : `Push ${state.tag.name}`}</span>
+          </button>
+          <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onDeleteTag(state.tag.name);
+              onClose();
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Delete tag</span>
+          </button>
+        </>
       ) : (
         <>
           <button

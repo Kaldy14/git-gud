@@ -16,6 +16,7 @@ import {
   deleteTag,
   mergeRef,
   pullRepository,
+  pushTag,
   resetToCommit,
   resolveConflict,
   revertCommit,
@@ -1303,6 +1304,30 @@ describe('git operations', () => {
 
       await deleteTag(tab, { name: 'safe/v1' });
       await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/tags/safe/v1']);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('pushes only the selected tag to the requested remote', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await createTag(tab, { name: 'safe/v1' });
+      await createTag(tab, { name: 'keep-local' });
+
+      const result = await pushTag(tab, { name: 'safe/v1', remote: 'origin' });
+
+      expect((await git(remotePath, ['rev-parse', '--verify', 'refs/tags/safe/v1'])).stdout.trim()).toBe(
+        (await git(repoPath, ['rev-parse', '--verify', 'refs/tags/safe/v1'])).stdout.trim()
+      );
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/tags/keep-local']);
+      expect(result.operation?.label).toBe('Push tag safe/v1 to origin');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

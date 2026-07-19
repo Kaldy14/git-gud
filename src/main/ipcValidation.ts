@@ -23,7 +23,8 @@ import type {
   GitStashPushInput,
   GitStashRefInput,
   GitTagCreateInput,
-  GitTagDeleteInput
+  GitTagDeleteInput,
+  GitTagPushInput
 } from '@shared/types';
 
 type IpcArgValidator<TChannel extends IpcChannelName> = (
@@ -84,6 +85,7 @@ const validators = {
   'repo:checkout': (args) => readRepoPathWithObject(args, 'repo:checkout', readCheckoutTarget),
   'repo:merge': (args) => readRepoPathWithObject(args, 'repo:merge', readMergeInput),
   'repo:create-tag': (args) => readRepoPathWithObject(args, 'repo:create-tag', readTagCreateInput),
+  'repo:push-tag': (args) => readRepoPathWithObject(args, 'repo:push-tag', readTagPushInput),
   'repo:delete-tag': (args) => readRepoPathWithObject(args, 'repo:delete-tag', readTagDeleteInput),
   'repo:stash-push': (args) => readRepoPathWithObject(args, 'repo:stash-push', readStashPushInput),
   'repo:stash-apply': (args) => readRepoPathWithObject(args, 'repo:stash-apply', readStashRefInput),
@@ -393,6 +395,14 @@ function readTagCreateInput(value: unknown): GitTagCreateInput {
   return {
     name: readStringProperty(record, 'name'),
     targetSha: readOptionalStringProperty(record, 'targetSha')
+  };
+}
+
+function readTagPushInput(value: unknown): GitTagPushInput {
+  const record = readRecord(value, 'tag push input');
+  return {
+    name: readStringProperty(record, 'name'),
+    remote: readStringProperty(record, 'remote')
   };
 }
 

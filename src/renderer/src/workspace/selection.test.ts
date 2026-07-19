@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommitGraphRow, GitStatusSummary } from '@shared/types';
 
-import { resolveSelectedGraphRow, syncWipGraphRow } from './selection';
+import { commitSubjectsForShas, resolveSelectedGraphRow, syncWipGraphRow } from './selection';
 
 const firstRow: CommitGraphRow = {
   sha: 'a'.repeat(40),
@@ -26,6 +26,25 @@ describe('selected graph row resolution', () => {
 
   it('uses the first graph row when no explicit selection exists', () => {
     expect(resolveSelectedGraphRow([firstRow], undefined)).toBe(firstRow);
+  });
+});
+
+describe('commit subject resolution', () => {
+  it('keeps the requested commit order while replacing SHAs with subjects', () => {
+    const secondRow: CommitGraphRow = {
+      ...firstRow,
+      sha: 'b'.repeat(40),
+      subject: 'Second'
+    };
+
+    expect(commitSubjectsForShas([firstRow, secondRow], [secondRow.sha, firstRow.sha])).toEqual([
+      'Second',
+      'First'
+    ]);
+  });
+
+  it('does not expose a SHA when a commit subject is unavailable', () => {
+    expect(commitSubjectsForShas([firstRow], ['missing'])).toEqual(['Commit message unavailable']);
   });
 });
 

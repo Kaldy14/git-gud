@@ -16,6 +16,7 @@ import type {
   GitStashRefInput,
   GitTagCreateInput,
   GitTagDeleteInput,
+  GitTagPushInput,
   GitUndoEntry,
   GitUndoOperation,
   RepoTab
@@ -318,6 +319,31 @@ export async function createTag(tab: OperationTab, input: GitTagCreateInput): Pr
   });
 
   return createOperationResult(tab, env, 'tag-create', `Create tag ${tagName}`, undoEntry);
+}
+
+export async function pushTag(tab: OperationTab, input: GitTagPushInput): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const tagName = normalizeRequiredName(input.name, 'Tag name');
+  const remoteName = normalizeRequiredName(input.remote, 'Remote name');
+  await assertValidTagName(tab.path, tagName, env);
+  const tagRef = `refs/tags/${tagName}`;
+  await revParse(tab.path, tagRef, env);
+
+  const remotes = await loadRemotes(tab.path, env);
+
+  if (!remotes.some((remote) => remote.name === remoteName)) {
+    throw new Error(`Remote ${remoteName} does not exist.`);
+  }
+
+  await gitExecutor.run(['push', '--', remoteName, `${tagRef}:${tagRef}`], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
+
+  return createOperationResult(tab, env, 'tag-push', `Push tag ${tagName} to ${remoteName}`);
 }
 
 export async function deleteTag(tab: OperationTab, input: GitTagDeleteInput): Promise<GitOperationResult> {

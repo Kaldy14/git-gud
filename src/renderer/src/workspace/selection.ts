@@ -56,6 +56,12 @@ export function resolveSelectedGraphRow(
   };
 }
 
+export function commitSubjectsForShas(rows: CommitGraphRow[], shas: string[]): string[] {
+  const subjectsBySha = new Map(rows.map((row) => [row.sha, row.subject]));
+
+  return shas.map((sha) => subjectsBySha.get(sha) ?? 'Commit message unavailable');
+}
+
 function graphFileStatus(status: GitStatusCode): GraphFileStatus {
   if (status === 'added' || status === 'untracked' || status === 'copied') {
     return 'added';
