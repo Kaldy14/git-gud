@@ -203,6 +203,12 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:push-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
       'remote must be a string.'
     );
+    expect(() => validateIpcArgs('repo:delete-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
+      'target must be one of: local, remote, both.'
+    );
+    expect(() =>
+      validateIpcArgs('repo:delete-tag', ['/repo', { name: 'v1.0.0', target: 'remote' }])
+    ).toThrow('remote must be a string.');
     expect(() =>
       validateIpcArgs('repo:delete-branch', [
         '/repo',

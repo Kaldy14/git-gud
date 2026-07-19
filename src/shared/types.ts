@@ -369,9 +369,16 @@ export type GitTagPushInput = {
   remote: string;
 };
 
-export type GitTagDeleteInput = {
-  name: string;
-};
+export type GitTagDeleteInput =
+  | {
+      name: string;
+      target: 'local';
+    }
+  | {
+      name: string;
+      target: 'remote' | 'both';
+      remote: string;
+    };
 
 export type GitStashPushInput = {
   message?: string;

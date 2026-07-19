@@ -34,6 +34,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
 import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
+import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import {
   findCurrentBranchName,
   findSelectedContextMenuRow,
@@ -48,7 +49,7 @@ import {
 import { branchNameFromRemoteRef } from '@renderer/components/graph/refPresentation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
-import type { CommitGraphRow, GitStashRefInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
+import type { CommitGraphRow, GitStashRefInput, GitTagDeleteInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
 
 const ROW_HEIGHT = 34;
 const LANE_X0 = 48;
@@ -124,6 +125,9 @@ type GraphViewProps = {
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string, name: string) => Promise<boolean>;
+  tagPushRemote?: string;
+  onPushTag?: (name: string, remote: string) => Promise<void> | void;
+  onDeleteTag?: (input: GitTagDeleteInput) => Promise<void> | void;
   onMergeCommit?: (sha: string) => Promise<void> | void;
   onRebaseOntoCommit?: (sha: string) => Promise<void> | void;
   onInteractiveRebaseFromCommit?: (sha: string) => Promise<void> | void;
@@ -170,7 +174,14 @@ type BranchContextMenuState = {
   y: number;
 };
 
-type ContextMenuState = CommitContextMenuState | BranchContextMenuState;
+type TagContextMenuState = {
+  kind: 'tag';
+  tagName: string;
+  x: number;
+  y: number;
+};
+
+type ContextMenuState = CommitContextMenuState | BranchContextMenuState | TagContextMenuState;
 
 export function GraphView({
   rows,
@@ -200,6 +211,9 @@ export function GraphView({
   onCheckoutCommit,
   onCreateBranchAtCommit,
   onCreateTagAtCommit,
+  tagPushRemote,
+  onPushTag,
+  onDeleteTag,
   onMergeCommit,
   onRebaseOntoCommit,
   onInteractiveRebaseFromCommit,
@@ -505,6 +519,21 @@ export function GraphView({
     });
   }
 
+  function handleTagContextMenu(event: MouseEvent<HTMLElement>, row: CommitGraphRow, tagName: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    setTagCreationTargetSha(undefined);
+    selectionAnchorShaRef.current = row.sha;
+    onBulkSelectionChange([]);
+    onSelectRow(row.sha);
+    setContextMenu({
+      kind: 'tag',
+      tagName,
+      x: event.clientX,
+      y: event.clientY
+    });
+  }
+
   function handleStartTagCreation(sha: string): void {
     setTagCreationTargetSha(sha);
   }
@@ -762,6 +791,7 @@ export function GraphView({
                       onContextMenu={(event) => handleContextMenu(event, row)}
                       onRefClick={(ref) => handleRefClick(row, ref)}
                       onBranchContextMenu={(event, branchName) => handleBranchContextMenu(event, row, branchName)}
+                      onTagContextMenu={(event, tagName) => handleTagContextMenu(event, row, tagName)}
                       onCreateTag={
                         onCreateTagAtCommit
                           ? (name) => onCreateTagAtCommit(row.sha, name)
@@ -833,6 +863,18 @@ export function GraphView({
           onDeleteBranch={onDeleteBranch}
           isOperationBusy={isOperationBusy}
         />
+      ) : contextMenu?.kind === 'tag' ? (
+        <GraphTagContextMenu
+          state={contextMenu}
+          remoteName={tagPushRemote}
+          onClose={() => {
+            setContextMenu(undefined);
+            scrollRef.current?.focus({ preventScroll: true });
+          }}
+          onPushTag={onPushTag}
+          onDeleteTag={onDeleteTag}
+          isOperationBusy={isOperationBusy}
+        />
       ) : contextMenu ? (
         <GraphContextMenu
           state={contextMenu}
@@ -884,6 +926,7 @@ type GraphRowViewProps = {
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
+  onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
   onCreateTag?: (name: string) => Promise<boolean>;
   onCancelTagCreation: (restoreGraphFocus?: boolean) => void;
 };
@@ -985,6 +1028,7 @@ function GraphRowView({
   onContextMenu,
   onRefClick,
   onBranchContextMenu,
+  onTagContextMenu,
   onCreateTag,
   onCancelTagCreation
 }: GraphRowViewProps): ReactElement {
@@ -1047,6 +1091,7 @@ function GraphRowView({
           pendingBranchName={pendingBranchName}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
+          onTagContextMenu={onTagContextMenu}
         />
       </div>
 
@@ -1482,7 +1527,8 @@ function RefChipStack({
   color,
   pendingBranchName,
   onRefClick,
-  onBranchContextMenu
+  onBranchContextMenu,
+  onTagContextMenu
 }: {
   refs: GraphRefChip[];
   linkedWorktreeBranches: ReadonlySet<string>;
@@ -1490,6 +1536,7 @@ function RefChipStack({
   pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
+  onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
 }): ReactElement | null {
   if (refs.length === 0) {
     return null;
@@ -1514,6 +1561,7 @@ function RefChipStack({
           pendingBranchName={pendingBranchName}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
+          onTagContextMenu={onTagContextMenu}
         />
         {overflowRefs.length > 0 ? (
           <span
@@ -1536,6 +1584,7 @@ function RefChipStack({
               pendingBranchName={pendingBranchName}
               onRefClick={onRefClick}
               onBranchContextMenu={onBranchContextMenu}
+              onTagContextMenu={onTagContextMenu}
             />
           ))}
         </div>
@@ -1550,7 +1599,8 @@ function RefChipView({
   color,
   pendingBranchName,
   onRefClick,
-  onBranchContextMenu
+  onBranchContextMenu,
+  onTagContextMenu
 }: {
   chip: RefChipDisplay;
   linkedWorktreeBranches: ReadonlySet<string>;
@@ -1558,6 +1608,7 @@ function RefChipView({
   pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
+  onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
 }): ReactElement {
   const { current, kind, label, remotePeerLabels } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
@@ -1599,7 +1650,7 @@ function RefChipView({
     </>
   );
 
-  if (kind !== 'branch' && kind !== 'remote') {
+  if (kind === 'stash') {
     return (
       <span className="ref-chip" style={style} title={title} aria-label={ariaLabel}>
         {content}
@@ -1616,6 +1667,8 @@ function RefChipView({
       title={
         isPending
           ? `Switching to ${label}…`
+          : kind === 'tag'
+            ? `${title}\nRight-click for tag actions.`
           : current && kind === 'branch'
           ? `${title}\nRight-click for branch actions.`
           : current
@@ -1623,6 +1676,7 @@ function RefChipView({
             : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
       }
       aria-label={ariaLabel}
+      aria-haspopup={kind === 'tag' ? 'menu' : undefined}
       aria-busy={isPending ? true : undefined}
       onClick={(event) => {
         event.stopPropagation();
@@ -1631,6 +1685,8 @@ function RefChipView({
       onContextMenu={(event) => {
         if (kind === 'branch') {
           onBranchContextMenu(event, label);
+        } else if (kind === 'tag') {
+          onTagContextMenu(event, label);
         }
       }}
     >
@@ -2002,6 +2058,61 @@ function BulkCommitActions({
 
 function MenuSeparator(): ReactElement {
   return <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />;
+}
+
+function GraphTagContextMenu({
+  state,
+  remoteName,
+  onClose,
+  onPushTag,
+  onDeleteTag,
+  isOperationBusy
+}: {
+  state: TagContextMenuState;
+  remoteName?: string;
+  onClose: () => void;
+  onPushTag?: (name: string, remote: string) => Promise<void> | void;
+  onDeleteTag?: (input: GitTagDeleteInput) => Promise<void> | void;
+  isOperationBusy: boolean;
+}): ReactElement {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: state.x, top: state.y });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+
+    if (!menu) {
+      return;
+    }
+
+    const rect = menu.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
+    });
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+  }, [state]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 w-[22rem] rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      style={{ left: position.left, top: position.top }}
+      role="menu"
+      aria-label={`${state.tagName} tag actions`}
+      onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <TagMenuItems
+        tagName={state.tagName}
+        remoteName={remoteName}
+        isOperationBusy={isOperationBusy}
+        onPushTag={onPushTag}
+        onDeleteTag={onDeleteTag}
+        onClose={onClose}
+      />
+    </div>
+  );
 }
 
 function GraphBranchContextMenu({

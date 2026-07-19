@@ -1302,7 +1302,7 @@ describe('git operations', () => {
       );
       expect(created.undoEntry?.affectedRefs).toEqual(['refs/tags/safe/v1']);
 
-      await deleteTag(tab, { name: 'safe/v1' });
+      await deleteTag(tab, { name: 'safe/v1', target: 'local' });
       await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/tags/safe/v1']);
     } finally {
       await rm(rootPath, { recursive: true, force: true });
@@ -1328,6 +1328,59 @@ describe('git operations', () => {
       );
       await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/tags/keep-local']);
       expect(result.operation?.label).toBe('Push tag safe/v1 to origin');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes a tag locally, remotely, or from both locations', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+
+      for (const name of ['local-only', 'remote-only', 'both']) {
+        await createTag(tab, { name });
+        await pushTag(tab, { name, remote: 'origin' });
+      }
+
+      const localResult = await deleteTag(tab, { name: 'local-only', target: 'local' });
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/tags/local-only']);
+      expect((await git(remotePath, ['rev-parse', '--verify', 'refs/tags/local-only'])).stdout.trim()).not.toBe('');
+      expect(localResult.undoEntry?.refName).toBe('local-only');
+
+      const remoteResult = await deleteTag(tab, { name: 'remote-only', target: 'remote', remote: 'origin' });
+      expect((await git(repoPath, ['rev-parse', '--verify', 'refs/tags/remote-only'])).stdout.trim()).not.toBe('');
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/tags/remote-only']);
+      expect(remoteResult.undoEntry).toBeUndefined();
+
+      const bothResult = await deleteTag(tab, { name: 'both', target: 'both', remote: 'origin' });
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/tags/both']);
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/tags/both']);
+      expect(bothResult.undoEntry?.refName).toBe('both');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('restores the local tag when combined deletion fails on the remote', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const tagName = 'keep-on-failure';
+      await git(repoPath, ['remote', 'add', 'origin', join(rootPath, 'missing.git')]);
+      await createTag(tab, { name: tagName });
+      const targetSha = (await git(repoPath, ['rev-parse', '--verify', `refs/tags/${tagName}`])).stdout.trim();
+
+      await expect(deleteTag(tab, { name: tagName, target: 'both', remote: 'origin' })).rejects.toThrow();
+
+      expect((await git(repoPath, ['rev-parse', '--verify', `refs/tags/${tagName}`])).stdout.trim()).toBe(targetSha);
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

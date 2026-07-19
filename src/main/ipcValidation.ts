@@ -408,8 +408,20 @@ function readTagPushInput(value: unknown): GitTagPushInput {
 
 function readTagDeleteInput(value: unknown): GitTagDeleteInput {
   const record = readRecord(value, 'tag delete input');
+  const name = readStringProperty(record, 'name');
+  const target = readEnumProperty(record, 'target', ['local', 'remote', 'both']);
+
+  if (target !== 'local') {
+    return {
+      name,
+      target,
+      remote: readStringProperty(record, 'remote')
+    };
+  }
+
   return {
-    name: readStringProperty(record, 'name')
+    name,
+    target
   };
 }
 

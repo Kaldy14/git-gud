@@ -15,12 +15,12 @@ import {
   Pencil,
   Search,
   Tag,
-  Trash2,
-  Upload
+  Trash2
 } from 'lucide-react';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
-import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitStashRefInput, GitTagRef, RepoTab } from '@shared/types';
+import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
+import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitStashRefInput, GitTagDeleteInput, GitTagRef, RepoTab } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 type SidebarProps = {
@@ -41,8 +41,9 @@ type SidebarProps = {
   onRenameBranch: (name: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
+  tagPushRemote?: string;
   onPushTag: (name: string, remote: string) => void;
-  onDeleteTag: (name: string) => void;
+  onDeleteTag: (input: GitTagDeleteInput) => void;
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
   onStashDrop: (input: GitStashRefInput) => void;
@@ -107,6 +108,7 @@ export function Sidebar({
   onRenameBranch,
   onDeleteBranch,
   onDeleteRemoteBranch,
+  tagPushRemote,
   onPushTag,
   onDeleteTag,
   onStashApply,
@@ -134,7 +136,6 @@ export function Sidebar({
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
   const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
-  const tagPushRemote = repositoryOverview?.remotes.find((remote) => remote.name === 'origin') ?? repositoryOverview?.remotes[0];
 
   useEffect(() => {
     if (filterFocusSignal > 0 && !isCollapsed) {
@@ -375,7 +376,7 @@ export function Sidebar({
           onRenameBranch={onRenameBranch}
           onDeleteBranch={onDeleteBranch}
           onDeleteRemoteBranch={onDeleteRemoteBranch}
-          tagPushRemote={tagPushRemote?.name}
+          tagPushRemote={tagPushRemote}
           onPushTag={onPushTag}
           onDeleteTag={onDeleteTag}
           onStashApply={onStashApply}
@@ -807,7 +808,7 @@ function SidebarContextMenu({
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
   onPushTag: (name: string, remote: string) => void;
-  onDeleteTag: (name: string) => void;
+  onDeleteTag: (input: GitTagDeleteInput) => void;
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
   onStashDrop: (input: GitStashRefInput) => void;
@@ -833,7 +834,7 @@ function SidebarContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 w-56 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      className={`fixed z-50 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60 ${state.kind === 'tag' ? 'w-[22rem]' : 'w-56'}`}
       style={{ left: position.left, top: position.top }}
       role="menu"
       aria-label="Reference actions"
@@ -913,38 +914,14 @@ function SidebarContextMenu({
           </button>
         </>
       ) : state.kind === 'tag' ? (
-        <>
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy || !tagPushRemote}
-            title={tagPushRemote ? undefined : 'Configure a remote before pushing this tag'}
-            onClick={() => {
-              if (tagPushRemote) {
-                onPushTag(state.tag.name, tagPushRemote);
-                onClose();
-              }
-            }}
-          >
-            <Upload size={14} />
-            <span>{tagPushRemote ? `Push ${state.tag.name} to ${tagPushRemote}` : `Push ${state.tag.name}`}</span>
-          </button>
-          <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onDeleteTag(state.tag.name);
-              onClose();
-            }}
-          >
-            <Trash2 size={14} />
-            <span>Delete tag</span>
-          </button>
-        </>
+        <TagMenuItems
+          tagName={state.tag.name}
+          remoteName={tagPushRemote}
+          isOperationBusy={isOperationBusy}
+          onPushTag={onPushTag}
+          onDeleteTag={onDeleteTag}
+          onClose={onClose}
+        />
       ) : (
         <>
           <button

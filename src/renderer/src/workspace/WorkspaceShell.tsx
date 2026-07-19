@@ -76,6 +76,7 @@ import type {
   RepoProfileState,
   GitResetInput,
   GitStashRefInput,
+  GitTagDeleteInput,
   AppSettings
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
@@ -262,6 +263,9 @@ export function WorkspaceShell(): ReactElement {
       ),
     [repositoryQuery.data?.worktrees]
   );
+  const tagPushRemote =
+    repositoryQuery.data?.remotes.find((remote) => remote.name === 'origin')?.name ??
+    repositoryQuery.data?.remotes[0]?.name;
   const selectedSha = activeTab?.selectedCommit;
   const selectedRow = useMemo(
     () => resolveSelectedGraphRow(graphRows, selectedSha),
@@ -1315,15 +1319,29 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handleDeleteTag(name: string): void {
+  function handleDeleteTag(input: GitTagDeleteInput): void {
+    const { name, target } = input;
+    const remote = target === 'local' ? undefined : input.remote;
+    const description = target === 'local'
+      ? `Delete ${name} from this repository.`
+      : target === 'remote'
+        ? `Delete ${name} from ${remote} and keep the local tag.`
+        : `Delete ${name} from this repository and ${remote}.`;
+    const detail = target === 'local'
+      ? 'The local tag can be restored from the operation log.'
+      : target === 'remote'
+        ? 'This changes the shared remote and cannot be undone in Git Gud.'
+        : 'Remote deletion cannot be undone. The local tag can be restored from the operation log.';
+
     openCommandDialog({
       title: 'Delete tag',
-      description: `Delete tag ${name}.`,
+      description,
+      detail,
       confirmLabel: 'Delete Tag',
       tone: 'danger',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Delete tag ${name}`, (repoPath) => window.api.deleteTag(repoPath, { name }));
+        void runRepositoryOperation(`Delete tag ${name}`, (repoPath) => window.api.deleteTag(repoPath, input));
       }
     });
   }
@@ -1837,6 +1855,7 @@ export function WorkspaceShell(): ReactElement {
                 onRenameBranch={handleRenameBranch}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
+                tagPushRemote={tagPushRemote}
                 onPushTag={handlePushTag}
                 onDeleteTag={handleDeleteTag}
                 onStashApply={handleStashApply}
@@ -1912,6 +1931,9 @@ export function WorkspaceShell(): ReactElement {
                   onCheckoutCommit={handleCheckoutCommit}
                   onCreateBranchAtCommit={handleCreateBranch}
                   onCreateTagAtCommit={handleCreateTagAtCommit}
+                  tagPushRemote={tagPushRemote}
+                  onPushTag={handlePushTag}
+                  onDeleteTag={handleDeleteTag}
                   onMergeCommit={handleMergeCommit}
                   onRebaseOntoCommit={handleRebaseOntoCommit}
                   onInteractiveRebaseFromCommit={handleInteractiveRebaseFromCommit}

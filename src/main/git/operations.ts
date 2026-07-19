@@ -351,21 +351,58 @@ export async function deleteTag(tab: OperationTab, input: GitTagDeleteInput): Pr
   const tagName = normalizeRequiredName(input.name, 'Tag name');
   await assertValidTagName(tab.path, tagName, env);
   const tagRef = `refs/tags/${tagName}`;
-  const targetSha = await revParse(tab.path, tagRef, env);
+  const deletesLocal = input.target !== 'remote';
+  const remoteName = input.target === 'local' ? undefined : normalizeRequiredName(input.remote, 'Remote name');
+  const targetSha = deletesLocal ? await revParse(tab.path, tagRef, env) : undefined;
 
-  await gitExecutor.run(['update-ref', '-d', tagRef, targetSha], { cwd: tab.path, kind: 'mutation', env });
+  if (remoteName) {
+    const remotes = await loadRemotes(tab.path, env);
 
-  if (await revParseOptional(tab.path, tagRef, env)) {
-    throw new Error(`Tag ${tagName} was not deleted.`);
+    if (!remotes.some((remote) => remote.name === remoteName)) {
+      throw new Error(`Remote ${remoteName} does not exist.`);
+    }
   }
 
-  const undoEntry = recordUndo(tab, 'tag-delete', `Undo delete tag ${tagName}`, {
-    refName: tagName,
-    targetSha,
-    affectedRefs: [tagRef]
-  });
+  if (targetSha) {
+    await gitExecutor.run(['update-ref', '-d', tagRef, targetSha], { cwd: tab.path, kind: 'mutation', env });
+  }
 
-  return createOperationResult(tab, env, 'tag-delete', `Delete tag ${tagName}`, undoEntry);
+  try {
+    if (remoteName) {
+      await gitExecutor.run(['push', '--', remoteName, `:${tagRef}`], {
+        cwd: tab.path,
+        kind: 'mutation',
+        env,
+        cancellable: true,
+        timeoutMs: NETWORK_GIT_TIMEOUT_MS
+      });
+    }
+  } catch (error) {
+    if (targetSha) {
+      await gitExecutor.run(['update-ref', tagRef, targetSha, ZERO_SHA], { cwd: tab.path, kind: 'mutation', env });
+    }
+
+    throw error;
+  }
+
+  if (deletesLocal && await revParseOptional(tab.path, tagRef, env)) {
+    throw new Error(`Tag ${tagName} was not deleted locally.`);
+  }
+
+  const undoEntry = targetSha
+    ? recordUndo(tab, 'tag-delete', `Undo delete tag ${tagName}`, {
+        refName: tagName,
+        targetSha,
+        affectedRefs: [tagRef]
+      })
+    : undefined;
+  const label = input.target === 'local'
+    ? `Delete tag ${tagName} locally`
+    : input.target === 'remote'
+      ? `Delete tag ${tagName} from ${remoteName}`
+      : `Delete tag ${tagName} locally and from ${remoteName}`;
+
+  return createOperationResult(tab, env, 'tag-delete', label, undoEntry);
 }
 
 export async function stashPush(tab: OperationTab, input: GitStashPushInput): Promise<GitOperationResult> {
