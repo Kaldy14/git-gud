@@ -1,12 +1,17 @@
 import type { KeyboardEvent, MouseEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FileDiffOptions } from '@pierre/diffs';
-import { PatchDiff } from '@pierre/diffs/react';
+import {
+  getFiletypeFromFileName,
+  getHighlighterOptions,
+  preloadHighlighter,
+  type FileDiffOptions
+} from '@pierre/diffs';
+import { PatchDiff, WorkerPoolContext } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import {
+  ArrowRight,
   Check,
-  ChevronLeft,
   Columns2,
   FilePen,
   FileText,
@@ -30,9 +35,9 @@ import {
 import {
   createDiffRequest,
   DIFF_OPTIONS_BASE,
+  fileChangeIconKind,
   findAdjacentFilePath,
   findFile,
-  graphFileStatus,
   selectWipScope,
   type DiffStyle,
   type WipDiffScope
@@ -88,6 +93,7 @@ export function FileFocusView({
   const queryClient = useQueryClient();
   const [contextSelection, setContextSelection] = useState<CodexReviewSelection>();
   const [codexDialogSelection, setCodexDialogSelection] = useState<CodexReviewSelection>();
+  const [highlightReadyPaths, setHighlightReadyPaths] = useState<Set<string>>(() => new Set());
   const isWip = row?.node.kind === 'wip';
   const isCommitSelection = !isWip && selectedShas.length > 1;
   const commitQuery = useCommitDetail(repoPath, row && !isWip && !isCommitSelection ? row.sha : undefined);
@@ -128,7 +134,8 @@ export function FileFocusView({
   const diffOptions = useMemo<FileDiffOptions<undefined>>(
     () => ({
       ...DIFF_OPTIONS_BASE,
-      diffStyle
+      diffStyle,
+      disableFileHeader: true
     }),
     [diffStyle]
   );
@@ -139,6 +146,30 @@ export function FileFocusView({
   useEffect(() => {
     sectionRef.current?.focus({ preventScroll: true });
   }, [focusSignal, selectedFile]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    void preloadHighlighter(
+      getHighlighterOptions(getFiletypeFromFileName(headerPath), {})
+    ).catch((error: unknown) => {
+      console.error('Failed to preload the diff syntax highlighter.', error);
+    }).finally(() => {
+      if (isCurrent) {
+        setHighlightReadyPaths((currentPaths) => {
+          if (currentPaths.has(headerPath)) {
+            return currentPaths;
+          }
+
+          return new Set(currentPaths).add(headerPath);
+        });
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [headerPath]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
     if (event.key === 'Escape' && !isEditableTarget(event.target)) {
@@ -202,116 +233,106 @@ export function FileFocusView({
   return (
     <>
       <section ref={sectionRef} className="file-focus" tabIndex={0} onKeyDown={handleKeyDown}>
-      <div className="file-focus-pathbar">
-        <div className="flex min-w-0 items-center gap-2">
-          <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} title="Back to commit graph" aria-label="Back to commit graph">
-            <ChevronLeft size={14} />
-          </button>
-          <span className="shrink-0 text-[11px] text-[var(--text-3)]">
-            {isWip ? 'Working directory' : isCommitSelection ? `${selectedShas.length} commits` : 'History'}
-          </span>
-          <span className="text-[var(--text-3)]" aria-hidden="true">/</span>
-          {selectedFileDetail ? <StatusIcon status={selectedFileDetail.status} /> : <FileText size={13} className="text-[var(--text-3)]" />}
-          {directory ? <span className="truncate text-[var(--text-3)]">{directory}</span> : null}
-          <span className="truncate font-semibold text-[var(--text-1)]">{basename}</span>
-          {selectedFileDetail?.originalPath ? <span className="truncate text-[11px] text-[var(--text-3)]">from {selectedFileDetail.originalPath}</span> : null}
-        </div>
-        <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} title="Close diff" aria-label="Close diff">
-          <X size={14} />
-        </button>
-      </div>
+        <header className="file-focus-header">
+          <div className="flex min-w-0 items-center gap-2" title={headerPath}>
+            {selectedFileDetail ? <StatusIcon status={selectedFileDetail.status} /> : <FileText size={13} className="text-[var(--text-3)]" />}
+            <span className="flex min-w-0 items-baseline overflow-hidden">
+              {directory ? <span className="truncate text-[var(--text-3)]">{directory}</span> : null}
+              <span className="min-w-0 truncate font-semibold text-[var(--text-1)]">{basename}</span>
+            </span>
+            {selectedFileDetail?.originalPath ? (
+              <span className="max-[920px]:hidden min-w-0 truncate text-[11px] text-[var(--text-3)]">
+                from {selectedFileDetail.originalPath}
+              </span>
+            ) : null}
+          </div>
 
-      <div className="file-focus-toolbar">
-        <div className="file-focus-toolbar-group justify-start">
-          {isWip && selectedFileDetail?.staged && selectedFileDetail.unstaged ? (
-            <div className="segmented">
-              <button type="button" data-active={selectedWipScope === 'unstaged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'unstaged')}>
-                Worktree
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isWip && selectedFileDetail?.staged && selectedFileDetail.unstaged ? (
+              <div className="segmented" aria-label="Working directory diff scope">
+                <button type="button" data-active={selectedWipScope === 'unstaged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'unstaged')}>
+                  Worktree
+                </button>
+                <button type="button" data-active={selectedWipScope === 'staged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'staged')}>
+                  Staged
+                </button>
+              </div>
+            ) : null}
+            <div className="segmented" aria-label="Diff layout">
+              <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
+                <Rows3 size={12} />
               </button>
-              <button type="button" data-active={selectedWipScope === 'staged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'staged')}>
-                Staged
+              <button type="button" data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
+                <Columns2 size={12} />
               </button>
             </div>
-          ) : null}
-          <span className="flex items-center gap-1.5 text-[10.5px] text-[var(--text-3)] max-[920px]:hidden">
-            <Sparkles size={11} className="text-[var(--ai-text)]" />
-            Select code, then right-click
-          </span>
-        </div>
-
-        <div className="file-focus-toolbar-group justify-center">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Diff</span>
-        </div>
-
-        <div className="file-focus-toolbar-group justify-end">
-          <div className="segmented">
-            <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
-              <Rows3 size={12} />
-            </button>
-            <button type="button" data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
-              <Columns2 size={12} />
+            <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} title="Close diff" aria-label="Close diff">
+              <X size={14} />
             </button>
           </div>
-        </div>
-      </div>
+        </header>
 
-      <div className="file-focus-content">
-        <ContextMenuPrimitive.Root onOpenChange={(open) => !open && setContextSelection(undefined)}>
-          <ContextMenuPrimitive.Trigger asChild>
-            <div className="diff-shell diff-shell-main" onContextMenu={handleDiffContextMenu}>
-              {renderDiffContent({
-                detail,
-                isDetailLoading,
-                detailErrorMessage,
-                selectedFile,
-                selectedFileDetail,
-                diffStyle,
-                diffOptions,
-                diffQuery,
-                hunkStaging:
-                  isWip && selectedFileDetail && isPatchStageableFile(selectedFileDetail)
-                    ? {
-                        hunks: stageableHunks,
-                        mode: patchMode,
-                        isMutating: isOperationBusy || patchApplyMutation.isPending,
-                        errorMessage: patchApplyMutation.error instanceof Error ? patchApplyMutation.error.message : undefined,
-                        onApplyHunk: (hunk) => {
-                          if (!isOperationBusy) {
-                            patchApplyMutation.mutate(hunk);
+        <div className="file-focus-content">
+          <ContextMenuPrimitive.Root onOpenChange={(open) => !open && setContextSelection(undefined)}>
+            <ContextMenuPrimitive.Trigger asChild>
+              <div className="diff-shell diff-shell-main" onContextMenu={handleDiffContextMenu}>
+                {/* Match review's reliable syntax path instead of the worker pool's lazy language initialization. */}
+                <WorkerPoolContext.Provider value={undefined}>
+                  {renderDiffContent({
+                    detail,
+                    isDetailLoading,
+                    detailErrorMessage,
+                    selectedFile,
+                    selectedFileDetail,
+                    diffStyle,
+                    diffOptions,
+                    diffQuery,
+                    isSyntaxHighlighterReady: highlightReadyPaths.has(headerPath),
+                    hunkStaging:
+                      isWip && selectedFileDetail && isPatchStageableFile(selectedFileDetail)
+                        ? {
+                            hunks: stageableHunks,
+                            mode: patchMode,
+                            isMutating: isOperationBusy || patchApplyMutation.isPending,
+                            errorMessage: patchApplyMutation.error instanceof Error ? patchApplyMutation.error.message : undefined,
+                            onApplyHunk: (hunk) => {
+                              if (!isOperationBusy) {
+                                patchApplyMutation.mutate(hunk);
+                              }
+                            }
                           }
-                        }
-                      }
-                    : undefined
-              })}
-            </div>
-          </ContextMenuPrimitive.Trigger>
-          <ContextMenuPrimitive.Portal>
-            <ContextMenuPrimitive.Content className="z-50 min-w-56 overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 text-[var(--text-2)] shadow-2xl shadow-black/60 outline-none">
-              <ContextMenuPrimitive.Label className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
-                Code selection
-              </ContextMenuPrimitive.Label>
-              <ContextMenuPrimitive.Item
-                className="flex cursor-default select-none items-center gap-2.5 rounded-md px-2.5 py-2 outline-none focus:bg-[var(--bg-hover)] focus:text-[var(--text-1)] data-[disabled]:opacity-50"
-                disabled={!contextSelection}
-                onSelect={() => contextSelection && setCodexDialogSelection(contextSelection)}
-              >
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-[var(--ai-border)] bg-[var(--ai-bg)] text-[var(--ai-text)]">
-                  <Sparkles size={13} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-xs font-semibold text-[var(--text-1)]">Ask Codex</span>
-                  <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">Explain this change in project context</span>
-                </span>
-              </ContextMenuPrimitive.Item>
-              {contextSelection ? (
-                <p className="mx-2 mt-1 border-t border-[var(--border)] pt-1.5 text-[10px] text-[var(--text-3)]">
-                  {contextSelection.lineCount} selected line{contextSelection.lineCount === 1 ? '' : 's'}
-                </p>
-              ) : null}
-            </ContextMenuPrimitive.Content>
-          </ContextMenuPrimitive.Portal>
-        </ContextMenuPrimitive.Root>
-      </div>
+                        : undefined
+                  })}
+                </WorkerPoolContext.Provider>
+              </div>
+            </ContextMenuPrimitive.Trigger>
+            <ContextMenuPrimitive.Portal>
+              <ContextMenuPrimitive.Content className="z-50 min-w-56 overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 text-[var(--text-2)] shadow-2xl shadow-black/60 outline-none">
+                <ContextMenuPrimitive.Label className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
+                  Code selection
+                </ContextMenuPrimitive.Label>
+                <ContextMenuPrimitive.Item
+                  className="flex cursor-default select-none items-center gap-2.5 rounded-md px-2.5 py-2 outline-none focus:bg-[var(--bg-hover)] focus:text-[var(--text-1)] data-[disabled]:opacity-50"
+                  disabled={!contextSelection}
+                  onSelect={() => contextSelection && setCodexDialogSelection(contextSelection)}
+                >
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-[var(--ai-border)] bg-[var(--ai-bg)] text-[var(--ai-text)]">
+                    <Sparkles size={13} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-[var(--text-1)]">Ask Codex</span>
+                    <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">Explain this change in project context</span>
+                  </span>
+                </ContextMenuPrimitive.Item>
+                {contextSelection ? (
+                  <p className="mx-2 mt-1 border-t border-[var(--border)] pt-1.5 text-[10px] text-[var(--text-3)]">
+                    {contextSelection.lineCount} selected line{contextSelection.lineCount === 1 ? '' : 's'}
+                  </p>
+                ) : null}
+              </ContextMenuPrimitive.Content>
+            </ContextMenuPrimitive.Portal>
+          </ContextMenuPrimitive.Root>
+        </div>
       </section>
       {repoPath && codexDialogSelection ? (
         <CodexReviewDialog
@@ -333,6 +354,7 @@ type DiffContentInput = {
   diffStyle: DiffStyle;
   diffOptions: FileDiffOptions<undefined>;
   diffQuery: ReturnType<typeof useFileDiff>;
+  isSyntaxHighlighterReady: boolean;
   hunkStaging?: HunkStagingConfig;
 };
 
@@ -345,6 +367,7 @@ function renderDiffContent({
   diffStyle,
   diffOptions,
   diffQuery,
+  isSyntaxHighlighterReady,
   hunkStaging
 }: DiffContentInput): ReactElement {
   const diffErrorMessage = diffQuery.error instanceof Error ? diffQuery.error.message : undefined;
@@ -371,6 +394,13 @@ function renderDiffContent({
 
   if (diffErrorMessage) {
     return <FileFocusMessage icon={<RotateCcw size={15} />} label={diffErrorMessage} />;
+  }
+
+  if (
+    !isSyntaxHighlighterReady &&
+    (Boolean(diffQuery.data?.patch) || diffQuery.data?.segments?.some((segment) => Boolean(segment.patch)))
+  ) {
+    return <FileFocusMessage icon={<Loader2 size={15} className="animate-spin" />} label="Preparing syntax highlighting..." />;
   }
 
   if (diffQuery.data?.segments) {
@@ -523,17 +553,26 @@ function FileFocusMessage({ icon, label }: { icon: ReactElement; label: string }
 }
 
 function StatusIcon({ status }: { status: GitStatusCode }): ReactElement {
-  const graphStatus = graphFileStatus(status);
+  const iconKind = fileChangeIconKind(status);
+  const label = status === 'conflicted'
+    ? 'Conflicted file'
+    : status === 'copied'
+      ? 'Copied file'
+      : `${iconKind[0]?.toUpperCase()}${iconKind.slice(1)} file`;
 
-  if (graphStatus === 'modified') {
-    return <Pencil size={12} className="shrink-0" style={{ color: FILE_STATUS_COLORS.modified }} />;
+  if (iconKind === 'modified') {
+    return <Pencil size={12} className="shrink-0" style={{ color: FILE_STATUS_COLORS.modified }} aria-label={label} />;
   }
 
-  if (graphStatus === 'added') {
-    return <Plus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.added }} />;
+  if (iconKind === 'added') {
+    return <Plus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.added }} aria-label={label} />;
   }
 
-  return <Minus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.deleted }} />;
+  if (iconKind === 'renamed') {
+    return <ArrowRight size={13} className="shrink-0 text-[var(--accent-2)]" aria-label={label} />;
+  }
+
+  return <Minus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.deleted }} aria-label={label} />;
 }
 
 function splitPath(path: string): { directory: string; basename: string } {

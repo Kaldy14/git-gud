@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createDiffRequest, findAdjacentFilePath } from './fileDetailUtils';
+import { createDiffRequest, fileChangeIconKind, findAdjacentFilePath } from './fileDetailUtils';
 import type { CommitGraphRow, GitFileChangeDetail } from '@shared/types';
 
 describe('findAdjacentFilePath', () => {
@@ -39,6 +39,20 @@ describe('createDiffRequest', () => {
       path: 'src/app.ts',
       originalPath: 'src/old-app.ts'
     });
+  });
+});
+
+describe('fileChangeIconKind', () => {
+  it.each([
+    ['modified', 'modified'],
+    ['conflicted', 'modified'],
+    ['added', 'added'],
+    ['untracked', 'added'],
+    ['deleted', 'deleted'],
+    ['renamed', 'renamed'],
+    ['copied', 'renamed']
+  ] as const)('maps %s files to the %s header icon', (status, iconKind) => {
+    expect(fileChangeIconKind(status)).toBe(iconKind);
   });
 });
 

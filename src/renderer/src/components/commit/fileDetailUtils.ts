@@ -7,6 +7,7 @@ import type { CommitGraphRow, GitFileChangeDetail, GitFileDiffRequest, GitStatus
 export type FileViewMode = 'path' | 'tree';
 export type DiffStyle = 'unified' | 'split';
 export type WipDiffScope = 'unstaged' | 'staged';
+export type FileChangeIconKind = 'modified' | 'added' | 'deleted' | 'renamed';
 
 export type FileStatusCounts = Record<'modified' | 'added' | 'deleted' | 'renamed' | 'conflicted', number>;
 
@@ -116,6 +117,22 @@ export function graphFileStatus(status: GitStatusCode): 'modified' | 'added' | '
 
   if (status === 'deleted') {
     return 'deleted';
+  }
+
+  return 'modified';
+}
+
+export function fileChangeIconKind(status: GitStatusCode): FileChangeIconKind {
+  if (status === 'added' || status === 'untracked') {
+    return 'added';
+  }
+
+  if (status === 'deleted') {
+    return 'deleted';
+  }
+
+  if (status === 'renamed' || status === 'copied') {
+    return 'renamed';
   }
 
   return 'modified';
