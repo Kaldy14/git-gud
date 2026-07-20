@@ -6,6 +6,8 @@ import type { RepoChangedEvent } from '@shared/types';
 import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
+  placeholderGraphForRepository,
+  prepareRepositoryForNavigation,
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   scopesForRepositoryChange,
@@ -64,6 +66,33 @@ describe('graph cache pruning', () => {
     expect(shouldPruneLowerGraphQueries(1500, 3000, true)).toBe(false);
     expect(shouldPruneLowerGraphQueries(1500, 3000, false)).toBe(false);
     expect(shouldPruneLowerGraphQueries(1500, 1500, false)).toBe(true);
+  });
+
+  it('retargets same-repository WIP rows while the next worktree graph loads', () => {
+    const previous = {
+      repoPath: '/repo/main',
+      loadedAt: '2026-07-20T20:00:00.000Z',
+      limit: 1500,
+      loadedCommitCount: 1,
+      hasMore: false,
+      nextLimit: 1500,
+      rows: [
+        graphRow('wip', '/repo/main', true),
+        graphRow('wip:/repo/second', '/repo/second', false)
+      ]
+    };
+
+    const placeholder = placeholderGraphForRepository(previous, '/repo/second', [
+      '/repo/main',
+      '/repo/second'
+    ]);
+
+    expect(placeholder?.repoPath).toBe('/repo/second');
+    expect(placeholder?.rows.map((row) => [row.sha, row.worktree?.path, row.worktree?.current])).toEqual([
+      ['wip:/repo/main', '/repo/main', false],
+      ['wip', '/repo/second', true]
+    ]);
+    expect(placeholderGraphForRepository(previous, '/other', ['/other'])).toBeUndefined();
   });
 });
 
@@ -147,4 +176,51 @@ describe('repository query invalidation', () => {
     queryClient.clear();
     vi.unstubAllGlobals();
   });
+
+  it('warms repository data before navigating to a linked worktree', async () => {
+    const queryClient = new QueryClient();
+    const overview = { repoPath: '/repo-linked' };
+    const graph = { repoPath: '/repo-linked', limit: 1500, rows: [] };
+    const getRepositoryOverview = vi.fn(async () => overview);
+    const getCommitGraph = vi.fn(async () => graph);
+    vi.stubGlobal('window', {
+      api: {
+        getRepositoryOverview,
+        getCommitGraph
+      }
+    });
+
+    await prepareRepositoryForNavigation(queryClient, '/repo-linked', 1500);
+
+    expect(getRepositoryOverview).toHaveBeenCalledWith('/repo-linked');
+    expect(getCommitGraph).toHaveBeenCalledWith('/repo-linked', 1500);
+    expect(queryClient.getQueryData(repositoryOverviewQueryKey('/repo-linked'))).toEqual(overview);
+    expect(queryClient.getQueryData(['commit-graph', '/repo-linked', 1500])).toEqual(graph);
+    queryClient.clear();
+    vi.unstubAllGlobals();
+  });
 });
+
+function graphRow(sha: string, path: string, current: boolean) {
+  return {
+    sha,
+    parentShas: [],
+    subject: '// WIP',
+    author: {
+      name: 'Worktree',
+      initials: 'W',
+      color: '#000000'
+    },
+    dateLabel: 'now',
+    node: {
+      lane: 0,
+      kind: 'wip' as const
+    },
+    rails: [],
+    worktree: {
+      path,
+      current
+    },
+    files: []
+  };
+}

@@ -59,7 +59,7 @@ export function parseWorktreeList(output: string, currentRepoPath: string): GitW
     records.push(finalizeWorktree(current, currentRepoPath));
   }
 
-  return records.sort((a, b) => Number(b.current) - Number(a.current) || a.path.localeCompare(b.path));
+  return records.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function parseWorktreePath(path: string, nullDelimited: boolean): string {

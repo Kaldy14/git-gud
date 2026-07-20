@@ -49,6 +49,7 @@ import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
+  prepareRepositoryForNavigation,
   prepareRepositoryForProfileTransition,
   useCommitGraph,
   useRepositoryChangeInvalidation,
@@ -225,8 +226,17 @@ export function WorkspaceShell(): ReactElement {
   );
   const localMutationCount = useIsMutating({ mutationKey: ['repository-mutation', activeTab?.path] });
   const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? settings.graphPageSize) : settings.graphPageSize;
+  const relatedRepoPaths = useMemo(
+    () =>
+      activeTab
+        ? workspace.tabs
+            .filter((tab) => tab.commonDir === activeTab.commonDir)
+            .map((tab) => tab.path)
+        : [],
+    [activeTab, workspace.tabs]
+  );
   const repositoryQuery = useRepositoryOverview(activeTab?.path);
-  const graphQuery = useCommitGraph(activeTab?.path, graphLimit);
+  const graphQuery = useCommitGraph(activeTab?.path, graphLimit, relatedRepoPaths);
   const activeWorkspaceProfile = useMemo(
     () => profiles.find((profile) => profile.id === workspace.activeProfileId),
     [profiles, workspace.activeProfileId]
@@ -461,6 +471,16 @@ export function WorkspaceShell(): ReactElement {
     const existingTab = workspace.tabs.find((tab) => tab.path === worktreePath);
 
     if (existingTab) {
+      try {
+        await prepareRepositoryForNavigation(
+          queryClient,
+          worktreePath,
+          graphLimitByTab[existingTab.id] ?? settings.graphPageSize
+        );
+      } catch {
+        // The active repository queries will retry and surface any error after navigation.
+      }
+
       await activateTab(existingTab.id);
     } else {
       await openRepositoryAtPath(worktreePath);

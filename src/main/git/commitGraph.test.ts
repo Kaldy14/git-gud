@@ -105,17 +105,30 @@ describe('loadCommitGraph', () => {
 
       const page = await loadCommitGraph({ path: repoPath });
       const wipRows = page.rows.filter((row) => row.node.kind === 'wip');
+      const linkedPage = await loadCommitGraph({ path: linkedPath });
+      const linkedWipRows = linkedPage.rows.filter((row) => row.node.kind === 'wip');
 
       expect(wipRows).toHaveLength(2);
-      expect(wipRows[0]).toMatchObject({
+      expect(wipRows.find((row) => row.worktree?.path === canonicalRepoPath)).toMatchObject({
         sha: 'wip',
         worktree: { path: canonicalRepoPath, branch: 'main', current: true },
         files: [{ path: 'main-wip.txt', status: 'added' }]
       });
-      expect(wipRows[1]).toMatchObject({
+      expect(wipRows.find((row) => row.worktree?.path === canonicalLinkedPath)).toMatchObject({
         sha: `wip:${canonicalLinkedPath}`,
         worktree: { path: canonicalLinkedPath, branch: 'feature/worktree-wip', current: false },
         files: [{ path: 'linked-wip.txt', status: 'added' }]
+      });
+      expect(linkedWipRows.map((row) => row.worktree?.path)).toEqual(
+        wipRows.map((row) => row.worktree?.path)
+      );
+      expect(linkedWipRows.find((row) => row.worktree?.path === canonicalRepoPath)?.worktree).toMatchObject({
+        path: canonicalRepoPath,
+        current: false
+      });
+      expect(linkedWipRows.find((row) => row.worktree?.path === canonicalLinkedPath)?.worktree).toMatchObject({
+        path: canonicalLinkedPath,
+        current: true
       });
     } finally {
       await rm(rootPath, { recursive: true, force: true });

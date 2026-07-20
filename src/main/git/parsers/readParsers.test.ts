@@ -182,6 +182,25 @@ describe('git read parsers', () => {
     ]);
   });
 
+  it('keeps worktree order stable when the current worktree changes', () => {
+    const output = [
+      'worktree /repos/project',
+      'HEAD aaa',
+      'branch refs/heads/main',
+      '',
+      'worktree /repos/project-feature',
+      'HEAD bbb',
+      'branch refs/heads/feature',
+      ''
+    ].join('\0');
+
+    const mainPaths = parseWorktreeList(output, '/repos/project').map((worktree) => worktree.path);
+    const featurePaths = parseWorktreeList(output, '/repos/project-feature').map((worktree) => worktree.path);
+
+    expect(mainPaths).toEqual(['/repos/project', '/repos/project-feature']);
+    expect(featurePaths).toEqual(mainPaths);
+  });
+
   it('parses commit detail file lists and short stats', () => {
     const files = parseNameStatus(
       [

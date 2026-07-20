@@ -83,7 +83,11 @@ export function useRepositoryOverview(repoPath: string | undefined) {
   });
 }
 
-export function useCommitGraph(repoPath: string | undefined, limit: number) {
+export function useCommitGraph(
+  repoPath: string | undefined,
+  limit: number,
+  relatedRepoPaths: readonly string[] = []
+) {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: repoPath ? commitGraphQueryKey(repoPath, limit) : ['commit-graph', 'none', limit],
@@ -96,9 +100,8 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
     },
     enabled: Boolean(repoPath),
     staleTime: 1500,
-    // Keep current rows on screen while load-more fetches a larger page, but never
-    // carry one repository's graph over into another tab.
-    placeholderData: (previousData) => (previousData?.repoPath === repoPath ? previousData : undefined)
+    placeholderData: (previousData) =>
+      repoPath ? placeholderGraphForRepository(previousData, repoPath, relatedRepoPaths) : undefined
   });
 
   useEffect(() => {
@@ -116,6 +119,41 @@ export function useCommitGraph(repoPath: string | undefined, limit: number) {
   return query;
 }
 
+export function placeholderGraphForRepository(
+  previousData: CommitGraphPage | undefined,
+  repoPath: string,
+  relatedRepoPaths: readonly string[]
+): CommitGraphPage | undefined {
+  if (!previousData || previousData.repoPath === repoPath) {
+    return previousData;
+  }
+
+  if (!relatedRepoPaths.includes(previousData.repoPath)) {
+    return undefined;
+  }
+
+  return {
+    ...previousData,
+    repoPath,
+    rows: previousData.rows.map((row) => {
+      if (row.node.kind !== 'wip' || !row.worktree) {
+        return row;
+      }
+
+      const current = row.worktree.path === repoPath;
+
+      return {
+        ...row,
+        sha: current ? 'wip' : `wip:${row.worktree.path}`,
+        worktree: {
+          ...row.worktree,
+          current
+        }
+      };
+    })
+  };
+}
+
 export async function prepareRepositoryForProfileTransition(
   queryClient: QueryClient,
   repoPath: string,
@@ -131,6 +169,27 @@ export async function prepareRepositoryForProfileTransition(
       queryKey: commitGraphQueryKey(repoPath, graphLimit),
       queryFn: () => window.api.getCommitGraph(repoPath, graphLimit),
       staleTime: 1500
+    })
+  ]);
+}
+
+export async function prepareRepositoryForNavigation(
+  queryClient: QueryClient,
+  repoPath: string,
+  graphLimit: number
+): Promise<void> {
+  await Promise.all([
+    queryClient.fetchQuery({
+      queryKey: repositoryOverviewQueryKey(repoPath),
+      queryFn: () => window.api.getRepositoryOverview(repoPath),
+      staleTime: 1500,
+      retry: false
+    }),
+    queryClient.fetchQuery({
+      queryKey: commitGraphQueryKey(repoPath, graphLimit),
+      queryFn: () => window.api.getCommitGraph(repoPath, graphLimit),
+      staleTime: 1500,
+      retry: false
     })
   ]);
 }
