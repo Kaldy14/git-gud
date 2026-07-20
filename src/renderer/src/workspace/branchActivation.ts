@@ -1,5 +1,9 @@
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
-import type { GitBranchRef } from '@shared/types';
+import type { GitBranchRef, GitWorktree } from '@shared/types';
+
+export type LocalBranchActivation =
+  | { kind: 'activate-worktree'; branchName: string; worktreePath: string }
+  | { kind: 'checkout-local'; branchName: string };
 
 export type RemoteBranchActivation =
   | { kind: 'pull'; branchName: string }
@@ -7,6 +11,19 @@ export type RemoteBranchActivation =
   | { kind: 'checkout-local'; branchName: string }
   | { kind: 'checkout-remote' }
   | { kind: 'none' };
+
+export function resolveLocalBranchActivation(
+  branchName: string,
+  worktrees: readonly GitWorktree[]
+): LocalBranchActivation {
+  const linkedWorktree = worktrees.find(
+    (worktree) => !worktree.current && !worktree.bare && worktree.branch === branchName
+  );
+
+  return linkedWorktree
+    ? { kind: 'activate-worktree', branchName, worktreePath: linkedWorktree.path }
+    : { kind: 'checkout-local', branchName };
+}
 
 export function resolveRemoteBranchActivation(
   remoteBranchName: string,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { GitBranchRef } from '@shared/types';
+import type { GitBranchRef, GitWorktree } from '@shared/types';
 
-import { resolveRemoteBranchActivation } from './branchActivation';
+import { resolveLocalBranchActivation, resolveRemoteBranchActivation } from './branchActivation';
 
 function branch(overrides: Partial<GitBranchRef> = {}): GitBranchRef {
   return {
@@ -16,6 +16,36 @@ function branch(overrides: Partial<GitBranchRef> = {}): GitBranchRef {
     ...overrides
   };
 }
+
+function worktree(overrides: Partial<GitWorktree> = {}): GitWorktree {
+  return {
+    path: '/repos/project-main',
+    head: 'local-sha',
+    branch: 'main',
+    detached: false,
+    bare: false,
+    current: false,
+    ...overrides
+  };
+}
+
+describe('local branch activation', () => {
+  it('activates the linked worktree that already owns the branch', () => {
+    expect(resolveLocalBranchActivation('main', [worktree()])).toEqual({
+      kind: 'activate-worktree',
+      branchName: 'main',
+      worktreePath: '/repos/project-main'
+    });
+  });
+
+  it('checks out a branch that is not owned by another worktree', () => {
+    expect(resolveLocalBranchActivation('feature/next', [
+      worktree(),
+      worktree({ path: '/repos/current', branch: 'feature/next', current: true }),
+      worktree({ path: '/repos/bare.git', branch: 'feature/next', bare: true })
+    ])).toEqual({ kind: 'checkout-local', branchName: 'feature/next' });
+  });
+});
 
 describe('remote branch activation', () => {
   it('pulls a checked-out tracking branch when it is behind', () => {

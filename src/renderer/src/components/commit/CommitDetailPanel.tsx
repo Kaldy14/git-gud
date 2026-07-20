@@ -1162,6 +1162,9 @@ function FileRow({
   const basename = separatorIndex === -1 ? file.path : file.path.slice(separatorIndex + 1);
   const canOpen = canOpenWorktreeFile(file);
   const canDiscard = canDiscardWipFile(file);
+  const actionStripBackground = isSelected
+    ? 'linear-gradient(90deg, transparent, var(--select-bg) 18px)'
+    : 'linear-gradient(90deg, transparent, var(--bg-hover) 18px)';
 
   function handleSelectPointerDown(event: PointerEvent<HTMLButtonElement>): void {
     if (event.button !== 0) {
@@ -1180,11 +1183,11 @@ function FileRow({
 
   return (
     <div
-      className="group grid h-8 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded px-2 text-xs transition hover:bg-[var(--bg-hover)]"
+      className="group relative flex h-8 items-center overflow-hidden rounded px-2 text-xs transition hover:bg-[var(--bg-hover)] focus-within:bg-[var(--bg-hover)]"
       style={{ background: isSelected ? 'var(--select-bg)' : undefined }}
     >
       <button
-        className="flex h-full min-w-0 items-center gap-2 overflow-hidden text-left"
+        className="flex h-full w-full min-w-0 items-center gap-2 overflow-hidden pr-1 text-left"
         type="button"
         title={file.path}
         onPointerDown={handleSelectPointerDown}
@@ -1198,7 +1201,10 @@ function FileRow({
         {!isWip && file.unstaged ? <span className="badge-mini">worktree</span> : null}
       </button>
       {isWip ? (
-        <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+        <div
+          className="pointer-events-none absolute inset-y-0 right-1 flex items-center gap-0.5 pl-6 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+          style={{ background: actionStripBackground }}
+        >
           <button className="icon-btn h-6 w-6" type="button" disabled={(!file.unstaged && !file.conflicted) || isMutating} onClick={onStage} title={file.conflicted ? 'Mark resolved by staging file' : 'Stage file'} aria-label={file.conflicted ? `Mark ${file.path} resolved` : `Stage ${file.path}`}>
             <Check size={12} />
           </button>

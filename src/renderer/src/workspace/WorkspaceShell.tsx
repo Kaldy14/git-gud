@@ -61,7 +61,10 @@ import {
   resolveSelectedGraphRow,
   syncWipGraphRow
 } from '@renderer/workspace/selection';
-import { resolveRemoteBranchActivation } from '@renderer/workspace/branchActivation';
+import {
+  resolveLocalBranchActivation,
+  resolveRemoteBranchActivation
+} from '@renderer/workspace/branchActivation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type {
@@ -1115,6 +1118,13 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleCheckoutBranch(name: string): void {
+    const activation = resolveLocalBranchActivation(name, repositoryQuery.data?.worktrees ?? []);
+
+    if (activation.kind === 'activate-worktree') {
+      void activateLinkedWorktreeWip(activation.worktreePath);
+      return;
+    }
+
     void runRepositoryOperation(
       `Checkout ${name}`,
       (repoPath) => window.api.checkoutRef(repoPath, { kind: 'local', name }),
@@ -1182,6 +1192,16 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
+    const localActivation = resolveLocalBranchActivation(
+      activation.branchName,
+      repositoryQuery.data?.worktrees ?? []
+    );
+
+    if (localActivation.kind === 'activate-worktree') {
+      void activateWorktreeAndPull(localActivation.branchName, localActivation.worktreePath);
+      return;
+    }
+
     void runRepositoryOperation(
       `Checkout and pull ${activation.branchName}`,
       async (repoPath) => {
@@ -1189,6 +1209,15 @@ export function WorkspaceShell(): ReactElement {
         return window.api.pullRepository(repoPath, { mode: 'ff-only' });
       },
       { checkout: { targetBranch: activation.branchName } }
+    );
+  }
+
+  async function activateWorktreeAndPull(branchName: string, worktreePath: string): Promise<void> {
+    await activateLinkedWorktreeWip(worktreePath);
+    await runRepositoryOperation(
+      `Pull ${branchName}`,
+      (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }),
+      { repoPath: worktreePath }
     );
   }
 
