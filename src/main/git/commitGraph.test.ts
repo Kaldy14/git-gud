@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { gitExecutor } from './exec';
 import { loadCommitGraph } from './commitGraph';
+import { loadStatus, loadWorktrees } from './repositoryOverview';
 
 describe('loadCommitGraph', () => {
   it('loads real commits with refs, stash nodes, WIP row, and pagination metadata', async () => {
@@ -72,6 +73,50 @@ describe('loadCommitGraph', () => {
       );
       expect(page.rows[3]?.refs?.[0]).toMatchObject({ label: 'main', current: true });
       expect(page.rows[3]?.body).toContain('Graph body searchable description');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('renders a selectable WIP tip for every dirty linked worktree', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-worktrees-'));
+
+    try {
+      const repoPath = join(rootPath, 'repo');
+      const linkedPath = join(rootPath, 'feature-worktree');
+      await mkdir(repoPath);
+      await git(repoPath, ['init']);
+      await git(repoPath, ['config', 'user.name', 'Graph Test']);
+      await git(repoPath, ['config', 'user.email', 'graph@example.test']);
+      await writeRepoFile(repoPath, 'README.md', 'base\n');
+      await git(repoPath, ['add', '.']);
+      await git(repoPath, ['commit', '-m', 'base']);
+      await git(repoPath, ['checkout', '-B', 'main']);
+      await git(repoPath, ['worktree', 'add', '-b', 'feature/worktree-wip', linkedPath, 'main']);
+      await writeRepoFile(repoPath, 'main-wip.txt', 'main changes\n');
+      await writeRepoFile(linkedPath, 'linked-wip.txt', 'linked changes\n');
+      const canonicalRepoPath = await realpath(repoPath);
+      const canonicalLinkedPath = await realpath(linkedPath);
+
+      expect(await loadWorktrees(repoPath)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: canonicalLinkedPath, branch: 'feature/worktree-wip', current: false })
+      ]));
+      expect(await loadStatus(linkedPath)).toMatchObject({ isDirty: true, dirtyCount: 1 });
+
+      const page = await loadCommitGraph({ path: repoPath });
+      const wipRows = page.rows.filter((row) => row.node.kind === 'wip');
+
+      expect(wipRows).toHaveLength(2);
+      expect(wipRows[0]).toMatchObject({
+        sha: 'wip',
+        worktree: { path: canonicalRepoPath, branch: 'main', current: true },
+        files: [{ path: 'main-wip.txt', status: 'added' }]
+      });
+      expect(wipRows[1]).toMatchObject({
+        sha: `wip:${canonicalLinkedPath}`,
+        worktree: { path: canonicalLinkedPath, branch: 'feature/worktree-wip', current: false },
+        files: [{ path: 'linked-wip.txt', status: 'added' }]
+      });
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

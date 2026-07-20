@@ -208,7 +208,12 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
       throw new Error('Repository is not open in this workspace.');
     }
 
-    return loadRepositoryOverview(tab);
+    const overview = await loadRepositoryOverview(tab);
+    repoWatchers.syncWorktrees(
+      repoPath,
+      overview.worktrees.filter((worktree) => !worktree.bare).map((worktree) => worktree.path)
+    );
+    return overview;
   });
   handle('repo:graph', async (_event, repoPath, limit) => {
     const tab = getWorkspace().tabs.find((candidate) => candidate.path === repoPath);

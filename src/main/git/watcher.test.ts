@@ -102,6 +102,24 @@ describe('RepoWatcherRegistry mutation suppression', () => {
     await registry.closeAll();
   });
 
+  it('reports changes from linked worktrees against the open repository', async () => {
+    const { events, registry } = createRegistry();
+    registry.syncWorktrees(repository.path, [repository.path, '/repo-linked']);
+    const linkedListener = mocks.nativeCallbacks.get('/repo-linked');
+
+    expect(linkedListener).toBeDefined();
+    linkedListener?.('change', 'src/linked.ts');
+    await vi.advanceTimersByTimeAsync(350);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      repoPath: repository.path,
+      reasons: ['worktree'],
+      paths: ['/repo-linked/src/linked.ts']
+    });
+    await registry.closeAll();
+  });
+
   it('preserves an external event already pending when a mutation begins', async () => {
     const { emitWorktreeChange, events, registry } = createRegistry();
 

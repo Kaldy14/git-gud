@@ -10,10 +10,16 @@ export function syncWipGraphRow(
   }
 
   return rows.map((row) =>
-    row.node.kind === 'wip'
+    row.node.kind === 'wip' && (row.worktree?.current ?? row.sha === 'wip')
       ? {
           ...row,
           parentShas: status.branch.oid ? [status.branch.oid] : [],
+          worktree: row.worktree
+            ? {
+                ...row.worktree,
+                branch: status.branch.head || row.worktree.branch
+              }
+            : row.worktree,
           files: status.files
             .filter((file) => file.status !== 'ignored')
             .map((file) => ({ path: file.path, status: graphFileStatus(file.status) }))
@@ -33,7 +39,7 @@ export function resolveSelectedGraphRow(
   }
 
   if (!selectedSha || selectedSha === 'wip') {
-    return rows[0];
+    return rows.find((row) => row.node.kind !== 'wip' || row.worktree?.current || row.sha === 'wip');
   }
 
   const color = laneColor(0);

@@ -568,6 +568,12 @@ export type GraphFile = {
   status: GraphFileStatus;
 };
 
+export type GraphWorktree = {
+  path: string;
+  branch?: string;
+  current: boolean;
+};
+
 type GraphAuthor = {
   name: string;
   email?: string;
@@ -589,6 +595,7 @@ export type CommitGraphRow = {
   colorOverride?: string;
   rails: GraphRailSegment[];
   refs?: GraphRefChip[];
+  worktree?: GraphWorktree;
   dateMarker?: string;
   files: GraphFile[];
 };

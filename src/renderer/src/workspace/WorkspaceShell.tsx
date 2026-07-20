@@ -437,9 +437,41 @@ export function WorkspaceShell(): ReactElement {
   }, []);
 
   function handleSelectRow(sha: string): void {
-    if (activeTab) {
-      void selectCommit(activeTab.id, sha);
+    if (!activeTab) {
+      return;
     }
+
+    const row = graphRows.find((candidate) => candidate.sha === sha);
+    const linkedWorktreePath = row?.node.kind === 'wip' && !row.worktree?.current
+      ? row.worktree?.path
+      : undefined;
+
+    if (!linkedWorktreePath || linkedWorktreePath === activeTab.path) {
+      void selectCommit(activeTab.id, sha);
+      return;
+    }
+
+    void activateLinkedWorktreeWip(linkedWorktreePath);
+  }
+
+  async function activateLinkedWorktreeWip(worktreePath: string): Promise<void> {
+    const existingTab = workspace.tabs.find((tab) => tab.path === worktreePath);
+
+    if (existingTab) {
+      await activateTab(existingTab.id);
+    } else {
+      await openRepositoryAtPath(worktreePath);
+    }
+
+    const worktreeTab = useWorkspaceStore.getState().workspace.tabs.find((tab) => tab.path === worktreePath);
+
+    if (!worktreeTab) {
+      return;
+    }
+
+    setBulkSelectionByTab((value) => ({ ...value, [worktreeTab.id]: [] }));
+    await selectCommit(worktreeTab.id, 'wip');
+    await selectFile(worktreeTab.id, undefined);
   }
 
   const handleBulkSelectionChange = useCallback((shas: string[]): void => {

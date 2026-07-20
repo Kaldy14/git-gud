@@ -1,3 +1,5 @@
+import { realpath } from 'node:fs/promises';
+
 import type { GitRepositoryOverview, RepoTab } from '@shared/types';
 
 import { createProfileCommandEnv, getRepoProfileState } from '../profiles';
@@ -85,16 +87,26 @@ export async function loadRemotes(repoPath: string, env?: NodeJS.ProcessEnv): Pr
 }
 
 export async function loadWorktrees(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['worktrees']> {
+  const currentWorktreePath = await canonicalPath(repoPath);
+
   try {
     const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath, env });
-    return parseWorktreeList(result.stdout, repoPath);
+    return parseWorktreeList(result.stdout, currentWorktreePath);
   } catch (error) {
     if (!(error instanceof GitCommandError) || error.exitCode !== 129) {
       throw error;
     }
 
     const result = await gitExecutor.run(['worktree', 'list', '--porcelain'], { cwd: repoPath, env });
-    return parseWorktreeList(result.stdout, repoPath);
+    return parseWorktreeList(result.stdout, currentWorktreePath);
+  }
+}
+
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return path;
   }
 }
 

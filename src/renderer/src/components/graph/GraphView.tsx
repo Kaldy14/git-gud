@@ -49,7 +49,15 @@ import {
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
-import type { CommitGraphRow, GitStashRefInput, GitTagDeleteInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';
+import type {
+  CommitGraphRow,
+  GitStashRefInput,
+  GitTagDeleteInput,
+  GraphFile,
+  GraphRailSegment,
+  GraphRefChip,
+  GraphWorktree
+} from '@shared/types';
 
 const ROW_HEIGHT = 34;
 const LANE_X0 = 48;
@@ -1084,15 +1092,19 @@ function GraphRowView({
       ) : null}
 
       <div className="ref-cell pl-2 pr-1.5">
-        <RefChipStack
-          refs={visibleRefs}
-          linkedWorktreeBranches={linkedWorktreeBranches}
-          color={nodeColor}
-          pendingBranchName={pendingBranchName}
-          onRefClick={onRefClick}
-          onBranchContextMenu={onBranchContextMenu}
-          onTagContextMenu={onTagContextMenu}
-        />
+        {isWip && row.worktree ? (
+          <WorktreeChipView worktree={row.worktree} color={nodeColor} />
+        ) : (
+          <RefChipStack
+            refs={visibleRefs}
+            linkedWorktreeBranches={linkedWorktreeBranches}
+            color={nodeColor}
+            pendingBranchName={pendingBranchName}
+            onRefClick={onRefClick}
+            onBranchContextMenu={onBranchContextMenu}
+            onTagContextMenu={onTagContextMenu}
+          />
+        )}
       </div>
 
       <RailCell
@@ -1386,11 +1398,41 @@ function graphRowDomId(sha: string): string {
 
 function graphRowAriaLabel(row: CommitGraphRow): string {
   if (row.node.kind === 'wip') {
-    return `Working directory, ${row.files.length} changed files`;
+    const worktree = row.worktree;
+    const identity = worktree
+      ? `${worktree.current ? 'current' : 'linked'} worktree ${worktree.branch ?? worktreeDisplayName(worktree)}`
+      : 'working directory';
+    return `${identity}, ${row.files.length} changed files`;
   }
 
   const refs = row.refs?.map((ref) => ref.label).join(', ');
   return [row.subject, row.author.name, row.dateLabel, row.sha.slice(0, 7), refs].filter(Boolean).join(', ');
+}
+
+function WorktreeChipView({ worktree, color }: { worktree: GraphWorktree; color: string }): ReactElement {
+  const label = worktree.branch ?? worktreeDisplayName(worktree);
+  const location = worktree.current ? 'Current worktree' : 'Linked worktree';
+
+  return (
+    <span
+      className="ref-chip"
+      style={{ background: hexToRgba(color, worktree.current ? 0.78 : 0.3), color: 'var(--text-1)' }}
+      title={`${location}: ${worktree.path}`}
+      aria-label={`${label}, ${location.toLowerCase()}, has uncommitted changes`}
+    >
+      {worktree.current ? <Check size={12} /> : null}
+      <span className="ref-chip-label">{label}</span>
+      {worktree.current ? (
+        <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+      ) : (
+        <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+function worktreeDisplayName(worktree: GraphWorktree): string {
+  return worktree.path.split(/[\\/]/).filter(Boolean).at(-1) ?? worktree.path;
 }
 
 function loadStoredGraphColumnWidths(): GraphColumnWidths {

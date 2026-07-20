@@ -5,7 +5,8 @@ import type {
   GraphNodeKind,
   GraphRefChip,
   GraphRailSegment,
-  GraphRailStyle
+  GraphRailStyle,
+  GraphWorktree
 } from './types';
 
 export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
@@ -45,6 +46,7 @@ export type GraphCommitInput = {
   dateLabel?: string;
   kind?: GraphNodeKind;
   refs?: GraphRefChip[];
+  worktree?: GraphWorktree;
   colorOverride?: string;
   files?: GraphFile[];
 };
@@ -121,6 +123,7 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
       colorOverride: commit.colorOverride,
       rails,
       refs: commit.refs,
+      worktree: commit.worktree,
       dateMarker,
       files: commit.files ?? []
     });

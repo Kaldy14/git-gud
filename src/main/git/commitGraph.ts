@@ -5,6 +5,8 @@ import type {
   GitRefsSummary,
   GitStashEntry,
   GitStatusCode,
+  GitStatusSummary,
+  GitWorktree,
   GraphFile,
   GraphFileStatus,
   GraphRefChip,
@@ -14,7 +16,7 @@ import type {
 import { createProfileCommandEnv } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import { parseGitLog, type GitLogCommit } from './parsers/log';
-import { loadRefs, loadStashes, loadStatus } from './repositoryOverview';
+import { loadRefs, loadStashes, loadStatus, loadWorktrees } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
 
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
@@ -26,11 +28,12 @@ export async function loadCommitGraph(
   const limit = normalizeLimit(requestedLimit);
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
-  const [logCommits, refs, status, stashes] = await Promise.all([
+  const [logCommits, refs, status, stashes, worktrees] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env),
     loadRefs(tab.path, env),
     loadStatus(tab.path, env),
-    loadStashes(tab.path, env)
+    loadStashes(tab.path, env),
+    loadWorktrees(tab.path, env)
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
@@ -39,20 +42,7 @@ export async function loadCommitGraph(
   const attachedStashBases = new Set<string>();
   const inputs: GraphCommitInput[] = [];
 
-  if (status.isDirty) {
-    inputs.push({
-      sha: 'wip',
-      parentShas: status.branch.oid ? [status.branch.oid] : [],
-      subject: '// WIP',
-      authorName: 'Worktree',
-      authoredAt: new Date().toISOString(),
-      dateLabel: 'now',
-      kind: 'wip',
-      colorOverride: '#8b95a5',
-      refs: [{ label: 'WIP', kind: 'wip' }],
-      files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
-    });
-  }
+  inputs.push(...await loadWorktreeWipInputs(tab.path, worktrees, status, env));
 
   for (const commit of commits) {
     const stashInputs = stashInputsByBase.get(commit.sha);
@@ -80,6 +70,59 @@ export async function loadCommitGraph(
     hasMore,
     nextLimit: Math.min(limit + COMMIT_GRAPH_LIMIT_STEP, MAX_COMMIT_GRAPH_LIMIT)
   };
+}
+
+async function loadWorktreeWipInputs(
+  repoPath: string,
+  worktrees: GitWorktree[],
+  currentStatus: GitStatusSummary,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GraphCommitInput[]> {
+  const listedWorktrees = worktrees.some((worktree) => worktree.current)
+    ? worktrees
+    : [{ path: repoPath, head: currentStatus.branch.oid, branch: currentStatus.branch.head, detached: currentStatus.branch.isDetached, bare: false, current: true }];
+  const loaded = await Promise.all(
+    listedWorktrees
+      .filter((worktree) => !worktree.bare)
+      .map(async (worktree): Promise<GraphCommitInput | undefined> => {
+        const status = worktree.current ? currentStatus : await loadLinkedWorktreeStatus(worktree.path, env);
+
+        if (!status?.isDirty) {
+          return undefined;
+        }
+
+        return {
+          sha: worktree.current ? 'wip' : `wip:${worktree.path}`,
+          parentShas: status.branch.oid ? [status.branch.oid] : worktree.head ? [worktree.head] : [],
+          subject: '// WIP',
+          authorName: 'Worktree',
+          authoredAt: new Date().toISOString(),
+          dateLabel: 'now',
+          kind: 'wip',
+          colorOverride: '#8b95a5',
+          refs: [{ label: 'WIP', kind: 'wip' }],
+          worktree: {
+            path: worktree.path,
+            branch: worktree.branch ?? status.branch.head,
+            current: worktree.current
+          },
+          files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
+        };
+      })
+  );
+
+  return loaded.filter((input): input is GraphCommitInput => Boolean(input));
+}
+
+async function loadLinkedWorktreeStatus(
+  worktreePath: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitStatusSummary | undefined> {
+  try {
+    return await loadStatus(worktreePath, env);
+  } catch {
+    return undefined;
+  }
 }
 
 function createStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCommitInput[]> {

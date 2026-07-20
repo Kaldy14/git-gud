@@ -12,3 +12,5 @@ coverage
 !.env.example
 
 artifacts/
+
+.pnpm-store/

@@ -16,6 +16,7 @@ type WatchTarget = {
 type ActiveRepoWatch = {
   repoPath: string;
   watchers: CloseableWatcher[];
+  worktreeWatchers: Map<string, CloseableWatcher>;
   pendingTimer?: NodeJS.Timeout;
   pendingReasons: Set<WatchReason>;
   pendingPaths: Set<string>;
@@ -46,6 +47,39 @@ export class RepoWatcherRegistry {
     for (const repository of repositories) {
       if (!this.watches.has(repository.path)) {
         this.open(repository);
+      }
+    }
+  }
+
+  syncWorktrees(repoPath: string, worktreePaths: readonly string[]): void {
+    const activeWatch = this.watches.get(repoPath);
+
+    if (!activeWatch) {
+      return;
+    }
+
+    const nextPaths = new Set([repoPath, ...worktreePaths]);
+
+    for (const [worktreePath, watcher] of activeWatch.worktreeWatchers) {
+      if (nextPaths.has(worktreePath)) {
+        continue;
+      }
+
+      activeWatch.worktreeWatchers.delete(worktreePath);
+      void watcher.close();
+    }
+
+    for (const worktreePath of nextPaths) {
+      if (activeWatch.worktreeWatchers.has(worktreePath)) {
+        continue;
+      }
+
+      const watcher = createWatcher({ path: worktreePath, reason: 'worktree' }, (changedPath) => {
+        this.enqueueChange(activeWatch, 'worktree', changedPath);
+      });
+
+      if (watcher) {
+        activeWatch.worktreeWatchers.set(worktreePath, watcher);
       }
     }
   }
@@ -103,18 +137,20 @@ export class RepoWatcherRegistry {
     activeWatch.suppressedReasons.clear();
     activeWatch.suppressedPaths.clear();
 
-    await Promise.allSettled(activeWatch.watchers.map((watcher) => watcher.close()));
+    await Promise.allSettled(
+      [...activeWatch.watchers, ...activeWatch.worktreeWatchers.values()].map((watcher) => watcher.close())
+    );
   }
 
   private open(repository: RepositorySummary): void {
     const targets = dedupeTargets([
       ...gitMetadataTargets(repository.gitDir, 'git-dir'),
-      ...gitMetadataTargets(repository.commonDir, 'common-dir'),
-      { path: repository.path, reason: 'worktree' }
+      ...gitMetadataTargets(repository.commonDir, 'common-dir')
     ]);
     const activeWatch: ActiveRepoWatch = {
       repoPath: repository.path,
       watchers: [],
+      worktreeWatchers: new Map(),
       pendingReasons: new Set(),
       pendingPaths: new Set(),
       mutationDepth: 0,
@@ -133,8 +169,20 @@ export class RepoWatcherRegistry {
       }
     }
 
-    if (activeWatch.watchers.length > 0) {
+    this.syncInitialWorktree(activeWatch, repository.path);
+
+    if (activeWatch.watchers.length > 0 || activeWatch.worktreeWatchers.size > 0) {
       this.watches.set(repository.path, activeWatch);
+    }
+  }
+
+  private syncInitialWorktree(activeWatch: ActiveRepoWatch, repoPath: string): void {
+    const watcher = createWatcher({ path: repoPath, reason: 'worktree' }, (changedPath) => {
+      this.enqueueChange(activeWatch, 'worktree', changedPath);
+    });
+
+    if (watcher) {
+      activeWatch.worktreeWatchers.set(repoPath, watcher);
     }
   }
 

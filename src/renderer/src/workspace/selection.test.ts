@@ -27,6 +27,18 @@ describe('selected graph row resolution', () => {
   it('uses the first graph row when no explicit selection exists', () => {
     expect(resolveSelectedGraphRow([firstRow], undefined)).toBe(firstRow);
   });
+
+  it('does not select a linked worktree WIP row until the user opens it', () => {
+    const linkedWip: CommitGraphRow = {
+      ...firstRow,
+      sha: 'wip:/repo-linked',
+      node: { lane: 0, kind: 'wip' },
+      worktree: { path: '/repo-linked', branch: 'feature', current: false }
+    };
+
+    expect(resolveSelectedGraphRow([linkedWip, firstRow], undefined)).toBe(firstRow);
+    expect(resolveSelectedGraphRow([linkedWip, firstRow], linkedWip.sha)).toBe(linkedWip);
+  });
 });
 
 describe('commit subject resolution', () => {
@@ -90,5 +102,35 @@ describe('WIP graph synchronization', () => {
       { path: 'source.txt', status: 'deleted' },
       { path: 'renamed.txt', status: 'added' }
     ]);
+  });
+
+  it('leaves linked worktree rows untouched when the active worktree status refreshes', () => {
+    const currentWip: CommitGraphRow = {
+      ...firstRow,
+      sha: 'wip',
+      node: { lane: 0, kind: 'wip' },
+      worktree: { path: '/repo', branch: 'main', current: true }
+    };
+    const linkedWip: CommitGraphRow = {
+      ...currentWip,
+      sha: 'wip:/repo-linked',
+      worktree: { path: '/repo-linked', branch: 'feature', current: false },
+      files: [{ path: 'linked.ts', status: 'modified' }]
+    };
+    const status: GitStatusSummary = {
+      branch: { head: 'main', oid: firstRow.sha, ahead: 0, behind: 0, isDetached: false },
+      files: [],
+      stagedCount: 0,
+      unstagedCount: 0,
+      untrackedCount: 0,
+      conflictedCount: 0,
+      dirtyCount: 0,
+      isDirty: false
+    };
+
+    const synced = syncWipGraphRow([currentWip, linkedWip, firstRow], status);
+
+    expect(synced[0]?.files).toEqual([]);
+    expect(synced[1]).toBe(linkedWip);
   });
 });
