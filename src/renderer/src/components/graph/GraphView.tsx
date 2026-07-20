@@ -46,7 +46,7 @@ import {
   toggleSelectedCommit,
   type RefClickState
 } from '@renderer/components/graph/graphInteraction';
-import { branchNameFromRemoteRef } from '@renderer/components/graph/refPresentation';
+import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
 import type { CommitGraphRow, GitStashRefInput, GitTagDeleteInput, GraphFile, GraphRailSegment, GraphRefChip } from '@shared/types';

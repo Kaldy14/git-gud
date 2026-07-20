@@ -1,6 +1,6 @@
 import type { CommitGraphRow, GraphRefChip } from '@shared/types';
 
-import { branchNameFromRemoteRef } from './refPresentation';
+import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 
 export type RefClickState = {
   key: string;

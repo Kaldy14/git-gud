@@ -1,3 +1,4 @@
+import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import type { GitBranchRef } from '@shared/types';
 
 export type RemoteBranchActivation =
@@ -9,9 +10,9 @@ export type RemoteBranchActivation =
 
 export function resolveRemoteBranchActivation(
   remoteBranchName: string,
-  localBranches: GitBranchRef[]
+  localBranches: readonly GitBranchRef[]
 ): RemoteBranchActivation {
-  const localBranch = localBranches.find((branch) => branch.upstream === remoteBranchName);
+  const localBranch = resolveLocalTrackingBranch(remoteBranchName, localBranches);
 
   if (!localBranch) {
     return { kind: 'checkout-remote' };
@@ -26,4 +27,19 @@ export function resolveRemoteBranchActivation(
   return localBranch.current
     ? { kind: 'none' }
     : { kind: 'checkout-local', branchName: localBranch.name };
+}
+
+function resolveLocalTrackingBranch(
+  remoteBranchName: string,
+  localBranches: readonly GitBranchRef[]
+): GitBranchRef | undefined {
+  const trackingBranches = localBranches.filter((branch) => branch.upstream === remoteBranchName);
+  const matchingName = branchNameFromRemoteRef(remoteBranchName);
+  const exactMatch = trackingBranches.find((branch) => branch.name === matchingName);
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return trackingBranches.length === 1 ? trackingBranches[0] : undefined;
 }

@@ -4,6 +4,13 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-07-20
+
+### Fixed
+
+- Resolved remote branch activation by exact local tracking-branch identity when several local branches share the same upstream.
+- Preserved renamed tracking-branch activation while requiring an explicit checkout when multiple renamed candidates are ambiguous.
+
 ## [0.4.2] - 2026-07-16
 
 ### Added

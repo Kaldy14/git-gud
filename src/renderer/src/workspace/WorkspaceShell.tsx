@@ -25,6 +25,7 @@ import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
 import { GraphView } from '@renderer/components/graph/GraphView';
+import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import {
   RepositoryInspectorDialog,
   type RepositoryInspectorMode
@@ -1099,7 +1100,7 @@ export function WorkspaceShell(): ReactElement {
           id: 'localName',
           kind: 'text',
           label: 'Local branch name',
-          value: defaultLocalNameForRemoteBranch(name),
+          value: branchNameFromRemoteRef(name),
           required: true,
           autoFocus: true
         }
@@ -2130,11 +2131,6 @@ function createLogId(): string {
 
 function withoutRecordKey<TValue>(record: Record<string, TValue>, key: string): Record<string, TValue> {
   return Object.fromEntries(Object.entries(record).filter(([candidate]) => candidate !== key));
-}
-
-function defaultLocalNameForRemoteBranch(remoteBranchName: string): string {
-  const separatorIndex = remoteBranchName.indexOf('/');
-  return separatorIndex === -1 ? remoteBranchName : remoteBranchName.slice(separatorIndex + 1);
 }
 
 function dialogText(values: CommandDialogValues, id: string): string {

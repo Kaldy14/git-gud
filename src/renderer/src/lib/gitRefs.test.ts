@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { branchNameFromRemoteRef } from './refPresentation';
+import { branchNameFromRemoteRef } from './gitRefs';
 
 describe('branchNameFromRemoteRef', () => {
-  it('hides the remote prefix while preserving the full branch path', () => {
+  it('removes the remote prefix while preserving the full branch path', () => {
     expect(branchNameFromRemoteRef('origin/feature/ITE-526-wall')).toBe('feature/ITE-526-wall');
     expect(branchNameFromRemoteRef('upstream/bugfix/ITE-508-scroll')).toBe('bugfix/ITE-508-scroll');
   });
