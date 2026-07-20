@@ -48,7 +48,7 @@ import {
 } from '@renderer/components/graph/graphInteraction';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
-import { FILE_STATUS_COLORS, laneColor } from '@shared/graph';
+import { FILE_STATUS_COLORS, laneBandColor, laneColor, laneRefColor } from '@shared/graph';
 import type {
   CommitGraphRow,
   GitStashRefInput,
@@ -59,17 +59,18 @@ import type {
   GraphWorktree
 } from '@shared/types';
 
-const ROW_HEIGHT = 34;
-const LANE_X0 = 48;
-const LANE_GAP = 28;
-const GRAPH_NODE_EDGE_INSET = 18;
-const DEFAULT_REF_CELL_WIDTH = 166;
-const DEFAULT_GRAPH_VIEWPORT_WIDTH = 188;
+const ROW_HEIGHT = 28;
+const LANE_X0 = 45;
+const LANE_GAP = 22;
+const GRAPH_NODE_EDGE_INSET = 12;
+const GRAPH_CONTENT_RIGHT_PADDING = 23;
+const DEFAULT_REF_CELL_WIDTH = 133;
+const DEFAULT_GRAPH_VIEWPORT_WIDTH = 222;
 const MIN_MESSAGE_CELL_WIDTH = 220;
 const AUTHOR_CELL_WIDTH = 132;
 const DATE_CELL_WIDTH = 92;
 const SHA_CELL_WIDTH = 78;
-const GRAPH_COLUMN_WIDTH_STORAGE_KEY = 'git-gud:graph-column-widths';
+const GRAPH_COLUMN_WIDTH_STORAGE_KEY = 'git-gud:graph-column-widths:v2';
 
 type ResizableGraphColumn = 'refs' | 'graph';
 
@@ -794,7 +795,6 @@ export function GraphView({
                       isSearchMatch={searchMatchShas.has(row.sha)}
                       isSearchFiltering={isSearchFiltering}
                       isCreatingTag={row.sha === tagCreationTargetSha}
-                      rowIndex={virtualRow.index}
                       onSelect={(event) => handleRowClick(event, row)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
                       onRefClick={(ref) => handleRefClick(row, ref)}
@@ -929,7 +929,6 @@ type GraphRowViewProps = {
   isSearchMatch: boolean;
   isSearchFiltering: boolean;
   isCreatingTag: boolean;
-  rowIndex: number;
   onSelect: (event: MouseEvent<HTMLDivElement>) => void;
   onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
   onRefClick: (ref: GraphRefChip) => void;
@@ -1031,7 +1030,6 @@ function GraphRowView({
   isSearchMatch,
   isSearchFiltering,
   isCreatingTag,
-  rowIndex,
   onSelect,
   onContextMenu,
   onRefClick,
@@ -1043,8 +1041,11 @@ function GraphRowView({
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
   const isWip = row.node.kind === 'wip';
   const visibleRefs = isWip ? [] : (row.refs ?? []);
-  const rowBackground = graphRowBackground(row, isSelected, rowIndex, isSearchMatch, isBulkSelected);
-  const bandBackground = graphRowBandBackground(row, nodeColor, isSelected || isBulkSelected);
+  const rowBackground = graphRowBackground(isSelected, isSearchMatch, isBulkSelected);
+  const bandBackground = graphRowBandBackground(row, nodeColor);
+  const graphLaneX = graphLaneViewportX(row.node.lane, graphWidth, graphScrollLeft);
+  const refColor = row.colorOverride ? hexToRgba(nodeColor, 0.3) : laneRefColor(row.node.lane);
+  const currentRefColor = row.colorOverride ? hexToRgba(nodeColor, 0.78) : laneRefColor(row.node.lane, true);
 
   return (
     <div
@@ -1060,14 +1061,7 @@ function GraphRowView({
       style={{
         height: ROW_HEIGHT,
         gridTemplateColumns,
-        background: rowBackground,
-        boxShadow: isBulkSelected
-          ? `inset 3px 0 0 rgba(36, 196, 222, 0.82), inset 0 0 0 1px rgba(36, 196, 222, ${isSelected ? '0.72' : '0.28'})`
-          : isSelected
-            ? 'inset 0 0 0 1px rgba(36, 196, 222, 0.72)'
-          : row.dateMarker
-            ? 'inset 0 1px 0 0 var(--border-strong)'
-            : undefined
+        boxShadow: row.dateMarker ? 'inset 0 1px 0 0 var(--graph-separator)' : undefined
       }}
       onClick={onSelect}
       onContextMenu={onContextMenu}
@@ -1081,24 +1075,24 @@ function GraphRowView({
 
       {bandBackground ? (
         <div
-          className="pointer-events-none absolute bottom-[2px] top-[2px]"
+          className="pointer-events-none absolute bottom-[3px] top-[3px]"
           style={{
-            left: refCellWidth,
-            width: graphWidth,
-            background: bandBackground,
-            boxShadow: `inset 3px 0 0 ${nodeColor}, inset 0 -1px 0 rgba(0, 0, 0, 0.18)`
+            left: refCellWidth + graphLaneX,
+            width: Math.max(0, graphWidth - graphLaneX),
+            background: bandBackground
           }}
         />
       ) : null}
 
-      <div className="ref-cell pl-2 pr-1.5">
+      <div className="ref-cell pl-3">
         {isWip && row.worktree ? (
-          <WorktreeChipView worktree={row.worktree} color={nodeColor} />
+          <WorktreeChipView worktree={row.worktree} color={refColor} currentColor={currentRefColor} />
         ) : (
           <RefChipStack
             refs={visibleRefs}
             linkedWorktreeBranches={linkedWorktreeBranches}
-            color={nodeColor}
+            color={refColor}
+            currentColor={currentRefColor}
             pendingBranchName={pendingBranchName}
             onRefClick={onRefClick}
             onBranchContextMenu={onBranchContextMenu}
@@ -1125,7 +1119,13 @@ function GraphRowView({
         />
       ) : null}
 
-      <div className="relative flex min-w-0 items-center gap-2 pl-4 pr-3">
+      <div
+        className="relative flex h-[22px] min-w-0 items-center gap-2 pl-2 pr-3"
+        style={{
+          background: rowBackground,
+          boxShadow: `inset 2px 0 0 ${nodeColor}`
+        }}
+      >
         {isWip ? (
           <>
             <span className="wip-message-pill">// WIP</span>
@@ -1241,11 +1241,11 @@ function CommitSubjectLine({ subject, isMerge }: { subject: string; isMerge: boo
 
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] leading-none">
-      <span className={isMerge ? 'min-w-0 truncate text-[var(--text-2)]' : 'min-w-0 truncate text-[var(--text-1)]'}>
+      <span className={isMerge ? 'min-w-0 truncate text-[var(--graph-text-muted)]' : 'min-w-0 truncate text-[var(--graph-text)]'}>
         {primary}
       </span>
       {secondary ? (
-        <span className="hidden min-w-0 shrink-[2] truncate text-[var(--text-3)] xl:inline">
+        <span className="hidden min-w-0 shrink-[2] truncate text-[var(--graph-text-muted)] xl:inline">
           {secondary}
         </span>
       ) : null}
@@ -1294,7 +1294,7 @@ function graphContentWidthForRows(rows: CommitGraphRow[], graphWidth: number): n
     }
   }
 
-  return Math.max(graphWidth, LANE_X0 + maxLane * LANE_GAP + 76);
+  return Math.max(graphWidth, LANE_X0 + maxLane * LANE_GAP + GRAPH_CONTENT_RIGHT_PADDING);
 }
 
 function resizeGraphColumn(
@@ -1409,14 +1409,25 @@ function graphRowAriaLabel(row: CommitGraphRow): string {
   return [row.subject, row.author.name, row.dateLabel, row.sha.slice(0, 7), refs].filter(Boolean).join(', ');
 }
 
-function WorktreeChipView({ worktree, color }: { worktree: GraphWorktree; color: string }): ReactElement {
+function WorktreeChipView({
+  worktree,
+  color,
+  currentColor
+}: {
+  worktree: GraphWorktree;
+  color: string;
+  currentColor: string;
+}): ReactElement {
   const label = worktree.branch ?? worktreeDisplayName(worktree);
   const location = worktree.current ? 'Current worktree' : 'Linked worktree';
 
   return (
     <span
       className="ref-chip"
-      style={{ background: hexToRgba(color, worktree.current ? 0.78 : 0.3), color: 'var(--text-1)' }}
+      style={{
+        background: worktree.current ? currentColor : color,
+        color: worktree.current ? 'var(--graph-ref-current-text)' : 'var(--graph-ref-text)'
+      }}
       title={`${location}: ${worktree.path}`}
       aria-label={`${label}, ${location.toLowerCase()}, has uncommitted changes`}
     >
@@ -1495,53 +1506,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function graphRowBackground(
-  row: CommitGraphRow,
-  isSelected: boolean,
-  rowIndex: number,
-  isSearchMatch = false,
-  isBulkSelected = false
-): string | undefined {
+function graphRowBackground(isSelected: boolean, isSearchMatch = false, isBulkSelected = false): string | undefined {
   if (isBulkSelected) {
-    return 'linear-gradient(90deg, rgba(20, 91, 111, 0.58), rgba(22, 69, 91, 0.48) 64%, rgba(24, 45, 62, 0.46))';
+    return '#23414d';
   }
 
   if (isSelected) {
-    return 'linear-gradient(90deg, rgba(34, 77, 145, 0.58), rgba(31, 65, 120, 0.50) 64%, rgba(28, 45, 76, 0.50))';
+    return '#28334d';
   }
 
   if (isSearchMatch) {
     return 'linear-gradient(90deg, rgba(52, 91, 155, 0.28), rgba(35, 63, 108, 0.18) 68%, rgba(25, 37, 55, 0.12))';
   }
 
-  if (row.node.kind === 'wip') {
-    return 'linear-gradient(90deg, rgba(11, 42, 51, 0.72), rgba(14, 30, 43, 0.72) 64%, rgba(21, 26, 34, 0.82))';
-  }
-
-  return rowIndex % 2 === 0 ? 'rgba(255, 255, 255, 0.018)' : undefined;
+  return undefined;
 }
 
-function graphRowBandBackground(row: CommitGraphRow, color: string, isSelected: boolean): string | undefined {
-  if (isSelected) {
-    return `linear-gradient(90deg, ${hexToRgba(color, 0.30)}, ${hexToRgba(color, 0.15)} 64%, ${hexToRgba(color, 0.03)})`;
+function graphRowBandBackground(row: CommitGraphRow, color: string): string {
+  if (!row.colorOverride) {
+    return laneBandColor(row.node.lane);
   }
 
   if (row.node.kind === 'wip') {
-    return `linear-gradient(90deg, ${hexToRgba(color, 0.34)}, ${hexToRgba(color, 0.16)} 52%, ${hexToRgba(color, 0.04)})`;
+    return '#2c1f22';
   }
 
   if (row.node.kind === 'stash') {
-    return `linear-gradient(90deg, ${hexToRgba(color, 0.20)}, ${hexToRgba(color, 0.10)} 60%, ${hexToRgba(color, 0.03)})`;
+    return '#302526';
   }
 
-  const refs = row.refs ?? [];
-
-  if (refs.length === 0) {
-    return undefined;
-  }
-
-  const opacity = refs.some((ref) => ref.current) ? 0.32 : 0.22;
-  return `linear-gradient(90deg, ${hexToRgba(color, opacity)}, ${hexToRgba(color, opacity * 0.58)} 58%, ${hexToRgba(color, 0.035)})`;
+  return hexToRgba(color, 0.1);
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -1567,6 +1561,7 @@ function RefChipStack({
   refs,
   linkedWorktreeBranches,
   color,
+  currentColor,
   pendingBranchName,
   onRefClick,
   onBranchContextMenu,
@@ -1575,62 +1570,88 @@ function RefChipStack({
   refs: GraphRefChip[];
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
+  currentColor: string;
   pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
   onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
 }): ReactElement | null {
-  if (refs.length === 0) {
-    return null;
-  }
-
   const displayRefs = coalesceRemotePeers(refs);
   const [primaryRef, ...overflowRefs] = displayRefs;
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const [isLabelTruncated, setIsLabelTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const label = summaryRef.current?.querySelector<HTMLElement>('.ref-chip-label');
+
+    if (!label) {
+      setIsLabelTruncated(false);
+      return;
+    }
+
+    const measure = (): void => {
+      const nextIsTruncated = label.scrollWidth > label.clientWidth;
+      setIsLabelTruncated((current) =>
+        current === nextIsTruncated ? current : nextIsTruncated
+      );
+    };
+    const observer = new ResizeObserver(measure);
+
+    measure();
+    observer.observe(label);
+    return () => observer.disconnect();
+  }, [primaryRef?.label]);
 
   if (!primaryRef) {
     return null;
   }
 
   const title = displayRefs.flatMap(refChipTitleLines).join('\n');
+  const hasOverflowRefs = overflowRefs.length > 0;
+  const isExpandable = hasOverflowRefs || isLabelTruncated;
 
   return (
-    <div className="ref-stack" data-has-overflow={overflowRefs.length > 0}>
-      <div className="ref-stack-summary">
+    <div
+      className="ref-stack"
+      data-expandable={isExpandable}
+      data-has-overflow={hasOverflowRefs}
+    >
+      <div ref={summaryRef} className="ref-stack-summary">
         <RefChipView
           chip={primaryRef}
           linkedWorktreeBranches={linkedWorktreeBranches}
           color={color}
+          currentColor={currentColor}
           pendingBranchName={pendingBranchName}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
           onTagContextMenu={onTagContextMenu}
         />
-        {overflowRefs.length > 0 ? (
+        {hasOverflowRefs ? (
           <span
             className="ref-overflow"
-            style={{ background: hexToRgba(color, 0.3), color: 'var(--text-1)' }}
+            style={{ background: color, color: 'var(--graph-ref-text)' }}
             title={title}
           >
             +{overflowRefs.length}
           </span>
         ) : null}
       </div>
-      {overflowRefs.length > 0 ? (
-        <div className="ref-stack-expanded">
-          {displayRefs.map((chip) => (
-            <RefChipView
-              key={`${chip.kind}:${chip.label}`}
-              chip={chip}
-              linkedWorktreeBranches={linkedWorktreeBranches}
-              color={color}
-              pendingBranchName={pendingBranchName}
-              onRefClick={onRefClick}
-              onBranchContextMenu={onBranchContextMenu}
-              onTagContextMenu={onTagContextMenu}
-            />
-          ))}
-        </div>
-      ) : null}
+      <div className="ref-stack-expanded">
+        {displayRefs.map((chip) => (
+          <RefChipView
+            key={`${chip.kind}:${chip.label}`}
+            chip={chip}
+            linkedWorktreeBranches={linkedWorktreeBranches}
+            color={color}
+            currentColor={currentColor}
+            pendingBranchName={pendingBranchName}
+            onRefClick={onRefClick}
+            onBranchContextMenu={onBranchContextMenu}
+            onTagContextMenu={onTagContextMenu}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1639,6 +1660,7 @@ function RefChipView({
   chip,
   linkedWorktreeBranches,
   color,
+  currentColor,
   pendingBranchName,
   onRefClick,
   onBranchContextMenu,
@@ -1647,6 +1669,7 @@ function RefChipView({
   chip: RefChipDisplay;
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
+  currentColor: string;
   pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -1673,8 +1696,8 @@ function RefChipView({
     );
 
   const style = {
-    background: hexToRgba(color, current ? 0.78 : 0.3),
-    color: 'var(--text-1)'
+    background: current ? currentColor : color,
+    color: current ? 'var(--graph-ref-current-text)' : 'var(--graph-ref-text)'
   };
   const content = (
     <>
@@ -1854,6 +1877,10 @@ function visibleLaneX(lane: number, viewport: GraphViewport): number {
   return clampViewportX(laneX(lane), viewport);
 }
 
+function graphLaneViewportX(lane: number, width: number, scrollLeft: number): number {
+  return visibleLaneX(lane, { width, scrollLeft }) - scrollLeft;
+}
+
 function clampViewportX(x: number, viewport: GraphViewport): number {
   const minX = viewport.scrollLeft + GRAPH_NODE_EDGE_INSET;
   const maxX = viewport.scrollLeft + Math.max(GRAPH_NODE_EDGE_INSET, viewport.width - GRAPH_NODE_EDGE_INSET);
@@ -1915,9 +1942,9 @@ function RailSegmentPath({
       fill="none"
       stroke={segment.color ?? fallbackColor}
       strokeLinecap="round"
-      strokeWidth={segment.dashed ? 2.4 : 2.8}
-      strokeDasharray={segment.dashed ? '1 5' : undefined}
-      strokeOpacity={segment.dashed ? 0.86 : 0.95}
+      strokeWidth={2}
+      strokeDasharray={segment.dashed ? '1 4' : undefined}
+      strokeOpacity={1}
     />
   );
 }
@@ -1940,18 +1967,18 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
       <g>
         <title>{title}</title>
         <rect
-          x={cx - 7}
-          y={cy - 7}
-          width={14}
-          height={14}
-          rx={3.5}
+          x={cx - 9}
+          y={cy - 9}
+          width={18}
+          height={18}
+          rx={3}
           fill="var(--bg-graph)"
           stroke={color}
           strokeDasharray="2 2"
           strokeWidth={2}
         />
-        <path d={`M ${cx - 4} ${cy - 1.5} H ${cx + 4}`} stroke={color} strokeWidth={1.6} strokeLinecap="round" />
-        <path d={`M ${cx - 2.5} ${cy + 2.5} H ${cx + 2.5}`} stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+        <path d={`M ${cx - 5} ${cy - 2} H ${cx + 5}`} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+        <path d={`M ${cx - 3} ${cy + 3} H ${cx + 3}`} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
       </g>
     );
   }
@@ -1960,17 +1987,17 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
     return (
       <g>
         <title>{title}</title>
-        <circle cx={cx} cy={cy} r={8.8} fill="var(--bg-graph)" stroke={color} strokeWidth={2.3} strokeDasharray="1 4.5" />
+        <circle cx={cx} cy={cy} r={10} fill="var(--bg-graph)" stroke={color} strokeWidth={2} strokeDasharray="1 4" />
         <circle cx={cx} cy={cy} r={2} fill={color} />
       </g>
     );
   }
 
   const clipId = `graph-avatar-${nodeId.replace(/[^\dA-Za-z_-]/g, '') || 'node'}`;
-  const outerRadius = 11.8;
-  const ringStrokeWidth = 4.1;
-  const matRadius = 8.8;
-  const imageRadius = 7.4;
+  const outerRadius = 11;
+  const ringStrokeWidth = 2;
+  const matRadius = 9;
+  const imageRadius = 8;
   const imageSize = imageRadius * 2;
 
   return (
@@ -2008,7 +2035,7 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
           </text>
         </>
       )}
-      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="rgba(4, 7, 10, 0.58)" strokeWidth={0.7} />
+      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="rgba(4, 7, 10, 0.58)" strokeWidth={0.35} />
       {kind === 'merge' ? (
         <circle cx={cx + 7.4} cy={cy + 7.2} r={2.7} fill="var(--bg-graph)" stroke={color} strokeWidth={1.4} />
       ) : null}

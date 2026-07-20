@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCommitGraphRows } from './graph';
+import { buildCommitGraphRows, laneBandColor, laneColor, laneRefColor } from './graph';
 import type { GraphCommitInput } from './graph';
 import type { CommitGraphRow, GraphRailSegment } from './types';
 
@@ -172,6 +172,40 @@ describe('buildCommitGraphRows', () => {
         { type: 'curveIn', from: 2, to: 0 }
       ])
     );
+  });
+});
+
+describe('measured graph palette', () => {
+  it('uses the reference rail, band, and ref colors in lane order', () => {
+    expect(Array.from({ length: 7 }, (_, lane) => laneColor(lane))).toEqual([
+      '#4a9ebc',
+      '#2d68ee',
+      '#8218bb',
+      '#b52eb1',
+      '#c72a70',
+      '#bc271b',
+      '#eccc54'
+    ]);
+    expect(Array.from({ length: 7 }, (_, lane) => laneBandColor(lane))).toEqual([
+      '#212b33',
+      '#1e2638',
+      '#261d33',
+      '#2c2031',
+      '#2d1f2b',
+      '#2c1f22',
+      '#313028'
+    ]);
+    expect(Array.from({ length: 7 }, (_, lane) => laneRefColor(lane))).toEqual([
+      '#243e49',
+      '#1d3155',
+      '#351949',
+      '#411e46',
+      '#451a36',
+      '#421a1c',
+      '#514a2c'
+    ]);
+    expect(laneRefColor(0, true)).toBe('#2f5e6f');
+    expect(laneColor(7)).toBe('#4a9ebc');
   });
 });
 

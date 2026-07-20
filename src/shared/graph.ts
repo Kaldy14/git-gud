@@ -12,7 +12,10 @@ import type {
 export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
 export const COMMIT_GRAPH_LIMIT_STEP = 1500;
 
-const LANE_COLORS = ['#19c9e6', '#2684ff', '#d726e7', '#ff5a36', '#ffd34d', '#2ed3a6'] as const;
+const LANE_COLORS = ['#4a9ebc', '#2d68ee', '#8218bb', '#b52eb1', '#c72a70', '#bc271b', '#eccc54'] as const;
+const LANE_BAND_COLORS = ['#212b33', '#1e2638', '#261d33', '#2c2031', '#2d1f2b', '#2c1f22', '#313028'] as const;
+const LANE_REF_COLORS = ['#243e49', '#1d3155', '#351949', '#411e46', '#451a36', '#421a1c', '#514a2c'] as const;
+const CURRENT_REF_COLOR = '#2f5e6f';
 const AUTHOR_COLORS = ['#38bdf8', '#c084fc', '#4ade80', '#fbbf24', '#fb7185', '#a78bfa', '#2dd4bf'] as const;
 const dateLabelFormatter = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -134,6 +137,14 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
 
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
+}
+
+export function laneBandColor(lane: number): string {
+  return LANE_BAND_COLORS[lane % LANE_BAND_COLORS.length];
+}
+
+export function laneRefColor(lane: number, current = false): string {
+  return current ? CURRENT_REF_COLOR : LANE_REF_COLORS[lane % LANE_REF_COLORS.length];
 }
 
 function buildIncomingRails(

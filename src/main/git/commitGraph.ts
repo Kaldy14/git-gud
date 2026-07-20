@@ -99,7 +99,7 @@ async function loadWorktreeWipInputs(
           authoredAt: new Date().toISOString(),
           dateLabel: 'now',
           kind: 'wip',
-          colorOverride: '#8b95a5',
+          colorOverride: '#bc271b',
           refs: [{ label: 'WIP', kind: 'wip' }],
           worktree: {
             path: worktree.path,
@@ -138,7 +138,7 @@ function createStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCom
       authorName: 'Stash',
       authoredAt: stash.date,
       kind: 'stash',
-      colorOverride: '#d726e7',
+      colorOverride: '#e1673e',
       refs: [{ label: stash.selector, kind: 'stash' }]
     });
     inputsByBase.set(baseSha, inputs);
