@@ -2,16 +2,26 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
-import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron';
+import {
+  app,
+  autoUpdater,
+  BrowserWindow,
+  dialog,
+  Menu,
+  shell,
+  type MenuItemConstructorOptions
+} from 'electron';
 
 import { RepoWatcherRegistry } from './git/watcher';
 import { gitExecutor } from './git/exec';
 import { registerIpcHandlers } from './ipc';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { flushPendingWorkspaceWrites, getWorkspace } from './store';
+import { ApplicationUpdater, type UpdateTransport } from './updater';
 
 const quitCleanupTimeoutMs = 1500;
 const hardQuitTimeoutMs = 3000;
+const updateInstallHardQuitTimeoutMs = 10_000;
 const appDisplayName = 'Git Gud';
 let isQuitting = false;
 
@@ -109,7 +119,11 @@ function isSafeExternalUrl(value: string): boolean {
 app.whenReady().then(() => {
   app.setName(appDisplayName);
   electronApp.setAppUserModelId('dev.kaldy.git-gud');
-  installApplicationMenu();
+  const applicationUpdater = createApplicationUpdater();
+  installApplicationMenu(
+    () => applicationUpdater.checkForUpdates(true),
+    applicationUpdater.isSupported
+  );
   const iconPath = resolveAppIconPath();
 
   if (iconPath && process.platform === 'darwin') {
@@ -124,6 +138,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  applicationUpdater.start();
 
   app.on('activate', () => {
     if (!isQuitting && BrowserWindow.getAllWindows().length === 0) {
@@ -145,12 +160,17 @@ app.on('before-quit', (event) => {
   requestQuit();
 });
 
-function installApplicationMenu(): void {
+function installApplicationMenu(checkForUpdates: () => void, updaterEnabled: boolean): void {
   const template: MenuItemConstructorOptions[] = [
     {
       label: appDisplayName,
       submenu: [
         { role: 'about' },
+        {
+          label: 'Check for Updates…',
+          enabled: updaterEnabled,
+          click: checkForUpdates
+        },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
@@ -171,6 +191,40 @@ function installApplicationMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function createApplicationUpdater(): ApplicationUpdater {
+  const transport: UpdateTransport = {
+    setFeedUrl: (url) => autoUpdater.setFeedURL({ url }),
+    checkForUpdates: () => autoUpdater.checkForUpdates(),
+    onUpdateAvailable: (listener) => {
+      autoUpdater.on('update-available', listener);
+    },
+    onUpdateNotAvailable: (listener) => {
+      autoUpdater.on('update-not-available', listener);
+    },
+    onUpdateDownloaded: (listener) => {
+      autoUpdater.on('update-downloaded', (_event, _releaseNotes, releaseName) => listener(releaseName));
+    },
+    onError: (listener) => {
+      autoUpdater.on('error', listener);
+    }
+  };
+
+  autoUpdater.on('before-quit-for-update', () => {
+    isQuitting = true;
+  });
+
+  return new ApplicationUpdater({
+    appVersion: app.getVersion(),
+    architecture: process.arch,
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    transport,
+    showMessageBox: (options) => dialog.showMessageBox(options),
+    requestInstall: requestUpdateInstall,
+    logError: (message, error) => console.error(message, error)
+  });
+}
+
 function requestQuit(): void {
   if (isQuitting) {
     return;
@@ -185,7 +239,28 @@ function requestQuit(): void {
   void quitAfterCleanup();
 }
 
-async function quitAfterCleanup(): Promise<void> {
+function requestUpdateInstall(): void {
+  if (isQuitting) {
+    return;
+  }
+
+  isQuitting = true;
+  const hardQuitTimer = setTimeout(() => {
+    exitWithoutNodeCleanup();
+  }, updateInstallHardQuitTimeoutMs);
+  hardQuitTimer.unref();
+
+  void quitAfterCleanup(() => {
+    try {
+      autoUpdater.quitAndInstall();
+    } catch (error) {
+      console.error('Unable to restart Git Gud for the downloaded update.', error);
+      exitWithoutNodeCleanup();
+    }
+  });
+}
+
+async function quitAfterCleanup(afterCleanup: () => void = exitWithoutNodeCleanup): Promise<void> {
   try {
     flushPendingWorkspaceWrites();
     await Promise.race([
@@ -202,7 +277,7 @@ async function quitAfterCleanup(): Promise<void> {
     }
   }
 
-  exitWithoutNodeCleanup();
+  afterCleanup();
 }
 
 function wait(delayMs: number): Promise<void> {

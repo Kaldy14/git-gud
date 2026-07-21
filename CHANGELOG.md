@@ -11,6 +11,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added an editable conflict resolver with ours/theirs previews, per-marker choices, manual output editing, deletion support, and save-and-stage navigation across unresolved files.
 - Added a guarded reset-to-remote flow for same-named or diverged local branches, including undo metadata when the branch tip moves.
 - Added linked-worktree working-directory rows and worktree reference chips to the commit graph.
+- Added automatic and manual update checks for packaged macOS builds, with background downloads and a restart-to-install prompt.
+- Added automatic signed macOS updates with background downloads, restart prompts, and a manual update check.
 
 ### Changed
 
