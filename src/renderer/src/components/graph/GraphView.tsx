@@ -1578,29 +1578,6 @@ function RefChipStack({
 }): ReactElement | null {
   const displayRefs = coalesceRemotePeers(refs);
   const [primaryRef, ...overflowRefs] = displayRefs;
-  const summaryRef = useRef<HTMLDivElement>(null);
-  const [isLabelTruncated, setIsLabelTruncated] = useState(false);
-
-  useLayoutEffect(() => {
-    const label = summaryRef.current?.querySelector<HTMLElement>('.ref-chip-label');
-
-    if (!label) {
-      setIsLabelTruncated(false);
-      return;
-    }
-
-    const measure = (): void => {
-      const nextIsTruncated = label.scrollWidth > label.clientWidth;
-      setIsLabelTruncated((current) =>
-        current === nextIsTruncated ? current : nextIsTruncated
-      );
-    };
-    const observer = new ResizeObserver(measure);
-
-    measure();
-    observer.observe(label);
-    return () => observer.disconnect();
-  }, [primaryRef?.label]);
 
   if (!primaryRef) {
     return null;
@@ -1608,15 +1585,14 @@ function RefChipStack({
 
   const title = displayRefs.flatMap(refChipTitleLines).join('\n');
   const hasOverflowRefs = overflowRefs.length > 0;
-  const isExpandable = hasOverflowRefs || isLabelTruncated;
 
   return (
     <div
       className="ref-stack"
-      data-expandable={isExpandable}
+      data-expandable={hasOverflowRefs}
       data-has-overflow={hasOverflowRefs}
     >
-      <div ref={summaryRef} className="ref-stack-summary">
+      <div className="ref-stack-summary">
         <RefChipView
           chip={primaryRef}
           linkedWorktreeBranches={linkedWorktreeBranches}
@@ -1637,21 +1613,23 @@ function RefChipStack({
           </span>
         ) : null}
       </div>
-      <div className="ref-stack-expanded">
-        {displayRefs.map((chip) => (
-          <RefChipView
-            key={`${chip.kind}:${chip.label}`}
-            chip={chip}
-            linkedWorktreeBranches={linkedWorktreeBranches}
-            color={color}
-            currentColor={currentColor}
-            pendingBranchName={pendingBranchName}
-            onRefClick={onRefClick}
-            onBranchContextMenu={onBranchContextMenu}
-            onTagContextMenu={onTagContextMenu}
-          />
-        ))}
-      </div>
+      {hasOverflowRefs ? (
+        <div className="ref-stack-expanded">
+          {displayRefs.map((chip) => (
+            <RefChipView
+              key={`${chip.kind}:${chip.label}`}
+              chip={chip}
+              linkedWorktreeBranches={linkedWorktreeBranches}
+              color={color}
+              currentColor={currentColor}
+              pendingBranchName={pendingBranchName}
+              onRefClick={onRefClick}
+              onBranchContextMenu={onBranchContextMenu}
+              onTagContextMenu={onTagContextMenu}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

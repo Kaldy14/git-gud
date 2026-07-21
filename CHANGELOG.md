@@ -4,6 +4,13 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-07-21
+
+### Fixed
+
+- Kept truncated branch and tag labels contained within their graph column instead of expanding over commit lanes on hover or focus.
+- Scoped working-directory WIP rows to the currently opened worktree so dirty linked worktrees no longer appear in a clean repository graph.
+
 ## [0.4.5] - 2026-07-21
 
 ### Added
