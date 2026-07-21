@@ -115,6 +115,18 @@ describe('ApplicationUpdater', () => {
     expect(requestInstall).toHaveBeenCalledOnce();
   });
 
+  it('leaves a downloaded update pending when restart is deferred', async () => {
+    const { updater, transport, requestInstall } = createUpdater({ dialogResponse: 1 });
+
+    updater.checkForUpdates();
+    transport.updateDownloadedListener?.('Git Gud v0.4.6');
+    await Promise.resolve();
+
+    expect(requestInstall).not.toHaveBeenCalled();
+    updater.checkForUpdates();
+    expect(transport.checks).toBe(1);
+  });
+
   it('keeps automatic failures quiet and reports manual failures', async () => {
     const { updater, transport, dialogs } = createUpdater();
 
