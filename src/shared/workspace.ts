@@ -185,6 +185,43 @@ export function upsertRepositoryTab(
   };
 }
 
+export function replaceRepositoryTab(
+  state: WorkspaceState,
+  tabId: string,
+  repository: RepositorySummary,
+  now = new Date().toISOString()
+): WorkspaceState {
+  const currentTab = state.tabs.find((tab) => tab.id === tabId);
+
+  if (!currentTab) {
+    return state;
+  }
+
+  const nextTabId = createRepoTabId(repository.path);
+  const nextTab: RepoTab = {
+    ...repository,
+    id: nextTabId,
+    openedAt: currentTab.openedAt,
+    lastOpenedAt: now,
+    assignedProfileId: currentTab.assignedProfileId,
+    viewMode: currentTab.viewMode
+  };
+  const tabs = state.tabs.flatMap((tab) => {
+    if (tab.id === tabId) {
+      return [nextTab];
+    }
+
+    return tab.id === nextTabId ? [] : [tab];
+  });
+
+  return {
+    ...state,
+    tabs,
+    activeTabId: nextTabId,
+    recentRepos: upsertRecentRepository(state.recentRepos, repository, now)
+  };
+}
+
 export function activateRepositoryTab(state: WorkspaceState, tabId: string): WorkspaceState {
   if (!state.tabs.some((tab) => tab.id === tabId)) {
     return state;

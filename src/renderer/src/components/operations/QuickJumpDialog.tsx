@@ -38,7 +38,7 @@ export type QuickJumpDialogProps = {
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
   onSelectCommit?: (sha: string) => void;
-  onOpenRepositoryPath?: (repoPath: string) => void;
+  onOpenWorktree?: (worktreePath: string) => void;
 };
 
 type QuickJumpItem = {
@@ -67,7 +67,7 @@ export function QuickJumpDialog({
   onCheckoutBranch,
   onCheckoutRemoteBranch,
   onSelectCommit,
-  onOpenRepositoryPath
+  onOpenWorktree
 }: QuickJumpDialogProps): ReactElement {
   const titleId = useId();
   const resultsId = useId();
@@ -86,7 +86,7 @@ export function QuickJumpDialog({
         onCheckoutBranch,
         onCheckoutRemoteBranch,
         onSelectCommit,
-        onOpenRepositoryPath
+        onOpenWorktree
       }),
     [
       activeTabId,
@@ -95,7 +95,7 @@ export function QuickJumpDialog({
       onActivateTab,
       onCheckoutBranch,
       onCheckoutRemoteBranch,
-      onOpenRepositoryPath,
+      onOpenWorktree,
       onSelectCommit,
       paletteActions,
       repositoryOverview,
@@ -230,7 +230,7 @@ type BuildItemsInput = Pick<
   | 'onCheckoutBranch'
   | 'onCheckoutRemoteBranch'
   | 'onSelectCommit'
-  | 'onOpenRepositoryPath'
+  | 'onOpenWorktree'
 >;
 
 function buildItems({
@@ -244,7 +244,7 @@ function buildItems({
   onCheckoutBranch,
   onCheckoutRemoteBranch,
   onSelectCommit,
-  onOpenRepositoryPath
+  onOpenWorktree
 }: BuildItemsInput): QuickJumpItem[] {
   const actionItems = paletteActions.map((action) => ({
     id: `action:${action.id}`,
@@ -292,28 +292,17 @@ function buildItems({
       onSelect: () => onCheckoutRemoteBranch(branch.name)
     })) ?? [];
   const worktreeItems =
-    repositoryOverview?.worktrees.map((worktree) => {
-      const matchingTab = tabs.find((tab) => tab.path === worktree.path);
-      const canOpen = Boolean(matchingTab || onOpenRepositoryPath);
-
-      return {
-        id: `worktree:${worktree.path}`,
-        label: worktree.branch ?? worktree.path,
-        detail: worktree.current ? 'Current worktree' : worktree.path,
-        category: 'Worktrees',
-        scoreTarget: `${worktree.branch ?? ''} ${worktree.path} worktree`,
-        icon: <FolderGit2 size={14} />,
-        disabled: !canOpen,
-        disabledReason: canOpen ? undefined : 'No open-worktree action is connected',
-        onSelect: () => {
-          if (matchingTab) {
-            onActivateTab(matchingTab.id);
-          } else {
-            onOpenRepositoryPath?.(worktree.path);
-          }
-        }
-      };
-    }) ?? [];
+    repositoryOverview?.worktrees.map((worktree) => ({
+      id: `worktree:${worktree.path}`,
+      label: worktree.branch ?? worktree.path,
+      detail: worktree.current ? 'Current worktree' : worktree.path,
+      category: 'Worktrees',
+      scoreTarget: `${worktree.branch ?? ''} ${worktree.path} worktree`,
+      icon: <FolderGit2 size={14} />,
+      disabled: !onOpenWorktree,
+      disabledReason: onOpenWorktree ? undefined : 'No open-worktree action is connected',
+      onSelect: () => onOpenWorktree?.(worktree.path)
+    })) ?? [];
   const historyItems = graphRows.flatMap((row) => {
     if (row.node.kind === 'wip') {
       return [];

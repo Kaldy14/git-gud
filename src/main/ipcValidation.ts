@@ -42,6 +42,7 @@ const validators = {
   'workspace:get': (args) => noArgs('workspace:get', args),
   'repo:open-dialog': (args) => noArgs('repo:open-dialog', args),
   'repo:open-path': (args) => readOnlyArg(args, 'repo:open-path', 'repoPath', readString),
+  'repo:replace-path': (args) => readStringPair(args, 'repo:replace-path', 'tabId', 'repoPath'),
   'tabs:activate': (args) => readOnlyArg(args, 'tabs:activate', 'tabId', readString),
   'tabs:close': (args) => readOnlyArg(args, 'tabs:close', 'tabId', readString),
   'tabs:select-commit': (args) => readStringWithOptionalString(args, 'tabs:select-commit', 'tabId', 'selectedCommit'),

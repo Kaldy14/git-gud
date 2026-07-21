@@ -17,6 +17,7 @@ type WorkspaceStore = {
   initialize: () => Promise<void>;
   openRepository: () => Promise<void>;
   openRepositoryAtPath: (repoPath: string) => Promise<void>;
+  replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState | undefined>;
   activateTab: (tabId: string) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<void>;
@@ -41,6 +42,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   },
   async openRepositoryAtPath(repoPath) {
     await runWorkspaceAction(set, () => window.api.openRepositoryAtPath(repoPath));
+  },
+  async replaceRepositoryAtPath(tabId, repoPath) {
+    return runWorkspaceAction(set, () => window.api.replaceRepositoryAtPath(tabId, repoPath));
   },
   async activateTab(tabId) {
     await runWorkspaceAction(set, () => window.api.activateTab(tabId));

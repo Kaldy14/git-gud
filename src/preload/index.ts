@@ -13,6 +13,7 @@ const api: RendererApi = {
   getWorkspace: () => invoke('workspace:get'),
   openRepository: () => invoke('repo:open-dialog'),
   openRepositoryAtPath: (repoPath) => invoke('repo:open-path', repoPath),
+  replaceRepositoryAtPath: (tabId, repoPath) => invoke('repo:replace-path', tabId, repoPath),
   activateTab: (tabId) => invoke('tabs:activate', tabId),
   closeTab: (tabId) => invoke('tabs:close', tabId),
   selectCommit: (tabId, selectedCommit) => invoke('tabs:select-commit', tabId, selectedCommit),

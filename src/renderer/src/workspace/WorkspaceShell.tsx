@@ -49,7 +49,6 @@ import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
-  prepareRepositoryForNavigation,
   prepareRepositoryForProfileTransition,
   useCommitGraph,
   useRepositoryChangeInvalidation,
@@ -161,6 +160,7 @@ export function WorkspaceShell(): ReactElement {
     initialize,
     openRepository,
     openRepositoryAtPath,
+    replaceRepositoryAtPath,
     activateTab,
     closeTab,
     selectCommit,
@@ -477,28 +477,30 @@ export function WorkspaceShell(): ReactElement {
   }
 
   async function activateLinkedWorktreeWip(worktreePath: string): Promise<void> {
-    const existingTab = workspace.tabs.find((tab) => tab.path === worktreePath);
-
-    if (existingTab) {
-      try {
-        await prepareRepositoryForNavigation(
-          queryClient,
-          worktreePath,
-          graphLimitByTab[existingTab.id] ?? settings.graphPageSize
-        );
-      } catch {
-        // The active repository queries will retry and surface any error after navigation.
-      }
-
-      await activateTab(existingTab.id);
-    } else {
-      await openRepositoryAtPath(worktreePath);
+    if (!activeTab) {
+      return;
     }
 
-    const worktreeTab = useWorkspaceStore.getState().workspace.tabs.find((tab) => tab.path === worktreePath);
+    const previousTab = activeTab;
+    const nextWorkspace = previousTab.path === worktreePath
+      ? workspace
+      : await replaceRepositoryAtPath(previousTab.id, worktreePath);
+
+    const worktreeTab = nextWorkspace?.tabs.find((tab) => tab.path === worktreePath);
 
     if (!worktreeTab) {
       return;
+    }
+
+    if (previousTab.id !== worktreeTab.id) {
+      clearRepositoryQueries(queryClient, previousTab.path);
+      setGraphLimitByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
+      setBulkSelectionByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id, []));
+      setDiffStyleByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
+      setWipScopeByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
+      setCommitComposerFocusByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
+      setFileFocusByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
+      setReviewOpenByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id, false));
     }
 
     setBulkSelectionByTab((value) => ({ ...value, [worktreeTab.id]: [] }));
@@ -2165,7 +2167,7 @@ export function WorkspaceShell(): ReactElement {
           onCheckoutBranch={handleCheckoutBranch}
           onCheckoutRemoteBranch={handleActivateRemoteBranch}
           onSelectCommit={handleSelectRow}
-          onOpenRepositoryPath={(repoPath) => void openRepositoryAtPath(repoPath)}
+          onOpenWorktree={(worktreePath) => void activateLinkedWorktreeWip(worktreePath)}
         />
       ) : null}
       {repositoryInspector && activeTab ? (
@@ -2274,6 +2276,20 @@ function createLogId(): string {
 
 function withoutRecordKey<TValue>(record: Record<string, TValue>, key: string): Record<string, TValue> {
   return Object.fromEntries(Object.entries(record).filter(([candidate]) => candidate !== key));
+}
+
+function moveRecordKey<TValue>(
+  record: Record<string, TValue>,
+  sourceKey: string,
+  targetKey: string,
+  fallback?: TValue
+): Record<string, TValue> {
+  const value = record[sourceKey] ?? fallback;
+  const withoutSourceOrTarget = withoutRecordKey(withoutRecordKey(record, sourceKey), targetKey);
+
+  return value === undefined
+    ? withoutSourceOrTarget
+    : { ...withoutSourceOrTarget, [targetKey]: value };
 }
 
 function dialogText(values: CommandDialogValues, id: string): string {

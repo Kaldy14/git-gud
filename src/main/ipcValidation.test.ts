@@ -62,6 +62,10 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
     expect(validateIpcArgs('workspace:set-detail-panel-collapsed', [true])).toEqual([true]);
     expect(validateIpcArgs('workspace:set-detail-panel-width', [440])).toEqual([440]);
+    expect(validateIpcArgs('repo:replace-path', ['repo:/project', '/project-worktree'])).toEqual([
+      'repo:/project',
+      '/project-worktree'
+    ]);
     expect(validateIpcArgs('profiles:activate', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('repo:file-history', ['/repo', 'src/app.ts', 50])).toEqual(['/repo', 'src/app.ts', 50]);

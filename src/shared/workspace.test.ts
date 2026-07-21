@@ -9,6 +9,7 @@ import {
   normalizeWorkspaceState,
   partitionWorkspaceByProfile,
   profileWorkspaceKey,
+  replaceRepositoryTab,
   selectRepositoryCommit,
   setDetailPanelCollapsed,
   setDetailPanelWidth,
@@ -54,6 +55,44 @@ describe('workspace state', () => {
     expect(closed.tabs.map((tab) => tab.path)).toEqual([betaRepo.path]);
     expect(closed.activeTabId).toBe(createRepoTabId(betaRepo.path));
     expect(closed.recentRepos.map((repo) => repo.path)).toEqual([betaRepo.path, alphaRepo.path]);
+  });
+
+  it('replaces the current repository in place when opening a linked worktree', () => {
+    const withAlpha = upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z');
+    const selected = selectRepositoryCommit(withAlpha, createRepoTabId(alphaRepo.path), 'abc123');
+    const replaced = replaceRepositoryTab(
+      selected,
+      createRepoTabId(alphaRepo.path),
+      betaRepo,
+      '2026-07-02T10:01:00.000Z'
+    );
+
+    expect(replaced.tabs).toEqual([
+      expect.objectContaining({
+        id: createRepoTabId(betaRepo.path),
+        path: betaRepo.path,
+        openedAt: '2026-07-02T10:00:00.000Z',
+        lastOpenedAt: '2026-07-02T10:01:00.000Z'
+      })
+    ]);
+    expect(replaced.tabs[0]?.selectedCommit).toBeUndefined();
+    expect(replaced.activeTabId).toBe(createRepoTabId(betaRepo.path));
+    expect(replaced.recentRepos.map((repo) => repo.path)).toEqual([betaRepo.path, alphaRepo.path]);
+  });
+
+  it('keeps the current tab position and removes an existing target tab', () => {
+    const withAlpha = upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z');
+    const withBeta = upsertRepositoryTab(withAlpha, betaRepo, '2026-07-02T10:01:00.000Z');
+    const activated = activateRepositoryTab(withBeta, createRepoTabId(alphaRepo.path));
+    const replaced = replaceRepositoryTab(
+      activated,
+      createRepoTabId(alphaRepo.path),
+      betaRepo,
+      '2026-07-02T10:02:00.000Z'
+    );
+
+    expect(replaced.tabs.map((tab) => tab.path)).toEqual([betaRepo.path]);
+    expect(replaced.activeTabId).toBe(createRepoTabId(betaRepo.path));
   });
 
   it('persists a repo profile assignment on the tab', () => {

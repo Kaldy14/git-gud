@@ -57,6 +57,10 @@ export type IpcChannelMap = {
     args: [repoPath: string];
     result: WorkspaceState;
   };
+  'repo:replace-path': {
+    args: [tabId: string, repoPath: string];
+    result: WorkspaceState;
+  };
   'tabs:activate': {
     args: [tabId: string];
     result: WorkspaceState;
@@ -317,6 +321,7 @@ export type RendererApi = {
   getWorkspace: () => Promise<WorkspaceState>;
   openRepository: () => Promise<WorkspaceState | null>;
   openRepositoryAtPath: (repoPath: string) => Promise<WorkspaceState>;
+  replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState>;
   activateTab: (tabId: string) => Promise<WorkspaceState>;
   closeTab: (tabId: string) => Promise<WorkspaceState>;
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<WorkspaceState>;

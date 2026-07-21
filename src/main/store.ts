@@ -13,6 +13,7 @@ import {
   normalizeWorkspaceState,
   partitionWorkspaceByProfile,
   profileWorkspaceKey,
+  replaceRepositoryTab,
   selectRepositoryCommit,
   selectRepositoryFile,
   setDetailPanelCollapsed,
@@ -65,6 +66,11 @@ export function openWorkspaceRepository(repository: RepositorySummary): Workspac
   const workspace = getWorkspace();
   const opened = upsertRepositoryTab(workspace, repository);
   return saveWorkspace(assignRepositoryProfile(opened, repository.path, workspace.activeProfileId));
+}
+
+export function replaceWorkspaceRepository(tabId: string, repository: RepositorySummary): WorkspaceState {
+  const workspace = getWorkspace();
+  return saveWorkspace(replaceRepositoryTab(workspace, tabId, repository));
 }
 
 export function activateWorkspaceTab(tabId: string): WorkspaceState {

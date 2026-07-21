@@ -63,6 +63,7 @@ import {
   getAppSettings,
   getWorkspace,
   openWorkspaceRepository,
+  replaceWorkspaceRepository,
   selectWorkspaceCommit,
   selectWorkspaceFile,
   updateAppSettings,
@@ -184,6 +185,23 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     const repository = await validateRepository(repoPath);
     const workspace = openWorkspaceRepository(repository);
     return syncWorkspaceWatchers(workspace, repoWatchers);
+  });
+
+  handle('repo:replace-path', async (_event, tabId, repoPath) => {
+    const previousPath = getWorkspace().tabs.find((tab) => tab.id === tabId)?.path;
+
+    if (!previousPath) {
+      throw new Error('Repository tab is not open in this workspace.');
+    }
+
+    const repository = await validateRepository(repoPath);
+    const workspace = syncWorkspaceWatchers(replaceWorkspaceRepository(tabId, repository), repoWatchers);
+
+    if (!workspace.tabs.some((tab) => tab.path === previousPath)) {
+      clearReviewSyntaxCacheForRepository(previousPath);
+    }
+
+    return workspace;
   });
 
   handle('tabs:activate', (_event, tabId) => activateWorkspaceTab(tabId));
