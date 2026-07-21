@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { DIFF_OPTIONS_BASE, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import { useDiffSyntaxHighlighter } from '@renderer/components/diff/useDiffSyntaxHighlighter';
 import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
 import type {
   CommitGraphRow,
@@ -403,9 +404,12 @@ function ReviewChunk({
       : diffOptions,
     [chunk.path, diffOptions, expandableDiff]
   );
+  const isSyntaxHighlighterReady = useDiffSyntaxHighlighter(
+    chunk.omittedReason ? undefined : chunk.path
+  );
 
-  // Review units mount several diffs together; the shared worker pool can lose lazy language
-  // initialization during that burst. Pierre's shared main-thread highlighter stays cached and reliable.
+  // Review units mount several diffs together; wait for the shared main-thread language preload
+  // before mounting each diff so the initial render cannot fall back to unhighlighted text.
   return (
     <section className="review-chunk">
       <div className="review-chunk-header">
@@ -423,6 +427,13 @@ function ReviewChunk({
             : chunk.omittedReason === 'too-large'
               ? 'This change exceeds the review preview limit.'
               : 'No textual diff is available for this change.'}
+        </div>
+      ) : !isSyntaxHighlighterReady ? (
+        <div className="grid min-h-28 place-items-center px-4 text-xs text-[var(--text-3)]">
+          <span className="flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            Preparing syntax highlighting…
+          </span>
         </div>
       ) : (
         <WorkerPoolContext.Provider value={undefined}>

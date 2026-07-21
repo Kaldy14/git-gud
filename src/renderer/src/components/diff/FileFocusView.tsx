@@ -1,11 +1,6 @@
 import type { KeyboardEvent, MouseEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  getFiletypeFromFileName,
-  getHighlighterOptions,
-  preloadHighlighter,
-  type FileDiffOptions
-} from '@pierre/diffs';
+import type { FileDiffOptions } from '@pierre/diffs';
 import { PatchDiff, WorkerPoolContext } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
@@ -59,6 +54,7 @@ import {
   parseStageablePatchHunks,
   type StageablePatchHunk
 } from '@renderer/components/diff/stageablePatch';
+import { useDiffSyntaxHighlighter } from '@renderer/components/diff/useDiffSyntaxHighlighter';
 
 type FileFocusViewProps = {
   repoPath?: string;
@@ -93,7 +89,6 @@ export function FileFocusView({
   const queryClient = useQueryClient();
   const [contextSelection, setContextSelection] = useState<CodexReviewSelection>();
   const [codexDialogSelection, setCodexDialogSelection] = useState<CodexReviewSelection>();
-  const [highlightReadyPaths, setHighlightReadyPaths] = useState<Set<string>>(() => new Set());
   const isWip = row?.node.kind === 'wip';
   const isCommitSelection = !isWip && selectedShas.length > 1;
   const commitQuery = useCommitDetail(repoPath, row && !isWip && !isCommitSelection ? row.sha : undefined);
@@ -140,36 +135,13 @@ export function FileFocusView({
     [diffStyle]
   );
   const headerPath = selectedFileDetail?.path ?? selectedFile ?? 'No file selected';
+  const isSyntaxHighlighterReady = useDiffSyntaxHighlighter(selectedFileDetail?.path ?? selectedFile);
   const { directory, basename } = splitPath(headerPath);
   const detailErrorMessage = detailError instanceof Error ? detailError.message : undefined;
 
   useEffect(() => {
     sectionRef.current?.focus({ preventScroll: true });
   }, [focusSignal, selectedFile]);
-
-  useEffect(() => {
-    let isCurrent = true;
-
-    void preloadHighlighter(
-      getHighlighterOptions(getFiletypeFromFileName(headerPath), {})
-    ).catch((error: unknown) => {
-      console.error('Failed to preload the diff syntax highlighter.', error);
-    }).finally(() => {
-      if (isCurrent) {
-        setHighlightReadyPaths((currentPaths) => {
-          if (currentPaths.has(headerPath)) {
-            return currentPaths;
-          }
-
-          return new Set(currentPaths).add(headerPath);
-        });
-      }
-    });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [headerPath]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
     if (event.key === 'Escape' && !isEditableTarget(event.target)) {
@@ -287,7 +259,7 @@ export function FileFocusView({
                     diffStyle,
                     diffOptions,
                     diffQuery,
-                    isSyntaxHighlighterReady: highlightReadyPaths.has(headerPath),
+                    isSyntaxHighlighterReady,
                     hunkStaging:
                       isWip && selectedFileDetail && isPatchStageableFile(selectedFileDetail)
                         ? {
