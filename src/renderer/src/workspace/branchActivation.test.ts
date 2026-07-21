@@ -69,6 +69,20 @@ describe('remote branch activation', () => {
     });
   });
 
+  it('offers to reset an ahead tracking branch to the remote ref', () => {
+    expect(resolveRemoteBranchActivation('origin/main', [branch({ current: false, ahead: 2 })])).toEqual({
+      kind: 'reset-local',
+      branchName: 'main'
+    });
+  });
+
+  it('offers to reset a same-named local branch even when it does not track the remote', () => {
+    expect(resolveRemoteBranchActivation('origin/main', [branch({ upstream: undefined })])).toEqual({
+      kind: 'reset-local',
+      branchName: 'main'
+    });
+  });
+
   it('uses the remote checkout flow when no local branch tracks the ref', () => {
     expect(resolveRemoteBranchActivation('origin/feature', [branch()])).toEqual({ kind: 'checkout-remote' });
   });

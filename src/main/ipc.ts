@@ -7,6 +7,7 @@ import type { GitOperationProgressEvent, WorkspaceState } from '@shared/types';
 
 import { loadCommitGraph } from './git/commitGraph';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
+import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
 import {
   checkoutRef,
@@ -117,6 +118,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:rebase': { label: 'Rebase' },
   'repo:interactive-rebase': { label: 'Interactive rebase' },
   'repo:resolve-conflict': { label: 'Resolve conflict' },
+  'repo:resolve-conflict-file': { label: 'Save conflict resolution' },
   'repo:undo': { label: 'Undo' },
   'repo:assign-profile': { label: 'Apply Git profile' }
 };
@@ -339,6 +341,12 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   );
   handle('repo:resolve-conflict', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => resolveConflict(tab, input))
+  );
+  handle('repo:conflict-file', async (_event, repoPath, path) =>
+    loadConflictFile(getOpenRepositoryTab(repoPath), path)
+  );
+  handle('repo:resolve-conflict-file', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => resolveConflictFile(tab, input))
   );
   handle('repo:undo', async (_event, repoPath, undoId) =>
     inRepositoryTransaction(repoPath, (tab) => undoOperation(tab, undoId))

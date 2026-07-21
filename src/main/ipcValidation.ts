@@ -5,6 +5,7 @@ import type {
   GitCheckoutTarget,
   GitCommitInput,
   GitConflictActionInput,
+  GitConflictFileResolutionInput,
   GitCreateBranchInput,
   GitDeleteBranchInput,
   GitFileDiffRequest,
@@ -105,6 +106,9 @@ const validators = {
   'repo:interactive-rebase-plan': (args) => readStringPair(args, 'repo:interactive-rebase-plan', 'repoPath', 'base'),
   'repo:interactive-rebase': (args) => readRepoPathWithObject(args, 'repo:interactive-rebase', readInteractiveRebaseInput),
   'repo:resolve-conflict': (args) => readRepoPathWithObject(args, 'repo:resolve-conflict', readConflictActionInput),
+  'repo:conflict-file': (args) => readStringPair(args, 'repo:conflict-file', 'repoPath', 'path'),
+  'repo:resolve-conflict-file': (args) =>
+    readRepoPathWithObject(args, 'repo:resolve-conflict-file', readConflictFileResolutionInput),
   'repo:undo': (args) => readStringPair(args, 'repo:undo', 'repoPath', 'undoId'),
   'repo:cancel-operation': (args) => readOperationCancellationArgs(args),
   'settings:get': (args) => noArgs('settings:get', args),
@@ -360,7 +364,7 @@ function readOptionalDeleteBranchRemote(value: unknown): GitDeleteBranchInput['r
 
 function readCheckoutTarget(value: unknown): GitCheckoutTarget {
   const record = readRecord(value, 'checkout target');
-  const kind = readEnumProperty(record, 'kind', ['local', 'remote', 'commit']);
+  const kind = readEnumProperty(record, 'kind', ['local', 'remote', 'remote-reset', 'commit']);
 
   if (kind === 'local') {
     return {
@@ -374,6 +378,14 @@ function readCheckoutTarget(value: unknown): GitCheckoutTarget {
       kind,
       name: readStringProperty(record, 'name'),
       localName: readOptionalStringProperty(record, 'localName')
+    };
+  }
+
+  if (kind === 'remote-reset') {
+    return {
+      kind,
+      name: readStringProperty(record, 'name'),
+      localName: readStringProperty(record, 'localName')
     };
   }
 
@@ -483,6 +495,22 @@ function readConflictActionInput(value: unknown): GitConflictActionInput {
   const record = readRecord(value, 'conflict action input');
   return {
     action: readEnumProperty(record, 'action', ['continue', 'skip', 'abort'])
+  };
+}
+
+function readConflictFileResolutionInput(value: unknown): GitConflictFileResolutionInput {
+  const record = readRecord(value, 'conflict file resolution input');
+  const resolution = readEnumProperty(record, 'resolution', ['content', 'ours', 'theirs', 'delete']);
+  const content = readOptionalStringProperty(record, 'content');
+
+  if (resolution === 'content' && content === undefined) {
+    throw new Error('content is required for a content conflict resolution.');
+  }
+
+  return {
+    path: readStringProperty(record, 'path'),
+    resolution,
+    ...(content !== undefined ? { content } : {})
   };
 }
 

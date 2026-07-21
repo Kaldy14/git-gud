@@ -15,6 +15,7 @@ import {
   FolderOpen,
   FolderTree,
   GitCommit,
+  GitMerge,
   List,
   Loader2,
   Minus,
@@ -1062,7 +1063,7 @@ function PathFileRows({
           <FileGroupHeader
             label={`Conflicts (${conflictedFiles.length})`}
             tone="danger"
-            detail="Open a file, resolve its markers, then mark it resolved."
+            detail="Select a file to compare both versions in the merge tool."
           />
           {conflictedFiles.map((file) => renderRow(file, `conflict:${file.path}`))}
         </>
@@ -1205,8 +1206,15 @@ function FileRow({
           className="pointer-events-none absolute inset-y-0 right-1 flex items-center gap-0.5 pl-6 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
           style={{ background: actionStripBackground }}
         >
-          <button className="icon-btn h-6 w-6" type="button" disabled={(!file.unstaged && !file.conflicted) || isMutating} onClick={onStage} title={file.conflicted ? 'Mark resolved by staging file' : 'Stage file'} aria-label={file.conflicted ? `Mark ${file.path} resolved` : `Stage ${file.path}`}>
-            <Check size={12} />
+          <button
+            className="icon-btn h-6 w-6"
+            type="button"
+            disabled={file.conflicted ? isMutating : !file.unstaged || isMutating}
+            onClick={file.conflicted ? onSelect : onStage}
+            title={file.conflicted ? 'Resolve in merge tool' : 'Stage file'}
+            aria-label={file.conflicted ? `Resolve conflict in ${file.path}` : `Stage ${file.path}`}
+          >
+            {file.conflicted ? <GitMerge size={12} /> : <Check size={12} />}
           </button>
           <button className="icon-btn h-6 w-6" type="button" disabled={!file.staged || isMutating} onClick={onUnstage} title="Unstage file">
             <RotateCcw size={12} />
@@ -1254,8 +1262,15 @@ function WipFileActionStrip({
         {file.path}
       </span>
       <div className="flex shrink-0 items-center gap-1">
-        <button className="icon-btn h-6 w-6" type="button" disabled={(!file.unstaged && !file.conflicted) || isMutating} onClick={onStage} title={file.conflicted ? 'Mark resolved by staging file' : 'Stage file'} aria-label={file.conflicted ? `Mark ${file.path} resolved` : `Stage ${file.path}`}>
-          <Check size={12} />
+        <button
+          className="icon-btn h-6 w-6"
+          type="button"
+          disabled={file.conflicted || !file.unstaged || isMutating}
+          onClick={onStage}
+          title={file.conflicted ? 'Save and stage from the merge tool' : 'Stage file'}
+          aria-label={file.conflicted ? `Resolve conflict in ${file.path} with the merge tool` : `Stage ${file.path}`}
+        >
+          {file.conflicted ? <GitMerge size={12} /> : <Check size={12} />}
         </button>
         <button className="icon-btn h-6 w-6" type="button" disabled={!file.staged || isMutating} onClick={onUnstage} title="Unstage file">
           <RotateCcw size={12} />

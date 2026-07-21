@@ -351,6 +351,11 @@ export type GitCheckoutTarget =
       localName?: string;
     }
   | {
+      kind: 'remote-reset';
+      name: string;
+      localName: string;
+    }
+  | {
       kind: 'commit';
       sha: string;
     };
@@ -446,6 +451,42 @@ export type GitConflictState = {
   message?: string;
 };
 
+export type GitConflictFileKind =
+  | 'both-modified'
+  | 'both-added'
+  | 'deleted-by-us'
+  | 'deleted-by-them'
+  | 'other';
+
+export type GitConflictFileVersion = {
+  oid: string;
+  shortOid: string;
+  mode: string;
+  content?: string;
+};
+
+export type GitConflictFile = {
+  repoPath: string;
+  path: string;
+  operation?: GitConflictOperation;
+  kind: GitConflictFileKind;
+  oursLabel: string;
+  theirsLabel: string;
+  base?: GitConflictFileVersion;
+  ours?: GitConflictFileVersion;
+  theirs?: GitConflictFileVersion;
+  result?: string;
+  isBinary: boolean;
+  omittedReason?: 'binary' | 'too-large' | 'unsupported-type';
+  loadedAt: string;
+};
+
+export type GitConflictFileResolutionInput = {
+  path: string;
+  resolution: 'content' | 'ours' | 'theirs' | 'delete';
+  content?: string;
+};
+
 type GitOperationSummary = {
   id: string;
   label: string;
@@ -458,6 +499,7 @@ export type GitQueryInvalidation =
   | 'graph'
   | 'wip-detail'
   | 'file-diff'
+  | 'conflict-file'
   | 'review-plan';
 
 export type GitUndoOperation =

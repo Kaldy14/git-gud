@@ -26,6 +26,14 @@ describe('IPC argument validation', () => {
         force: false
       }
     ]);
+    const remoteResetArgs = validateIpcArgs('repo:checkout', [
+      '/repo',
+      {
+        kind: 'remote-reset',
+        name: 'origin/feature/ipc-validation',
+        localName: 'feature/ipc-validation'
+      }
+    ]);
 
     expect(branchArgs[1]).toMatchObject({
       name: 'feature/ipc-validation',
@@ -39,6 +47,11 @@ describe('IPC argument validation', () => {
       localName: 'feature/ipc-validation',
       remote: { name: 'origin', branch: 'feature/ipc-validation' },
       force: false
+    });
+    expect(remoteResetArgs[1]).toEqual({
+      kind: 'remote-reset',
+      name: 'origin/feature/ipc-validation',
+      localName: 'feature/ipc-validation'
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);

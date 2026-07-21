@@ -9,6 +9,7 @@ export type RemoteBranchActivation =
   | { kind: 'pull'; branchName: string }
   | { kind: 'checkout-and-pull'; branchName: string }
   | { kind: 'checkout-local'; branchName: string }
+  | { kind: 'reset-local'; branchName: string }
   | { kind: 'checkout-remote' }
   | { kind: 'none' };
 
@@ -32,7 +33,17 @@ export function resolveRemoteBranchActivation(
   const localBranch = resolveLocalTrackingBranch(remoteBranchName, localBranches);
 
   if (!localBranch) {
-    return { kind: 'checkout-remote' };
+    const sameNamedBranch = localBranches.find(
+      (branch) => branch.name === branchNameFromRemoteRef(remoteBranchName)
+    );
+
+    return sameNamedBranch
+      ? { kind: 'reset-local', branchName: sameNamedBranch.name }
+      : { kind: 'checkout-remote' };
+  }
+
+  if (localBranch.ahead > 0) {
+    return { kind: 'reset-local', branchName: localBranch.name };
   }
 
   if (localBranch.behind > 0) {

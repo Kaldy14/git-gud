@@ -4,6 +4,24 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-07-21
+
+### Added
+
+- Added an editable conflict resolver with ours/theirs previews, per-marker choices, manual output editing, deletion support, and save-and-stage navigation across unresolved files.
+- Added a guarded reset-to-remote flow for same-named or diverged local branches, including undo metadata when the branch tip moves.
+- Added linked-worktree working-directory rows and worktree reference chips to the commit graph.
+
+### Changed
+
+- Refined commit-graph sizing, lanes, references, side-panel layout, and diff highlighting to better match the target graph design.
+
+### Fixed
+
+- Preserved structured conflict state across merge, rebase, cherry-pick, revert, and stash operations so conflicted files open directly in the resolver.
+- Showed branch-chip loading feedback while the checked-out branch fast-forwards from its remote.
+- Stabilized graph switching and repository queries when activating linked worktrees.
+
 ## [0.4.4] - 2026-07-20
 
 ### Fixed

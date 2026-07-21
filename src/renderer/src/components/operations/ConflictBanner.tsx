@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { AlertTriangle, Check, GitMerge, Loader2, SkipForward, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, Loader2, SkipForward, XCircle } from 'lucide-react';
 
 import type { GitConflictActionInput, GitConflictState } from '@shared/types';
 
@@ -19,33 +19,33 @@ export function ConflictBanner({ conflictState, isBusy, onResolve, onSelectFile 
   const operationLabel = conflictState.operation?.replace('-', ' ') ?? 'Git operation';
 
   return (
-    <div className="conflict-banner flex shrink-0 items-center gap-3 border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]" role="status" aria-live="polite">
-      <GitMerge size={15} className="shrink-0" />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="font-semibold capitalize">{operationLabel}</span>
-          <span className="min-w-0 truncate text-[var(--text-2)]">{conflictState.message}</span>
-        </div>
+    <div className="conflict-banner flex min-h-11 shrink-0 items-center gap-3 border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs" role="alert" aria-live="polite">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-[var(--danger-border)] bg-black/15 text-[var(--danger-text)]">
+        <AlertTriangle size={14} />
+      </span>
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <span className="shrink-0 font-semibold capitalize text-[var(--text-1)]">{operationLabel} conflicts</span>
         {hasConflictedFiles ? (
-          <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] text-[var(--text-2)]">
-            <AlertTriangle size={12} className="shrink-0 text-[var(--danger-text)]" />
-            <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-              {conflictState.files.map((file) => (
-                <button
-                  key={file.path}
-                  className="shrink-0 rounded px-1.5 py-0.5 text-left text-[var(--text-2)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
-                  type="button"
-                  title={`Open ${file.path}`}
-                  onClick={() => onSelectFile?.(file.path)}
-                >
-                  {file.path}
-                </button>
-              ))}
-            </div>
-          </div>
+          <span className="badge-mini shrink-0 border-[var(--danger-border)] text-[var(--danger-text)]">
+            {conflictState.files.length} unresolved
+          </span>
         ) : null}
+        <span className="min-w-0 truncate text-[11px] text-[var(--text-2)]">
+          {hasConflictedFiles ? 'Open the resolver, choose the final output, then save and stage each file.' : conflictState.message}
+        </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {hasConflictedFiles ? (
+          <button
+            className="btn-primary h-8 px-3 text-[11px]"
+            type="button"
+            disabled={isBusy}
+            onClick={() => onSelectFile?.(conflictState.files[0]!.path)}
+          >
+            Resolve conflicts
+            <ArrowRight size={12} />
+          </button>
+        ) : null}
         <button
           className="btn-subtle h-7 text-[11px]"
           type="button"
@@ -53,7 +53,7 @@ export function ConflictBanner({ conflictState, isBusy, onResolve, onSelectFile 
           title={hasConflictedFiles ? 'Stage resolved files before continuing' : `Continue ${operationLabel}`}
           onClick={() => onResolve('continue')}
         >
-          {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+          {isBusy && !hasConflictedFiles ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
           Continue
         </button>
         <button

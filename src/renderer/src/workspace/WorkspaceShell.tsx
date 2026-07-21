@@ -92,6 +92,10 @@ const FileFocusView = lazy(async () => {
   const module = await import('@renderer/components/diff/FileFocusView');
   return { default: module.FileFocusView };
 });
+const ConflictResolver = lazy(async () => {
+  const module = await import('@renderer/components/conflicts/ConflictResolver');
+  return { default: module.ConflictResolver };
+});
 const ReviewView = lazy(async () => {
   const module = await import('@renderer/components/review/ReviewView');
   return { default: module.ReviewView };
@@ -281,6 +285,11 @@ export function WorkspaceShell(): ReactElement {
     repositoryQuery.data?.remotes.find((remote) => remote.name === 'origin')?.name ??
     repositoryQuery.data?.remotes[0]?.name;
   const selectedSha = activeTab?.selectedCommit;
+  const conflictedPaths = useMemo(
+    () => repositoryQuery.data?.conflictState.files.map((file) => file.path) ?? [],
+    [repositoryQuery.data?.conflictState.files]
+  );
+  const isSelectedFileConflicted = Boolean(activeTab?.selectedFile && conflictedPaths.includes(activeTab.selectedFile));
   const selectedRow = useMemo(
     () => resolveSelectedGraphRow(graphRows, selectedSha),
     [graphRows, selectedSha]
@@ -1205,9 +1214,16 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
+    if (activation.kind === 'reset-local') {
+      handleResetLocalBranchToRemote(activation.branchName, name);
+      return;
+    }
+
     if (activation.kind === 'pull') {
-      void runRepositoryOperation(`Pull ${activation.branchName}`, (repoPath) =>
-        window.api.pullRepository(repoPath, { mode: 'ff-only' })
+      void runRepositoryOperation(
+        `Pull ${activation.branchName}`,
+        (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }),
+        { checkout: { targetBranch: activation.branchName } }
       );
       return;
     }
@@ -1239,6 +1255,33 @@ export function WorkspaceShell(): ReactElement {
       (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }),
       { repoPath: worktreePath }
     );
+  }
+
+  function handleResetLocalBranchToRemote(localName: string, remoteName: string): void {
+    const localBranch = repositoryQuery.data?.refs.localBranches.find((branch) => branch.name === localName);
+    const localCommitLabel = localBranch?.ahead
+      ? `${localBranch.ahead} local ${localBranch.ahead === 1 ? 'commit' : 'commits'} will no longer be on ${localName}.`
+      : `The current tip of ${localName} will be replaced.`;
+
+    openCommandDialog({
+      title: `Reset ${localName} to ${remoteName}?`,
+      description: `Check out ${localName} and move it to the selected remote branch.`,
+      detail: `${localCommitLabel} Your working tree must be clean. You can undo the reset until the repository changes again.`,
+      confirmLabel: 'Reset Local to Remote',
+      tone: 'danger',
+      fields: [],
+      onSubmit() {
+        void runRepositoryOperation(
+          `Reset ${localName} to ${remoteName}`,
+          (repoPath) => window.api.checkoutRef(repoPath, {
+            kind: 'remote-reset',
+            name: remoteName,
+            localName
+          }),
+          { checkout: { targetBranch: localName } }
+        );
+      }
+    });
   }
 
   function handleCheckoutCommit(sha: string): void {
@@ -1933,7 +1976,7 @@ export function WorkspaceShell(): ReactElement {
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}
                 onCheckoutBranch={handleCheckoutBranch}
-                onCheckoutRemoteBranch={handleCheckoutRemoteBranch}
+                onCheckoutRemoteBranch={handleActivateRemoteBranch}
                 onRenameBranch={handleRenameBranch}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
@@ -1959,6 +2002,25 @@ export function WorkspaceShell(): ReactElement {
                     diffStyle={activeDiffStyle}
                     onSetDiffStyle={handleSetDiffStyle}
                     onClose={() => handleSetReviewOpen(false)}
+                  />
+                </Suspense>
+              ) : activeTab.selectedFile && isSelectedFileConflicted ? (
+                <Suspense
+                  fallback={
+                    <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] text-xs text-[var(--text-3)]">
+                      Loading conflict resolver…
+                    </section>
+                  }
+                >
+                  <ConflictResolver
+                    key={`conflict:${activeTab.selectedFile}`}
+                    repoPath={activeTab.path}
+                    path={activeTab.selectedFile}
+                    unresolvedPaths={conflictedPaths}
+                    operation={repositoryQuery.data?.conflictState.operation}
+                    isOperationBusy={isOperationBusy}
+                    onSelectFile={handleOpenConflictFile}
+                    onClose={() => handleSelectFile(undefined)}
                   />
                 </Suspense>
               ) : activeTab.selectedFile ? (
@@ -2101,7 +2163,7 @@ export function WorkspaceShell(): ReactElement {
           onClose={() => setIsQuickJumpOpen(false)}
           onActivateTab={(tabId) => void activateTab(tabId)}
           onCheckoutBranch={handleCheckoutBranch}
-          onCheckoutRemoteBranch={handleCheckoutRemoteBranch}
+          onCheckoutRemoteBranch={handleActivateRemoteBranch}
           onSelectCommit={handleSelectRow}
           onOpenRepositoryPath={(repoPath) => void openRepositoryAtPath(repoPath)}
         />

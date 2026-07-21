@@ -255,6 +255,10 @@ export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInpu
 }
 
 export async function checkoutRef(tab: OperationTab, target: GitCheckoutTarget): Promise<GitOperationResult> {
+  if (target.kind === 'remote-reset') {
+    return resetLocalBranchToRemote(tab, target);
+  }
+
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const before = await currentHeadState(tab.path, env);
   const args = checkoutArgs(target);
@@ -275,6 +279,53 @@ export async function checkoutRef(tab: OperationTab, target: GitCheckoutTarget):
     : undefined;
 
   return createOperationResult(tab, env, 'checkout', `Checkout ${checkoutTargetLabel(target)}`, undoEntry);
+}
+
+async function resetLocalBranchToRemote(
+  tab: OperationTab,
+  target: Extract<GitCheckoutTarget, { kind: 'remote-reset' }>
+): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const remoteName = normalizeRequiredName(target.name, 'Remote branch name');
+  const localName = normalizeRequiredName(target.localName, 'Local branch name');
+  await assertValidBranchName(tab.path, localName, env);
+  await assertCleanWorktreeAndIndex(
+    tab.path,
+    env,
+    `Reset ${localName} is blocked while the repository has index or working-tree changes. Stash or commit them first.`
+  );
+
+  const localHeadBefore = await revParseOptional(tab.path, `refs/heads/${localName}^{commit}`, env);
+
+  if (!localHeadBefore) {
+    throw new Error(`Local branch ${localName} does not exist.`);
+  }
+
+  const remoteRef = `refs/remotes/${remoteName}`;
+  const remoteHead = await revParse(tab.path, `${remoteRef}^{commit}`, env);
+  await assertNoIgnoredTreeCollisions(tab.path, remoteHead, env, `Reset ${localName} to ${remoteName}`);
+  await gitExecutor.run(
+    ['checkout', '--no-overwrite-ignore', '-B', localName, remoteRef],
+    { cwd: tab.path, kind: 'mutation', env }
+  );
+  const headAfter = await revParseOptional(tab.path, 'HEAD', env);
+  const undoEntry = headAfter && localHeadBefore !== headAfter
+    ? recordUndo(tab, 'reset', `Undo reset ${localName} to ${remoteName}`, {
+        headBefore: localHeadBefore,
+        headAfter,
+        resetMode: 'hard',
+        affectedRefs: [`refs/heads/${localName}`],
+        warning: 'Undo restores the previous local branch tip and is only available while the index and working tree remain clean.'
+      })
+    : undefined;
+
+  return createOperationResult(
+    tab,
+    env,
+    'checkout',
+    `Reset ${localName} to ${remoteName}`,
+    undoEntry
+  );
 }
 
 export async function mergeRef(tab: OperationTab, input: GitMergeInput): Promise<GitOperationResult> {
@@ -874,6 +925,10 @@ function checkoutArgs(target: GitCheckoutTarget): string[] {
     return ['checkout', '--no-overwrite-ignore', '--track', remoteName];
   }
 
+  if (target.kind === 'remote-reset') {
+    throw new Error('Remote reset checkout must use the guarded reset flow.');
+  }
+
   return ['checkout', '--no-overwrite-ignore', normalizeRequiredName(target.sha, 'Commit SHA')];
 }
 
@@ -884,6 +939,10 @@ function checkoutTargetLabel(target: GitCheckoutTarget): string {
 
   if (target.kind === 'remote') {
     return target.localName ? `${target.localName} tracking ${target.name}` : target.name;
+  }
+
+  if (target.kind === 'remote-reset') {
+    return `${target.localName} at ${target.name}`;
   }
 
   return target.sha.slice(0, 8);

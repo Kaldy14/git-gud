@@ -7,6 +7,8 @@ import type {
   GitCommitInput,
   GitCheckoutTarget,
   GitConflictActionInput,
+  GitConflictFile,
+  GitConflictFileResolutionInput,
   GitCreateBranchInput,
   GitDeleteBranchInput,
   GitFileDiff,
@@ -263,6 +265,14 @@ export type IpcChannelMap = {
     args: [repoPath: string, input: GitConflictActionInput];
     result: GitOperationResult;
   };
+  'repo:conflict-file': {
+    args: [repoPath: string, path: string];
+    result: GitConflictFile;
+  };
+  'repo:resolve-conflict-file': {
+    args: [repoPath: string, input: GitConflictFileResolutionInput];
+    result: GitOperationResult;
+  };
   'repo:undo': {
     args: [repoPath: string, undoId: string];
     result: GitOperationResult;
@@ -359,6 +369,8 @@ export type RendererApi = {
   getInteractiveRebasePlan: (repoPath: string, base: string) => Promise<GitInteractiveRebasePlan>;
   runInteractiveRebase: (repoPath: string, input: GitInteractiveRebaseInput) => Promise<GitOperationResult>;
   resolveConflict: (repoPath: string, input: GitConflictActionInput) => Promise<GitOperationResult>;
+  getConflictFile: (repoPath: string, path: string) => Promise<GitConflictFile>;
+  resolveConflictFile: (repoPath: string, input: GitConflictFileResolutionInput) => Promise<GitOperationResult>;
   undoOperation: (repoPath: string, undoId: string) => Promise<GitOperationResult>;
   cancelRepositoryOperation: (repoPath: string, operationId: string) => Promise<GitOperationCancellationResult>;
   getSettings: () => Promise<AppSettings>;

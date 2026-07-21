@@ -1975,7 +1975,7 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
           fill="var(--bg-graph)"
           stroke={color}
           strokeDasharray="2 2"
-          strokeWidth={2}
+          strokeWidth={1.8}
         />
         <path d={`M ${cx - 5} ${cy - 2} H ${cx + 5}`} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
         <path d={`M ${cx - 3} ${cy + 3} H ${cx + 3}`} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
@@ -2030,14 +2030,14 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
       ) : (
         <>
           <circle cx={cx} cy={cy} r={imageRadius} fill={authorColor} />
-          <text x={cx} y={cy + 2.2} textAnchor="middle" fontSize="6.3" fontWeight="700" fill="var(--bg-field)">
+          <text x={cx} y={cy + 1.9} textAnchor="middle" fontSize="5.4" fontWeight="700" fill="var(--bg-field)">
             {authorInitials.slice(0, 2)}
           </text>
         </>
       )}
       <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="rgba(4, 7, 10, 0.58)" strokeWidth={0.35} />
       {kind === 'merge' ? (
-        <circle cx={cx + 7.4} cy={cy + 7.2} r={2.7} fill="var(--bg-graph)" stroke={color} strokeWidth={1.4} />
+        <circle cx={cx + 6.8} cy={cy + 6.6} r={2.3} fill="var(--bg-graph)" stroke={color} strokeWidth={1.2} />
       ) : null}
     </g>
   );

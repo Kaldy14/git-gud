@@ -49,6 +49,73 @@ describe('git operations', () => {
     }
   });
 
+  it('checks out an existing local branch at its remote ref and can restore its dropped commits', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const remoteHead = (await git(repoPath, ['rev-parse', 'refs/remotes/origin/main'])).stdout.trim();
+      await commitFile(repoPath, 'local-only.txt', 'local commit\n', 'local-only commit');
+      const localHead = (await git(repoPath, ['rev-parse', 'refs/heads/main'])).stdout.trim();
+
+      const result = await checkoutRef(tab, {
+        kind: 'remote-reset',
+        name: 'origin/main',
+        localName: 'main'
+      });
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(remoteHead);
+      expect(await branchUpstream(repoPath, 'main')).toBe('origin/main');
+      await expect(access(join(repoPath, 'local-only.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(result.undoEntry).toMatchObject({
+        operation: 'reset',
+        headBefore: localHead,
+        headAfter: remoteHead,
+        resetMode: 'hard'
+      });
+
+      if (!result.undoEntry) {
+        throw new Error('Expected remote reset to record undo metadata.');
+      }
+
+      await undoOperation(tab, result.undoEntry.id);
+
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(localHead);
+      expect(await readFile(join(repoPath, 'local-only.txt'), 'utf8')).toBe('local commit\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('does not switch branches or move refs when a remote reset starts with local changes', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'local-only.txt', 'local commit\n', 'local-only commit');
+      const localHead = (await git(repoPath, ['rev-parse', 'refs/heads/main'])).stdout.trim();
+      await git(repoPath, ['checkout', '-b', 'other', 'refs/remotes/origin/main']);
+      await writeRepoFile(repoPath, 'uncommitted.txt', 'keep me\n');
+
+      await expect(
+        checkoutRef(tab, {
+          kind: 'remote-reset',
+          name: 'origin/main',
+          localName: 'main'
+        })
+      ).rejects.toThrow('index or working-tree changes');
+
+      expect(await currentBranch(repoPath)).toBe('other');
+      expect((await git(repoPath, ['rev-parse', 'refs/heads/main'])).stdout.trim()).toBe(localHead);
+      expect(await readFile(join(repoPath, 'uncommitted.txt'), 'utf8')).toBe('keep me\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('creates, checks out, and safely undoes a branch', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 

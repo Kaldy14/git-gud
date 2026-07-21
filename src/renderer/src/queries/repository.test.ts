@@ -32,6 +32,7 @@ describe('repository watcher invalidation', () => {
       'graph',
       'wip-detail',
       'file-diff',
+      'conflict-file',
       'review-plan'
     ]);
   });
@@ -45,7 +46,7 @@ describe('repository watcher invalidation', () => {
           paths: ['/repo/.git/refs/heads/main']
         })
       )
-    ).toEqual(['overview', 'graph', 'wip-detail', 'file-diff', 'review-plan']);
+    ).toEqual(['overview', 'graph', 'wip-detail', 'file-diff', 'conflict-file', 'review-plan']);
   });
 
   it('keeps generic Git metadata changes scoped away from WIP and diff caches', () => {
