@@ -6,6 +6,7 @@ import type {
   GitStashEntry,
   GitStatusCode,
   GitStatusSummary,
+  GitWorktree,
   GraphFile,
   GraphFileStatus,
   GraphRefChip,
@@ -15,7 +16,7 @@ import type {
 import { createProfileCommandEnv } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import { parseGitLog, type GitLogCommit } from './parsers/log';
-import { loadRefs, loadStashes, loadStatus } from './repositoryOverview';
+import { loadRefs, loadStashes, loadStatus, loadWorktrees } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
 
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
@@ -27,27 +28,30 @@ export async function loadCommitGraph(
   const limit = normalizeLimit(requestedLimit);
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
-  const [logCommits, refs, status, stashes] = await Promise.all([
+  const [logCommits, refs, status, stashes, worktrees] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env),
     loadRefs(tab.path, env),
     loadStatus(tab.path, env),
-    loadStashes(tab.path, env)
+    loadStashes(tab.path, env),
+    loadWorktrees(tab.path, env)
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
   const refMap = createRefMap(refs);
+  const wipInputs = await loadWorktreeWipInputs(tab.path, worktrees, status, env);
+  const wipInputsByBase = createInputsByBase(wipInputs);
   const stashInputsByBase = createStashInputsByBase(stashes);
   const attachedStashBases = new Set<string>();
+  const loadedCommitShas = new Set(commits.map((commit) => commit.sha));
   const inputs: GraphCommitInput[] = [];
 
-  const wipInput = currentWorktreeWipInput(tab.path, status);
-
-  if (wipInput) {
-    inputs.push(wipInput);
-  }
-
   for (const commit of commits) {
+    const attachedWipInputs = wipInputsByBase.get(commit.sha);
     const stashInputs = stashInputsByBase.get(commit.sha);
+
+    if (attachedWipInputs) {
+      inputs.push(...attachedWipInputs);
+    }
 
     if (stashInputs) {
       inputs.push(...stashInputs);
@@ -56,6 +60,8 @@ export async function loadCommitGraph(
 
     inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha)));
   }
+
+  inputs.push(...wipInputs.filter((input) => !loadedCommitShas.has(input.parentShas[0] ?? '')));
 
   for (const [baseSha, stashInputs] of stashInputsByBase.entries()) {
     if (!attachedStashBases.has(baseSha)) {
@@ -74,31 +80,70 @@ export async function loadCommitGraph(
   };
 }
 
-function currentWorktreeWipInput(
+async function loadWorktreeWipInputs(
   repoPath: string,
-  status: GitStatusSummary
-): GraphCommitInput | undefined {
-  if (!status.isDirty) {
-    return undefined;
+  worktrees: GitWorktree[],
+  currentStatus: GitStatusSummary,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GraphCommitInput[]> {
+  const listedWorktrees = worktrees.some((worktree) => worktree.current)
+    ? worktrees
+    : [{ path: repoPath, head: currentStatus.branch.oid, branch: currentStatus.branch.head, detached: currentStatus.branch.isDetached, bare: false, current: true }];
+  const loaded = await Promise.all(
+    listedWorktrees
+      .filter((worktree) => !worktree.bare)
+      .map(async (worktree): Promise<GraphCommitInput | undefined> => {
+        const status = worktree.current ? currentStatus : await loadLinkedWorktreeStatus(worktree.path, env);
+
+        if (!status?.isDirty) {
+          return undefined;
+        }
+
+        return {
+          sha: worktree.current ? 'wip' : `wip:${worktree.path}`,
+          parentShas: status.branch.oid ? [status.branch.oid] : worktree.head ? [worktree.head] : [],
+          subject: '// WIP',
+          authorName: 'Worktree',
+          authoredAt: new Date().toISOString(),
+          dateLabel: 'now',
+          kind: 'wip',
+          colorOverride: '#bc271b',
+          refs: [{ label: 'WIP', kind: 'wip' }],
+          worktree: {
+            path: worktree.path,
+            branch: worktree.branch ?? status.branch.head,
+            current: worktree.current
+          },
+          files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
+        };
+      })
+  );
+
+  return loaded.filter((input): input is GraphCommitInput => Boolean(input));
+}
+
+function createInputsByBase(inputs: GraphCommitInput[]): Map<string, GraphCommitInput[]> {
+  const inputsByBase = new Map<string, GraphCommitInput[]>();
+
+  for (const input of inputs) {
+    const baseSha = input.parentShas[0] ?? '';
+    const inputsForBase = inputsByBase.get(baseSha) ?? [];
+    inputsForBase.push(input);
+    inputsByBase.set(baseSha, inputsForBase);
   }
 
-  return {
-    sha: 'wip',
-    parentShas: status.branch.oid ? [status.branch.oid] : [],
-    subject: '// WIP',
-    authorName: 'Worktree',
-    authoredAt: new Date().toISOString(),
-    dateLabel: 'now',
-    kind: 'wip',
-    colorOverride: '#bc271b',
-    refs: [{ label: 'WIP', kind: 'wip' }],
-    worktree: {
-      path: repoPath,
-      branch: status.branch.head,
-      current: true
-    },
-    files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
-  };
+  return inputsByBase;
+}
+
+async function loadLinkedWorktreeStatus(
+  worktreePath: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitStatusSummary | undefined> {
+  try {
+    return await loadStatus(worktreePath, env);
+  } catch {
+    return undefined;
+  }
 }
 
 function createStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCommitInput[]> {

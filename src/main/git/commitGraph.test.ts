@@ -78,7 +78,7 @@ describe('loadCommitGraph', () => {
     }
   });
 
-  it('renders a WIP tip only for the currently opened worktree', async () => {
+  it('renders a selectable WIP tip for every dirty linked worktree', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-worktrees-'));
 
     try {
@@ -93,8 +93,14 @@ describe('loadCommitGraph', () => {
       await git(repoPath, ['commit', '-m', 'base']);
       await git(repoPath, ['checkout', '-B', 'main']);
       await git(repoPath, ['worktree', 'add', '-b', 'feature/worktree-wip', linkedPath, 'main']);
+      const linkedBase = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await writeRepoFile(repoPath, 'main-head.txt', 'main head\n');
+      await git(repoPath, ['add', 'main-head.txt']);
+      await git(repoPath, ['commit', '-m', 'main head']);
+      const mainHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
       await writeRepoFile(repoPath, 'main-wip.txt', 'main changes\n');
       await writeRepoFile(linkedPath, 'linked-wip.txt', 'linked changes\n');
+      const canonicalRepoPath = await realpath(repoPath);
       const canonicalLinkedPath = await realpath(linkedPath);
 
       expect(await loadWorktrees(repoPath)).toEqual(expect.arrayContaining([
@@ -107,18 +113,43 @@ describe('loadCommitGraph', () => {
       const linkedPage = await loadCommitGraph({ path: linkedPath });
       const linkedWipRows = linkedPage.rows.filter((row) => row.node.kind === 'wip');
 
-      expect(wipRows).toHaveLength(1);
-      expect(wipRows[0]).toMatchObject({
+      expect(wipRows).toHaveLength(2);
+      expect(wipRows.find((row) => row.worktree?.path === canonicalRepoPath)).toMatchObject({
         sha: 'wip',
-        worktree: { path: repoPath, branch: 'main', current: true },
+        worktree: { path: canonicalRepoPath, branch: 'main', current: true },
         files: [{ path: 'main-wip.txt', status: 'added' }]
       });
-      expect(linkedWipRows).toHaveLength(1);
-      expect(linkedWipRows[0]).toMatchObject({
-        sha: 'wip',
-        worktree: { path: linkedPath, branch: 'feature/worktree-wip', current: true },
+      expect(wipRows.find((row) => row.worktree?.path === canonicalLinkedPath)).toMatchObject({
+        sha: `wip:${canonicalLinkedPath}`,
+        worktree: { path: canonicalLinkedPath, branch: 'feature/worktree-wip', current: false },
         files: [{ path: 'linked-wip.txt', status: 'added' }]
       });
+      expect(linkedWipRows.map((row) => row.worktree?.path)).toEqual(
+        wipRows.map((row) => row.worktree?.path)
+      );
+      expect(linkedWipRows.find((row) => row.worktree?.path === canonicalRepoPath)?.worktree).toMatchObject({
+        path: canonicalRepoPath,
+        current: false
+      });
+      expect(linkedWipRows.find((row) => row.worktree?.path === canonicalLinkedPath)?.worktree).toMatchObject({
+        path: canonicalLinkedPath,
+        current: true
+      });
+      expect(page.rows.map((row) => row.sha)).toEqual([
+        'wip',
+        mainHead,
+        `wip:${canonicalLinkedPath}`,
+        linkedBase
+      ]);
+
+      const limitedPage = await loadCommitGraph({ path: repoPath }, 1);
+
+      expect(limitedPage.hasMore).toBe(true);
+      expect(limitedPage.rows.map((row) => row.sha)).toEqual([
+        'wip',
+        mainHead,
+        `wip:${canonicalLinkedPath}`
+      ]);
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
