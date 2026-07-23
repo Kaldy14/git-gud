@@ -125,6 +125,44 @@ describe('AI review guides', () => {
     await vi.waitFor(() => expect(manager.getState(plan.repoPath, plan.sourceFingerprint).status).toBe('ready'));
   });
 
+  it('trims deferred cache entries after the oldest running guide completes', async () => {
+    const firstPlan = reviewPlan();
+    let resolveFirstGuide: (guide: GitReviewGuide) => void = () => undefined;
+    const firstGuide = new Promise<GitReviewGuide>((resolve) => {
+      resolveFirstGuide = resolve;
+    });
+    const engine: ReviewGuideEngine = {
+      generate: async (plan) => {
+        if (plan.sourceFingerprint === firstPlan.sourceFingerprint) {
+          return firstGuide;
+        }
+        return validGuide(plan);
+      },
+      shutdown: () => undefined
+    };
+    const manager = new ReviewGuideManager(engine);
+    const laterPlans = Array.from({ length: 30 }, (_, index) => ({
+      ...reviewPlan(),
+      sourceFingerprint: `later-${index}`
+    }));
+
+    manager.start(firstPlan);
+    for (const plan of laterPlans) {
+      manager.start(plan);
+    }
+    await vi.waitFor(() => {
+      expect(manager.getState(
+        laterPlans.at(-1)!.repoPath,
+        laterPlans.at(-1)!.sourceFingerprint
+      ).status).toBe('ready');
+    });
+
+    resolveFirstGuide(validGuide(firstPlan));
+    await vi.waitFor(() => {
+      expect(manager.getState(firstPlan.repoPath, firstPlan.sourceFingerprint).status).toBe('idle');
+    });
+  });
+
   it('keeps a failed guide isolated from the ordinary review plan', async () => {
     const plan = reviewPlan();
     const manager = new ReviewGuideManager(new FakeEngine(async () => {

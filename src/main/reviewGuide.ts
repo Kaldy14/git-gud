@@ -118,6 +118,7 @@ export class ReviewGuideManager {
     this.runningJobs.set(key, job);
     void job.finally(() => {
       this.runningJobs.delete(key);
+      this.trimCache();
     });
     return state;
   }
