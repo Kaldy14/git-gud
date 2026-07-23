@@ -292,6 +292,12 @@ function ReviewBody({
   onSelectUnit: (unitId: string) => void;
   onToggleViewed: () => void;
 }): ReactElement {
+  const reviewChunksRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    reviewChunksRef.current?.scrollTo({ top: 0 });
+  }, [selectedUnit?.unit.id]);
+
   if (isLoading) {
     return <ReviewMessage icon={<Loader2 size={16} className="animate-spin" />} text="Building contextual review…" />;
   }
@@ -344,11 +350,11 @@ function ReviewBody({
               </div>
               <button className={selectedUnit.isViewed ? 'btn-subtle h-8 text-xs' : 'btn-primary h-8 text-xs'} type="button" disabled={isMutating} onClick={onToggleViewed}>
                 {isMutating ? <Loader2 size={13} className="animate-spin" /> : selectedUnit.isViewed ? <X size={13} /> : <CheckCheck size={13} />}
-                {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed & next'}
+                {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed'}
               </button>
             </header>
             {mutationError ? <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">{mutationError}</p> : null}
-            <div className="review-chunks">
+            <div ref={reviewChunksRef} className="review-chunks">
               {createReviewContexts(selectedUnit.visibleChunks).map((contextGroup, _contextIndex, contexts) => (
                 <section className="review-context-group" key={contextGroup.key}>
                   {contexts.length > 1 ? (
