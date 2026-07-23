@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Check,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
   Columns2,
   Clock3,
   FileCode2,
@@ -26,10 +28,22 @@ import {
 } from 'lucide-react';
 
 import { DIFF_OPTIONS_BASE, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@renderer/components/ui/dropdown-menu';
 import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
 import type {
   GitReviewChunk,
   GitReviewFileContext,
+  GitReviewGuide,
+  GitReviewGuidePriority,
+  GitReviewGuideState,
+  GitReviewGuideUnit,
   GitReviewPlan,
   GitReviewTarget
 } from '@shared/types';
@@ -46,6 +60,7 @@ import {
   type PreparedReviewDiff
 } from './reviewContextDiff';
 import { createReviewContextOptions } from './reviewContextExpansion';
+import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import { createReviewContexts } from './reviewSections';
 
@@ -112,7 +127,7 @@ type ReviewLineCollaboration = {
 
 export function ReviewView({
   repoPath,
-  target: initialTarget,
+  target,
   plan: embeddedPlan,
   reviewProgressKey,
   lineComments = [],
@@ -126,9 +141,6 @@ export function ReviewView({
   const sectionRef = useRef<HTMLElement>(null);
   const workerPool = useWorkerPool();
   const queryClient = useQueryClient();
-  const [wipScope, setWipScope] = useState<'all' | 'staged' | 'unstaged'>(
-    initialTarget.kind === 'wip' ? initialTarget.scope : 'all'
-  );
   const [preferences, setPreferences] = useState<ReviewPreferences>(() =>
     loadReviewPreferences(window.localStorage, repoPath)
   );
@@ -145,10 +157,7 @@ export function ReviewView({
     range: SelectedLineRange;
   }>();
   const [lineCommentBody, setLineCommentBody] = useState('');
-  const target = useMemo<GitReviewTarget>(
-    () => (initialTarget.kind === 'wip' ? { kind: 'wip', scope: wipScope } : initialTarget),
-    [initialTarget, wipScope]
-  );
+  const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
   const reviewQuery = useReviewPlan(
     embeddedPlan ? undefined : repoPath,
     embeddedPlan ? undefined : target
@@ -170,10 +179,44 @@ export function ReviewView({
     () => new Set(reviewPlan?.reviewedChunkIds ?? []),
     [reviewPlan?.reviewedChunkIds]
   );
-  const presentation = useMemo(
+  const currentReviewGuideState: GitReviewGuideState | undefined =
+    !embeddedPlan && reviewPlan
+      ? reviewGuideState?.sourceFingerprint === reviewPlan.sourceFingerprint
+        ? reviewGuideState
+        : { status: 'idle', sourceFingerprint: reviewPlan.sourceFingerprint }
+      : undefined;
+  const basePresentation = useMemo(
     () => reviewPlan ? createReviewPresentation(reviewPlan, preferences, reviewedChunkIds) : undefined,
     [preferences, reviewPlan, reviewedChunkIds]
   );
+  const reviewGuide =
+    currentReviewGuideState?.status === 'ready'
+      ? currentReviewGuideState.guide
+      : undefined;
+  const presentation = useMemo(
+    () => basePresentation
+      ? {
+          ...basePresentation,
+          units: rankReviewUnitsByGuide(
+            basePresentation.units,
+            reviewGuide,
+            reviewPlan?.sourceFingerprint
+          )
+        }
+      : undefined,
+    [basePresentation, reviewGuide, reviewPlan?.sourceFingerprint]
+  );
+  const reviewGuideUnits = useMemo(
+    () => new Map(reviewGuide?.units.map((unit) => [unit.unitId, unit]) ?? []),
+    [reviewGuide]
+  );
+  const activeFilterCount = [
+    preferences.skipTests,
+    preferences.skipImports,
+    preferences.skipGenerated,
+    preferences.skipDeletions,
+    preferences.skipFilePatterns && preferences.filePatterns.length > 0
+  ].filter(Boolean).length;
   const fileContexts = useMemo(
     () => new Map(reviewPlan?.fileContexts.map((context) => [context.id, context]) ?? []),
     [reviewPlan?.fileContexts]
@@ -250,6 +293,68 @@ export function ReviewView({
   }, []);
 
   useEffect(() => {
+    const sourceFingerprint = reviewPlan?.sourceFingerprint;
+
+    if (embeddedPlan || !sourceFingerprint) {
+      return;
+    }
+
+    let cancelled = false;
+    void window.api.getReviewGuideState(repoPath, sourceFingerprint)
+      .then((state) => {
+        if (!cancelled && state.sourceFingerprint === sourceFingerprint) {
+          setReviewGuideState(state);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setReviewGuideState({
+            status: 'failed',
+            sourceFingerprint,
+            errorMessage: error instanceof Error ? error.message : 'Unable to load AI guide status.'
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [embeddedPlan, repoPath, reviewPlan?.sourceFingerprint]);
+
+  useEffect(() => {
+    if (currentReviewGuideState?.status !== 'running') {
+      return;
+    }
+
+    const sourceFingerprint = currentReviewGuideState.sourceFingerprint;
+    let cancelled = false;
+    const refresh = (): void => {
+      void window.api.getReviewGuideState(repoPath, sourceFingerprint)
+        .then((state) => {
+          if (!cancelled && state.sourceFingerprint === sourceFingerprint) {
+            setReviewGuideState(state);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setReviewGuideState({
+              status: 'failed',
+              sourceFingerprint,
+              errorMessage: error instanceof Error ? error.message : 'Unable to load AI guide status.'
+            });
+          }
+        });
+    };
+    const interval = window.setInterval(refresh, 1_000);
+    refresh();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [currentReviewGuideState?.sourceFingerprint, currentReviewGuideState?.status, repoPath]);
+
+  useEffect(() => {
     if (!workerPool || !selectedUnit || !presentation) {
       return;
     }
@@ -289,6 +394,33 @@ export function ReviewView({
   function updatePreferences(next: ReviewPreferences): void {
     setPreferences(next);
     saveReviewPreferences(window.localStorage, repoPath, next);
+  }
+
+  async function startReviewGuide(): Promise<void> {
+    if (embeddedPlan || !reviewPlan || currentReviewGuideState?.status === 'running') {
+      return;
+    }
+
+    const sourceFingerprint = reviewPlan.sourceFingerprint;
+    setSelectedUnitId(selectedUnit?.unit.id);
+    setReviewGuideState({
+      status: 'running',
+      sourceFingerprint,
+      startedAt: new Date().toISOString()
+    });
+
+    try {
+      const state = await window.api.startReviewGuide(repoPath, target, sourceFingerprint);
+      if (state.sourceFingerprint === sourceFingerprint) {
+        setReviewGuideState(state);
+      }
+    } catch (error) {
+      setReviewGuideState({
+        status: 'failed',
+        sourceFingerprint,
+        errorMessage: error instanceof Error ? error.message : 'Unable to start the AI guide.'
+      });
+    }
   }
 
   function markSelectedUnit(viewed: boolean): void {
@@ -401,7 +533,7 @@ export function ReviewView({
   return (
     <section ref={sectionRef} className="review-view" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="review-toolbar">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="review-toolbar-primary">
           {target.kind === 'branch' ? (
             <span
               className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2.5 text-[11px] font-semibold text-[var(--text-2)]"
@@ -411,63 +543,19 @@ export function ReviewView({
               <span className="max-w-48 truncate">{target.name}</span>
             </span>
           ) : null}
-          {target.kind === 'wip' ? (
-            <div className="segmented" aria-label="Working directory review scope">
-              {(['all', 'unstaged', 'staged'] as const).map((scope) => (
-                <button key={scope} type="button" data-active={wipScope === scope} onClick={() => setWipScope(scope)}>
-                  {scope === 'all' ? 'All WIP' : scope === 'unstaged' ? 'Worktree' : 'Staged'}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <ReviewFilterToggle
-            checked={preferences.skipTests}
-            icon={<TestTube2 size={12} />}
-            label="Skip tests/specs"
-            onChange={(skipTests) => updatePreferences({ ...preferences, skipTests })}
+          <ReviewFilterMenu
+            preferences={preferences}
+            activeCount={activeFilterCount}
+            onChange={updatePreferences}
+            onConfigurePatterns={() => setIsPatternEditorOpen(true)}
           />
-          <ReviewFilterToggle
-            checked={preferences.skipImports}
-            icon={<PackageOpen size={12} />}
-            label="Skip imports"
-            onChange={(skipImports) => updatePreferences({ ...preferences, skipImports })}
-          />
-          <ReviewFilterToggle
-            checked={preferences.skipGenerated}
-            icon={<FileCog size={12} />}
-            label="Skip generated"
-            onChange={(skipGenerated) => updatePreferences({ ...preferences, skipGenerated })}
-          />
-          <ReviewFilterToggle
-            checked={preferences.skipDeletions}
-            icon={<Trash2 size={12} />}
-            label="Skip deletions"
-            onChange={(skipDeletions) => updatePreferences({ ...preferences, skipDeletions })}
-          />
-          <div className="flex items-center gap-1">
-            <ReviewFilterToggle
-              checked={preferences.skipFilePatterns}
-              disabled={preferences.filePatterns.length === 0}
-              icon={<Settings2 size={12} />}
-              label="Skip patterns"
-              onChange={(skipFilePatterns) => updatePreferences({ ...preferences, skipFilePatterns })}
-            />
-            <button
-              className="btn-subtle h-7 min-w-7 px-2 text-[11px]"
-              type="button"
-              aria-label="Configure repository skip patterns"
-              title="Configure repository skip patterns"
-              onClick={() => setIsPatternEditorOpen(true)}
-            >
-              <Settings2 size={12} />
-              {preferences.filePatterns.length > 0 ? preferences.filePatterns.length : null}
-            </button>
-          </div>
+          <ReviewProgress presentation={presentation} />
         </div>
 
-        <ReviewProgress presentation={presentation} />
-
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="review-toolbar-actions">
+          {!embeddedPlan && reviewPlan?.units.length ? (
+            <ReviewGuideControl state={currentReviewGuideState} onStart={() => void startReviewGuide()} />
+          ) : null}
           <div className="segmented shrink-0">
             <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
               <Rows3 size={12} />
@@ -487,6 +575,8 @@ export function ReviewView({
           </button>
         </div>
       </div>
+
+      {!embeddedPlan ? <ReviewGuideBanner state={currentReviewGuideState} guide={reviewGuide} /> : null}
 
       <ReviewBody
         isLoading={embeddedPlan ? false : reviewQuery.isLoading}
@@ -508,6 +598,7 @@ export function ReviewView({
         isMutating={progressMutation.isPending}
         mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
         lineCollaboration={lineCollaboration}
+        reviewGuideUnits={reviewGuideUnits}
         onSelectUnit={setSelectedUnitId}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
@@ -531,6 +622,247 @@ export function ReviewView({
   );
 }
 
+function ReviewGuideControl({
+  state,
+  onStart
+}: {
+  state: GitReviewGuideState | undefined;
+  onStart: () => void;
+}): ReactElement {
+  if (state?.status === 'running') {
+    return (
+      <span className="review-guide-control" aria-live="polite">
+        <Loader2 size={12} className="animate-spin" />
+        AI guide
+      </span>
+    );
+  }
+
+  if (state?.status === 'ready') {
+    return (
+      <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={onStart}>
+        <Check size={12} />
+        Rebuild AI guide
+      </button>
+    );
+  }
+
+  if (state?.status === 'failed') {
+    return (
+      <button
+        className="btn-subtle h-7 px-2 text-[11px] text-[var(--danger-text)]"
+        type="button"
+        title={state.errorMessage}
+        onClick={onStart}
+      >
+        <AlertTriangle size={12} />
+        Retry AI guide
+      </button>
+    );
+  }
+
+  return (
+    <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={onStart}>
+      Build AI guide
+    </button>
+  );
+}
+
+function ReviewFilterMenu({
+  preferences,
+  activeCount,
+  onChange,
+  onConfigurePatterns
+}: {
+  preferences: ReviewPreferences;
+  activeCount: number;
+  onChange: (preferences: ReviewPreferences) => void;
+  onConfigurePatterns: () => void;
+}): ReactElement {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="btn-subtle h-7 px-2 text-[11px]" type="button">
+          <Settings2 size={12} />
+          Filters
+          {activeCount > 0 ? <span className="badge-mini">{activeCount}</span> : null}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64" aria-label="Review filters">
+        <DropdownMenuLabel>Skip from review</DropdownMenuLabel>
+        <ReviewFilterMenuItem
+          checked={preferences.skipTests}
+          icon={<TestTube2 size={13} />}
+          label="Tests and specs"
+          onChange={(skipTests) => onChange({ ...preferences, skipTests })}
+        />
+        <ReviewFilterMenuItem
+          checked={preferences.skipImports}
+          icon={<PackageOpen size={13} />}
+          label="Import-only changes"
+          onChange={(skipImports) => onChange({ ...preferences, skipImports })}
+        />
+        <ReviewFilterMenuItem
+          checked={preferences.skipGenerated}
+          icon={<FileCog size={13} />}
+          label="Generated files"
+          onChange={(skipGenerated) => onChange({ ...preferences, skipGenerated })}
+        />
+        <ReviewFilterMenuItem
+          checked={preferences.skipDeletions}
+          icon={<Trash2 size={13} />}
+          label="Deletions"
+          onChange={(skipDeletions) => onChange({ ...preferences, skipDeletions })}
+        />
+        <ReviewFilterMenuItem
+          checked={preferences.skipFilePatterns}
+          disabled={preferences.filePatterns.length === 0}
+          icon={<Settings2 size={13} />}
+          label="Configured patterns"
+          onChange={(skipFilePatterns) => onChange({ ...preferences, skipFilePatterns })}
+        />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onConfigurePatterns}>
+          <Settings2 size={13} />
+          <span>Configure file patterns…</span>
+          {preferences.filePatterns.length > 0 ? (
+            <span className="ml-auto text-[10px] text-[var(--text-3)]">
+              {preferences.filePatterns.length}
+            </span>
+          ) : null}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ReviewFilterMenuItem({
+  checked,
+  disabled = false,
+  icon,
+  label,
+  onChange
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  icon: ReactElement;
+  label: string;
+  onChange: (checked: boolean) => void;
+}): ReactElement {
+  return (
+    <DropdownMenuItem
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      disabled={disabled}
+      onSelect={(event) => {
+        event.preventDefault();
+        onChange(!checked);
+      }}
+    >
+      <span className="review-filter-check" data-checked={checked}>
+        {checked ? <Check size={10} /> : null}
+      </span>
+      {icon}
+      <span>{label}</span>
+    </DropdownMenuItem>
+  );
+}
+
+function ReviewGuideBanner({
+  state,
+  guide
+}: {
+  state: GitReviewGuideState | undefined;
+  guide: GitReviewGuide | undefined;
+}): ReactElement | null {
+  if (state?.status === 'running') {
+    return (
+      <div className="review-guide-banner" data-status="running" aria-live="polite">
+        <Loader2 size={13} className="animate-spin" />
+        <span>AI is ranking these groups. Keep reviewing while it runs.</span>
+      </div>
+    );
+  }
+
+  if (state?.status === 'failed') {
+    return (
+      <div className="review-guide-banner" data-status="failed" aria-live="polite">
+        <AlertTriangle size={13} />
+        <span>
+          <strong>AI guide unavailable:</strong> {state.errorMessage} Your review is unchanged.
+        </span>
+      </div>
+    );
+  }
+
+  if (guide) {
+    return (
+      <div className="review-guide-banner" data-status="ready" aria-live="polite">
+        <span className="review-guide-kicker">Change intent</span>
+        <span>{guide.summary}</span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function ReviewGuidePriority({
+  priority
+}: {
+  priority: GitReviewGuidePriority;
+}): ReactElement {
+  return (
+    <span
+      className="review-guide-priority"
+      data-priority={priority}
+      title={
+        priority === 'critical'
+          ? 'Must understand before approval'
+          : priority === 'review'
+            ? 'Read with normal focus'
+            : 'Low-risk or mechanical change'
+      }
+    >
+      {priority}
+    </span>
+  );
+}
+
+function ReviewGuideUnitDetails({
+  guideUnit
+}: {
+  guideUnit: GitReviewGuideUnit;
+}): ReactElement {
+  return (
+    <section className="review-guide-unit-details" aria-label="AI guide for this review group">
+      <div className="review-guide-unit-priority">
+        <ReviewGuidePriority priority={guideUnit.priority} />
+      </div>
+      <div>
+        <span className="review-guide-kicker">Why this changed</span>
+        <p>{guideUnit.why}</p>
+      </div>
+      <div>
+        <span className="review-guide-kicker">What changed</span>
+        <p>{guideUnit.what}</p>
+      </div>
+      {guideUnit.confirmedIssues.map((issue) => (
+        <div className="review-guide-issue" key={`${issue.path}:${issue.line}`}>
+          <AlertTriangle size={13} />
+          <div>
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <strong>AI-confirmed issue</strong>
+              <code>{issue.path}:{issue.line}</code>
+            </div>
+            <p>{issue.summary} {issue.evidence}</p>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function ReviewBody({
   isLoading,
   errorMessage,
@@ -543,6 +875,7 @@ function ReviewBody({
   isMutating,
   mutationError,
   lineCollaboration,
+  reviewGuideUnits,
   onSelectUnit,
   onToggleViewed
 }: {
@@ -557,14 +890,38 @@ function ReviewBody({
   isMutating: boolean;
   mutationError?: string;
   lineCollaboration?: ReviewLineCollaboration;
+  reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   onSelectUnit: (unitId: string) => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
+  const [collapsedChunkIds, setCollapsedChunkIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
 
   useEffect(() => {
     reviewChunksRef.current?.scrollTo({ top: 0 });
   }, [selectedUnit?.unit.id]);
+
+  function toggleChunk(chunkId: string): void {
+    const isCollapsing = !collapsedChunkIds.has(chunkId);
+
+    if (isCollapsing && lineCollaboration?.selectedChunkId === chunkId) {
+      lineCollaboration.onCancel();
+    }
+
+    setCollapsedChunkIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(chunkId)) {
+        next.delete(chunkId);
+      } else {
+        next.add(chunkId);
+      }
+
+      return next;
+    });
+  }
 
   if (isLoading) {
     return <ReviewMessage icon={<Loader2 size={16} className="animate-spin" />} text="Building contextual review…" />;
@@ -596,7 +953,12 @@ function ReviewBody({
             </span>
             <span className="min-w-0 flex-1 text-left">
               <span className="block truncate text-xs font-semibold text-[var(--text-1)]" title={candidate.unit.explanation}>{candidate.unit.title}</span>
-              <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">{candidate.unit.reason}</span>
+              <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                {reviewGuideUnits.get(candidate.unit.id) ? (
+                  <ReviewGuidePriority priority={reviewGuideUnits.get(candidate.unit.id)!.priority} />
+                ) : null}
+                <span className="min-w-0 truncate text-[10.5px] text-[var(--text-3)]">{candidate.unit.reason}</span>
+              </span>
             </span>
             <span className="badge-mini">{candidate.visibleChunks.length}</span>
           </button>
@@ -624,6 +986,9 @@ function ReviewBody({
               </button>
             </header>
             {mutationError ? <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">{mutationError}</p> : null}
+            {reviewGuideUnits.get(selectedUnit.unit.id) ? (
+              <ReviewGuideUnitDetails guideUnit={reviewGuideUnits.get(selectedUnit.unit.id)!} />
+            ) : null}
             {lineCollaboration?.selectedLines && lineCollaboration.selectedPath ? (
               <ReviewInlineComposer collaboration={lineCollaboration} />
             ) : null}
@@ -651,6 +1016,8 @@ function ReviewBody({
                           preparedDiff={preparedDiffs.get(chunk.id)}
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
+                          isCollapsed={collapsedChunkIds.has(chunk.id)}
+                          onToggleCollapsed={() => toggleChunk(chunk.id)}
                         />
                       ))}
                     </section>
@@ -669,12 +1036,16 @@ function ReviewChunk({
   chunk,
   preparedDiff,
   diffOptions,
-  lineCollaboration
+  lineCollaboration,
+  isCollapsed,
+  onToggleCollapsed
 }: {
   chunk: GitReviewChunk;
   preparedDiff?: PreparedReviewDiff;
   diffOptions: FileDiffOptions<ReviewLineCommentThread>;
   lineCollaboration?: ReviewLineCollaboration;
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
 }): ReactElement {
   const expandableDiff = preparedDiff?.expandable;
   const contextualDiffOptions = useMemo<FileDiffOptions<ReviewLineCommentThread>>(
@@ -715,16 +1086,27 @@ function ReviewChunk({
     : contextualDiffOptions;
 
   return (
-    <section className="review-chunk">
-      <div className="review-chunk-header">
+    <section className="review-chunk" data-collapsed={isCollapsed}>
+      <button
+        className="review-chunk-header"
+        type="button"
+        aria-expanded={!isCollapsed}
+        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${chunk.path}`}
+        onClick={onToggleCollapsed}
+      >
+        {isCollapsed ? (
+          <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
+        ) : (
+          <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
+        )}
         <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
         <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{chunk.path}</span>
         <span className="badge-mini" title={chunk.relationship}>{chunk.role}</span>
         {chunk.source !== 'commit' ? <span className="badge-mini">{chunk.source}</span> : null}
         <span className="text-[var(--success-text)]">+{chunk.additions}</span>
         <span className="text-[var(--danger-text)]">-{chunk.deletions}</span>
-      </div>
-      {chunk.omittedReason ? (
+      </button>
+      {!isCollapsed && chunk.omittedReason ? (
         <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
           {chunk.omittedReason === 'binary'
             ? 'Binary changes cannot be previewed.'
@@ -732,7 +1114,7 @@ function ReviewChunk({
               ? 'This change exceeds the review preview limit.'
               : 'No textual diff is available for this change.'}
         </div>
-      ) : (
+      ) : !isCollapsed ? (
         preparedDiff ? (
           <FileDiff<ReviewLineCommentThread>
             className="gg-diff"
@@ -764,7 +1146,7 @@ function ReviewChunk({
             )}
           />
         )
-      )}
+      ) : null}
     </section>
   );
 }
@@ -1032,28 +1414,6 @@ function renderInlineReviewMarkdown(value: string): ReactNode[] {
       }
       return part;
     });
-}
-
-function ReviewFilterToggle({
-  checked,
-  disabled = false,
-  icon,
-  label,
-  onChange
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  icon: ReactElement;
-  label: string;
-  onChange: (checked: boolean) => void;
-}): ReactElement {
-  return (
-    <label className="review-filter-toggle">
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
-      {icon}
-      <span>{label}</span>
-    </label>
-  );
 }
 
 function ReviewProgress({ presentation }: { presentation: ReturnType<typeof createReviewPresentation> | undefined }): ReactElement {

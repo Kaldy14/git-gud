@@ -129,6 +129,17 @@ describe('IPC argument validation', () => {
       '/repo',
       { kind: 'wip', scope: 'all' }
     ]);
+    expect(validateIpcArgs('repo:review-guide-state', ['/repo', 'a'.repeat(64)])).toEqual([
+      '/repo',
+      'a'.repeat(64)
+    ]);
+    expect(
+      validateIpcArgs('repo:start-review-guide', [
+        '/repo',
+        { kind: 'wip', scope: 'all' },
+        'b'.repeat(64)
+      ])
+    ).toEqual(['/repo', { kind: 'wip', scope: 'all' }, 'b'.repeat(64)]);
     expect(
       validateIpcArgs('repo:review-plan', [
         '/repo',
@@ -273,6 +284,16 @@ describe('IPC argument validation', () => {
     expect(() =>
       validateIpcArgs('repo:review-plan', ['/repo', { kind: 'branch', name: '', sha: 'abc123' }])
     ).toThrow('name must not be empty.');
+    expect(() => validateIpcArgs('repo:review-guide-state', ['/repo', 'stale'])).toThrow(
+      'sourceFingerprint must be a SHA-256 identifier.'
+    );
+    expect(() =>
+      validateIpcArgs('repo:start-review-guide', [
+        '/repo',
+        { kind: 'wip', scope: 'all' },
+        'stale'
+      ])
+    ).toThrow('sourceFingerprint must be a SHA-256 identifier.');
     expect(() =>
       validateIpcArgs('repo:set-review-progress', [
         '/repo',

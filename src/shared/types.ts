@@ -250,11 +250,58 @@ export type GitReviewPlan = {
   repoPath: string;
   target: GitReviewTarget;
   targetKey: string;
+  sourceFingerprint: string;
   units: GitReviewUnit[];
   fileContexts: GitReviewFileContext[];
   reviewedChunkIds: string[];
   loadedAt: string;
 };
+
+export type GitReviewGuidePriority = 'critical' | 'review' | 'skim';
+
+export type GitReviewGuideIssue = {
+  summary: string;
+  path: string;
+  line: number;
+  evidence: string;
+};
+
+export type GitReviewGuideUnit = {
+  unitId: string;
+  priority: GitReviewGuidePriority;
+  why: string;
+  what: string;
+  confirmedIssues: GitReviewGuideIssue[];
+};
+
+export type GitReviewGuide = {
+  sourceFingerprint: string;
+  targetKey: string;
+  summary: string;
+  units: GitReviewGuideUnit[];
+  generatedAt: string;
+};
+
+export type GitReviewGuideState =
+  | {
+      status: 'idle';
+      sourceFingerprint: string;
+    }
+  | {
+      status: 'running';
+      sourceFingerprint: string;
+      startedAt: string;
+    }
+  | {
+      status: 'ready';
+      sourceFingerprint: string;
+      guide: GitReviewGuide;
+    }
+  | {
+      status: 'failed';
+      sourceFingerprint: string;
+      errorMessage: string;
+    };
 
 export type GitReviewProgressUpdate = {
   targetKey: string;

@@ -200,6 +200,7 @@ function reviewPlan(units: GitReviewUnit[]): GitReviewPlan {
     repoPath: '/repo',
     target: { kind: 'commit', sha: 'abc123' },
     targetKey: 'commit:abc123',
+    sourceFingerprint: 'fingerprint',
     units,
     fileContexts: [],
     reviewedChunkIds: [],

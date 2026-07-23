@@ -83,7 +83,14 @@ export function PullRequestReviewView({
   const detail = detailQuery.data;
 
   if (detailQuery.isLoading && !detail) {
-    return <ReviewMessage icon={<Loader2 size={18} className="animate-spin" />} text="Loading the pull request review…" />;
+    return (
+      <ReviewMessage
+        icon={<Loader2 size={18} className="animate-spin" />}
+        text="Loading the pull request review…"
+        actionLabel="Back to pull requests"
+        onAction={onClose}
+      />
+    );
   }
 
   if (detailQuery.error && !detail) {
@@ -92,14 +99,22 @@ export function PullRequestReviewView({
         icon={<AlertTriangle size={18} />}
         text={detailQuery.error instanceof Error ? detailQuery.error.message : 'Could not load the pull request.'}
         tone="danger"
-        actionLabel="Back to inbox"
+        actionLabel="Back to pull requests"
         onAction={onClose}
       />
     );
   }
 
   if (!detail) {
-    return <ReviewMessage icon={<AlertTriangle size={18} />} text="The pull request is unavailable." tone="danger" />;
+    return (
+      <ReviewMessage
+        icon={<AlertTriangle size={18} />}
+        text="The pull request is unavailable."
+        tone="danger"
+        actionLabel="Back to pull requests"
+        onAction={onClose}
+      />
+    );
   }
 
   return (
@@ -317,8 +332,14 @@ function PullRequestReviewContent({
   return (
     <section className="pr-review-view" aria-label={`Review ${detail.title}`}>
       <header className="pr-review-header">
-        <button className="icon-btn h-8 w-8 shrink-0" type="button" onClick={onClose} aria-label="Back to pull request inbox">
+        <button
+          className="btn-subtle h-8 shrink-0 text-xs"
+          type="button"
+          onClick={onClose}
+          title="Back to pull requests"
+        >
           <ArrowLeft size={15} />
+          Back to pull requests
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2 text-[11px] text-[var(--text-3)]">

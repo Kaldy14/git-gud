@@ -221,6 +221,25 @@ describe('context review plans', () => {
     expect(shifted.units[0]?.chunks[0]?.id).toBe(original.units[0]?.chunks[0]?.id);
   });
 
+  it('fingerprints the exact review source independently from load time', () => {
+    const input = patch(
+      'src/client.ts',
+      '@@ -10,2 +10,2 @@ function connect() {\n-  return open();\n+  return open(timeout);\n }\n'
+    );
+    const original = buildReviewPlan('/repo', { kind: 'wip', scope: 'unstaged' }, [input]);
+    const identical = buildReviewPlan('/repo', { kind: 'wip', scope: 'unstaged' }, [input]);
+    const changed = buildReviewPlan('/repo', { kind: 'wip', scope: 'unstaged' }, [
+      patch(
+        'src/client.ts',
+        '@@ -10,2 +10,2 @@ function connect() {\n-  return open();\n+  return open(timeout, retries);\n }\n'
+      )
+    ]);
+
+    expect(original.sourceFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+    expect(identical.sourceFingerprint).toBe(original.sourceFingerprint);
+    expect(changed.sourceFingerprint).not.toBe(original.sourceFingerprint);
+  });
+
   it('keeps binary and oversized changes as reviewable placeholders', () => {
     const plan = buildReviewPlan('/repo', { kind: 'commit', sha: 'abc123' }, [
       omittedPatch('assets/logo.png', 'binary'),

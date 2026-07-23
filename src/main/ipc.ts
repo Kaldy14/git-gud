@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
-import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import {
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Notification,
+  type IpcMainInvokeEvent,
+  type OpenDialogOptions
+} from 'electron';
 
 import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
 import type { GitOperationProgressEvent, WorkspaceState } from '@shared/types';
@@ -62,6 +69,7 @@ import { isTrustedRendererUrl } from './ipcSecurity';
 import { requestOperationCancellation } from './operationCancellation';
 import { assignProfileToRepository, listGitHubAccounts, listProfiles, saveProfile } from './profiles';
 import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
+import { reviewGuideManager } from './reviewGuide';
 import {
   activateWorkspaceTab,
   activateWorkspaceProfile,
@@ -131,6 +139,27 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
 };
 
 export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
+  reviewGuideManager.setOnReady(async ({ repoPath, plan, guide }) => {
+    try {
+      const currentPlan = await loadReviewPlan(getOpenRepositoryTab(repoPath), plan.target);
+
+      if (
+        currentPlan.sourceFingerprint !== guide.sourceFingerprint ||
+        BrowserWindow.getFocusedWindow() ||
+        !Notification.isSupported()
+      ) {
+        return;
+      }
+
+      new Notification({
+        title: 'AI review guide ready',
+        body: 'The ranked walkthrough is ready in your open review.'
+      }).show();
+    } catch {
+      // The repository or review may have been closed while the guide was running.
+    }
+  });
+
   function inRepositoryTransaction<T>(
     repoPath: string,
     operation: (tab: WorkspaceState['tabs'][number]) => Promise<T>
@@ -263,6 +292,19 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
       ...plan,
       reviewedChunkIds: loadReviewedChunks(repoPath, plan.targetKey, validChunkIds)
     };
+  });
+  handle('repo:review-guide-state', (_event, repoPath, sourceFingerprint) => {
+    getOpenRepositoryTab(repoPath);
+    return reviewGuideManager.getState(repoPath, sourceFingerprint);
+  });
+  handle('repo:start-review-guide', async (_event, repoPath, target, sourceFingerprint) => {
+    const plan = await loadReviewPlan(getOpenRepositoryTab(repoPath), target);
+
+    if (plan.sourceFingerprint !== sourceFingerprint) {
+      throw new Error('The changes moved while the AI guide was starting. Reload the review and try again.');
+    }
+
+    return reviewGuideManager.start(plan);
   });
   handle('repo:set-review-progress', (_event, repoPath, update) => {
     getOpenRepositoryTab(repoPath);

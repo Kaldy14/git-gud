@@ -29,6 +29,10 @@ const api: RendererApi = {
   getWipDetail: (repoPath) => invoke('repo:wip-detail', repoPath),
   getFileDiff: (repoPath, request) => invoke('repo:file-diff', repoPath, request),
   getReviewPlan: (repoPath, target) => invoke('repo:review-plan', repoPath, target),
+  getReviewGuideState: (repoPath, sourceFingerprint) =>
+    invoke('repo:review-guide-state', repoPath, sourceFingerprint),
+  startReviewGuide: (repoPath, target, sourceFingerprint) =>
+    invoke('repo:start-review-guide', repoPath, target, sourceFingerprint),
   setReviewProgress: (repoPath, update) => invoke('repo:set-review-progress', repoPath, update),
   getFileHistory: (repoPath, path, limit) => invoke('repo:file-history', repoPath, path, limit),
   getFileBlame: (repoPath, path, revision) => invoke('repo:file-blame', repoPath, path, revision),

@@ -17,6 +17,7 @@ import { gitExecutor } from './git/exec';
 import { registerIpcHandlers } from './ipc';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { flushPendingWorkspaceWrites, getWorkspace } from './store';
+import { reviewGuideManager } from './reviewGuide';
 import { ApplicationUpdater, type UpdateTransport } from './updater';
 
 const quitCleanupTimeoutMs = 1500;
@@ -263,6 +264,7 @@ function requestUpdateInstall(): void {
 async function quitAfterCleanup(afterCleanup: () => void = exitWithoutNodeCleanup): Promise<void> {
   try {
     flushPendingWorkspaceWrites();
+    reviewGuideManager.shutdown();
     await Promise.race([
       gitExecutor.shutdown(quitCleanupTimeoutMs - 250),
       wait(quitCleanupTimeoutMs)

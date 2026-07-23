@@ -65,6 +65,8 @@ const validators = {
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
   'repo:review-plan': (args) => readRepoPathWithObject(args, 'repo:review-plan', readReviewTarget),
+  'repo:review-guide-state': (args) => readReviewGuideStateArgs(args),
+  'repo:start-review-guide': (args) => readStartReviewGuideArgs(args),
   'repo:set-review-progress': (args) =>
     readRepoPathWithObject(args, 'repo:set-review-progress', readReviewProgressUpdate),
   'repo:file-history': (args) => readRepoPathAndPathWithOptionalLimit(args),
@@ -301,6 +303,36 @@ function readReviewTarget(value: unknown): GitReviewTarget {
     kind,
     scope: readEnumProperty(record, 'scope', ['all', 'staged', 'unstaged'])
   };
+}
+
+function readStartReviewGuideArgs(
+  args: readonly unknown[]
+): [string, GitReviewTarget, string] {
+  assertArgCount('repo:start-review-guide', args, 3);
+
+  return [
+    readString(args[0], 'repoPath'),
+    readReviewTarget(args[1]),
+    readReviewSourceFingerprint(args[2])
+  ];
+}
+
+function readReviewGuideStateArgs(args: readonly unknown[]): [string, string] {
+  assertArgCount('repo:review-guide-state', args, 2);
+  return [
+    readString(args[0], 'repoPath'),
+    readReviewSourceFingerprint(args[1])
+  ];
+}
+
+function readReviewSourceFingerprint(value: unknown): string {
+  const sourceFingerprint = readNonEmptyString(value, 'sourceFingerprint');
+
+  if (!/^[a-f0-9]{64}$/u.test(sourceFingerprint)) {
+    throw new Error('sourceFingerprint must be a SHA-256 identifier.');
+  }
+
+  return sourceFingerprint;
 }
 
 function readReviewProgressUpdate(value: unknown): GitReviewProgressUpdate {

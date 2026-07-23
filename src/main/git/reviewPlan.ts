@@ -125,11 +125,35 @@ export function buildReviewPlan(
         : target.kind === 'branch'
           ? `branch:${target.name}`
           : `wip:${target.scope}`,
+    sourceFingerprint: createReviewSourceFingerprint(target, units),
     units,
     fileContexts,
     reviewedChunkIds: [],
     loadedAt: new Date().toISOString()
   };
+}
+
+function createReviewSourceFingerprint(
+  target: GitReviewTarget,
+  units: GitReviewUnit[]
+): string {
+  const source = {
+    target,
+    units: units.map((unit) => ({
+      id: unit.id,
+      chunks: unit.chunks.map((chunk) => ({
+        id: chunk.id,
+        path: chunk.path,
+        originalPath: chunk.originalPath,
+        source: chunk.source,
+        startLine: chunk.startLine,
+        patch: chunk.patch,
+        omittedReason: chunk.omittedReason
+      }))
+    }))
+  };
+
+  return createHash('sha256').update(JSON.stringify(source)).digest('hex');
 }
 
 function parseReviewPatch(input: ReviewPatchInput): ParsedReviewChunk[] {

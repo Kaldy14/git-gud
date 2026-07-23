@@ -36,6 +36,7 @@ import type {
   GitRebaseInput,
   GitRepositoryOverview,
   GitReviewPlan,
+  GitReviewGuideState,
   GitReviewProgressUpdate,
   GitReviewTarget,
   GitRenameBranchInput,
@@ -126,6 +127,14 @@ export type IpcChannelMap = {
   'repo:review-plan': {
     args: [repoPath: string, target: GitReviewTarget];
     result: GitReviewPlan;
+  };
+  'repo:review-guide-state': {
+    args: [repoPath: string, sourceFingerprint: string];
+    result: GitReviewGuideState;
+  };
+  'repo:start-review-guide': {
+    args: [repoPath: string, target: GitReviewTarget, sourceFingerprint: string];
+    result: GitReviewGuideState;
   };
   'repo:set-review-progress': {
     args: [repoPath: string, update: GitReviewProgressUpdate];
@@ -359,6 +368,12 @@ export type RendererApi = {
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
   getReviewPlan: (repoPath: string, target: GitReviewTarget) => Promise<GitReviewPlan>;
+  getReviewGuideState: (repoPath: string, sourceFingerprint: string) => Promise<GitReviewGuideState>;
+  startReviewGuide: (
+    repoPath: string,
+    target: GitReviewTarget,
+    sourceFingerprint: string
+  ) => Promise<GitReviewGuideState>;
   setReviewProgress: (repoPath: string, update: GitReviewProgressUpdate) => Promise<string[]>;
   getFileHistory: (repoPath: string, path: string, limit?: number) => Promise<GitFileHistory>;
   getFileBlame: (repoPath: string, path: string, revision?: string) => Promise<GitFileBlame>;
