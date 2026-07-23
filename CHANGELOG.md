@@ -4,6 +4,25 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-07-23
+
+### Added
+
+- Added whole-branch reviews with context-based grouping, fast navigation, and expandable nearby diff blocks.
+- Added a focused pull-request inbox and pull-request review flow backed by live GitHub data.
+- Added an optional asynchronous AI walkthrough that ranks existing review groups, summarizes intent, explains changes, and reports only evidence-backed issues while the diff remains usable.
+
+### Changed
+
+- Simplified the review header around the selected commit, branch, working directory, or pull request, with consolidated filters, progress, diff layout, and AI controls.
+- Improved review grouping for related symbol extensions and matching references.
+
+### Fixed
+
+- Restored live pull-request inbox data and clearer return navigation from pull-request review states.
+- Kept generated AI walkthrough copy harness agnostic.
+- Resumed AI guide cache pruning after long-running jobs complete.
+
 ## [0.4.6] - 2026-07-21
 
 ### Fixed
