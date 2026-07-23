@@ -40,6 +40,7 @@ describe('AI review guides', () => {
 
     expect(prompt).toContain('do not create, merge, split, or omit groups');
     expect(prompt).toContain('confirmedIssues is not a todo list');
+    expect(prompt).toContain('Use "AI guide" as the product term');
     expect(guide).toMatchObject({
       sourceFingerprint: plan.sourceFingerprint,
       summary: 'Adds timeout-aware connection handling.',
@@ -48,6 +49,27 @@ describe('AI review guides', () => {
         priority: 'critical',
         confirmedIssues: [{ path: 'src/client.ts', line: 2 }]
       }]
+    });
+  });
+
+  it('keeps generated walkthrough copy harness agnostic', () => {
+    const plan = reviewPlan();
+    const unit = plan.units[0]!;
+    const guide = parseReviewGuideOutput(JSON.stringify({
+      summary: 'Adds a Pi-powered walkthrough.',
+      units: [{
+        unitId: unit.id,
+        priority: 'review',
+        why: 'Pi ranks the groups in the background.',
+        what: 'PiReviewGuideEngine produces the guide.',
+        confirmedIssues: []
+      }]
+    }), plan);
+
+    expect(guide.summary).toBe('Adds an AI-powered walkthrough.');
+    expect(guide.units[0]).toMatchObject({
+      why: 'AI ranks the groups in the background.',
+      what: 'AI review engine produces the guide.'
     });
   });
 

@@ -176,6 +176,7 @@ export function buildReviewGuidePrompt(plan: GitReviewPlan): string {
     '- critical means the group must be understood before approval; it does not automatically mean a defect.',
     '- review means normal focused reading. skim means low-risk or mechanical work.',
     '- Explain intent and mechanics in plain text. Be concise and concrete.',
+    '- Use "AI guide" as the product term. Never name or expose the model, provider, harness, executable, or engine implementation in summary, why, or what.',
     '- confirmedIssues is not a todo list. Include at most one issue per group and only when the changed code directly proves a defect.',
     '- A confirmed issue must point to an added line in that group. If there is any uncertainty, return an empty array.',
     '- Do not suggest fixes, investigations, tests, or follow-up work.',
@@ -189,7 +190,7 @@ export function buildReviewGuidePrompt(plan: GitReviewPlan): string {
 
 export function parseReviewGuideOutput(output: string, plan: GitReviewPlan): GitReviewGuide {
   const parsed = parseJsonObject(output);
-  const summary = readBoundedString(parsed.summary, 'summary', 800);
+  const summary = normalizeGuideExplanation(readBoundedString(parsed.summary, 'summary', 800));
 
   if (!Array.isArray(parsed.units)) {
     throw new Error('AI guide output must include a units array.');
@@ -210,8 +211,8 @@ export function parseReviewGuideOutput(output: string, plan: GitReviewPlan): Git
     return {
       unitId,
       priority: readPriority(record.priority, `units[${index}].priority`),
-      why: readBoundedString(record.why, `units[${index}].why`, 600),
-      what: readBoundedString(record.what, `units[${index}].what`, 600),
+      why: normalizeGuideExplanation(readBoundedString(record.why, `units[${index}].why`, 600)),
+      what: normalizeGuideExplanation(readBoundedString(record.what, `units[${index}].what`, 600)),
       confirmedIssues: readConfirmedIssues(record.confirmedIssues, reviewUnit, index)
     };
   });
@@ -227,6 +228,14 @@ export function parseReviewGuideOutput(output: string, plan: GitReviewPlan): Git
     units,
     generatedAt: new Date().toISOString()
   };
+}
+
+function normalizeGuideExplanation(value: string): string {
+  return value
+    .replace(/\bA Pi\b/gu, 'An AI')
+    .replace(/\ba Pi\b/gu, 'an AI')
+    .replace(/\bPiReviewGuideEngine\b/gu, 'AI review engine')
+    .replace(/\bPi\b/gu, 'AI');
 }
 
 function createPromptPayload(plan: GitReviewPlan): {
