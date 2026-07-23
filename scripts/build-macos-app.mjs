@@ -21,6 +21,7 @@ const require = createRequire(import.meta.url);
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const packageJson = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
 const productName = packageJson.productName ?? 'Git Gud';
+const appVersion = env.GIT_GUD_VERSION?.trim().replace(/^v/, '') || '0.0.0';
 const bundleId = 'dev.kaldy.git-gud';
 const iconFileName = 'icon.icns';
 const electronBinary = require('electron');
@@ -90,7 +91,7 @@ function installAppPayload() {
       {
         name: packageJson.name,
         productName,
-        version: packageJson.version,
+        version: appVersion,
         main: './out/main/index.js'
       },
       null,
@@ -110,8 +111,8 @@ function updateInfoPlist() {
   setPlistValue('CFBundleName', 'string', productName);
   setPlistValue('CFBundleDisplayName', 'string', productName);
   setPlistValue('CFBundleIconFile', 'string', iconFileName);
-  setPlistValue('CFBundleShortVersionString', 'string', packageJson.version);
-  setPlistValue('CFBundleVersion', 'string', packageJson.version);
+  setPlistValue('CFBundleShortVersionString', 'string', appVersion);
+  setPlistValue('CFBundleVersion', 'string', appVersion);
   setPlistValue('LSApplicationCategoryType', 'string', 'public.app-category.developer-tools');
   setPlistValue('NSHighResolutionCapable', 'bool', 'true');
 }

@@ -31,17 +31,6 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Verify tag matches package version
-        shell: bash
-        run: |
-          package_version="$(node -p "require('./package.json').version")"
-          tag_version="${GITHUB_REF_NAME#v}"
-
-          if [[ "$tag_version" != "$package_version" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match package version $package_version."
-            exit 1
-          fi
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -166,6 +155,8 @@ jobs:
           echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
 
       - name: Build macOS application
+        env:
+          GIT_GUD_VERSION: ${{ github.ref_name }}
         run: pnpm dist
 
       - name: Notarize and staple macOS application

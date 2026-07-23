@@ -4,6 +4,7 @@ import { externalizeDepsPlugin, defineConfig } from 'electron-vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 
+const appVersion = process.env.GIT_GUD_VERSION?.trim().replace(/^v/, '') || '0.0.0';
 const sharedAlias = resolve('src/shared');
 
 export default defineConfig({
@@ -24,6 +25,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
+    },
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),

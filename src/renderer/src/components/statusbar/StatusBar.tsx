@@ -3,7 +3,6 @@ import { FolderGit2, GitBranch, Loader2, UserCircle } from 'lucide-react';
 
 import { FILE_STATUS_COLORS } from '@shared/graph';
 import type { GitRepositoryOverview, RepoTab } from '@shared/types';
-import packageJson from '../../../../../package.json';
 
 type StatusBarProps = {
   activeTab?: RepoTab;
@@ -77,7 +76,7 @@ export function StatusBar({
             {identityLabel}
           </span>
         ) : null}
-        <span>v{packageJson.version}</span>
+        <span>v{import.meta.env.VITE_APP_VERSION}</span>
       </span>
     </footer>
   );
