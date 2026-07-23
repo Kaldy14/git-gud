@@ -125,7 +125,7 @@ async function findGitHubCliConfigDirs(): Promise<string[]> {
   return [...configDirs];
 }
 
-async function findGhExecutable(): Promise<string> {
+export async function findGhExecutable(): Promise<string> {
   for (const candidate of ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', '/usr/bin/gh']) {
     try {
       await access(candidate, constants.X_OK);

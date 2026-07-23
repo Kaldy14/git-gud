@@ -26,6 +26,8 @@ import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
 import { GraphView } from '@renderer/components/graph/GraphView';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
+import { PullRequestInboxView } from '@renderer/components/github/PullRequestInboxView';
+import { PullRequestReviewView } from '@renderer/components/github/PullRequestReviewView';
 import {
   RepositoryInspectorDialog,
   type RepositoryInspectorMode
@@ -54,6 +56,7 @@ import {
   useRepositoryChangeInvalidation,
   useRepositoryOverview
 } from '@renderer/queries/repository';
+import { useGitHubPullRequestInbox } from '@renderer/queries/github';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
 import {
@@ -75,6 +78,7 @@ import type {
   GitInteractiveRebaseInput,
   GitInteractiveRebasePlan,
   GitOperationResult,
+  GitHubPullRequestSummary,
   GitProfile,
   GitRemoteBranchRef,
   GitReviewTarget,
@@ -150,6 +154,10 @@ type ProfileTransitionState = {
   phase: 'loading' | 'revealing';
 };
 
+type GitHubWorkspaceView =
+  | { kind: 'inbox' }
+  | { kind: 'review'; pullRequest: GitHubPullRequestSummary };
+
 const PROFILE_TRANSITION_MIN_MS = 240;
 const PROFILE_TRANSITION_EXIT_MS = 180;
 
@@ -202,6 +210,7 @@ export function WorkspaceShell(): ReactElement {
   const [compactDetailOpen, setCompactDetailOpen] = useState(false);
   const [sidebarFilterFocusSignal, setSidebarFilterFocusSignal] = useState(0);
   const [profileTransition, setProfileTransition] = useState<ProfileTransitionState>();
+  const [gitHubWorkspaceView, setGitHubWorkspaceView] = useState<GitHubWorkspaceView>();
   const operationRetryActionsRef = useRef(
     new Map<
       string,
@@ -266,6 +275,12 @@ export function WorkspaceShell(): ReactElement {
       identityMatchesActiveProfile: repositoryProfileState?.identityMatchesActiveProfile
     };
   }, [activeWorkspaceProfile, profiles, repositoryQuery.data?.profileState]);
+  const activeGitHubProfile = workspaceProfileState.activeProfile;
+  const connectedGitHubProfileId =
+    activeGitHubProfile?.ghConfigDir && activeGitHubProfile.githubLogin
+      ? activeGitHubProfile.id
+      : undefined;
+  const pullRequestInboxQuery = useGitHubPullRequestInbox(connectedGitHubProfileId);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
@@ -368,6 +383,15 @@ export function WorkspaceShell(): ReactElement {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    if (
+      gitHubWorkspaceView?.kind === 'review' &&
+      gitHubWorkspaceView.pullRequest.profileId !== connectedGitHubProfileId
+    ) {
+      setGitHubWorkspaceView({ kind: 'inbox' });
+    }
+  }, [connectedGitHubProfileId, gitHubWorkspaceView]);
 
   useEffect(() => {
     window.api
@@ -590,6 +614,16 @@ export function WorkspaceShell(): ReactElement {
     }
 
     void setSidebarCollapsed(!workspace.sidebarCollapsed);
+  }
+
+  function handleOpenPullRequestInbox(): void {
+    setGitHubWorkspaceView({ kind: 'inbox' });
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(false);
+  }
+
+  function handleOpenGitProfileMenu(): void {
+    document.querySelector<HTMLButtonElement>('[aria-label="Git profile menu"]')?.click();
   }
 
   function handleFocusSidebarFilter(): void {
@@ -1948,27 +1982,29 @@ export function WorkspaceShell(): ReactElement {
         onSaveAndActivateProfile={handleSaveAndActivateProfile}
       />
 
-      <Toolbar
-        activeTab={activeTab}
-        repositoryOverview={repositoryQuery.data}
-        isBusy={isOperationBusy}
-        latestUndo={repositoryQuery.data?.latestUndo}
-        onFetch={handleFetch}
-        onPull={handlePull}
-        onPush={handlePush}
-        onCreateBranch={() => handleCreateBranch()}
-        onStashPush={handleStashPush}
-        onStashPop={() => handleStashPop()}
-        onUndo={handleUndo}
-        onOpenQuickJump={() => setIsQuickJumpOpen(true)}
-        hasSelectedCommit={Boolean(selectedRow && selectedRow.node.kind !== 'wip' && selectedRow.node.kind !== 'stash')}
-        onMergeSelected={() => selectedRow && handleMergeCommit(selectedRow.sha)}
-        onRebaseSelected={() => selectedRow && handleRebaseOntoCommit(selectedRow.sha)}
-        onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
-        onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
-      />
+      {!gitHubWorkspaceView ? (
+        <Toolbar
+          activeTab={activeTab}
+          repositoryOverview={repositoryQuery.data}
+          isBusy={isOperationBusy}
+          latestUndo={repositoryQuery.data?.latestUndo}
+          onFetch={handleFetch}
+          onPull={handlePull}
+          onPush={handlePush}
+          onCreateBranch={() => handleCreateBranch()}
+          onStashPush={handleStashPush}
+          onStashPop={() => handleStashPop()}
+          onUndo={handleUndo}
+          onOpenQuickJump={() => setIsQuickJumpOpen(true)}
+          hasSelectedCommit={Boolean(selectedRow && selectedRow.node.kind !== 'wip' && selectedRow.node.kind !== 'stash')}
+          onMergeSelected={() => selectedRow && handleMergeCommit(selectedRow.sha)}
+          onRebaseSelected={() => selectedRow && handleRebaseOntoCommit(selectedRow.sha)}
+          onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
+          onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
+        />
+      ) : null}
 
-      {errorMessage || repositoryError ? (
+      {!gitHubWorkspaceView && (errorMessage || repositoryError) ? (
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
           <span>{errorMessage ?? repositoryError}</span>
           <button className="icon-btn h-6 w-6" type="button" onClick={handleErrorAction} aria-label="Retry or dismiss error">
@@ -1977,15 +2013,77 @@ export function WorkspaceShell(): ReactElement {
         </div>
       ) : null}
 
-      <ConflictBanner
-        conflictState={repositoryQuery.data?.conflictState}
-        isBusy={isOperationBusy}
-        onResolve={handleResolveConflict}
-        onSelectFile={handleOpenConflictFile}
-      />
+      {!gitHubWorkspaceView ? (
+        <ConflictBanner
+          conflictState={repositoryQuery.data?.conflictState}
+          isBusy={isOperationBusy}
+          onResolve={handleResolveConflict}
+          onSelectFile={handleOpenConflictFile}
+        />
+      ) : null}
 
       <section className="flex min-h-0 flex-1">
-        {activeTab ? (
+        {gitHubWorkspaceView ? (
+          <>
+            <Sidebar
+              activeTab={activeTab}
+              repositoryOverview={repositoryQuery.data}
+              isLoading={repositoryQuery.isLoading}
+              isRefreshing={repositoryQuery.isFetching && !repositoryQuery.isLoading}
+              errorMessage={repositoryError}
+              isCollapsed={isSidebarCollapsed}
+              width={effectiveSidebarWidth}
+              filterFocusSignal={sidebarFilterFocusSignal}
+              onToggleCollapsed={handleToggleSidebar}
+              pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+              isPullRequestLoading={pullRequestInboxQuery.isLoading}
+              isPullRequestInboxActive
+              onOpenPullRequestInbox={handleOpenPullRequestInbox}
+              onResize={handleSidebarResize}
+              onResizeCommit={handleSidebarResizeCommit}
+              isOperationBusy={isOperationBusy}
+              onCheckoutBranch={handleCheckoutBranch}
+              onCheckoutRemoteBranch={handleActivateRemoteBranch}
+              onRenameBranch={handleRenameBranch}
+              onReviewBranch={handleOpenBranchReview}
+              onDeleteBranch={handleDeleteBranch}
+              onDeleteRemoteBranch={handleDeleteRemoteBranch}
+              tagPushRemote={tagPushRemote}
+              onPushTag={handlePushTag}
+              onDeleteTag={handleDeleteTag}
+              onStashApply={handleStashApply}
+              onStashPop={handleStashPop}
+              onStashDrop={handleStashDrop}
+            />
+            {gitHubWorkspaceView.kind === 'review' ? (
+              <PullRequestReviewView
+                key={`${gitHubWorkspaceView.pullRequest.profileId}:${gitHubWorkspaceView.pullRequest.id}`}
+                pullRequest={gitHubWorkspaceView.pullRequest}
+                diffStyle={activeDiffStyle}
+                onSetDiffStyle={handleSetDiffStyle}
+                onClose={handleOpenPullRequestInbox}
+                onMerged={handleOpenPullRequestInbox}
+              />
+            ) : (
+              <PullRequestInboxView
+                profile={activeGitHubProfile}
+                inbox={pullRequestInboxQuery.data}
+                isLoading={pullRequestInboxQuery.isLoading}
+                isRefreshing={pullRequestInboxQuery.isFetching && !pullRequestInboxQuery.isLoading}
+                errorMessage={
+                  pullRequestInboxQuery.error instanceof Error
+                    ? pullRequestInboxQuery.error.message
+                    : undefined
+                }
+                onRefresh={() => void pullRequestInboxQuery.refetch()}
+                onOpenProfileSettings={handleOpenGitProfileMenu}
+                onSelectPullRequest={(pullRequest) =>
+                  setGitHubWorkspaceView({ kind: 'review', pullRequest })
+                }
+              />
+            )}
+          </>
+        ) : activeTab ? (
           interactiveRebaseDialog ? (
             <InteractiveRebaseDialog
               plan={interactiveRebaseDialog.plan}
@@ -2008,6 +2106,10 @@ export function WorkspaceShell(): ReactElement {
                 width={effectiveSidebarWidth}
                 filterFocusSignal={sidebarFilterFocusSignal}
                 onToggleCollapsed={handleToggleSidebar}
+                pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+                isPullRequestLoading={pullRequestInboxQuery.isLoading}
+                isPullRequestInboxActive={false}
+                onOpenPullRequestInbox={handleOpenPullRequestInbox}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}
@@ -2162,26 +2264,57 @@ export function WorkspaceShell(): ReactElement {
             </>
           )
         ) : (
-          <StartPage
-            isLoading={isLoading}
-            recentRepos={workspace.recentRepos}
-            onOpenRepository={() => void openRepository()}
-            onOpenRecentRepository={(repoPath) => void openRepositoryAtPath(repoPath)}
-          />
+          <>
+            <Sidebar
+              repositoryOverview={undefined}
+              isLoading={false}
+              isRefreshing={false}
+              isCollapsed={isSidebarCollapsed}
+              width={effectiveSidebarWidth}
+              filterFocusSignal={sidebarFilterFocusSignal}
+              onToggleCollapsed={handleToggleSidebar}
+              pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+              isPullRequestLoading={pullRequestInboxQuery.isLoading}
+              isPullRequestInboxActive={false}
+              onOpenPullRequestInbox={handleOpenPullRequestInbox}
+              onResize={handleSidebarResize}
+              onResizeCommit={handleSidebarResizeCommit}
+              isOperationBusy={false}
+              onCheckoutBranch={handleCheckoutBranch}
+              onCheckoutRemoteBranch={handleActivateRemoteBranch}
+              onRenameBranch={handleRenameBranch}
+              onReviewBranch={handleOpenBranchReview}
+              onDeleteBranch={handleDeleteBranch}
+              onDeleteRemoteBranch={handleDeleteRemoteBranch}
+              onPushTag={handlePushTag}
+              onDeleteTag={handleDeleteTag}
+              onStashApply={handleStashApply}
+              onStashPop={handleStashPop}
+              onStashDrop={handleStashDrop}
+            />
+            <StartPage
+              isLoading={isLoading}
+              recentRepos={workspace.recentRepos}
+              onOpenRepository={() => void openRepository()}
+              onOpenRecentRepository={(repoPath) => void openRepositoryAtPath(repoPath)}
+            />
+          </>
         )}
       </section>
 
-      <StatusBar
-        activeTab={activeTab}
-        repositoryOverview={repositoryQuery.data}
-        isRepositoryLoading={repositoryQuery.isLoading}
-        isRepositoryRefreshing={
-          !checkoutTransition &&
-          Boolean(repositoryQuery.data || graphQuery.data) &&
-          (repositoryQuery.isFetching || graphQuery.isFetching)
-        }
-        activeOperation={checkoutTransition ? undefined : visibleActiveOperation}
-      />
+      {!gitHubWorkspaceView ? (
+        <StatusBar
+          activeTab={activeTab}
+          repositoryOverview={repositoryQuery.data}
+          isRepositoryLoading={repositoryQuery.isLoading}
+          isRepositoryRefreshing={
+            !checkoutTransition &&
+            Boolean(repositoryQuery.data || graphQuery.data) &&
+            (repositoryQuery.isFetching || graphQuery.isFetching)
+          }
+          activeOperation={checkoutTransition ? undefined : visibleActiveOperation}
+        />
+      ) : null}
       <OperationLog
         entries={operationLogEntries}
         onDismiss={handleDismissOperation}

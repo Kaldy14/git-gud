@@ -48,6 +48,12 @@ import {
 } from './git/repositoryDetails';
 import { loadRepositoryOverview } from './git/repositoryOverview';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
+import {
+  loadGitHubPullRequestDetail,
+  loadGitHubPullRequestInbox,
+  mergeGitHubPullRequest,
+  submitGitHubPullRequestReview
+} from './github';
 import { validateRepository } from './git/repoInspector';
 import { clearReviewSyntaxCache, clearReviewSyntaxCacheForRepository } from './git/reviewSyntax';
 import type { RepoWatcherRegistry } from './git/watcher';
@@ -376,6 +382,10 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('settings:update', (_event, settings) => updateAppSettings(settings));
   handle('profiles:list', () => listProfiles());
   handle('profiles:list-github-accounts', () => listGitHubAccounts());
+  handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
+  handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
+  handle('github:submit-pull-request-review', (_event, input) => submitGitHubPullRequestReview(input));
+  handle('github:merge-pull-request', (_event, input) => mergeGitHubPullRequest(input));
   handle('profiles:save', (_event, profile) => saveProfile(profile));
   handle('profiles:activate', (_event, profileId) => {
     if (profileId && !listProfiles().some((profile) => profile.id === profileId)) {

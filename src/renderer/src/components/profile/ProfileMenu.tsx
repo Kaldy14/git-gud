@@ -202,6 +202,7 @@ export function ProfileMenu({
         ref={triggerRef}
         className="ml-1 flex h-7 items-center gap-2 rounded-full py-0.5 pl-1 pr-2 text-xs text-[var(--text-2)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-[var(--text-2)]"
         type="button"
+        aria-label="Git profile menu"
         disabled={isPending}
         title={profileEmail ? `${profileLabel} <${profileEmail}>` : 'Git config workspace'}
         onClick={toggleOpen}

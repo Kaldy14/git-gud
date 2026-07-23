@@ -9,6 +9,9 @@ import type {
   GitCreateBranchInput,
   GitDeleteBranchInput,
   GitFileDiffRequest,
+  GitHubPullRequestLocator,
+  GitHubPullRequestMergeInput,
+  GitHubPullRequestReviewInput,
   GitInteractiveRebaseAction,
   GitInteractiveRebaseInput,
   GitMergeInput,
@@ -116,6 +119,14 @@ const validators = {
   'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
   'profiles:list': (args) => noArgs('profiles:list', args),
   'profiles:list-github-accounts': (args) => noArgs('profiles:list-github-accounts', args),
+  'github:pull-request-inbox': (args) =>
+    readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
+  'github:pull-request-detail': (args) =>
+    readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
+  'github:submit-pull-request-review': (args) =>
+    readOnlyArg(args, 'github:submit-pull-request-review', 'input', readGitHubPullRequestReviewInput),
+  'github:merge-pull-request': (args) =>
+    readOnlyArg(args, 'github:merge-pull-request', 'input', readGitHubPullRequestMergeInput),
   'profiles:save': (args) => readOnlyArg(args, 'profiles:save', 'profile', readProfile),
   'profiles:activate': (args) => readOnlyArg(args, 'profiles:activate', 'profileId', readOptionalString),
   'repo:assign-profile': (args) => readStringWithOptionalString(args, 'repo:assign-profile', 'repoPath', 'profileId')
@@ -309,6 +320,112 @@ function readReviewProgressUpdate(value: unknown): GitReviewProgressUpdate {
     targetKey,
     chunkIds,
     viewed: readBooleanProperty(record, 'viewed')
+  };
+}
+
+function readGitHubPullRequestLocator(value: unknown): GitHubPullRequestLocator {
+  const record = readRecord(value, 'pull request locator');
+  return {
+    profileId: readNonEmptyString(record.profileId, 'profileId'),
+    owner: readGitHubName(record.owner, 'owner'),
+    repository: readGitHubName(record.repository, 'repository'),
+    number: readPositiveInteger(record.number, 'number')
+  };
+}
+
+function readGitHubPullRequestReviewInput(value: unknown): GitHubPullRequestReviewInput {
+  const record = readRecord(value, 'pull request review input');
+  const locator = readGitHubPullRequestLocator(record);
+  const event = readEnumProperty(record, 'event', ['comment', 'approve', 'request-changes']);
+  const body = readLimitedString(record.body, 'body', 65_536);
+  const comments = readGitHubDraftLineComments(record.comments);
+  const replies = readGitHubDraftReplies(record.replies);
+
+  if (
+    event === 'comment' &&
+    body.trim().length === 0 &&
+    comments.length === 0 &&
+    replies.length === 0
+  ) {
+    throw new Error('A comment review must include a summary, line comment, or reply.');
+  }
+
+  if (event === 'request-changes' && body.trim().length === 0) {
+    throw new Error('body must not be empty when requesting changes.');
+  }
+
+  return {
+    ...locator,
+    event,
+    body,
+    commitId: readNonEmptyLimitedString(record.commitId, 'commitId', 128),
+    comments,
+    replies
+  };
+}
+
+function readGitHubDraftLineComments(
+  value: unknown
+): GitHubPullRequestReviewInput['comments'] {
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new Error('comments must be an array with at most 100 items.');
+  }
+
+  return value.map((item, index) => {
+    const record = readRecord(item, `comments[${index}]`);
+    const line = readPositiveInteger(record.line, `comments[${index}].line`);
+    const startLine = readOptionalPositiveInteger(
+      record.startLine,
+      `comments[${index}].startLine`
+    );
+    const side = readEnumProperty(record, 'side', ['left', 'right']);
+    const startSide = readOptionalEnumProperty(record, 'startSide', ['left', 'right']);
+
+    if (startLine !== undefined && startLine > line) {
+      throw new Error(`comments[${index}].startLine must be before or equal to line.`);
+    }
+
+    if (startLine !== undefined && startSide === undefined) {
+      throw new Error(`comments[${index}].startSide is required when startLine is provided.`);
+    }
+
+    return {
+      id: readNonEmptyLimitedString(record.id, `comments[${index}].id`, 128),
+      body: readNonEmptyLimitedString(record.body, `comments[${index}].body`, 65_536),
+      path: readNonEmptyLimitedString(record.path, `comments[${index}].path`, 4_096),
+      line,
+      side,
+      startLine,
+      startSide
+    };
+  });
+}
+
+function readGitHubDraftReplies(
+  value: unknown
+): GitHubPullRequestReviewInput['replies'] {
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new Error('replies must be an array with at most 100 items.');
+  }
+
+  return value.map((item, index) => {
+    const record = readRecord(item, `replies[${index}]`);
+    return {
+      id: readNonEmptyLimitedString(record.id, `replies[${index}].id`, 128),
+      body: readNonEmptyLimitedString(record.body, `replies[${index}].body`, 65_536),
+      inReplyToId: readPositiveInteger(
+        record.inReplyToId,
+        `replies[${index}].inReplyToId`
+      )
+    };
+  });
+}
+
+function readGitHubPullRequestMergeInput(value: unknown): GitHubPullRequestMergeInput {
+  const record = readRecord(value, 'pull request merge input');
+  return {
+    ...readGitHubPullRequestLocator(record),
+    method: readEnumProperty(record, 'method', ['merge', 'squash', 'rebase'])
   };
 }
 
@@ -599,6 +716,36 @@ function readProfile(value: unknown): GitProfile {
     signingKey: readOptionalStringProperty(record, 'signingKey'),
     remoteUrlPatterns: readOptionalStringArrayProperty(record, 'remoteUrlPatterns')
   };
+}
+
+function readGitHubName(value: unknown, label: string): string {
+  const name = readNonEmptyLimitedString(value, label, 100);
+
+  if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
+    throw new Error(`${label} contains unsupported characters.`);
+  }
+
+  return name;
+}
+
+function readLimitedString(value: unknown, label: string, maxLength: number): string {
+  const text = readString(value, label);
+
+  if (text.length > maxLength) {
+    throw new Error(`${label} must be ${maxLength.toLocaleString()} characters or fewer.`);
+  }
+
+  return text;
+}
+
+function readNonEmptyLimitedString(value: unknown, label: string, maxLength: number): string {
+  const text = readLimitedString(value, label, maxLength);
+
+  if (text.trim().length === 0) {
+    throw new Error(`${label} must not be empty.`);
+  }
+
+  return text;
 }
 
 function assertArgCount(channel: string, args: readonly unknown[], expected: number): void {

@@ -68,6 +68,42 @@ describe('IPC argument validation', () => {
     ]);
     expect(validateIpcArgs('profiles:activate', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
+    expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
+    expect(
+      validateIpcArgs('github:pull-request-detail', [
+        { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }
+      ])
+    ).toEqual([{ profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }]);
+    expect(
+      validateIpcArgs('github:submit-pull-request-review', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          event: 'comment',
+          body: '',
+          commitId: 'abc123',
+          comments: [{
+            id: 'draft-line-1',
+            body: 'Please cover this edge case.',
+            path: 'src/widget.ts',
+            line: 18,
+            side: 'right'
+          }],
+          replies: [{
+            id: 'draft-reply-1',
+            body: 'Agreed — I added this to the review.',
+            inReplyToId: 123
+          }]
+        }
+      ])[0]
+    ).toMatchObject({
+      event: 'comment',
+      commitId: 'abc123',
+      comments: [{ line: 18, side: 'right', path: 'src/widget.ts' }],
+      replies: [{ inReplyToId: 123 }]
+    });
     expect(validateIpcArgs('repo:file-history', ['/repo', 'src/app.ts', 50])).toEqual(['/repo', 'src/app.ts', 50]);
     expect(validateIpcArgs('repo:file-blame', ['/repo', 'src/app.ts'])).toEqual(['/repo', 'src/app.ts', undefined]);
     expect(validateIpcArgs('repo:compare', ['/repo', 'main', 'feature/test'])).toEqual(['/repo', 'main', 'feature/test']);
@@ -198,6 +234,26 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('workspace:set-sidebar-width', [420.5])).toThrow('width must be a positive integer.');
     expect(() => validateIpcArgs('workspace:set-detail-panel-collapsed', ['yes'])).toThrow('collapsed must be a boolean.');
     expect(() => validateIpcArgs('repo:file-history', ['/repo', 'file.ts', 1.5])).toThrow('limit must be a positive integer.');
+    expect(() =>
+      validateIpcArgs('github:pull-request-detail', [
+        { profileId: 'profile:kaldy', owner: '../acme', repository: 'widgets', number: 42 }
+      ])
+    ).toThrow('owner contains unsupported characters.');
+    expect(() =>
+      validateIpcArgs('github:submit-pull-request-review', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          event: 'request-changes',
+          body: '',
+          commitId: 'abc123',
+          comments: [],
+          replies: []
+        }
+      ])
+    ).toThrow('body must not be empty');
     expect(() => validateIpcArgs('repo:compare', ['/repo', 'main'])).toThrow('repo:compare expected 3 arguments');
     expect(() => validateIpcArgs('repo:cherry-pick', ['/repo', 'not-an-array'])).toThrow(
       'shas must be an array of strings.'

@@ -25,6 +25,12 @@ import type {
   GitPatchApplyInput,
   GitPullInput,
   GitHubCliAccount,
+  GitHubPullRequestActionResult,
+  GitHubPullRequestDetail,
+  GitHubPullRequestInbox,
+  GitHubPullRequestLocator,
+  GitHubPullRequestMergeInput,
+  GitHubPullRequestReviewInput,
   GitProfile,
   GitPushInput,
   GitRebaseInput,
@@ -301,6 +307,22 @@ export type IpcChannelMap = {
     args: [];
     result: GitHubCliAccount[];
   };
+  'github:pull-request-inbox': {
+    args: [profileId: string];
+    result: GitHubPullRequestInbox;
+  };
+  'github:pull-request-detail': {
+    args: [locator: GitHubPullRequestLocator];
+    result: GitHubPullRequestDetail;
+  };
+  'github:submit-pull-request-review': {
+    args: [input: GitHubPullRequestReviewInput];
+    result: GitHubPullRequestActionResult;
+  };
+  'github:merge-pull-request': {
+    args: [input: GitHubPullRequestMergeInput];
+    result: GitHubPullRequestActionResult;
+  };
   'profiles:save': {
     args: [profile: GitProfile];
     result: GitProfile[];
@@ -382,6 +404,10 @@ export type RendererApi = {
   updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;
   listProfiles: () => Promise<GitProfile[]>;
   listGitHubAccounts: () => Promise<GitHubCliAccount[]>;
+  getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
+  getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
+  submitGitHubPullRequestReview: (input: GitHubPullRequestReviewInput) => Promise<GitHubPullRequestActionResult>;
+  mergeGitHubPullRequest: (input: GitHubPullRequestMergeInput) => Promise<GitHubPullRequestActionResult>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
   activateProfile: (profileId: string | undefined) => Promise<WorkspaceState>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;

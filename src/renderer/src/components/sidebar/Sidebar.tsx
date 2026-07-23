@@ -9,6 +9,7 @@ import {
   Cloud,
   FolderGit2,
   GitBranch,
+  GitPullRequest,
   Laptop,
   Loader2,
   PanelLeftClose,
@@ -34,6 +35,10 @@ type SidebarProps = {
   width: number;
   filterFocusSignal: number;
   onToggleCollapsed: () => void;
+  pullRequestCount: number;
+  isPullRequestLoading: boolean;
+  isPullRequestInboxActive: boolean;
+  onOpenPullRequestInbox: () => void;
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
   isOperationBusy: boolean;
@@ -102,6 +107,10 @@ export function Sidebar({
   width,
   filterFocusSignal,
   onToggleCollapsed,
+  pullRequestCount,
+  isPullRequestLoading,
+  isPullRequestInboxActive,
+  onOpenPullRequestInbox,
   onResize,
   onResizeCommit,
   isOperationBusy,
@@ -257,6 +266,17 @@ export function Sidebar({
         <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand sidebar">
           <PanelLeftOpen size={15} />
         </button>
+        <button
+          className="sidebar-collapsed-destination"
+          type="button"
+          data-active={isPullRequestInboxActive}
+          onClick={onOpenPullRequestInbox}
+          aria-label={`Pull request inbox${pullRequestCount > 0 ? `, ${pullRequestCount} items` : ''}`}
+          title="Pull request inbox"
+        >
+          <GitPullRequest size={15} />
+          {pullRequestCount > 0 ? <span>{pullRequestCount > 99 ? '99+' : pullRequestCount}</span> : null}
+        </button>
         <div className="mt-1 flex flex-col gap-1 text-[var(--text-3)]">
           {SECTIONS.map((section) => (
             <span key={section.id} className="grid h-7 w-7 place-items-center" title={section.title}>
@@ -313,7 +333,23 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Branches, worktrees, stashes, and tags">
+      <div className="min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Pull requests, branches, worktrees, stashes, and tags">
+        <button
+          className="sidebar-pr-destination"
+          type="button"
+          role="treeitem"
+          aria-selected={isPullRequestInboxActive}
+          data-active={isPullRequestInboxActive}
+          onClick={onOpenPullRequestInbox}
+        >
+          <GitPullRequest size={14} />
+          <span className="min-w-0 flex-1 text-left">Pull requests</span>
+          {isPullRequestLoading ? (
+            <Loader2 size={12} className="animate-spin text-[var(--text-3)]" />
+          ) : (
+            <span className="pr-count-badge">{pullRequestCount}</span>
+          )}
+        </button>
         {SECTIONS.map((section) => {
           const isExpanded = expanded[section.id];
           const sectionCount = counts[section.id as keyof typeof counts];

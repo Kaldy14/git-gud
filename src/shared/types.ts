@@ -741,6 +741,165 @@ export type GitHubCliAccount = {
   gitProtocol: string;
 };
 
+export type GitHubPullRequestCategory =
+  | 'needs-your-review'
+  | 'needs-team-review'
+  | 'drafts'
+  | 'waiting'
+  | 'needs-action'
+  | 'ready-to-merge';
+
+export type GitHubPullRequestChecks = {
+  state: 'success' | 'failure' | 'pending' | 'expected' | 'error' | 'unknown';
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+};
+
+export type GitHubPullRequestLocator = {
+  profileId: string;
+  owner: string;
+  repository: string;
+  number: number;
+};
+
+export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
+  id: string;
+  title: string;
+  url: string;
+  author: string;
+  authorAvatarUrl?: string;
+  updatedAt: string;
+  category: GitHubPullRequestCategory;
+  isDraft: boolean;
+  reviewDecision: 'approved' | 'changes-requested' | 'review-required' | 'unknown';
+  mergeState: 'clean' | 'blocked' | 'behind' | 'dirty' | 'unstable' | 'unknown';
+  mergeable: 'mergeable' | 'conflicting' | 'unknown';
+  canMerge: boolean;
+  comments: number;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  headRefName: string;
+  baseRefName: string;
+  checks: GitHubPullRequestChecks;
+};
+
+export type GitHubPullRequestInbox = {
+  profileId: string;
+  viewerLogin: string;
+  host: string;
+  pullRequests: GitHubPullRequestSummary[];
+  loadedAt: string;
+};
+
+export type GitHubPullRequestFile = {
+  sha: string;
+  path: string;
+  previousPath?: string;
+  status: 'added' | 'modified' | 'removed' | 'renamed' | 'copied' | 'changed' | 'unchanged';
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+  omittedReason?: 'binary' | 'too-large';
+};
+
+export type GitHubPullRequestReviewComment = {
+  id: number;
+  body: string;
+  author: string;
+  authorAvatarUrl?: string;
+  url: string;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
+  line?: number;
+  side?: 'left' | 'right';
+  startLine?: number;
+  startSide?: 'left' | 'right';
+  inReplyToId?: number;
+};
+
+export type GitHubPullRequestConversationComment = {
+  id: number;
+  body: string;
+  author: string;
+  authorAvatarUrl?: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GitHubPullRequestReview = {
+  id: number;
+  author: string;
+  authorAvatarUrl?: string;
+  body: string;
+  state: 'approved' | 'changes-requested' | 'commented' | 'dismissed' | 'pending' | 'unknown';
+  submittedAt?: string;
+  url: string;
+};
+
+export type GitHubPullRequestMergeMethod = 'merge' | 'squash' | 'rebase';
+
+export type GitHubRepositoryMergeSettings = {
+  allowedMethods: GitHubPullRequestMergeMethod[];
+  defaultMethod: GitHubPullRequestMergeMethod;
+};
+
+export type GitHubPullRequestDetail = GitHubPullRequestSummary & {
+  body: string;
+  headSha: string;
+  baseSha: string;
+  commits: number;
+  files: GitHubPullRequestFile[];
+  reviewPlan: GitReviewPlan;
+  mergeSettings: GitHubRepositoryMergeSettings;
+  viewerLogin: string;
+  reviewComments: GitHubPullRequestReviewComment[];
+  conversationComments: GitHubPullRequestConversationComment[];
+  reviews: GitHubPullRequestReview[];
+  loadedAt: string;
+};
+
+export type GitHubPullRequestDraftLineComment = {
+  id: string;
+  body: string;
+  path: string;
+  line: number;
+  side: 'left' | 'right';
+  startLine?: number;
+  startSide?: 'left' | 'right';
+};
+
+export type GitHubPullRequestDraftReply = {
+  id: string;
+  body: string;
+  inReplyToId: number;
+};
+
+export type GitHubPullRequestReviewInput = GitHubPullRequestLocator & {
+  event: 'comment' | 'approve' | 'request-changes';
+  body: string;
+  commitId: string;
+  comments: GitHubPullRequestDraftLineComment[];
+  replies: GitHubPullRequestDraftReply[];
+};
+
+export type GitHubPullRequestMergeInput = GitHubPullRequestLocator & {
+  method: GitHubPullRequestMergeMethod;
+};
+
+export type GitHubPullRequestActionResult = {
+  message: string;
+  merged?: boolean;
+  sha?: string;
+  submitted?: boolean;
+  failedDraftIds?: string[];
+};
+
 type GitIdentitySource = 'profile' | 'repo-config' | 'global-config' | 'unknown';
 
 export type GitIdentity = {

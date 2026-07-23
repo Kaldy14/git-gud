@@ -32,11 +32,11 @@ const REVIEW_CONTEXT_SEPARATOR_CSS = `
   }
 `;
 
-export function createReviewContextOptions(
-  options: FileDiffOptions<undefined>,
+export function createReviewContextOptions<LAnnotation>(
+  options: FileDiffOptions<LAnnotation>,
   diff: ExpandableReviewDiff,
   filePath: string
-): FileDiffOptions<undefined> {
+): FileDiffOptions<LAnnotation> {
   return {
     ...options,
     hunkSeparators: 'line-info',
@@ -45,10 +45,10 @@ export function createReviewContextOptions(
   };
 }
 
-function createReviewContextPostRender(
+function createReviewContextPostRender<LAnnotation>(
   diff: ExpandableReviewDiff,
   filePath: string
-): NonNullable<FileDiffOptions<undefined>['onPostRender']> {
+): NonNullable<FileDiffOptions<LAnnotation>['onPostRender']> {
   return (node, instance, phase) => {
     const previousListener = reviewExpansionListeners.get(node);
 
