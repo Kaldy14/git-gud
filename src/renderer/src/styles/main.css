@@ -1398,6 +1398,52 @@ button.ref-chip:active {
   background: var(--bg-field);
 }
 
+.review-file-tree-panel {
+  display: flex;
+  width: 260px;
+  min-width: 0;
+  flex: 0 0 260px;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.review-file-tree-panel > header {
+  display: flex;
+  min-height: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 6px 0 10px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.review-file-tree-panel > header > span:first-child {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-file-tree-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.review-file-tree {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .review-unit-header {
   display: flex;
   min-height: 48px;
@@ -3049,6 +3095,11 @@ button.ref-chip:active {
   }
 
   .review-queue {
+    width: 220px;
+    flex-basis: 220px;
+  }
+
+  .review-file-tree-panel {
     width: 220px;
     flex-basis: 220px;
   }

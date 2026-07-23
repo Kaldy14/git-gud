@@ -2,6 +2,8 @@ import type { FormEvent, KeyboardEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
+import { prepareFileTreeInput } from '@pierre/trees';
+import { FileTree, useFileTree } from '@pierre/trees/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -13,10 +15,13 @@ import {
   Clock3,
   FileCode2,
   FileCog,
+  FolderTree,
   GitBranch,
   Loader2,
   MessageSquare,
   PackageOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Rows3,
   Reply,
   Send,
@@ -61,6 +66,12 @@ import {
   type PreparedReviewDiff
 } from './reviewContextDiff';
 import { createReviewContextOptions } from './reviewContextExpansion';
+import {
+  createReviewFileTreeEntries,
+  findReviewUnitIdForPath,
+  loadReviewFileTreeOpen,
+  saveReviewFileTreeOpen
+} from './reviewFileTree';
 import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import { createReviewContexts } from './reviewSections';
@@ -148,6 +159,9 @@ export function ReviewView({
     loadReviewPreferences(window.localStorage, repoPath)
   );
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
+  const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
+    loadReviewFileTreeOpen(window.localStorage, repoPath)
+  );
   const [selectedUnitId, setSelectedUnitId] = useState<string>();
   const [embeddedReviewedChunkIds, setEmbeddedReviewedChunkIds] = useState<string[]>(() =>
     embeddedPlan
@@ -403,6 +417,11 @@ export function ReviewView({
     saveReviewPreferences(window.localStorage, repoPath, next);
   }
 
+  function setFileTreeOpen(isOpen: boolean): void {
+    setIsFileTreeOpen(isOpen);
+    saveReviewFileTreeOpen(window.localStorage, repoPath, isOpen);
+  }
+
   async function startReviewGuide(): Promise<void> {
     if (embeddedPlan || !reviewPlan || currentReviewGuideState?.status === 'running') {
       return;
@@ -454,7 +473,14 @@ export function ReviewView({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || isEditableTarget(event.target)) {
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      isEditableTarget(event.target) ||
+      isReviewFileTreeTarget(event.target)
+    ) {
       return;
     }
 
@@ -574,6 +600,17 @@ export function ReviewView({
           <button
             className="icon-btn h-7 w-7 shrink-0"
             type="button"
+            data-active={isFileTreeOpen}
+            onClick={() => setFileTreeOpen(!isFileTreeOpen)}
+            aria-label={isFileTreeOpen ? 'Hide review file tree' : 'Show review file tree'}
+            aria-pressed={isFileTreeOpen}
+            title={isFileTreeOpen ? 'Hide file tree' : 'Show file tree'}
+          >
+            {isFileTreeOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+          </button>
+          <button
+            className="icon-btn h-7 w-7 shrink-0"
+            type="button"
             onClick={onClose}
             aria-label="Close review"
             title="Close review"
@@ -606,7 +643,9 @@ export function ReviewView({
         mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
         lineCollaboration={lineCollaboration}
         reviewGuideUnits={reviewGuideUnits}
+        isFileTreeOpen={isFileTreeOpen}
         onSelectUnit={setSelectedUnitId}
+        onHideFileTree={() => setFileTreeOpen(false)}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
 
@@ -883,7 +922,9 @@ function ReviewBody({
   mutationError,
   lineCollaboration,
   reviewGuideUnits,
+  isFileTreeOpen,
   onSelectUnit,
+  onHideFileTree,
   onToggleViewed
 }: {
   isLoading: boolean;
@@ -898,17 +939,41 @@ function ReviewBody({
   mutationError?: string;
   lineCollaboration?: ReviewLineCollaboration;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
+  isFileTreeOpen: boolean;
   onSelectUnit: (unitId: string) => void;
+  onHideFileTree: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
+  const [requestedFilePath, setRequestedFilePath] = useState<string>();
   const [collapsedChunkIds, setCollapsedChunkIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
+  const selectedFilePath =
+    requestedFilePath &&
+    selectedUnit?.visibleChunks.some((chunk) => chunk.path === requestedFilePath)
+      ? requestedFilePath
+      : selectedUnit?.visibleChunks[0]?.path;
 
   useEffect(() => {
     reviewChunksRef.current?.scrollTo({ top: 0 });
   }, [selectedUnit?.unit.id]);
+
+  useEffect(() => {
+    if (!selectedFilePath) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      reviewChunksRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-review-path="${CSS.escape(selectedFilePath)}"]`
+        )
+        ?.scrollIntoView({ block: 'start' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedFilePath, selectedUnit?.unit.id]);
 
   function toggleChunk(chunkId: string): void {
     const isCollapsing = !collapsedChunkIds.has(chunkId);
@@ -928,6 +993,22 @@ function ReviewBody({
 
       return next;
     });
+  }
+
+  function selectFile(path: string | undefined): void {
+    setRequestedFilePath(path);
+
+    if (!path) {
+      return;
+    }
+
+    const unitId = selectedUnit?.visibleChunks.some((chunk) => chunk.path === path)
+      ? selectedUnit.unit.id
+      : findReviewUnitIdForPath(units, path);
+
+    if (unitId) {
+      onSelectUnit(unitId);
+    }
   }
 
   if (isLoading) {
@@ -1035,7 +1116,120 @@ function ReviewBody({
           </>
         ) : null}
       </main>
+
+      {isFileTreeOpen ? (
+        <ReviewFileTree
+          units={units}
+          selectedPath={selectedFilePath}
+          onSelectPath={selectFile}
+          onHide={onHideFileTree}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function ReviewFileTree({
+  units,
+  selectedPath,
+  onSelectPath,
+  onHide
+}: {
+  units: VisibleReviewUnit[];
+  selectedPath?: string;
+  onSelectPath: (path: string | undefined) => void;
+  onHide: () => void;
+}): ReactElement {
+  const isSyncingSelectionRef = useRef(false);
+  const entries = useMemo(() => createReviewFileTreeEntries(units), [units]);
+  const paths = useMemo(() => entries.map((entry) => entry.path), [entries]);
+  const pathSet = useMemo(() => new Set(paths), [paths]);
+  const preparedInput = useMemo(
+    () => prepareFileTreeInput(paths, { flattenEmptyDirectories: true }),
+    [paths]
+  );
+  const { model } = useFileTree({
+    preparedInput,
+    gitStatus: entries,
+    initialExpansion: 'open',
+    initialSelectedPaths: selectedPath ? [selectedPath] : [],
+    onSelectionChange(selectedPaths) {
+      if (isSyncingSelectionRef.current) {
+        return;
+      }
+
+      onSelectPath(selectedPaths.find((path) => pathSet.has(path)));
+    },
+    search: entries.length > 8,
+    unsafeCSS: `
+      :host {
+        --trees-selected-bg-override: var(--select-bg);
+        --trees-border-color-override: var(--border);
+        --trees-fg-override: var(--text-2);
+        --trees-muted-fg-override: var(--text-3);
+        --trees-bg-override: transparent;
+        --trees-hover-bg-override: var(--bg-hover);
+        font-size: 12px;
+      }
+    `
+  });
+
+  useEffect(() => {
+    const selectedPaths = model.getSelectedPaths();
+    const currentSelectedPath = selectedPaths.find((path) => pathSet.has(path));
+
+    if (
+      currentSelectedPath === selectedPath &&
+      selectedPaths.length <= (selectedPath ? 1 : 0)
+    ) {
+      return;
+    }
+
+    isSyncingSelectionRef.current = true;
+
+    try {
+      for (const path of selectedPaths) {
+        if (path !== selectedPath) {
+          model.getItem(path)?.deselect();
+        }
+      }
+
+      if (selectedPath && pathSet.has(selectedPath)) {
+        const selectedItem = model.getItem(selectedPath);
+
+        if (!selectedItem?.isSelected()) {
+          selectedItem?.select();
+        }
+
+        model.scrollToPath(selectedPath, { focus: false });
+      }
+    } finally {
+      isSyncingSelectionRef.current = false;
+    }
+  }, [model, pathSet, selectedPath]);
+
+  return (
+    <aside className="review-file-tree-panel" aria-label="Review files">
+      <header>
+        <span>
+          <FolderTree size={13} />
+          Files
+        </span>
+        <span className="badge-mini">{entries.length}</span>
+        <button
+          className="icon-btn h-6 w-6"
+          type="button"
+          onClick={onHide}
+          aria-label="Hide review file tree"
+          title="Hide file tree"
+        >
+          <PanelRightClose size={13} />
+        </button>
+      </header>
+      <div className="review-file-tree-body">
+        <FileTree className="review-file-tree" model={model} />
+      </div>
+    </aside>
   );
 }
 
@@ -1093,7 +1287,11 @@ function ReviewChunk({
     : contextualDiffOptions;
 
   return (
-    <section className="review-chunk" data-collapsed={isCollapsed}>
+    <section
+      className="review-chunk"
+      data-collapsed={isCollapsed}
+      data-review-path={chunk.path}
+    >
       <button
         className="review-chunk-header"
         type="button"
@@ -1637,4 +1835,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
   }
 
   return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function isReviewFileTreeTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('.review-file-tree-panel') !== null;
 }

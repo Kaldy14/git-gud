@@ -2239,31 +2239,33 @@ export function WorkspaceShell(): ReactElement {
                   onCloseSearch={() => setIsCommitSearchOpen(false)}
                 />
               )}
-              <CommitDetailPanel
-                repoPath={activeTab.path}
-                row={selectedRow}
-                selectedShas={selectedCommitShas}
-                parentSha={parentSha}
-                selectedFile={activeTab.selectedFile}
-                wipDirtyCount={repositoryQuery.data?.status.dirtyCount}
-                profileState={repositoryQuery.data?.profileState}
-                commitFocusSignal={commitComposerFocusByTab[activeTab.id] ?? 0}
-                isOperationBusy={isOperationBusy}
-                width={effectiveDetailPanelWidth}
-                isCollapsed={isDetailPanelCollapsed}
-                remoteAvatars={settings.remoteAvatars}
-                isReviewOpen={isReviewOpen}
-                onToggleCollapsed={handleToggleDetailPanel}
-                onResize={handleDetailPanelResize}
-                onResizeCommit={handleDetailPanelResizeCommit}
-                onSelectFile={handleSelectFile}
-                onSetReviewOpen={handleSetReviewOpen}
-                onOpenWipChanges={handleOpenWipChanges}
-                onDiscardAllWip={handleDiscardAllWip}
-                onDiscardWipFile={handleDiscardWipFile}
-                onOpenWipFile={handleOpenWipFile}
-                onRevealWipFile={handleRevealWipFile}
-              />
+              {!activeReviewTarget ? (
+                <CommitDetailPanel
+                  repoPath={activeTab.path}
+                  row={selectedRow}
+                  selectedShas={selectedCommitShas}
+                  parentSha={parentSha}
+                  selectedFile={activeTab.selectedFile}
+                  wipDirtyCount={repositoryQuery.data?.status.dirtyCount}
+                  profileState={repositoryQuery.data?.profileState}
+                  commitFocusSignal={commitComposerFocusByTab[activeTab.id] ?? 0}
+                  isOperationBusy={isOperationBusy}
+                  width={effectiveDetailPanelWidth}
+                  isCollapsed={isDetailPanelCollapsed}
+                  remoteAvatars={settings.remoteAvatars}
+                  isReviewOpen={isReviewOpen}
+                  onToggleCollapsed={handleToggleDetailPanel}
+                  onResize={handleDetailPanelResize}
+                  onResizeCommit={handleDetailPanelResizeCommit}
+                  onSelectFile={handleSelectFile}
+                  onSetReviewOpen={handleSetReviewOpen}
+                  onOpenWipChanges={handleOpenWipChanges}
+                  onDiscardAllWip={handleDiscardAllWip}
+                  onDiscardWipFile={handleDiscardWipFile}
+                  onOpenWipFile={handleOpenWipFile}
+                  onRevealWipFile={handleRevealWipFile}
+                />
+              ) : null}
             </>
           )
         ) : (

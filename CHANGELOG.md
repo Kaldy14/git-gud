@@ -4,6 +4,17 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-07-23
+
+### Added
+
+- Added a toggleable Pierre file tree to the right side of reviews, with changed-file statuses, search, and file selection that navigates to the matching review group and diff.
+
+### Changed
+
+- Let review mode use the commit-detail panel space so diffs remain readable with the file tree open, restoring commit details when review closes.
+- Remembered file-tree visibility per repository and kept review keyboard navigation from intercepting tree interactions.
+
 ## [0.4.8] - 2026-07-23
 
 ### Added
