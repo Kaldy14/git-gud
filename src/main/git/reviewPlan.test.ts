@@ -936,6 +936,44 @@ describe('context review plans', () => {
     expect(plan.units.flatMap((candidate) => candidate.chunks)).toHaveLength(17);
     expect(unit?.chunks).toHaveLength(17);
   });
+
+  it('groups repeated replacements when the new type extends the original symbol name', () => {
+    const replacementPaths = [
+      'src/schema/addition-group.ts',
+      'src/schema/combo-group.ts',
+      'src/schema/image.ts',
+      'src/schema/ingredient-category.ts',
+      'src/schema/ingredient.ts',
+      'src/schema/payment-types.ts',
+      'src/schema/product.ts'
+    ];
+    const plan = buildReviewPlan('/repo', { kind: 'commit', sha: 'type-extension' }, [
+      patch(
+        'src/localized-string.model.ts',
+        '@@ -1,3 +1,3 @@\n export class LocalizedString {\n-  cs?: string;\n+  readonly cs?: string;\n }\n'
+      ),
+      patch(
+        'src/locale.ts',
+        '@@ -0,0 +1,3 @@\n+export type LocalizedStringValue = Partial<Record<string, string>>;\n'
+      ),
+      ...replacementPaths.map((path, index) => patch(
+        path,
+        `@@ -1,2 +1,2 @@\n-import { LocalizedString } from './localized-string.model';\n+import type { LocalizedStringValue } from './locale';\n-export const value${index}: LocalizedString = {};\n+export const value${index}: LocalizedStringValue = {};\n`
+      ))
+    ]);
+    const unit = plan.units.find((candidate) =>
+      candidate.title === 'LocalizedString → LocalizedStringValue'
+    );
+
+    expect(unit?.confidence).toBe('exact');
+    expect(unit?.chunks).toHaveLength(9);
+    expect(new Set(unit?.chunks.map((chunk) => chunk.path))).toEqual(new Set([
+      'src/localized-string.model.ts',
+      'src/locale.ts',
+      ...replacementPaths
+    ]));
+    expect(plan.units).toHaveLength(1);
+  });
 });
 
 function generatedReplacementPatch(path: string): ReviewPatchInput {

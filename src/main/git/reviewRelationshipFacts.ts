@@ -144,7 +144,8 @@ export function extractReviewRenameCandidates(
       if (
         fromWords.length > 1 &&
         toWords.length > 1 &&
-        fromWords.at(-1) !== toWords.at(-1)
+        fromWords.at(-1) !== toWords.at(-1) &&
+        !isSymbolWordExtension(fromWords, toWords)
       ) {
         continue;
       }
@@ -163,6 +164,14 @@ export function extractReviewRenameCandidates(
     left.from.localeCompare(right.from) ||
     left.to.localeCompare(right.to)
   );
+}
+
+function isSymbolWordExtension(left: string[], right: string[]): boolean {
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+
+  return shorter.length < longer.length &&
+    shorter.every((word, index) => word === longer[index]);
 }
 
 export function normalizeReviewSymbol(value: string): string {
