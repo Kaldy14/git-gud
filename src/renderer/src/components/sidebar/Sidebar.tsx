@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent as R
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Archive,
+  BookOpenCheck,
   Check,
   ChevronDown,
   ChevronRight,
@@ -39,6 +40,7 @@ type SidebarProps = {
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
   onRenameBranch: (name: string) => void;
+  onReviewBranch: (name: string, sha: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
@@ -106,6 +108,7 @@ export function Sidebar({
   onCheckoutBranch,
   onCheckoutRemoteBranch,
   onRenameBranch,
+  onReviewBranch,
   onDeleteBranch,
   onDeleteRemoteBranch,
   tagPushRemote,
@@ -374,6 +377,7 @@ export function Sidebar({
           onCheckoutBranch={onCheckoutBranch}
           onCheckoutRemoteBranch={onCheckoutRemoteBranch}
           onRenameBranch={onRenameBranch}
+          onReviewBranch={onReviewBranch}
           onDeleteBranch={onDeleteBranch}
           onDeleteRemoteBranch={onDeleteRemoteBranch}
           tagPushRemote={tagPushRemote}
@@ -789,6 +793,7 @@ function SidebarContextMenu({
   onCheckoutBranch,
   onCheckoutRemoteBranch,
   onRenameBranch,
+  onReviewBranch,
   onDeleteBranch,
   onDeleteRemoteBranch,
   tagPushRemote,
@@ -804,6 +809,7 @@ function SidebarContextMenu({
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
   onRenameBranch: (name: string) => void;
+  onReviewBranch: (name: string, sha: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
@@ -856,6 +862,20 @@ function SidebarContextMenu({
             <Check size={14} />
             <span>Checkout branch</span>
           </button>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onReviewBranch(state.branch.name, state.branch.sha);
+              onClose();
+            }}
+          >
+            <BookOpenCheck size={14} />
+            <span>Review entire branch</span>
+          </button>
+          <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
           <button
             className="menu-row"
             type="button"

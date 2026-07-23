@@ -9,6 +9,7 @@ import type {
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
+  BookOpenCheck,
   Cherry,
   Check,
   Cloud,
@@ -126,6 +127,7 @@ type GraphViewProps = {
   onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
+  onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
   onActivateRemoteBranch?: (name: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -212,6 +214,7 @@ export function GraphView({
   onStashDrop,
   onCheckoutBranch,
   onRenameBranch,
+  onReviewBranch,
   onActivateRemoteBranch,
   onMergeBranch,
   onRebaseOntoBranch,
@@ -864,6 +867,7 @@ export function GraphView({
           }}
           onCheckoutBranch={onCheckoutBranch}
           onRenameBranch={onRenameBranch}
+          onReviewBranch={onReviewBranch}
           onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
           onMergeBranch={onMergeBranch}
           onRebaseOntoBranch={onRebaseOntoBranch}
@@ -2167,6 +2171,7 @@ function GraphBranchContextMenu({
   onClose,
   onCheckoutBranch,
   onRenameBranch,
+  onReviewBranch,
   onCreateTagAtCommit,
   onMergeBranch,
   onRebaseOntoBranch,
@@ -2178,6 +2183,7 @@ function GraphBranchContextMenu({
   onClose: () => void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
+  onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -2231,6 +2237,20 @@ function GraphBranchContextMenu({
         className="menu-row"
         type="button"
         role="menuitem"
+        disabled={!onReviewBranch || isOperationBusy}
+        onClick={() => {
+          void onReviewBranch?.(state.branchName, state.targetSha);
+          onClose();
+        }}
+      >
+        <BookOpenCheck size={14} />
+        <span>Review entire branch</span>
+      </button>
+      <MenuSeparator />
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
         disabled={!onRenameBranch || isOperationBusy}
         onClick={() => {
           void onRenameBranch?.(state.branchName);
@@ -2253,7 +2273,6 @@ function GraphBranchContextMenu({
         <Tag size={14} />
         <span>Create tag here</span>
       </button>
-      <MenuSeparator />
       <button
         className="menu-row"
         type="button"

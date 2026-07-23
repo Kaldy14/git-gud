@@ -72,7 +72,7 @@ export const reviewPlanQueryKey = (
   'review-plan',
   repoPath,
   target.kind,
-  target.kind === 'commit' ? target.sha : target.scope
+  target.kind === 'commit' ? target.sha : target.kind === 'branch' ? `${target.name}\0${target.sha}` : target.scope
 ];
 
 export function useRepositoryOverview(repoPath: string | undefined) {
@@ -350,7 +350,12 @@ export async function invalidateRepositoryQueries(
 
   if (requested.has('review-plan')) {
     invalidations.push(
-      queryClient.invalidateQueries({ queryKey: ['review-plan', repoPath, 'wip'] }, { cancelRefetch: false })
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === 'review-plan' &&
+          query.queryKey[1] === repoPath &&
+          (query.queryKey[2] === 'branch' || query.queryKey[2] === 'wip')
+      }, { cancelRefetch: false })
     );
   }
 

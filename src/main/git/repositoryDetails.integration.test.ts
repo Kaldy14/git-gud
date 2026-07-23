@@ -259,6 +259,46 @@ describe('repository details integration', () => {
       await rm(rootPath, { recursive: true, force: true });
     }
   });
+
+  it('builds one cumulative review plan for a whole local branch', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await git(repoPath, ['checkout', '-b', 'feature/review-all']);
+      await commitFile(
+        repoPath,
+        'src/branch-review.ts',
+        'export const branchValue = 1;\n',
+        'start branch review'
+      );
+      await commitFile(
+        repoPath,
+        'src/branch-review.ts',
+        'export const branchValue = 2;\nexport const branchReady = true;\n',
+        'finish branch review'
+      );
+      const branchSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      const plan = await loadReviewPlan(
+        { path: repoPath },
+        { kind: 'branch', name: 'feature/review-all', sha: branchSha }
+      );
+      const chunks = plan.units.flatMap((unit) => unit.chunks);
+
+      expect(plan.target).toEqual({
+        kind: 'branch',
+        name: 'feature/review-all',
+        sha: branchSha
+      });
+      expect(plan.targetKey).toBe('branch:feature/review-all');
+      expect(chunks.some((chunk) => chunk.path === 'src/branch-review.ts')).toBe(true);
+      expect(chunks.some((chunk) => chunk.path === 'ordinary.txt')).toBe(false);
+      expect(chunks.map((chunk) => chunk.patch).join('\n')).toContain('+export const branchReady = true;');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
 });
 
 async function createRepository(rootPath: string): Promise<string> {

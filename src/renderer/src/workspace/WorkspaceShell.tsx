@@ -77,6 +77,7 @@ import type {
   GitOperationResult,
   GitProfile,
   GitRemoteBranchRef,
+  GitReviewTarget,
   RepoProfileState,
   GitResetInput,
   GitStashRefInput,
@@ -178,7 +179,7 @@ export function WorkspaceShell(): ReactElement {
   const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
   const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
   const [fileFocusByTab, setFileFocusByTab] = useState<Record<string, number>>({});
-  const [reviewOpenByTab, setReviewOpenByTab] = useState<Record<string, boolean>>({});
+  const [reviewTargetByTab, setReviewTargetByTab] = useState<Partial<Record<string, GitReviewTarget>>>({});
   const [operationLogEntries, setOperationLogEntries] = useState<OperationLogEntry[]>([]);
   const [activeRepositoryOperations, setActiveRepositoryOperations] = useState<
     Record<string, ActiveRepositoryOperation>
@@ -310,7 +311,8 @@ export function WorkspaceShell(): ReactElement {
   const parentSha = selectedRow?.parentShas[0];
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
-  const isReviewOpen = activeTab ? (reviewOpenByTab[activeTab.id] ?? false) : false;
+  const activeReviewTarget = activeTab ? reviewTargetByTab[activeTab.id] : undefined;
+  const isReviewOpen = Boolean(activeReviewTarget);
   const pendingOperationForActiveRepo = operationLogEntries.find(
     (entry) => entry.repoPath === activeTab?.path && entry.status === 'pending'
   );
@@ -500,7 +502,12 @@ export function WorkspaceShell(): ReactElement {
       setWipScopeByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
       setCommitComposerFocusByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
       setFileFocusByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
-      setReviewOpenByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id, false));
+      setReviewTargetByTab((value) => {
+        const next = withoutRecordKey(withoutRecordKey(value, previousTab.id), worktreeTab.id);
+        return value[previousTab.id]
+          ? { ...next, [worktreeTab.id]: { kind: 'wip', scope: 'all' } }
+          : next;
+      });
     }
 
     setBulkSelectionByTab((value) => ({ ...value, [worktreeTab.id]: [] }));
@@ -651,7 +658,7 @@ export function WorkspaceShell(): ReactElement {
       setWipScopeByTab({});
       setCommitComposerFocusByTab({});
       setFileFocusByTab({});
-      setReviewOpenByTab({});
+      setReviewTargetByTab({});
 
       const nextTab = nextWorkspace.tabs.find((tab) => tab.id === nextWorkspace.activeTabId);
 
@@ -697,7 +704,7 @@ export function WorkspaceShell(): ReactElement {
     setWipScopeByTab((value) => withoutRecordKey(value, tabId));
     setCommitComposerFocusByTab((value) => withoutRecordKey(value, tabId));
     setFileFocusByTab((value) => withoutRecordKey(value, tabId));
-    setReviewOpenByTab((value) => withoutRecordKey(value, tabId));
+    setReviewTargetByTab((value) => withoutRecordKey(value, tabId));
   }
 
   function handleSetDiffStyle(style: DiffStyle): void {
@@ -744,11 +751,38 @@ export function WorkspaceShell(): ReactElement {
     }
 
     if (open) {
+      if (!selectedRow || selectedRow.node.kind === 'stash') {
+        return;
+      }
+
       setIsCommitSearchOpen(false);
       void selectFile(activeTab.id, undefined);
+      setReviewTargetByTab((value) => ({
+        ...value,
+        [activeTab.id]:
+          selectedRow.node.kind === 'wip'
+            ? { kind: 'wip', scope: 'all' }
+            : { kind: 'commit', sha: selectedRow.sha }
+      }));
+      return;
     }
 
-    setReviewOpenByTab((value) => ({ ...value, [activeTab.id]: open }));
+    setReviewTargetByTab((value) => withoutRecordKey(value, activeTab.id));
+  }
+
+  function handleOpenBranchReview(name: string, sha: string): void {
+    if (!activeTab) {
+      return;
+    }
+
+    setIsCommitSearchOpen(false);
+    handleBulkSelectionChange([]);
+    void selectCommit(activeTab.id, sha);
+    void selectFile(activeTab.id, undefined);
+    setReviewTargetByTab((value) => ({
+      ...value,
+      [activeTab.id]: { kind: 'branch', name, sha }
+    }));
   }
 
   async function handleStageAllWip(): Promise<void> {
@@ -802,7 +836,7 @@ export function WorkspaceShell(): ReactElement {
 
     if (path) {
       setIsCommitSearchOpen(false);
-      setReviewOpenByTab((value) => ({ ...value, [activeTab.id]: false }));
+      setReviewTargetByTab((value) => withoutRecordKey(value, activeTab.id));
       setFileFocusByTab((value) => ({
         ...value,
         [activeTab.id]: (value[activeTab.id] ?? 0) + 1
@@ -1980,6 +2014,7 @@ export function WorkspaceShell(): ReactElement {
                 onCheckoutBranch={handleCheckoutBranch}
                 onCheckoutRemoteBranch={handleActivateRemoteBranch}
                 onRenameBranch={handleRenameBranch}
+                onReviewBranch={handleOpenBranchReview}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
                 tagPushRemote={tagPushRemote}
@@ -1989,7 +2024,7 @@ export function WorkspaceShell(): ReactElement {
                 onStashPop={handleStashPop}
                 onStashDrop={handleStashDrop}
               />
-              {isReviewOpen && selectedRow && selectedCommitShas.length < 2 && selectedRow.node.kind !== 'stash' ? (
+              {activeReviewTarget ? (
                 <Suspense
                   fallback={
                     <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] text-xs text-[var(--text-3)]">
@@ -1998,9 +2033,9 @@ export function WorkspaceShell(): ReactElement {
                   }
                 >
                   <ReviewView
-                    key={activeTab.path}
+                    key={`${activeTab.path}:${activeReviewTarget.kind}:${activeReviewTarget.kind === 'wip' ? activeReviewTarget.scope : activeReviewTarget.sha}`}
                     repoPath={activeTab.path}
-                    row={selectedRow}
+                    target={activeReviewTarget}
                     diffStyle={activeDiffStyle}
                     onSetDiffStyle={handleSetDiffStyle}
                     onClose={() => handleSetReviewOpen(false)}
@@ -2073,6 +2108,7 @@ export function WorkspaceShell(): ReactElement {
                   onMergeBranch={handleMergeBranch}
                   onRebaseOntoBranch={handleRebaseOntoBranch}
                   onInteractiveRebaseOntoBranch={handleInteractiveRebaseOntoBranch}
+                  onReviewBranch={handleOpenBranchReview}
                   onDeleteBranch={handleDeleteBranch}
                   onCheckoutCommit={handleCheckoutCommit}
                   onCreateBranchAtCommit={handleCreateBranch}

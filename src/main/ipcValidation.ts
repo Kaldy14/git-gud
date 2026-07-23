@@ -269,11 +269,19 @@ function readCommitInput(value: unknown): GitCommitInput {
 
 function readReviewTarget(value: unknown): GitReviewTarget {
   const record = readRecord(value, 'review target');
-  const kind = readEnumProperty(record, 'kind', ['commit', 'wip']);
+  const kind = readEnumProperty(record, 'kind', ['branch', 'commit', 'wip']);
 
   if (kind === 'commit') {
     return {
       kind,
+      sha: readNonEmptyString(record.sha, 'sha')
+    };
+  }
+
+  if (kind === 'branch') {
+    return {
+      kind,
+      name: readNonEmptyString(record.name, 'name'),
       sha: readNonEmptyString(record.sha, 'sha')
     };
   }

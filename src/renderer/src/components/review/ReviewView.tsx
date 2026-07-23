@@ -10,6 +10,7 @@ import {
   Columns2,
   FileCode2,
   FileCog,
+  GitBranch,
   Loader2,
   PackageOpen,
   Rows3,
@@ -24,7 +25,6 @@ import { DIFF_OPTIONS_BASE, type DiffStyle } from '@renderer/components/commit/f
 import { useDiffSyntaxHighlighter } from '@renderer/components/diff/useDiffSyntaxHighlighter';
 import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
 import type {
-  CommitGraphRow,
   GitReviewChunk,
   GitReviewFileContext,
   GitReviewTarget
@@ -44,7 +44,7 @@ import { createReviewContexts } from './reviewSections';
 
 type ReviewViewProps = {
   repoPath: string;
-  row: CommitGraphRow;
+  target: GitReviewTarget;
   diffStyle: DiffStyle;
   onSetDiffStyle: (style: DiffStyle) => void;
   onClose: () => void;
@@ -52,22 +52,24 @@ type ReviewViewProps = {
 
 export function ReviewView({
   repoPath,
-  row,
+  target: initialTarget,
   diffStyle,
   onSetDiffStyle,
   onClose
 }: ReviewViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
-  const [wipScope, setWipScope] = useState<'all' | 'staged' | 'unstaged'>('all');
+  const [wipScope, setWipScope] = useState<'all' | 'staged' | 'unstaged'>(
+    initialTarget.kind === 'wip' ? initialTarget.scope : 'all'
+  );
   const [preferences, setPreferences] = useState<ReviewPreferences>(() =>
     loadReviewPreferences(window.localStorage, repoPath)
   );
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState<string>();
   const target = useMemo<GitReviewTarget>(
-    () => (row.node.kind === 'wip' ? { kind: 'wip', scope: wipScope } : { kind: 'commit', sha: row.sha }),
-    [row.node.kind, row.sha, wipScope]
+    () => (initialTarget.kind === 'wip' ? { kind: 'wip', scope: wipScope } : initialTarget),
+    [initialTarget, wipScope]
   );
   const reviewQuery = useReviewPlan(repoPath, target);
   const reviewedChunkIds = useMemo(
@@ -160,7 +162,16 @@ export function ReviewView({
     <section ref={sectionRef} className="review-view" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="review-toolbar">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {row.node.kind === 'wip' ? (
+          {target.kind === 'branch' ? (
+            <span
+              className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2.5 text-[11px] font-semibold text-[var(--text-2)]"
+              title={`Review all changes on ${target.name}`}
+            >
+              <GitBranch size={12} className="shrink-0" />
+              <span className="max-w-48 truncate">{target.name}</span>
+            </span>
+          ) : null}
+          {target.kind === 'wip' ? (
             <div className="segmented" aria-label="Working directory review scope">
               {(['all', 'unstaged', 'staged'] as const).map((scope) => (
                 <button key={scope} type="button" data-active={wipScope === scope} onClick={() => setWipScope(scope)}>
@@ -240,6 +251,12 @@ export function ReviewView({
       <ReviewBody
         isLoading={reviewQuery.isLoading}
         errorMessage={reviewQuery.error instanceof Error ? reviewQuery.error.message : undefined}
+        hasReviewUnits={Boolean(reviewQuery.data?.units.length)}
+        emptyReviewMessage={
+          target.kind === 'branch'
+            ? `${target.name} has no changes compared with the default branch.`
+            : 'There are no changes to review.'
+        }
         units={presentation?.units ?? []}
         selectedUnit={selectedUnit}
         fileContexts={fileContexts}
@@ -272,6 +289,8 @@ export function ReviewView({
 function ReviewBody({
   isLoading,
   errorMessage,
+  hasReviewUnits,
+  emptyReviewMessage,
   units,
   selectedUnit,
   fileContexts,
@@ -283,6 +302,8 @@ function ReviewBody({
 }: {
   isLoading: boolean;
   errorMessage?: string;
+  hasReviewUnits: boolean;
+  emptyReviewMessage: string;
   units: VisibleReviewUnit[];
   selectedUnit?: VisibleReviewUnit;
   fileContexts: ReadonlyMap<string, GitReviewFileContext>;
@@ -307,7 +328,9 @@ function ReviewBody({
   }
 
   if (units.length === 0) {
-    return <ReviewMessage icon={<SkipForward size={16} />} text="All changes are skipped by the current review filters." />;
+    return hasReviewUnits
+      ? <ReviewMessage icon={<SkipForward size={16} />} text="All changes are skipped by the current review filters." />
+      : <ReviewMessage icon={<Check size={16} />} text={emptyReviewMessage} />;
   }
 
   return (
@@ -511,7 +534,11 @@ function findNextPendingUnitId(units: VisibleReviewUnit[], currentId: string): s
 }
 
 function targetKey(target: GitReviewTarget): string {
-  return target.kind === 'commit' ? `commit:${target.sha}` : `wip:${target.scope}`;
+  return target.kind === 'commit'
+    ? `commit:${target.sha}`
+    : target.kind === 'branch'
+      ? `branch:${target.name}`
+      : `wip:${target.scope}`;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

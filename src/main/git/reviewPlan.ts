@@ -119,7 +119,12 @@ export function buildReviewPlan(
   return {
     repoPath,
     target,
-    targetKey: target.kind === 'commit' ? `commit:${target.sha}` : `wip:${target.scope}`,
+    targetKey:
+      target.kind === 'commit'
+        ? `commit:${target.sha}`
+        : target.kind === 'branch'
+          ? `branch:${target.name}`
+          : `wip:${target.scope}`,
     units,
     fileContexts,
     reviewedChunkIds: [],

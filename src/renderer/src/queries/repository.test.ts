@@ -140,16 +140,19 @@ describe('repository query invalidation', () => {
     queryClient.clear();
   });
 
-  it('invalidates WIP review plans without expiring immutable commit reviews', async () => {
+  it('invalidates branch and WIP review plans without expiring immutable commit reviews', async () => {
     const queryClient = new QueryClient();
     const wipKey = ['review-plan', '/repo', 'wip', 'all'] as const;
+    const branchKey = ['review-plan', '/repo', 'branch', 'feature/review-all\u0000abc123'] as const;
     const commitKey = ['review-plan', '/repo', 'commit', 'abc123'] as const;
     queryClient.setQueryData(wipKey, { targetKey: 'wip:all' });
+    queryClient.setQueryData(branchKey, { targetKey: 'branch:feature/review-all' });
     queryClient.setQueryData(commitKey, { targetKey: 'commit:abc123' });
 
     await invalidateRepositoryQueries(queryClient, '/repo', ['review-plan']);
 
     expect(queryClient.getQueryState(wipKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(branchKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(commitKey)?.isInvalidated).toBe(false);
     queryClient.clear();
   });

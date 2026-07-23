@@ -194,6 +194,47 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
     return buildReviewPlan(tab.path, canonicalTarget, patches);
   }
 
+  if (target.kind === 'branch') {
+    const range = await resolveBranchReviewRange(tab.path, target.name, env);
+    const files = await loadCommitRangeFiles(tab.path, range.baseSha, range.headSha, env);
+    const loadedPatches = await mapWithConcurrency(files, 6, async (file): Promise<ReviewPatchInput> => {
+      const diff = await loadCommitRangeFileDiff(
+        tab.path,
+        {
+          kind: 'selection',
+          shas: [range.headSha, range.baseSha],
+          path: file.path,
+          originalPath: file.originalPath
+        },
+        range,
+        env
+      );
+      const fileContext = diff.omittedReason
+        ? undefined
+        : await loadCommitReviewFileContext(tab.path, range.headSha, range.baseSha, file, env);
+
+      return {
+        path: file.path,
+        originalPath: file.originalPath,
+        status: file.status,
+        source: 'commit',
+        diff,
+        fileContext
+      };
+    });
+    const patches = await mapWithConcurrency(
+      limitReviewPatchPayload(loadedPatches),
+      6,
+      (input) => attachReviewSyntax(tab.path, input)
+    );
+
+    return buildReviewPlan(
+      tab.path,
+      { kind: 'branch', name: target.name, sha: range.headSha },
+      patches
+    );
+  }
+
   const status = await loadStatus(tab.path, env);
   const requests = status.files.flatMap((file) => {
     const sources: Array<{ staged: boolean; source: ReviewPatchInput['source'] }> = [];
@@ -235,6 +276,93 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
   );
 
   return buildReviewPlan(tab.path, target, patches);
+}
+
+type CommitRange = {
+  baseSha: string;
+  headSha: string;
+};
+
+async function resolveBranchReviewRange(
+  repoPath: string,
+  branchName: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<CommitRange> {
+  const headSha = await resolveCommit(repoPath, `refs/heads/${branchName}`, env);
+
+  if (!headSha) {
+    throw new Error(`Local branch ${branchName} was not found.`);
+  }
+
+  const baseCandidates = await branchReviewBaseCandidates(repoPath, branchName, env);
+
+  for (const candidate of baseCandidates) {
+    const candidateSha = await resolveCommit(repoPath, candidate, env);
+
+    if (!candidateSha) {
+      continue;
+    }
+
+    const mergeBase = await gitExecutor.run(['merge-base', headSha, candidateSha], {
+      cwd: repoPath,
+      env,
+      allowedExitCodes: [1]
+    });
+    const baseSha = mergeBase.stdout.trim();
+
+    if (mergeBase.exitCode === 0 && baseSha) {
+      return { baseSha, headSha };
+    }
+  }
+
+  throw new Error(`Could not determine the default branch to compare ${branchName} against.`);
+}
+
+async function branchReviewBaseCandidates(
+  repoPath: string,
+  branchName: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<string[]> {
+  const [symrefsResult, upstreamResult] = await Promise.all([
+    gitExecutor.run(['for-each-ref', '--format=%(symref)', 'refs/remotes'], { cwd: repoPath, env }),
+    gitExecutor.run(['for-each-ref', '--format=%(upstream)', `refs/heads/${branchName}`], {
+      cwd: repoPath,
+      env
+    })
+  ]);
+  const upstream = upstreamResult.stdout.trim();
+  const preferredRemote = /^refs\/remotes\/([^/]+)\//.exec(upstream)?.[1] ?? 'origin';
+  const remoteDefaults = symrefsResult.stdout
+    .split('\n')
+    .map((ref) => ref.trim())
+    .filter((ref) => /^refs\/remotes\/[^/]+\/.+/.test(ref))
+    .sort((left, right) => {
+      const leftPreferred = left.startsWith(`refs/remotes/${preferredRemote}/`);
+      const rightPreferred = right.startsWith(`refs/remotes/${preferredRemote}/`);
+      return Number(rightPreferred) - Number(leftPreferred) || left.localeCompare(right);
+    });
+
+  return [...new Set([
+    ...remoteDefaults,
+    'refs/heads/main',
+    'refs/heads/master',
+    `refs/remotes/${preferredRemote}/main`,
+    `refs/remotes/${preferredRemote}/master`,
+    upstream
+  ].filter(Boolean))];
+}
+
+async function resolveCommit(
+  repoPath: string,
+  revision: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<string | undefined> {
+  const result = await gitExecutor.run(['rev-parse', '--verify', '--quiet', `${revision}^{commit}`], {
+    cwd: repoPath,
+    env,
+    allowedExitCodes: [1]
+  });
+  return result.exitCode === 0 ? result.stdout.trim() || undefined : undefined;
 }
 
 async function attachReviewSyntax(repoPath: string, input: ReviewPatchInput): Promise<ReviewPatchInput> {

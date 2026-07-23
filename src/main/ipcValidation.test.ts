@@ -94,6 +94,15 @@ describe('IPC argument validation', () => {
       { kind: 'wip', scope: 'all' }
     ]);
     expect(
+      validateIpcArgs('repo:review-plan', [
+        '/repo',
+        { kind: 'branch', name: 'feature/review-all', sha: 'abc123' }
+      ])
+    ).toEqual([
+      '/repo',
+      { kind: 'branch', name: 'feature/review-all', sha: 'abc123' }
+    ]);
+    expect(
       validateIpcArgs('repo:set-review-progress', [
         '/repo',
         { targetKey: 'commit:abc123', chunkIds: ['a'.repeat(64)], viewed: true }
@@ -205,6 +214,9 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:review-plan', ['/repo', { kind: 'wip', scope: 'index' }])).toThrow(
       'scope must be one of: all, staged, unstaged.'
     );
+    expect(() =>
+      validateIpcArgs('repo:review-plan', ['/repo', { kind: 'branch', name: '', sha: 'abc123' }])
+    ).toThrow('name must not be empty.');
     expect(() =>
       validateIpcArgs('repo:set-review-progress', [
         '/repo',

@@ -183,6 +183,11 @@ export type GitReviewTarget =
       sha: string;
     }
   | {
+      kind: 'branch';
+      name: string;
+      sha: string;
+    }
+  | {
       kind: 'wip';
       scope: 'all' | 'staged' | 'unstaged';
     };
