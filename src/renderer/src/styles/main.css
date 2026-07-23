@@ -2047,6 +2047,28 @@ button.ref-chip:active {
   white-space: nowrap;
 }
 
+.pr-row-author {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.pr-row-author-avatar {
+  display: inline-grid;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-2);
+  font-size: 8px;
+  font-weight: 700;
+  object-fit: cover;
+}
+
 .pr-row-state,
 .pr-row-checks,
 .pr-row-comments {

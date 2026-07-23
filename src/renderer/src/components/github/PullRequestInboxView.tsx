@@ -22,6 +22,8 @@ import type {
   GitProfile
 } from '@shared/types';
 
+import { pullRequestStatus } from './pullRequestInboxStatus';
+
 type PullRequestInboxViewProps = {
   profile?: GitProfile;
   inbox?: GitHubPullRequestInbox;
@@ -68,7 +70,7 @@ const GROUPS: Array<{
   {
     id: 'needs-action',
     title: 'Needs action',
-    description: 'Changes, conflicts, or failing checks need attention.',
+    description: 'Requested changes or failing checks need attention.',
     initiallyExpanded: false
   },
   {
@@ -245,6 +247,7 @@ function PullRequestRow({
   pullRequest: GitHubPullRequestSummary;
   onSelect: () => void;
 }): ReactElement {
+  const [didAvatarFail, setDidAvatarFail] = useState(false);
   const status = pullRequestStatus(pullRequest);
   const checkTone =
     pullRequest.checks.state === 'success'
@@ -262,13 +265,35 @@ function PullRequestRow({
         <span className="pr-row-meta">
           {pullRequest.owner}/{pullRequest.repository}#{pullRequest.number}
           <span>·</span>
-          {pullRequest.author}
+          <span className="pr-row-author">
+            {pullRequest.authorAvatarUrl && !didAvatarFail ? (
+              <img
+                className="pr-row-author-avatar"
+                src={pullRequest.authorAvatarUrl}
+                alt=""
+                aria-hidden="true"
+                referrerPolicy="no-referrer"
+                onError={() => setDidAvatarFail(true)}
+              />
+            ) : (
+              <span className="pr-row-author-avatar" aria-hidden="true">
+                {pullRequest.author.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            {pullRequest.author}
+          </span>
           <span>·</span>
           Updated {formatRelativeTime(pullRequest.updatedAt)}
         </span>
       </span>
       <span className="pr-row-state">
-        <CircleDot size={11} data-tone={status.tone} />
+        {status.icon === 'warning' ? (
+          <AlertTriangle size={13} data-tone={status.tone} />
+        ) : status.icon === 'check' ? (
+          <Check size={13} data-tone={status.tone} />
+        ) : (
+          <CircleDot size={11} data-tone={status.tone} />
+        )}
         {status.label}
       </span>
       <span className="pr-row-checks" data-tone={checkTone}>
@@ -343,25 +368,6 @@ function filterPullRequests(
       String(pullRequest.number)
     ].some((value) => value.toLowerCase().includes(normalizedSearch));
   });
-}
-
-function pullRequestStatus(pullRequest: GitHubPullRequestSummary): {
-  label: string;
-  tone: 'success' | 'danger' | 'pending';
-} {
-  if (pullRequest.isDraft) {
-    return { label: 'Draft', tone: 'pending' };
-  }
-  if (pullRequest.category === 'needs-your-review' || pullRequest.category === 'needs-team-review') {
-    return { label: 'Awaiting review', tone: 'pending' };
-  }
-  if (pullRequest.reviewDecision === 'approved') {
-    return { label: 'Approved', tone: 'success' };
-  }
-  if (pullRequest.reviewDecision === 'changes-requested') {
-    return { label: 'Changes requested', tone: 'danger' };
-  }
-  return { label: 'Awaiting approval', tone: 'pending' };
 }
 
 function formatRelativeTime(value: string): string {

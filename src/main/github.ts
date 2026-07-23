@@ -42,7 +42,7 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
         viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName baseRefName
         author { login avatarUrl }
         repository { nameWithOwner }
-        comments { totalCount }
+        totalCommentsCount
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
@@ -52,20 +52,14 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
             }
           }
         }
-        commits(last: 1) {
-          nodes {
-            commit {
-              statusCheckRollup {
-                state
-                contexts(first: 100) {
-                  totalCount
-                  nodes {
-                    __typename
-                    ... on CheckRun { status conclusion }
-                    ... on StatusContext { state }
-                  }
-                }
-              }
+        statusCheckRollup {
+          state
+          contexts(first: 100) {
+            totalCount
+            nodes {
+              __typename
+              ... on CheckRun { status conclusion }
+              ... on StatusContext { state }
             }
           }
         }
@@ -79,7 +73,7 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
         viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName baseRefName
         author { login avatarUrl }
         repository { nameWithOwner }
-        comments { totalCount }
+        totalCommentsCount
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
@@ -89,20 +83,14 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
             }
           }
         }
-        commits(last: 1) {
-          nodes {
-            commit {
-              statusCheckRollup {
-                state
-                contexts(first: 100) {
-                  totalCount
-                  nodes {
-                    __typename
-                    ... on CheckRun { status conclusion }
-                    ... on StatusContext { state }
-                  }
-                }
-              }
+        statusCheckRollup {
+          state
+          contexts(first: 100) {
+            totalCount
+            nodes {
+              __typename
+              ... on CheckRun { status conclusion }
+              ... on StatusContext { state }
             }
           }
         }
@@ -506,7 +494,7 @@ function parsePullRequestSummary(
     mergeState,
     mergeable,
     canMerge: pullRequest.viewerCanUpdate === true,
-    comments: readNestedNumber(pullRequest, ['comments', 'totalCount'], 'pull request comments'),
+    comments: readNumber(pullRequest.totalCommentsCount, 'pull request comments'),
     changedFiles: readNumber(pullRequest.changedFiles, 'pull request changed files'),
     additions: readNumber(pullRequest.additions, 'pull request additions'),
     deletions: readNumber(pullRequest.deletions, 'pull request deletions'),
@@ -538,8 +526,6 @@ export function categorizePullRequest(input: {
 
   const needsAction =
     input.reviewDecision === 'changes-requested' ||
-    input.mergeable === 'conflicting' ||
-    input.mergeState === 'dirty' ||
     input.checks.state === 'failure' ||
     input.checks.state === 'error';
 
@@ -574,7 +560,7 @@ function hasDirectReviewRequest(value: unknown, viewerLogin: string): boolean {
 }
 
 function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChecks {
-  const rollup = nestedRecord(pullRequest, ['commits', 'nodes', 0, 'commit', 'statusCheckRollup']);
+  const rollup = nestedRecord(pullRequest, ['statusCheckRollup']);
 
   if (!rollup) {
     return {
@@ -998,14 +984,6 @@ function readNestedOptionalString(
   path: Array<string | number>
 ): string | undefined {
   return readOptionalString(nestedValue(record, path));
-}
-
-function readNestedNumber(
-  record: Record<string, unknown>,
-  path: Array<string | number>,
-  label: string
-): number {
-  return readNumber(nestedValue(record, path), label);
 }
 
 function nestedRecord(

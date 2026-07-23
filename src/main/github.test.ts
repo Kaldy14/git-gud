@@ -53,11 +53,17 @@ describe('GitHub pull request inbox', () => {
                 mergeable: 'MERGEABLE'
               }),
               pullRequestNode({
-                id: 'action',
+                id: 'conflict',
                 number: 5,
                 title: 'Conflicting work',
                 mergeStateStatus: 'DIRTY',
                 mergeable: 'CONFLICTING'
+              }),
+              pullRequestNode({
+                id: 'action',
+                number: 6,
+                title: 'Changes requested',
+                reviewDecision: 'CHANGES_REQUESTED'
               })
             ]
           }
@@ -71,9 +77,14 @@ describe('GitHub pull request inbox', () => {
       { id: 'direct', category: 'needs-your-review' },
       { id: 'team', category: 'needs-team-review' },
       { id: 'draft', category: 'drafts' },
+      { id: 'conflict', category: 'waiting' },
       { id: 'action', category: 'needs-action' },
       { id: 'ready', category: 'ready-to-merge' }
     ]);
+    expect(response.pullRequests.find((pullRequest) => pullRequest.id === 'direct')).toMatchObject({
+      comments: 5,
+      authorAvatarUrl: 'https://avatars.example/developer'
+    });
     expect(response.pullRequests.find((pullRequest) => pullRequest.id === 'ready')?.checks).toEqual({
       state: 'success',
       total: 3,
@@ -239,26 +250,18 @@ function pullRequestNode(overrides: Record<string, unknown>): Record<string, unk
     baseRefName: 'main',
     author: { login: 'developer', avatarUrl: 'https://avatars.example/developer' },
     repository: { nameWithOwner: 'acme/widgets' },
-    comments: { totalCount: 2 },
+    totalCommentsCount: 5,
     reviewRequests: { nodes: [] },
-    commits: {
-      nodes: [
-        {
-          commit: {
-            statusCheckRollup: {
-              state: 'SUCCESS',
-              contexts: {
-                totalCount: 3,
-                nodes: [
-                  { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' },
-                  { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SKIPPED' },
-                  { __typename: 'StatusContext', state: 'SUCCESS' }
-                ]
-              }
-            }
-          }
-        }
-      ]
+    statusCheckRollup: {
+      state: 'SUCCESS',
+      contexts: {
+        totalCount: 3,
+        nodes: [
+          { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' },
+          { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SKIPPED' },
+          { __typename: 'StatusContext', state: 'SUCCESS' }
+        ]
+      }
     },
     ...overrides
   };
