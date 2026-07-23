@@ -185,6 +185,7 @@ describe('IPC argument validation', () => {
       validateIpcArgs('settings:update', [
         {
           defaultDiffStyle: 'split',
+          diffSyntaxTheme: 'tokyo-night-storm',
           graphPageSize: 750,
           largeRepoMode: true,
           graphColumns: {
@@ -197,6 +198,7 @@ describe('IPC argument validation', () => {
       ])[0]
     ).toMatchObject({
       defaultDiffStyle: 'split',
+      diffSyntaxTheme: 'tokyo-night-storm',
       graphPageSize: 750,
       largeRepoMode: true,
       graphColumns: {
@@ -229,6 +231,13 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('defaultDiffStyle must be one of: unified, split.');
+    expect(() =>
+      validateIpcArgs('settings:update', [
+        {
+          diffSyntaxTheme: 'neon'
+        }
+      ])
+    ).toThrow('diffSyntaxTheme must be one of: git-gud-dark, tokyo-night-storm.');
   });
 
   it('rejects malformed nested payloads', () => {

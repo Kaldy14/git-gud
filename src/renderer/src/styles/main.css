@@ -1836,8 +1836,10 @@ button.ref-chip:active {
   --diffs-bg-deletion-number-override: #1c1e23;
   --diffs-addition-color-override: #3e9f50;
   --diffs-deletion-color-override: #ad2c3c;
-  --diffs-bg-addition-emphasis-override: #315037;
-  --diffs-bg-deletion-emphasis-override: #592b2d;
+  --diffs-bg-addition-override: #294636;
+  --diffs-bg-deletion-override: #482f34;
+  --diffs-bg-addition-emphasis-override: rgba(62, 159, 80, 0.24);
+  --diffs-bg-deletion-emphasis-override: rgba(173, 44, 60, 0.26);
   --diffs-modified-color-override: var(--accent-2);
   --diffs-font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   --diffs-header-font-family:

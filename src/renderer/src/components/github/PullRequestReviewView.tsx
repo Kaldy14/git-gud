@@ -38,6 +38,7 @@ import {
   useGitHubPullRequestDetail
 } from '@renderer/queries/github';
 import type {
+  DiffSyntaxTheme,
   GitHubPullRequestDetail,
   GitHubPullRequestDraftLineComment,
   GitHubPullRequestDraftReply,
@@ -49,6 +50,7 @@ import type {
 type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
   diffStyle: DiffStyle;
+  diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
   onClose: () => void;
   onMerged: () => void;
@@ -69,6 +71,7 @@ type PullRequestReviewDraft =
 export function PullRequestReviewView({
   pullRequest,
   diffStyle,
+  diffSyntaxTheme,
   onSetDiffStyle,
   onClose,
   onMerged
@@ -122,6 +125,7 @@ export function PullRequestReviewView({
       key={detail.reviewPlan.targetKey}
       detail={detail}
       diffStyle={diffStyle}
+      diffSyntaxTheme={diffSyntaxTheme}
       onSetDiffStyle={onSetDiffStyle}
       onClose={onClose}
       onMerged={onMerged}
@@ -132,12 +136,14 @@ export function PullRequestReviewView({
 function PullRequestReviewContent({
   detail,
   diffStyle,
+  diffSyntaxTheme,
   onSetDiffStyle,
   onClose,
   onMerged
 }: {
   detail: GitHubPullRequestDetail;
   diffStyle: DiffStyle;
+  diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
   onClose: () => void;
   onMerged: () => void;
@@ -469,6 +475,7 @@ function PullRequestReviewContent({
           onAddDraftReply={addDraftReply}
           onRemoveDraftComment={removeDraft}
           diffStyle={diffStyle}
+          diffSyntaxTheme={diffSyntaxTheme}
           onSetDiffStyle={onSetDiffStyle}
           onClose={onClose}
         />

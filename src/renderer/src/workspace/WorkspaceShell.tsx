@@ -2060,6 +2060,7 @@ export function WorkspaceShell(): ReactElement {
                 key={`${gitHubWorkspaceView.pullRequest.profileId}:${gitHubWorkspaceView.pullRequest.id}`}
                 pullRequest={gitHubWorkspaceView.pullRequest}
                 diffStyle={activeDiffStyle}
+                diffSyntaxTheme={settings.diffSyntaxTheme}
                 onSetDiffStyle={handleSetDiffStyle}
                 onClose={handleOpenPullRequestInbox}
                 onMerged={handleOpenPullRequestInbox}
@@ -2139,6 +2140,7 @@ export function WorkspaceShell(): ReactElement {
                     repoPath={activeTab.path}
                     target={activeReviewTarget}
                     diffStyle={activeDiffStyle}
+                    diffSyntaxTheme={settings.diffSyntaxTheme}
                     onSetDiffStyle={handleSetDiffStyle}
                     onClose={() => handleSetReviewOpen(false)}
                   />
@@ -2176,6 +2178,7 @@ export function WorkspaceShell(): ReactElement {
                     selectedShas={selectedCommitShas}
                     selectedFile={activeTab.selectedFile}
                     diffStyle={activeDiffStyle}
+                    diffSyntaxTheme={settings.diffSyntaxTheme}
                     wipScopeByPath={activeWipScopeByPath}
                     focusSignal={fileFocusByTab[activeTab.id] ?? 0}
                     isOperationBusy={isOperationBusy}

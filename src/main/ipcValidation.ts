@@ -714,6 +714,7 @@ function readSettingsInput(value: unknown): AppSettingsInput {
   const record = readRecord(value, 'settings');
   return {
     defaultDiffStyle: readOptionalEnumProperty(record, 'defaultDiffStyle', ['unified', 'split']),
+    diffSyntaxTheme: readOptionalEnumProperty(record, 'diffSyntaxTheme', ['git-gud-dark', 'tokyo-night-storm']),
     graphPageSize: readOptionalPositiveIntegerProperty(record, 'graphPageSize'),
     largeRepoMode: readOptionalBooleanProperty(record, 'largeRepoMode'),
     graphColumns: readOptionalGraphColumns(record.graphColumns),

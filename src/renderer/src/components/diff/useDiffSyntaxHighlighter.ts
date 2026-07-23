@@ -5,52 +5,62 @@ import {
   preloadHighlighter
 } from '@pierre/diffs';
 
-const loadedLanguages = new Set<string>();
-const languageLoads = new Map<string, Promise<void>>();
+import { getDiffThemeName } from '@renderer/components/diff/diffTheme';
+import type { DiffSyntaxTheme } from '@shared/types';
 
-export function preloadDiffSyntaxHighlighter(filePath: string): Promise<void> {
+const loadedHighlighters = new Set<string>();
+const highlighterLoads = new Map<string, Promise<void>>();
+
+export function preloadDiffSyntaxHighlighter(filePath: string, syntaxTheme: DiffSyntaxTheme): Promise<void> {
   const language = getFiletypeFromFileName(filePath);
-  const existingLoad = languageLoads.get(language);
+  const theme = getDiffThemeName(syntaxTheme);
+  const highlighterKey = `${theme}:${language}`;
+  const existingLoad = highlighterLoads.get(highlighterKey);
 
   if (existingLoad) {
     return existingLoad;
   }
 
-  const load = preloadHighlighter(getHighlighterOptions(language, {}))
+  const load = preloadHighlighter(getHighlighterOptions(language, { theme }))
     .then(() => {
-      loadedLanguages.add(language);
+      loadedHighlighters.add(highlighterKey);
     })
     .catch((error: unknown) => {
-      languageLoads.delete(language);
-      console.error(`Failed to preload ${language} diff syntax highlighting.`, error);
+      highlighterLoads.delete(highlighterKey);
+      console.error(`Failed to preload ${language} diff syntax highlighting for ${syntaxTheme}.`, error);
     });
 
-  languageLoads.set(language, load);
+  highlighterLoads.set(highlighterKey, load);
   return load;
 }
 
-export function useDiffSyntaxHighlighter(filePath: string | undefined): boolean {
+export function useDiffSyntaxHighlighter(filePath: string | undefined, syntaxTheme: DiffSyntaxTheme): boolean {
   const language = filePath ? getFiletypeFromFileName(filePath) : undefined;
-  const [completedLanguage, setCompletedLanguage] = useState<string>();
-  const isReady = language === undefined || loadedLanguages.has(language) || completedLanguage === language;
+  const theme = getDiffThemeName(syntaxTheme);
+  const highlighterKey = language ? `${theme}:${language}` : undefined;
+  const [completedHighlighter, setCompletedHighlighter] = useState<string>();
+  const isReady =
+    highlighterKey === undefined ||
+    loadedHighlighters.has(highlighterKey) ||
+    completedHighlighter === highlighterKey;
 
   useEffect(() => {
-    if (!filePath || !language || isReady) {
+    if (!filePath || !highlighterKey || isReady) {
       return;
     }
 
     let isCurrent = true;
 
-    void preloadDiffSyntaxHighlighter(filePath).finally(() => {
+    void preloadDiffSyntaxHighlighter(filePath, syntaxTheme).finally(() => {
       if (isCurrent) {
-        setCompletedLanguage(language);
+        setCompletedHighlighter(highlighterKey);
       }
     });
 
     return () => {
       isCurrent = false;
     };
-  }, [filePath, isReady, language]);
+  }, [filePath, highlighterKey, isReady, syntaxTheme]);
 
   return isReady;
 }

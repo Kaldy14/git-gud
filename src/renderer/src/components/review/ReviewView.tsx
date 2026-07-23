@@ -27,7 +27,7 @@ import {
   X
 } from 'lucide-react';
 
-import { DIFF_OPTIONS_BASE, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +38,7 @@ import {
 } from '@renderer/components/ui/dropdown-menu';
 import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
 import type {
+  DiffSyntaxTheme,
   GitReviewChunk,
   GitReviewFileContext,
   GitReviewGuide,
@@ -74,6 +75,7 @@ type ReviewViewProps = {
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
   onRemoveDraftComment?: (id: string) => void;
   diffStyle: DiffStyle;
+  diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
   onClose: () => void;
 };
@@ -135,6 +137,7 @@ export function ReviewView({
   onAddDraftReply,
   onRemoveDraftComment,
   diffStyle,
+  diffSyntaxTheme,
   onSetDiffStyle,
   onClose
 }: ReviewViewProps): ReactElement {
@@ -239,8 +242,12 @@ export function ReviewView({
     [lineComments]
   );
   const diffOptions = useMemo<FileDiffOptions<ReviewLineCommentThread>>(
-    () => ({ ...DIFF_OPTIONS_BASE, diffStyle, disableFileHeader: true }),
-    [diffStyle]
+    () => ({
+      ...createDiffOptionsBase<ReviewLineCommentThread>(diffSyntaxTheme),
+      diffStyle,
+      disableFileHeader: true
+    }),
+    [diffStyle, diffSyntaxTheme]
   );
   const progressMutation = useMutation({
     mutationFn: async ({ chunkIds, viewed }: { chunkIds: string[]; viewed: boolean }) => {

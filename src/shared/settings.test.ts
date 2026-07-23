@@ -5,6 +5,7 @@ import { createDefaultAppSettings, normalizeAppSettings } from './settings';
 describe('app settings', () => {
   it('defaults to a focused commit graph and Gravatar author images', () => {
     expect(createDefaultAppSettings()).toMatchObject({
+      diffSyntaxTheme: 'git-gud-dark',
       graphColumns: {
         author: false,
         date: false,
@@ -12,6 +13,13 @@ describe('app settings', () => {
       },
       remoteAvatars: true
     });
+  });
+
+  it('keeps valid syntax themes and repairs unknown persisted values', () => {
+    expect(normalizeAppSettings({ diffSyntaxTheme: 'tokyo-night-storm' }).diffSyntaxTheme).toBe(
+      'tokyo-night-storm'
+    );
+    expect(normalizeAppSettings({ diffSyntaxTheme: 'unknown' }).diffSyntaxTheme).toBe('git-gud-dark');
   });
 
   it('merges partial nested graph column updates', () => {

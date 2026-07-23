@@ -20,24 +20,38 @@ describe('preloadDiffSyntaxHighlighter', () => {
     const { preloadDiffSyntaxHighlighter } = await import('./useDiffSyntaxHighlighter');
 
     await Promise.all([
-      preloadDiffSyntaxHighlighter('src/first.ts'),
-      preloadDiffSyntaxHighlighter('src/second.ts')
+      preloadDiffSyntaxHighlighter('src/first.ts', 'git-gud-dark'),
+      preloadDiffSyntaxHighlighter('src/second.ts', 'git-gud-dark')
     ]);
-    await preloadDiffSyntaxHighlighter('src/third.ts');
+    await preloadDiffSyntaxHighlighter('src/third.ts', 'git-gud-dark');
 
     expect(pierreDiffs.preloadHighlighter).toHaveBeenCalledTimes(1);
-    expect(pierreDiffs.getHighlighterOptions).toHaveBeenCalledWith('typescript', {});
+    expect(pierreDiffs.getHighlighterOptions).toHaveBeenCalledWith('typescript', {
+      theme: 'dark-plus'
+    });
   });
 
   it('loads different languages independently', async () => {
     const { preloadDiffSyntaxHighlighter } = await import('./useDiffSyntaxHighlighter');
 
     await Promise.all([
-      preloadDiffSyntaxHighlighter('src/component.tsx'),
-      preloadDiffSyntaxHighlighter('src/service.ts')
+      preloadDiffSyntaxHighlighter('src/component.tsx', 'git-gud-dark'),
+      preloadDiffSyntaxHighlighter('src/service.ts', 'git-gud-dark')
     ]);
 
     expect(pierreDiffs.preloadHighlighter).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads the same language independently for each syntax theme', async () => {
+    const { preloadDiffSyntaxHighlighter } = await import('./useDiffSyntaxHighlighter');
+
+    await preloadDiffSyntaxHighlighter('src/service.ts', 'git-gud-dark');
+    await preloadDiffSyntaxHighlighter('src/service.ts', 'tokyo-night-storm');
+
+    expect(pierreDiffs.preloadHighlighter).toHaveBeenCalledTimes(2);
+    expect(pierreDiffs.getHighlighterOptions).toHaveBeenLastCalledWith('typescript', {
+      theme: 'tokyo-night'
+    });
   });
 
   it('allows a failed language load to be retried', async () => {
@@ -47,8 +61,8 @@ describe('preloadDiffSyntaxHighlighter', () => {
       .mockResolvedValueOnce();
     const { preloadDiffSyntaxHighlighter } = await import('./useDiffSyntaxHighlighter');
 
-    await preloadDiffSyntaxHighlighter('src/first.ts');
-    await preloadDiffSyntaxHighlighter('src/second.ts');
+    await preloadDiffSyntaxHighlighter('src/first.ts', 'git-gud-dark');
+    await preloadDiffSyntaxHighlighter('src/second.ts', 'git-gud-dark');
 
     expect(pierreDiffs.preloadHighlighter).toHaveBeenCalledTimes(2);
     expect(consoleError).toHaveBeenCalledOnce();

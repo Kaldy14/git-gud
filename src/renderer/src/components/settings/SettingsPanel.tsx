@@ -1,10 +1,10 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useState } from 'react';
-import { Gauge, GitGraph, Rows3, Settings, SplitSquareHorizontal, X } from 'lucide-react';
+import { Check, Gauge, GitGraph, Palette, Rows3, Settings, SplitSquareHorizontal, X } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { MAX_GRAPH_PAGE_SIZE, MIN_GRAPH_PAGE_SIZE, clampGraphPageSize } from '@shared/settings';
-import type { AppSettings } from '@shared/types';
+import type { AppSettings, DiffSyntaxTheme } from '@shared/types';
 
 type SettingsPanelProps = {
   settings: AppSettings;
@@ -71,6 +71,33 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
                 Split
               </button>
             </div>
+            <fieldset className="space-y-2">
+              <legend className="flex items-center gap-2 text-xs font-semibold text-[var(--text-1)]">
+                <Palette size={13} className="text-[var(--accent-2)]" />
+                Syntax theme
+              </legend>
+              <div className="grid grid-cols-2 gap-2">
+                <SyntaxThemeOption
+                  label="Git Gud Dark"
+                  description="Balanced aqua and warm accents"
+                  colors={['#4fc1ff', '#dcdcaa', '#ce9178', '#4ec9b0']}
+                  value="git-gud-dark"
+                  selected={draft.diffSyntaxTheme}
+                  onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
+                />
+                <SyntaxThemeOption
+                  label="Tokyo Night Storm"
+                  description="Blue-violet storm palette"
+                  colors={['#7aa2f7', '#bb9af7', '#9ece6a', '#f7768e']}
+                  value="tokyo-night-storm"
+                  selected={draft.diffSyntaxTheme}
+                  onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
+                />
+              </div>
+              <p className="text-[11px] leading-4 text-[var(--text-3)]">
+                Applied to file diffs and review views.
+              </p>
+            </fieldset>
           </section>
 
           <section className="space-y-3 border-b border-[var(--border)] py-4">
@@ -154,6 +181,48 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
         </footer>
       </form>
     </ModalSurface>
+  );
+}
+
+function SyntaxThemeOption({
+  label,
+  description,
+  colors,
+  value,
+  selected,
+  onSelect
+}: {
+  label: string;
+  description: string;
+  colors: readonly string[];
+  value: DiffSyntaxTheme;
+  selected: DiffSyntaxTheme;
+  onSelect: (value: DiffSyntaxTheme) => void;
+}): ReactElement {
+  const isSelected = selected === value;
+
+  return (
+    <button
+      type="button"
+      aria-pressed={isSelected}
+      className={`min-w-0 rounded border px-3 py-2.5 text-left transition ${
+        isSelected
+          ? 'border-[var(--select-border)] bg-[var(--select-bg)]'
+          : 'border-[var(--border)] bg-[var(--bg-field)] hover:border-[var(--border-strong)]'
+      }`}
+      onClick={() => onSelect(value)}
+    >
+      <span className="mb-2 flex gap-1" aria-hidden="true">
+        {colors.map((color) => (
+          <span key={color} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: color }} />
+        ))}
+      </span>
+      <span className="flex items-center justify-between gap-2">
+        <span className="block truncate text-xs font-semibold text-[var(--text-1)]">{label}</span>
+        {isSelected ? <Check size={13} className="shrink-0 text-[var(--accent-2)]" aria-hidden="true" /> : null}
+      </span>
+      <span className="mt-1 block text-[10px] leading-4 text-[var(--text-3)]">{description}</span>
+    </button>
   );
 }
 

@@ -615,8 +615,11 @@ export type GitOperationCancellationResult = {
   message: string;
 };
 
+export type DiffSyntaxTheme = 'git-gud-dark' | 'tokyo-night-storm';
+
 export type AppSettings = {
   defaultDiffStyle: 'unified' | 'split';
+  diffSyntaxTheme: DiffSyntaxTheme;
   graphPageSize: number;
   largeRepoMode: boolean;
   graphColumns: {

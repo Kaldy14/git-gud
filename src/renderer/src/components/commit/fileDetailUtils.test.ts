@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { createDiffRequest, fileChangeIconKind, findAdjacentFilePath } from './fileDetailUtils';
+import {
+  createDiffOptionsBase,
+  createDiffRequest,
+  fileChangeIconKind,
+  findAdjacentFilePath
+} from './fileDetailUtils';
 import type { CommitGraphRow, GitFileChangeDetail } from '@shared/types';
 
 describe('findAdjacentFilePath', () => {
@@ -53,6 +58,20 @@ describe('fileChangeIconKind', () => {
     ['copied', 'renamed']
   ] as const)('maps %s files to the %s header icon', (status, iconKind) => {
     expect(fileChangeIconKind(status)).toBe(iconKind);
+  });
+});
+
+describe('createDiffOptionsBase', () => {
+  it('uses the selected bundled Shiki theme for file diffs', () => {
+    expect(createDiffOptionsBase('git-gud-dark')).toMatchObject({
+      theme: 'dark-plus',
+      themeType: 'dark'
+    });
+    expect(createDiffOptionsBase('tokyo-night-storm')).toMatchObject({
+      theme: 'tokyo-night',
+      themeType: 'dark'
+    });
+    expect(createDiffOptionsBase('git-gud-dark')).not.toHaveProperty('unsafeCSS');
   });
 });
 

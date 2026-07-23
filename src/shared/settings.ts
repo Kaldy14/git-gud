@@ -6,6 +6,7 @@ export const MAX_GRAPH_PAGE_SIZE = 12000;
 export function createDefaultAppSettings(): AppSettings {
   return {
     defaultDiffStyle: 'unified',
+    diffSyntaxTheme: 'git-gud-dark',
     graphPageSize: 1500,
     largeRepoMode: false,
     graphColumns: {
@@ -26,6 +27,10 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
       settings.defaultDiffStyle === 'split' || settings.defaultDiffStyle === 'unified'
         ? settings.defaultDiffStyle
         : fallback.defaultDiffStyle,
+    diffSyntaxTheme:
+      settings.diffSyntaxTheme === 'git-gud-dark' || settings.diffSyntaxTheme === 'tokyo-night-storm'
+        ? settings.diffSyntaxTheme
+        : fallback.diffSyntaxTheme,
     graphPageSize: clampGraphPageSize(
       typeof settings.graphPageSize === 'number' ? settings.graphPageSize : fallback.graphPageSize
     ),

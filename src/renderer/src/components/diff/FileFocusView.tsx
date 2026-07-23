@@ -28,8 +28,8 @@ import {
   useWipDetail
 } from '@renderer/queries/repository';
 import {
+  createDiffOptionsBase,
   createDiffRequest,
-  DIFF_OPTIONS_BASE,
   fileChangeIconKind,
   findAdjacentFilePath,
   findFile,
@@ -40,6 +40,7 @@ import {
 import { FILE_STATUS_COLORS } from '@shared/graph';
 import type {
   CommitGraphRow,
+  DiffSyntaxTheme,
   GitFileChangeDetail,
   GitFileDiffSegment,
   GitRepositoryDetail,
@@ -62,6 +63,7 @@ type FileFocusViewProps = {
   selectedShas?: string[];
   selectedFile?: string;
   diffStyle: DiffStyle;
+  diffSyntaxTheme: DiffSyntaxTheme;
   wipScopeByPath: Record<string, WipDiffScope>;
   focusSignal: number;
   isOperationBusy: boolean;
@@ -77,6 +79,7 @@ export function FileFocusView({
   selectedShas = [],
   selectedFile,
   diffStyle,
+  diffSyntaxTheme,
   wipScopeByPath,
   focusSignal,
   isOperationBusy,
@@ -128,14 +131,17 @@ export function FileFocusView({
   });
   const diffOptions = useMemo<FileDiffOptions<undefined>>(
     () => ({
-      ...DIFF_OPTIONS_BASE,
+      ...createDiffOptionsBase(diffSyntaxTheme),
       diffStyle,
       disableFileHeader: true
     }),
-    [diffStyle]
+    [diffStyle, diffSyntaxTheme]
   );
   const headerPath = selectedFileDetail?.path ?? selectedFile ?? 'No file selected';
-  const isSyntaxHighlighterReady = useDiffSyntaxHighlighter(selectedFileDetail?.path ?? selectedFile);
+  const isSyntaxHighlighterReady = useDiffSyntaxHighlighter(
+    selectedFileDetail?.path ?? selectedFile,
+    diffSyntaxTheme
+  );
   const { directory, basename } = splitPath(headerPath);
   const detailErrorMessage = detailError instanceof Error ? detailError.message : undefined;
 
