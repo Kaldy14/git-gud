@@ -16,6 +16,36 @@ export type ExpandableReviewDiff = {
   syntaxNodes: GitReviewSyntaxNode[];
 };
 
+export type PreparedReviewDiff = {
+  fileDiff: FileDiffMetadata;
+  expandable?: ExpandableReviewDiff;
+};
+
+export function prepareReviewDiff(
+  chunk: GitReviewChunk,
+  context: GitReviewFileContext | undefined,
+  cacheKeyPrefix: string
+): PreparedReviewDiff | undefined {
+  const cacheKey = `review:${cacheKeyPrefix}:${chunk.id}`;
+  const expandable = context ? createExpandableReviewDiff(chunk, context) : undefined;
+
+  if (expandable) {
+    const fileDiff = { ...expandable.fileDiff, cacheKey };
+
+    return {
+      fileDiff,
+      expandable: { ...expandable, fileDiff }
+    };
+  }
+
+  try {
+    const fileDiff = processFile(chunk.patch, { cacheKey, throwOnError: true });
+    return fileDiff ? { fileDiff } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createExpandableReviewDiff(
   chunk: GitReviewChunk,
   context: GitReviewFileContext

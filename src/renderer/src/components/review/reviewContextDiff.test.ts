@@ -5,7 +5,8 @@ import type { GitReviewChunk, GitReviewFileContext } from '@shared/types';
 import {
   createExpandableReviewDiff,
   getSmartExpansionLineCount,
-  getSyntaxExpansionLineCount
+  getSyntaxExpansionLineCount,
+  prepareReviewDiff
 } from './reviewContextDiff';
 
 describe('review context diffs', () => {
@@ -59,6 +60,26 @@ describe('review context diffs', () => {
     };
 
     expect(createExpandableReviewDiff(chunk, context)).toBeUndefined();
+  });
+
+  it('prepares stable worker-cache entries for contextual and patch-only diffs', () => {
+    const chunk = reviewChunk(
+      '@@ -1,4 +1,4 @@\n line 1\n-line 2\n+line two\n line 3\n line 4\n'
+    );
+    const context: GitReviewFileContext = {
+      id: 'context-1',
+      path: chunk.path,
+      source: 'commit',
+      oldContents: numberedLines(4),
+      newContents: numberedLines(4).replace('line 2\n', 'line two\n')
+    };
+
+    const contextual = prepareReviewDiff(chunk, context, 'repo:commit-1');
+    const patchOnly = prepareReviewDiff(chunk, undefined, 'repo:commit-1');
+
+    expect(contextual?.fileDiff.cacheKey).toBe(`review:repo:commit-1:${chunk.id}`);
+    expect(contextual?.expandable?.fileDiff.cacheKey).toBe(`review:repo:commit-1:${chunk.id}`);
+    expect(patchOnly?.fileDiff.cacheKey).toBe(`review:repo:commit-1:${chunk.id}`);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FileDiffOptions } from '@pierre/diffs';
-import { FileDiff, PatchDiff, WorkerPoolContext } from '@pierre/diffs/react';
+import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 
 import { DIFF_OPTIONS_BASE, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
-import { useDiffSyntaxHighlighter } from '@renderer/components/diff/useDiffSyntaxHighlighter';
 import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
 import type {
   GitReviewChunk,
@@ -37,7 +36,10 @@ import {
   type ReviewPreferences,
   type VisibleReviewUnit
 } from './reviewFilters';
-import { createExpandableReviewDiff } from './reviewContextDiff';
+import {
+  prepareReviewDiff,
+  type PreparedReviewDiff
+} from './reviewContextDiff';
 import { createReviewContextOptions } from './reviewContextExpansion';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import { createReviewContexts } from './reviewSections';
@@ -58,6 +60,7 @@ export function ReviewView({
   onClose
 }: ReviewViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
+  const workerPool = useWorkerPool();
   const queryClient = useQueryClient();
   const [wipScope, setWipScope] = useState<'all' | 'staged' | 'unstaged'>(
     initialTarget.kind === 'wip' ? initialTarget.scope : 'all'
@@ -88,6 +91,15 @@ export function ReviewView({
     presentation?.units.find((candidate) => candidate.unit.id === selectedUnitId) ??
     presentation?.units.find((candidate) => !candidate.isViewed) ??
     presentation?.units[0];
+  const preparedDiffCacheKeyPrefix = `${repoPath}:${reviewQuery.data?.targetKey ?? targetKey(target)}`;
+  const selectedPreparedDiffs = useMemo(
+    () => prepareReviewUnitDiffs(
+      selectedUnit,
+      fileContexts,
+      preparedDiffCacheKeyPrefix
+    ),
+    [fileContexts, preparedDiffCacheKeyPrefix, selectedUnit]
+  );
   const diffOptions = useMemo<FileDiffOptions<undefined>>(
     () => ({ ...DIFF_OPTIONS_BASE, diffStyle, disableFileHeader: true }),
     [diffStyle]
@@ -109,6 +121,43 @@ export function ReviewView({
   useEffect(() => {
     sectionRef.current?.focus({ preventScroll: true });
   }, []);
+
+  useEffect(() => {
+    if (!workerPool || !selectedUnit || !presentation) {
+      return;
+    }
+
+    for (const prepared of selectedPreparedDiffs.values()) {
+      workerPool.primeDiffHighlightCache(prepared.fileDiff);
+    }
+
+    const selectedIndex = presentation.units.findIndex(
+      (candidate) => candidate.unit.id === selectedUnit.unit.id
+    );
+    const upcomingUnits = presentation.units.slice(selectedIndex + 1, selectedIndex + 3);
+    const idleCallback = window.requestIdleCallback(() => {
+      for (const unit of upcomingUnits) {
+        const preparedDiffs = prepareReviewUnitDiffs(
+          unit,
+          fileContexts,
+          preparedDiffCacheKeyPrefix
+        );
+
+        for (const prepared of preparedDiffs.values()) {
+          workerPool.primeDiffHighlightCache(prepared.fileDiff);
+        }
+      }
+    }, { timeout: 500 });
+
+    return () => window.cancelIdleCallback(idleCallback);
+  }, [
+    fileContexts,
+    preparedDiffCacheKeyPrefix,
+    presentation,
+    selectedPreparedDiffs,
+    selectedUnit,
+    workerPool
+  ]);
 
   function updatePreferences(next: ReviewPreferences): void {
     setPreferences(next);
@@ -259,7 +308,7 @@ export function ReviewView({
         }
         units={presentation?.units ?? []}
         selectedUnit={selectedUnit}
-        fileContexts={fileContexts}
+        preparedDiffs={selectedPreparedDiffs}
         diffOptions={diffOptions}
         isMutating={progressMutation.isPending}
         mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
@@ -293,7 +342,7 @@ function ReviewBody({
   emptyReviewMessage,
   units,
   selectedUnit,
-  fileContexts,
+  preparedDiffs,
   diffOptions,
   isMutating,
   mutationError,
@@ -306,7 +355,7 @@ function ReviewBody({
   emptyReviewMessage: string;
   units: VisibleReviewUnit[];
   selectedUnit?: VisibleReviewUnit;
-  fileContexts: ReadonlyMap<string, GitReviewFileContext>;
+  preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
   diffOptions: FileDiffOptions<undefined>;
   isMutating: boolean;
   mutationError?: string;
@@ -398,7 +447,7 @@ function ReviewBody({
                         <ReviewChunk
                           key={chunk.id}
                           chunk={chunk}
-                          context={chunk.fileContextId ? fileContexts.get(chunk.fileContextId) : undefined}
+                          preparedDiff={preparedDiffs.get(chunk.id)}
                           diffOptions={diffOptions}
                         />
                       ))}
@@ -416,29 +465,21 @@ function ReviewBody({
 
 function ReviewChunk({
   chunk,
-  context,
+  preparedDiff,
   diffOptions
 }: {
   chunk: GitReviewChunk;
-  context?: GitReviewFileContext;
+  preparedDiff?: PreparedReviewDiff;
   diffOptions: FileDiffOptions<undefined>;
 }): ReactElement {
-  const expandableDiff = useMemo(
-    () => context ? createExpandableReviewDiff(chunk, context) : undefined,
-    [chunk, context]
-  );
+  const expandableDiff = preparedDiff?.expandable;
   const contextualDiffOptions = useMemo<FileDiffOptions<undefined>>(
     () => expandableDiff
       ? createReviewContextOptions(diffOptions, expandableDiff, chunk.path)
       : diffOptions,
     [chunk.path, diffOptions, expandableDiff]
   );
-  const isSyntaxHighlighterReady = useDiffSyntaxHighlighter(
-    chunk.omittedReason ? undefined : chunk.path
-  );
 
-  // Review units mount several diffs together; wait for the shared main-thread language preload
-  // before mounting each diff so the initial render cannot fall back to unhighlighted text.
   return (
     <section className="review-chunk">
       <div className="review-chunk-header">
@@ -457,25 +498,16 @@ function ReviewChunk({
               ? 'This change exceeds the review preview limit.'
               : 'No textual diff is available for this change.'}
         </div>
-      ) : !isSyntaxHighlighterReady ? (
-        <div className="grid min-h-28 place-items-center px-4 text-xs text-[var(--text-3)]">
-          <span className="flex items-center gap-2">
-            <Loader2 size={14} className="animate-spin" />
-            Preparing syntax highlighting…
-          </span>
-        </div>
       ) : (
-        <WorkerPoolContext.Provider value={undefined}>
-          {expandableDiff ? (
-            <FileDiff
-              className="gg-diff"
-              fileDiff={expandableDiff.fileDiff}
-              options={contextualDiffOptions}
-            />
-          ) : (
-            <PatchDiff className="gg-diff" patch={chunk.patch} options={diffOptions} />
-          )}
-        </WorkerPoolContext.Provider>
+        preparedDiff ? (
+          <FileDiff
+            className="gg-diff"
+            fileDiff={preparedDiff.fileDiff}
+            options={expandableDiff ? contextualDiffOptions : diffOptions}
+          />
+        ) : (
+          <PatchDiff className="gg-diff" patch={chunk.patch} options={diffOptions} />
+        )
       )}
     </section>
   );
@@ -539,6 +571,32 @@ function targetKey(target: GitReviewTarget): string {
     : target.kind === 'branch'
       ? `branch:${target.name}`
       : `wip:${target.scope}`;
+}
+
+function prepareReviewUnitDiffs(
+  unit: VisibleReviewUnit | undefined,
+  fileContexts: ReadonlyMap<string, GitReviewFileContext>,
+  cacheKeyPrefix: string
+): Map<string, PreparedReviewDiff> {
+  const preparedDiffs = new Map<string, PreparedReviewDiff>();
+
+  for (const chunk of unit?.visibleChunks ?? []) {
+    if (chunk.omittedReason) {
+      continue;
+    }
+
+    const prepared = prepareReviewDiff(
+      chunk,
+      chunk.fileContextId ? fileContexts.get(chunk.fileContextId) : undefined,
+      cacheKeyPrefix
+    );
+
+    if (prepared) {
+      preparedDiffs.set(chunk.id, prepared);
+    }
+  }
+
+  return preparedDiffs;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
