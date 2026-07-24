@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent, ReactElement, ReactNode } from 'react';
+import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
@@ -41,6 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu';
+import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
 import type {
   DiffSyntaxTheme,
@@ -89,6 +90,8 @@ type ReviewViewProps = {
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
   onClose: () => void;
+  closeLabel?: string;
+  showCloseButton?: boolean;
 };
 
 export type ReviewLineComment = {
@@ -150,7 +153,9 @@ export function ReviewView({
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
-  onClose
+  onClose,
+  closeLabel = 'Close review',
+  showCloseButton = true
 }: ReviewViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const workerPool = useWorkerPool();
@@ -608,15 +613,17 @@ export function ReviewView({
           >
             {isFileTreeOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
           </button>
-          <button
-            className="icon-btn h-7 w-7 shrink-0"
-            type="button"
-            onClick={onClose}
-            aria-label="Close review"
-            title="Close review"
-          >
-            <X size={14} />
-          </button>
+          {showCloseButton ? (
+            <button
+              className="icon-btn h-7 w-7 shrink-0"
+              type="button"
+              onClick={onClose}
+              aria-label={closeLabel}
+              title={closeLabel}
+            >
+              <X size={14} />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1576,49 +1583,6 @@ function ReviewCommentAvatar({
       {comment.author.slice(0, 1).toUpperCase()}
     </span>
   );
-}
-
-function ReviewCommentBody({
-  body,
-  compact = false
-}: {
-  body: string;
-  compact?: boolean;
-}): ReactElement {
-  const withoutMetadata = body
-    .replace(/<!--[\s\S]*?-->/gu, '')
-    .replace(/<details>[\s\S]*?<\/details>/gu, '')
-    .trim();
-  const visibleBody = withoutMetadata || body.trim();
-  const blocks = visibleBody.split(/\n{2,}/gu);
-
-  return (
-    <div className="review-line-comment-body" data-compact={compact}>
-      {blocks.map((block, index) => (
-        <p key={`${index}:${block.slice(0, 24)}`}>
-          {renderInlineReviewMarkdown(block)}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function renderInlineReviewMarkdown(value: string): ReactNode[] {
-  return value
-    .split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|_[^_\n]+_)/gu)
-    .filter(Boolean)
-    .map((part, index) => {
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return <code key={`${index}:${part}`}>{part.slice(1, -1)}</code>;
-      }
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={`${index}:${part}`}>{part.slice(2, -2)}</strong>;
-      }
-      if (part.startsWith('_') && part.endsWith('_')) {
-        return <em key={`${index}:${part}`}>{part.slice(1, -1)}</em>;
-      }
-      return part;
-    });
 }
 
 function ReviewProgress({ presentation }: { presentation: ReturnType<typeof createReviewPresentation> | undefined }): ReactElement {

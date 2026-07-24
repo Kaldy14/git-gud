@@ -622,6 +622,12 @@ export function WorkspaceShell(): ReactElement {
     setCompactSidebarOpen(false);
   }
 
+  function handleClosePullRequestWorkspace(): void {
+    setGitHubWorkspaceView(undefined);
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(false);
+  }
+
   function handleOpenGitProfileMenu(): void {
     document.querySelector<HTMLButtonElement>('[aria-label="Git profile menu"]')?.click();
   }
@@ -2062,7 +2068,8 @@ export function WorkspaceShell(): ReactElement {
                 diffStyle={activeDiffStyle}
                 diffSyntaxTheme={settings.diffSyntaxTheme}
                 onSetDiffStyle={handleSetDiffStyle}
-                onClose={handleOpenPullRequestInbox}
+                onBackToInbox={handleOpenPullRequestInbox}
+                onClose={handleClosePullRequestWorkspace}
                 onMerged={handleOpenPullRequestInbox}
               />
             ) : (
@@ -2077,6 +2084,7 @@ export function WorkspaceShell(): ReactElement {
                     : undefined
                 }
                 onRefresh={() => void pullRequestInboxQuery.refetch()}
+                onClose={handleClosePullRequestWorkspace}
                 onOpenProfileSettings={handleOpenGitProfileMenu}
                 onSelectPullRequest={(pullRequest) =>
                   setGitHubWorkspaceView({ kind: 'review', pullRequest })

@@ -12,7 +12,8 @@ import {
   MessageSquare,
   RefreshCw,
   Search,
-  ShieldCheck
+  ShieldCheck,
+  X
 } from 'lucide-react';
 
 import type {
@@ -31,6 +32,7 @@ type PullRequestInboxViewProps = {
   isRefreshing: boolean;
   errorMessage?: string;
   onRefresh: () => void;
+  onClose: () => void;
   onOpenProfileSettings: () => void;
   onSelectPullRequest: (pullRequest: GitHubPullRequestSummary) => void;
 };
@@ -88,6 +90,7 @@ export function PullRequestInboxView({
   isRefreshing,
   errorMessage,
   onRefresh,
+  onClose,
   onOpenProfileSettings,
   onSelectPullRequest
 }: PullRequestInboxViewProps): ReactElement {
@@ -112,6 +115,7 @@ export function PullRequestInboxView({
         detail="Pull request inboxes use the GitHub CLI account attached to the active Git profile."
         actionLabel="Open profile settings"
         onAction={onOpenProfileSettings}
+        onClose={onClose}
       />
     );
   }
@@ -122,6 +126,7 @@ export function PullRequestInboxView({
         icon={<Loader2 size={20} className="animate-spin" />}
         title="Scanning your pull requests"
         detail={`Reading review requests and authored work for @${profile.githubLogin}.`}
+        onClose={onClose}
       />
     );
   }
@@ -134,6 +139,7 @@ export function PullRequestInboxView({
         detail={errorMessage}
         actionLabel="Try again"
         onAction={onRefresh}
+        onClose={onClose}
         tone="danger"
       />
     );
@@ -152,15 +158,26 @@ export function PullRequestInboxView({
           <h1>Pull request inbox</h1>
           <p>Review requests and authored pull requests, prioritized by what needs you next.</p>
         </div>
-        <button
-          className="btn-subtle h-8 shrink-0 text-xs"
-          type="button"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-        >
-          <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : undefined} />
-          {isRefreshing ? 'Refreshing' : 'Refresh'}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            className="btn-subtle h-8 shrink-0 text-xs"
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : undefined} />
+            {isRefreshing ? 'Refreshing' : 'Refresh'}
+          </button>
+          <button
+            className="icon-btn h-8 w-8"
+            type="button"
+            onClick={onClose}
+            aria-label="Close pull request inbox and return to commit graph"
+            title="Return to commit graph"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </header>
 
       <div className="pr-inbox-controls">
@@ -316,6 +333,7 @@ function InboxMessage({
   detail,
   actionLabel,
   onAction,
+  onClose,
   tone
 }: {
   icon: ReactElement;
@@ -323,10 +341,20 @@ function InboxMessage({
   detail: string;
   actionLabel?: string;
   onAction?: () => void;
+  onClose: () => void;
   tone?: 'danger';
 }): ReactElement {
   return (
     <section className="pr-inbox-message" data-tone={tone}>
+      <button
+        className="icon-btn absolute right-3 top-3 h-8 w-8"
+        type="button"
+        onClick={onClose}
+        aria-label="Close pull request inbox and return to commit graph"
+        title="Return to commit graph"
+      >
+        <X size={14} />
+      </button>
       <span className="pr-inbox-message-icon">{icon}</span>
       <h1>{title}</h1>
       <p>{detail}</p>

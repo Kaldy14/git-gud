@@ -26,6 +26,7 @@ import {
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import type { DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import {
   ReviewView,
   type ReviewLineComment,
@@ -47,11 +48,17 @@ import type {
   GitHubPullRequestSummary
 } from '@shared/types';
 
+import {
+  buildPullRequestDiscussion,
+  type PullRequestDiscussionEntry
+} from './pullRequestDiscussion';
+
 type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
+  onBackToInbox: () => void;
   onClose: () => void;
   onMerged: () => void;
 };
@@ -73,6 +80,7 @@ export function PullRequestReviewView({
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
+  onBackToInbox,
   onClose,
   onMerged
 }: PullRequestReviewViewProps): ReactElement {
@@ -91,7 +99,9 @@ export function PullRequestReviewView({
         icon={<Loader2 size={18} className="animate-spin" />}
         text="Loading the pull request review…"
         actionLabel="Back to pull requests"
-        onAction={onClose}
+        onAction={onBackToInbox}
+        closeLabel="Return to commit graph"
+        onClose={onClose}
       />
     );
   }
@@ -103,7 +113,9 @@ export function PullRequestReviewView({
         text={detailQuery.error instanceof Error ? detailQuery.error.message : 'Could not load the pull request.'}
         tone="danger"
         actionLabel="Back to pull requests"
-        onAction={onClose}
+        onAction={onBackToInbox}
+        closeLabel="Return to commit graph"
+        onClose={onClose}
       />
     );
   }
@@ -115,7 +127,9 @@ export function PullRequestReviewView({
         text="The pull request is unavailable."
         tone="danger"
         actionLabel="Back to pull requests"
-        onAction={onClose}
+        onAction={onBackToInbox}
+        closeLabel="Return to commit graph"
+        onClose={onClose}
       />
     );
   }
@@ -127,6 +141,7 @@ export function PullRequestReviewView({
       diffStyle={diffStyle}
       diffSyntaxTheme={diffSyntaxTheme}
       onSetDiffStyle={onSetDiffStyle}
+      onBackToInbox={onBackToInbox}
       onClose={onClose}
       onMerged={onMerged}
     />
@@ -138,6 +153,7 @@ function PullRequestReviewContent({
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
+  onBackToInbox,
   onClose,
   onMerged
 }: {
@@ -145,6 +161,7 @@ function PullRequestReviewContent({
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
+  onBackToInbox: () => void;
   onClose: () => void;
   onMerged: () => void;
 }): ReactElement {
@@ -162,6 +179,10 @@ function PullRequestReviewContent({
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; message: string }>();
+  const generalDiscussion = useMemo(
+    () => buildPullRequestDiscussion(detail.conversationComments, detail.reviews),
+    [detail.conversationComments, detail.reviews]
+  );
   const displayedLineComments = useMemo<ReviewLineComment[]>(() => {
     const publishedComments: ReviewLineComment[] = detail.reviewComments.map((comment) => ({
       ...comment,
@@ -339,13 +360,13 @@ function PullRequestReviewContent({
     <section className="pr-review-view" aria-label={`Review ${detail.title}`}>
       <header className="pr-review-header">
         <button
-          className="btn-subtle h-8 shrink-0 text-xs"
+          className="icon-btn h-8 w-8 shrink-0"
           type="button"
-          onClick={onClose}
+          onClick={onBackToInbox}
+          aria-label="Back to pull requests"
           title="Back to pull requests"
         >
           <ArrowLeft size={15} />
-          Back to pull requests
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2 text-[11px] text-[var(--text-3)]">
@@ -393,6 +414,15 @@ function PullRequestReviewContent({
             <GitMerge size={13} />
             {mergeMethodLabel(detail.mergeSettings.defaultMethod)}
           </button>
+          <button
+            className="icon-btn h-8 w-8 shrink-0"
+            type="button"
+            onClick={onClose}
+            aria-label="Close pull request review and return to commit graph"
+            title="Return to commit graph"
+          >
+            <X size={14} />
+          </button>
         </div>
       </header>
 
@@ -405,7 +435,7 @@ function PullRequestReviewContent({
           <Minus size={11} /> {detail.deletions.toLocaleString()}
         </span>
         <span>
-          <MessageSquare size={11} /> {detail.conversationComments.length + detail.reviewComments.length} comments
+          <MessageSquare size={11} /> {generalDiscussion.length + detail.reviewComments.length} comments
         </span>
       </div>
 
@@ -422,13 +452,31 @@ function PullRequestReviewContent({
       <details className="pr-review-overview">
         <summary>
           <ChevronDown size={13} />
-          Pull request overview
+          Overview &amp; discussion
           <span>
-            {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'} · {detail.conversationComments.length} conversation comments
+            {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'} · {generalDiscussion.length} general {generalDiscussion.length === 1 ? 'comment' : 'comments'}
           </span>
         </summary>
         <div className="pr-review-overview-body">
-          <p>{detail.body || 'No pull request description was provided.'}</p>
+          <div className="pr-review-overview-main">
+            <section className="pr-review-description" aria-labelledby="pr-review-description-heading">
+              <h2 id="pr-review-description-heading">Description</h2>
+              <ReviewCommentBody body={detail.body || 'No pull request description was provided.'} />
+            </section>
+            {generalDiscussion.length > 0 ? (
+              <section className="pr-general-discussion" aria-labelledby="pr-general-discussion-heading">
+                <h2 id="pr-general-discussion-heading">
+                  General discussion
+                  <span>{generalDiscussion.length}</span>
+                </h2>
+                <div>
+                  {generalDiscussion.map((entry) => (
+                    <GeneralDiscussionComment entry={entry} key={entry.key} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
           {detail.reviews.length > 0 ? (
             <div className="pr-review-reviewers">
               {detail.reviews.slice(-8).map((review) => (
@@ -478,6 +526,7 @@ function PullRequestReviewContent({
           diffSyntaxTheme={diffSyntaxTheme}
           onSetDiffStyle={onSetDiffStyle}
           onClose={onClose}
+          showCloseButton={false}
         />
       </div>
 
@@ -500,6 +549,44 @@ function PullRequestReviewContent({
         />
       ) : null}
     </section>
+  );
+}
+
+function GeneralDiscussionComment({
+  entry
+}: {
+  entry: PullRequestDiscussionEntry;
+}): ReactElement {
+  const [didAvatarFail, setDidAvatarFail] = useState(false);
+
+  return (
+    <article className="pr-general-comment">
+      <header>
+        {entry.authorAvatarUrl && !didAvatarFail ? (
+          <img
+            src={entry.authorAvatarUrl}
+            alt=""
+            aria-hidden="true"
+            onError={() => setDidAvatarFail(true)}
+          />
+        ) : (
+          <span className="pr-general-comment-avatar" aria-hidden="true">
+            {entry.author.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+        <strong>{entry.author}</strong>
+        {entry.kind === 'review' ? (
+          <span className="pr-general-comment-kind" data-state={entry.reviewState}>
+            {formatReviewState(entry.reviewState)}
+          </span>
+        ) : null}
+        <a href={entry.url} target="_blank" rel="noreferrer" title="Open comment on GitHub">
+          <time dateTime={entry.createdAt}>{formatDiscussionDate(entry.createdAt)}</time>
+          <ExternalLink size={10} />
+        </a>
+      </header>
+      <ReviewCommentBody body={entry.body} />
+    </article>
   );
 }
 
@@ -748,19 +835,46 @@ function ReviewMessage({
   text,
   tone,
   actionLabel,
-  onAction
+  onAction,
+  closeLabel,
+  onClose
 }: {
   icon: ReactElement;
   text: string;
   tone?: 'danger';
   actionLabel?: string;
   onAction?: () => void;
+  closeLabel?: string;
+  onClose?: () => void;
 }): ReactElement {
   return (
     <div className="review-message" data-tone={tone}>
       <span className="flex items-center gap-2">{icon}{text}</span>
-      {actionLabel && onAction ? (
-        <button className="btn-subtle mt-3 h-8 text-xs" type="button" onClick={onAction}>{actionLabel}</button>
+      {(actionLabel && onAction) || (closeLabel && onClose) ? (
+        <span className="mt-3 flex items-center gap-2">
+          {actionLabel && onAction ? (
+            <button
+              className="icon-btn h-8 w-8"
+              type="button"
+              onClick={onAction}
+              aria-label={actionLabel}
+              title={actionLabel}
+            >
+              <ArrowLeft size={15} />
+            </button>
+          ) : null}
+          {closeLabel && onClose ? (
+            <button
+              className="icon-btn h-8 w-8"
+              type="button"
+              onClick={onClose}
+              aria-label={closeLabel}
+              title={closeLabel}
+            >
+              <X size={14} />
+            </button>
+          ) : null}
+        </span>
       ) : null}
     </div>
   );
@@ -776,6 +890,13 @@ function mergeMethodLabel(method: GitHubPullRequestMergeMethod): string {
     : method === 'rebase'
       ? 'Rebase and merge'
       : 'Merge pull request';
+}
+
+function formatDiscussionDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(value));
 }
 
 function reviewSubmitLabel(event: ReviewEvent, draftCount: number): string {
