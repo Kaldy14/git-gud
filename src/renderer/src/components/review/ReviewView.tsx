@@ -1,4 +1,10 @@
-import type { FormEvent, KeyboardEvent, ReactElement } from 'react';
+import type {
+  CSSProperties,
+  FormEvent,
+  KeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement
+} from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
@@ -69,9 +75,15 @@ import {
 import { createReviewContextOptions } from './reviewContextExpansion';
 import {
   createReviewFileTreeEntries,
+  DEFAULT_REVIEW_FILE_TREE_WIDTH,
   findReviewUnitIdForPath,
   loadReviewFileTreeOpen,
-  saveReviewFileTreeOpen
+  loadReviewFileTreeWidth,
+  MAX_REVIEW_FILE_TREE_WIDTH,
+  MIN_REVIEW_FILE_TREE_WIDTH,
+  normalizeReviewFileTreeWidth,
+  saveReviewFileTreeOpen,
+  saveReviewFileTreeWidth
 } from './reviewFileTree';
 import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
@@ -81,6 +93,10 @@ type ReviewViewProps = {
   repoPath: string;
   target: GitReviewTarget;
   plan?: GitReviewPlan;
+  reviewGuideProvider?: {
+    getState: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
+    start: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
+  };
   reviewProgressKey?: string;
   lineComments?: ReviewLineComment[];
   onAddDraftLineComment?: (input: ReviewLineCommentInput) => Promise<void>;
@@ -145,6 +161,7 @@ export function ReviewView({
   repoPath,
   target,
   plan: embeddedPlan,
+  reviewGuideProvider,
   reviewProgressKey,
   lineComments = [],
   onAddDraftLineComment,
@@ -201,8 +218,9 @@ export function ReviewView({
     () => new Set(reviewPlan?.reviewedChunkIds ?? []),
     [reviewPlan?.reviewedChunkIds]
   );
+  const isReviewGuideEnabled = !embeddedPlan || reviewGuideProvider !== undefined;
   const currentReviewGuideState: GitReviewGuideState | undefined =
-    !embeddedPlan && reviewPlan
+    isReviewGuideEnabled && reviewPlan
       ? reviewGuideState?.sourceFingerprint === reviewPlan.sourceFingerprint
         ? reviewGuideState
         : { status: 'idle', sourceFingerprint: reviewPlan.sourceFingerprint }
@@ -321,12 +339,15 @@ export function ReviewView({
   useEffect(() => {
     const sourceFingerprint = reviewPlan?.sourceFingerprint;
 
-    if (embeddedPlan || !sourceFingerprint) {
+    if (!isReviewGuideEnabled || !sourceFingerprint) {
       return;
     }
 
     let cancelled = false;
-    void window.api.getReviewGuideState(repoPath, sourceFingerprint)
+    const stateRequest = reviewGuideProvider
+      ? reviewGuideProvider.getState(sourceFingerprint)
+      : window.api.getReviewGuideState(repoPath, sourceFingerprint);
+    void stateRequest
       .then((state) => {
         if (!cancelled && state.sourceFingerprint === sourceFingerprint) {
           setReviewGuideState(state);
@@ -345,7 +366,12 @@ export function ReviewView({
     return () => {
       cancelled = true;
     };
-  }, [embeddedPlan, repoPath, reviewPlan?.sourceFingerprint]);
+  }, [
+    isReviewGuideEnabled,
+    repoPath,
+    reviewGuideProvider,
+    reviewPlan?.sourceFingerprint
+  ]);
 
   useEffect(() => {
     if (currentReviewGuideState?.status !== 'running') {
@@ -355,7 +381,10 @@ export function ReviewView({
     const sourceFingerprint = currentReviewGuideState.sourceFingerprint;
     let cancelled = false;
     const refresh = (): void => {
-      void window.api.getReviewGuideState(repoPath, sourceFingerprint)
+      const stateRequest = reviewGuideProvider
+        ? reviewGuideProvider.getState(sourceFingerprint)
+        : window.api.getReviewGuideState(repoPath, sourceFingerprint);
+      void stateRequest
         .then((state) => {
           if (!cancelled && state.sourceFingerprint === sourceFingerprint) {
             setReviewGuideState(state);
@@ -378,7 +407,12 @@ export function ReviewView({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [currentReviewGuideState?.sourceFingerprint, currentReviewGuideState?.status, repoPath]);
+  }, [
+    currentReviewGuideState?.sourceFingerprint,
+    currentReviewGuideState?.status,
+    repoPath,
+    reviewGuideProvider
+  ]);
 
   useEffect(() => {
     if (!workerPool || !selectedUnit || !presentation) {
@@ -428,7 +462,7 @@ export function ReviewView({
   }
 
   async function startReviewGuide(): Promise<void> {
-    if (embeddedPlan || !reviewPlan || currentReviewGuideState?.status === 'running') {
+    if (!isReviewGuideEnabled || !reviewPlan || currentReviewGuideState?.status === 'running') {
       return;
     }
 
@@ -441,7 +475,9 @@ export function ReviewView({
     });
 
     try {
-      const state = await window.api.startReviewGuide(repoPath, target, sourceFingerprint);
+      const state = reviewGuideProvider
+        ? await reviewGuideProvider.start(sourceFingerprint)
+        : await window.api.startReviewGuide(repoPath, target, sourceFingerprint);
       if (state.sourceFingerprint === sourceFingerprint) {
         setReviewGuideState(state);
       }
@@ -591,7 +627,7 @@ export function ReviewView({
         </div>
 
         <div className="review-toolbar-actions">
-          {!embeddedPlan && reviewPlan?.units.length ? (
+          {isReviewGuideEnabled && reviewPlan?.units.length ? (
             <ReviewGuideControl state={currentReviewGuideState} onStart={() => void startReviewGuide()} />
           ) : null}
           <div className="segmented shrink-0">
@@ -627,9 +663,12 @@ export function ReviewView({
         </div>
       </div>
 
-      {!embeddedPlan ? <ReviewGuideBanner state={currentReviewGuideState} guide={reviewGuide} /> : null}
+      {isReviewGuideEnabled ? (
+        <ReviewGuideBanner state={currentReviewGuideState} guide={reviewGuide} />
+      ) : null}
 
       <ReviewBody
+        repoPath={repoPath}
         isLoading={embeddedPlan ? false : reviewQuery.isLoading}
         errorMessage={
           !embeddedPlan && reviewQuery.error instanceof Error
@@ -917,6 +956,7 @@ function ReviewGuideUnitDetails({
 }
 
 function ReviewBody({
+  repoPath,
   isLoading,
   errorMessage,
   hasReviewUnits,
@@ -934,6 +974,7 @@ function ReviewBody({
   onHideFileTree,
   onToggleViewed
 }: {
+  repoPath: string;
   isLoading: boolean;
   errorMessage?: string;
   hasReviewUnits: boolean;
@@ -1126,6 +1167,8 @@ function ReviewBody({
 
       {isFileTreeOpen ? (
         <ReviewFileTree
+          key={repoPath}
+          repoPath={repoPath}
           units={units}
           selectedPath={selectedFilePath}
           onSelectPath={selectFile}
@@ -1137,17 +1180,26 @@ function ReviewBody({
 }
 
 function ReviewFileTree({
+  repoPath,
   units,
   selectedPath,
   onSelectPath,
   onHide
 }: {
+  repoPath: string;
   units: VisibleReviewUnit[];
   selectedPath?: string;
   onSelectPath: (path: string | undefined) => void;
   onHide: () => void;
 }): ReactElement {
   const isSyncingSelectionRef = useRef(false);
+  const resizeStateRef = useRef<
+    { startX: number; startWidth: number; width: number } | undefined
+  >(undefined);
+  const [width, setWidth] = useState(() =>
+    loadReviewFileTreeWidth(window.localStorage, repoPath)
+  );
+  const [isResizing, setIsResizing] = useState(false);
   const entries = useMemo(() => createReviewFileTreeEntries(units), [units]);
   const paths = useMemo(() => entries.map((entry) => entry.path), [entries]);
   const pathSet = useMemo(() => new Set(paths), [paths]);
@@ -1180,6 +1232,53 @@ function ReviewFileTree({
       }
     `
   });
+
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function handlePointerMove(event: PointerEvent): void {
+      const state = resizeStateRef.current;
+
+      if (!state) {
+        return;
+      }
+
+      const nextWidth = normalizeReviewFileTreeWidth(
+        state.startWidth + state.startX - event.clientX
+      );
+      state.width = nextWidth;
+      setWidth(nextWidth);
+    }
+
+    function stopResize(): void {
+      const nextWidth = resizeStateRef.current?.width;
+      resizeStateRef.current = undefined;
+      setIsResizing(false);
+
+      if (typeof nextWidth === 'number') {
+        saveReviewFileTreeWidth(window.localStorage, repoPath, nextWidth);
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizing, repoPath]);
 
   useEffect(() => {
     const selectedPaths = model.getSelectedPaths();
@@ -1215,8 +1314,44 @@ function ReviewFileTree({
     }
   }, [model, pathSet, selectedPath]);
 
+  function handleResizeStart(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.focus();
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: width,
+      width
+    };
+    setIsResizing(true);
+  }
+
+  function resizeAndSave(nextWidth: number): void {
+    const normalizedWidth = normalizeReviewFileTreeWidth(nextWidth);
+    setWidth(normalizedWidth);
+    saveReviewFileTreeWidth(window.localStorage, repoPath, normalizedWidth);
+  }
+
+  const panelStyle: CSSProperties & Record<'--review-file-tree-width', string> = {
+    '--review-file-tree-width': `${width}px`
+  };
+
   return (
-    <aside className="review-file-tree-panel" aria-label="Review files">
+    <aside
+      className="review-file-tree-panel"
+      style={panelStyle}
+      aria-label="Review files"
+    >
+      <ReviewFileTreeResizeHandle
+        width={width}
+        isActive={isResizing}
+        onPointerDown={handleResizeStart}
+        onResize={resizeAndSave}
+      />
       <header>
         <span>
           <FolderTree size={13} />
@@ -1237,6 +1372,57 @@ function ReviewFileTree({
         <FileTree className="review-file-tree" model={model} />
       </div>
     </aside>
+  );
+}
+
+function ReviewFileTreeResizeHandle({
+  width,
+  isActive,
+  onPointerDown,
+  onResize
+}: {
+  width: number;
+  isActive: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onResize: (width: number) => void;
+}): ReactElement {
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    const step = event.shiftKey ? 48 : 16;
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      onResize(width + step);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      onResize(width - step);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      onResize(MIN_REVIEW_FILE_TREE_WIDTH);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      onResize(MAX_REVIEW_FILE_TREE_WIDTH);
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onResize(DEFAULT_REVIEW_FILE_TREE_WIDTH);
+    }
+  }
+
+  return (
+    <div
+      className="review-file-tree-resizer"
+      role="separator"
+      tabIndex={0}
+      aria-label="Resize review file tree"
+      aria-orientation="vertical"
+      aria-valuemin={MIN_REVIEW_FILE_TREE_WIDTH}
+      aria-valuemax={MAX_REVIEW_FILE_TREE_WIDTH}
+      aria-valuenow={width}
+      data-active={isActive ? 'true' : undefined}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => onResize(DEFAULT_REVIEW_FILE_TREE_WIDTH)}
+      onKeyDown={handleKeyDown}
+    />
   );
 }
 

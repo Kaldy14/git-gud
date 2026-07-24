@@ -34,6 +34,7 @@ export class PiReviewGuideEngine implements ReviewGuideEngine {
 
   async generate(plan: GitReviewPlan): Promise<GitReviewGuide> {
     const executable = await resolvePiExecutable();
+    const isRemoteReview = plan.repoPath.startsWith('github://');
     const child = spawn(
       executable,
       [
@@ -41,8 +42,7 @@ export class PiReviewGuideEngine implements ReviewGuideEngine {
         '--no-session',
         '--mode',
         'text',
-        '--tools',
-        'read,grep,find,ls',
+        ...(isRemoteReview ? ['--no-tools'] : ['--tools', 'read,grep,find,ls']),
         '--no-extensions',
         '--no-skills',
         '--no-prompt-templates',
@@ -50,7 +50,7 @@ export class PiReviewGuideEngine implements ReviewGuideEngine {
         '--no-approve'
       ],
       {
-        cwd: plan.repoPath,
+        cwd: isRemoteReview ? homedir() : plan.repoPath,
         env: {
           ...process.env,
           NO_COLOR: '1'

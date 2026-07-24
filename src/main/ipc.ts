@@ -61,6 +61,7 @@ import {
   mergeGitHubPullRequest,
   submitGitHubPullRequestReview
 } from './github';
+import { githubPullRequestReviewPlans } from './githubReviewPlans';
 import { validateRepository } from './git/repoInspector';
 import { clearReviewSyntaxCache, clearReviewSyntaxCacheForRepository } from './git/reviewSyntax';
 import type { RepoWatcherRegistry } from './git/watcher';
@@ -141,10 +142,13 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
 export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   reviewGuideManager.setOnReady(async ({ repoPath, plan, guide }) => {
     try {
-      const currentPlan = await loadReviewPlan(getOpenRepositoryTab(repoPath), plan.target);
+      const isCurrent = repoPath.startsWith('github://')
+        ? githubPullRequestReviewPlans.has(plan)
+        : (await loadReviewPlan(getOpenRepositoryTab(repoPath), plan.target)).sourceFingerprint ===
+          guide.sourceFingerprint;
 
       if (
-        currentPlan.sourceFingerprint !== guide.sourceFingerprint ||
+        !isCurrent ||
         BrowserWindow.getFocusedWindow() ||
         !Notification.isSupported()
       ) {
@@ -426,6 +430,14 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('profiles:list-github-accounts', () => listGitHubAccounts());
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
+  handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {
+    const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
+    return reviewGuideManager.getState(plan.repoPath, sourceFingerprint);
+  });
+  handle('github:start-pull-request-review-guide', (_event, locator, sourceFingerprint) => {
+    const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
+    return reviewGuideManager.start(plan);
+  });
   handle('github:submit-pull-request-review', (_event, input) => submitGitHubPullRequestReview(input));
   handle('github:merge-pull-request', (_event, input) => mergeGitHubPullRequest(input));
   handle('profiles:save', (_event, profile) => saveProfile(profile));

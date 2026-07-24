@@ -80,6 +80,10 @@ const api: RendererApi = {
   listGitHubAccounts: () => invoke('profiles:list-github-accounts'),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),
   getGitHubPullRequestDetail: (locator) => invoke('github:pull-request-detail', locator),
+  getGitHubPullRequestReviewGuideState: (locator, sourceFingerprint) =>
+    invoke('github:pull-request-review-guide-state', locator, sourceFingerprint),
+  startGitHubPullRequestReviewGuide: (locator, sourceFingerprint) =>
+    invoke('github:start-pull-request-review-guide', locator, sourceFingerprint),
   submitGitHubPullRequestReview: (input) => invoke('github:submit-pull-request-review', input),
   mergeGitHubPullRequest: (input) => invoke('github:merge-pull-request', input),
   saveProfile: (profile) => invoke('profiles:save', profile),

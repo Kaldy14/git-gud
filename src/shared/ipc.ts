@@ -324,6 +324,14 @@ export type IpcChannelMap = {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestDetail;
   };
+  'github:pull-request-review-guide-state': {
+    args: [locator: GitHubPullRequestLocator, sourceFingerprint: string];
+    result: GitReviewGuideState;
+  };
+  'github:start-pull-request-review-guide': {
+    args: [locator: GitHubPullRequestLocator, sourceFingerprint: string];
+    result: GitReviewGuideState;
+  };
   'github:submit-pull-request-review': {
     args: [input: GitHubPullRequestReviewInput];
     result: GitHubPullRequestActionResult;
@@ -421,6 +429,14 @@ export type RendererApi = {
   listGitHubAccounts: () => Promise<GitHubCliAccount[]>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
+  getGitHubPullRequestReviewGuideState: (
+    locator: GitHubPullRequestLocator,
+    sourceFingerprint: string
+  ) => Promise<GitReviewGuideState>;
+  startGitHubPullRequestReviewGuide: (
+    locator: GitHubPullRequestLocator,
+    sourceFingerprint: string
+  ) => Promise<GitReviewGuideState>;
   submitGitHubPullRequestReview: (input: GitHubPullRequestReviewInput) => Promise<GitHubPullRequestActionResult>;
   mergeGitHubPullRequest: (input: GitHubPullRequestMergeInput) => Promise<GitHubPullRequestActionResult>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;

@@ -1399,14 +1399,49 @@ button.ref-chip:active {
 }
 
 .review-file-tree-panel {
+  position: relative;
   display: flex;
-  width: 260px;
-  min-width: 0;
-  flex: 0 0 260px;
+  width: min(var(--review-file-tree-width, 260px), 45vw);
+  min-width: min(180px, 45vw);
+  max-width: 520px;
+  flex: 0 0 min(var(--review-file-tree-width, 260px), 45vw);
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   border-left: 1px solid var(--border);
   background: var(--bg-panel);
+}
+
+.review-file-tree-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  z-index: 30;
+  width: 10px;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.review-file-tree-resizer::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: '';
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.review-file-tree-resizer:hover::before,
+.review-file-tree-resizer:focus-visible::before,
+.review-file-tree-resizer[data-active='true']::before {
+  background: var(--accent-2);
+  box-shadow: 0 0 0 1px rgba(95, 214, 195, 0.22);
 }
 
 .review-file-tree-panel > header {
@@ -3370,11 +3405,6 @@ button.ref-chip:active {
   }
 
   .review-queue {
-    width: 220px;
-    flex-basis: 220px;
-  }
-
-  .review-file-tree-panel {
     width: 220px;
     flex-basis: 220px;
   }

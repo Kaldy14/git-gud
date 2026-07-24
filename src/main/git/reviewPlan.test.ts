@@ -827,6 +827,36 @@ describe('context review plans', () => {
     expect(betaStory?.chunks.some((chunk) => chunk.path === 'src/alpha/alpha-model.ts')).toBe(false);
   });
 
+  it('handles a generated migration snapshot with many unrelated identifiers', () => {
+    const sourcePatches = Array.from({ length: 200 }, (_, index) =>
+      patch(
+        `src/model-${index}.ts`,
+        `@@ -0,0 +1 @@\n+export const DomainSymbol${index} = createModel();\n`
+      )
+    );
+    const snapshotLines = Array.from(
+      { length: 40_000 },
+      (_, index) => `+  "generatedIdentifier${index}": true,\n`
+    ).join('');
+    const generatedSnapshot = patch(
+      'apps/core-hub/src/drizzle/migrations/meta/0131_snapshot.json',
+      `@@ -0,0 +1,40002 @@\n+{\n${snapshotLines}+}\n`,
+      'added'
+    );
+    const plan = buildReviewPlan('/repo', { kind: 'commit', sha: 'large-generated' }, [
+      ...sourcePatches,
+      generatedSnapshot
+    ]);
+    const snapshotChunk = plan.units
+      .flatMap((unit) => unit.chunks)
+      .find((chunk) => chunk.path === generatedSnapshot.path);
+
+    expect(snapshotChunk).toMatchObject({
+      reviewSection: 'generated',
+      role: 'related'
+    });
+  });
+
   it('keeps a relationship unit id stable when new usages are added', () => {
     const basePatches = [
       patch('src/config.ts', '@@ -1 +1 @@\n+export const DEFAULT_TIMEOUT = 5000;\n'),

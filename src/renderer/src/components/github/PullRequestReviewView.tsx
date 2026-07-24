@@ -171,6 +171,21 @@ function PullRequestReviewContent({
     repository: detail.repository,
     number: detail.number
   };
+  const reviewGuideProvider = useMemo(() => {
+    const reviewLocator = {
+      profileId: detail.profileId,
+      owner: detail.owner,
+      repository: detail.repository,
+      number: detail.number
+    };
+
+    return {
+      getState: (sourceFingerprint: string) =>
+        window.api.getGitHubPullRequestReviewGuideState(reviewLocator, sourceFingerprint),
+      start: (sourceFingerprint: string) =>
+        window.api.startGitHubPullRequestReviewGuide(reviewLocator, sourceFingerprint)
+    };
+  }, [detail.number, detail.owner, detail.profileId, detail.repository]);
   const queryClient = useQueryClient();
   const draftStorageKey = `git-gud:pr-review-drafts:${detail.reviewPlan.targetKey}`;
   const [reviewDrafts, setReviewDrafts] = useState<PullRequestReviewDraft[]>(() =>
@@ -517,6 +532,7 @@ function PullRequestReviewContent({
           repoPath={detail.reviewPlan.repoPath}
           target={detail.reviewPlan.target}
           plan={detail.reviewPlan}
+          reviewGuideProvider={reviewGuideProvider}
           reviewProgressKey={detail.reviewPlan.targetKey}
           lineComments={displayedLineComments}
           onAddDraftLineComment={addDraftLineComment}

@@ -7,6 +7,11 @@ export type ReviewFileTreeEntry = GitStatusEntry & {
 };
 
 const REVIEW_FILE_TREE_STORAGE_PREFIX = 'git-gud:review-file-tree:v1:';
+const REVIEW_FILE_TREE_WIDTH_STORAGE_PREFIX = 'git-gud:review-file-tree-width:v1:';
+
+export const DEFAULT_REVIEW_FILE_TREE_WIDTH = 260;
+export const MIN_REVIEW_FILE_TREE_WIDTH = 180;
+export const MAX_REVIEW_FILE_TREE_WIDTH = 520;
 
 export function createReviewFileTreeEntries(
   units: readonly VisibleReviewUnit[]
@@ -54,6 +59,44 @@ export function saveReviewFileTreeOpen(
   storage.setItem(reviewFileTreeStorageKey(repoPath), String(isOpen));
 }
 
+export function normalizeReviewFileTreeWidth(width: number): number {
+  return Math.min(
+    MAX_REVIEW_FILE_TREE_WIDTH,
+    Math.max(MIN_REVIEW_FILE_TREE_WIDTH, Math.round(width))
+  );
+}
+
+export function loadReviewFileTreeWidth(
+  storage: Pick<Storage, 'getItem'>,
+  repoPath: string
+): number {
+  const storedWidth = storage.getItem(reviewFileTreeWidthStorageKey(repoPath));
+
+  if (storedWidth === null) {
+    return DEFAULT_REVIEW_FILE_TREE_WIDTH;
+  }
+
+  const width = Number(storedWidth);
+  return Number.isFinite(width)
+    ? normalizeReviewFileTreeWidth(width)
+    : DEFAULT_REVIEW_FILE_TREE_WIDTH;
+}
+
+export function saveReviewFileTreeWidth(
+  storage: Pick<Storage, 'setItem'>,
+  repoPath: string,
+  width: number
+): void {
+  storage.setItem(
+    reviewFileTreeWidthStorageKey(repoPath),
+    String(normalizeReviewFileTreeWidth(width))
+  );
+}
+
 function reviewFileTreeStorageKey(repoPath: string): string {
   return `${REVIEW_FILE_TREE_STORAGE_PREFIX}${encodeURIComponent(repoPath)}`;
+}
+
+function reviewFileTreeWidthStorageKey(repoPath: string): string {
+  return `${REVIEW_FILE_TREE_WIDTH_STORAGE_PREFIX}${encodeURIComponent(repoPath)}`;
 }

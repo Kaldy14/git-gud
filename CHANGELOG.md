@@ -4,6 +4,18 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-07-24
+
+### Added
+
+- Expanded pull-request review with the PR description, general discussion, local draft line comments and replies, review submission, and repository-aware merge controls.
+- Added the asynchronous AI walkthrough to pull-request reviews, using the exact GitHub patch plan to summarize intent and rank the existing review groups without blocking the diff.
+
+### Changed
+
+- Made the review file tree resizable by pointer or keyboard and remembered its width per repository.
+- Reduced relationship-scoring work for large generated snapshots by normalizing each changed chunk once.
+
 ## [0.4.9] - 2026-07-23
 
 ### Added

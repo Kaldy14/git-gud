@@ -75,6 +75,15 @@ describe('IPC argument validation', () => {
       ])
     ).toEqual([{ profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }]);
     expect(
+      validateIpcArgs('github:start-pull-request-review-guide', [
+        { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
+        'a'.repeat(64)
+      ])
+    ).toEqual([
+      { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
+      'a'.repeat(64)
+    ]);
+    expect(
       validateIpcArgs('github:submit-pull-request-review', [
         {
           profileId: 'profile:kaldy',

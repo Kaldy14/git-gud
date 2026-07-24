@@ -125,6 +125,10 @@ const validators = {
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
     readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
+  'github:pull-request-review-guide-state': (args) =>
+    readGitHubPullRequestReviewGuideArgs('github:pull-request-review-guide-state', args),
+  'github:start-pull-request-review-guide': (args) =>
+    readGitHubPullRequestReviewGuideArgs('github:start-pull-request-review-guide', args),
   'github:submit-pull-request-review': (args) =>
     readOnlyArg(args, 'github:submit-pull-request-review', 'input', readGitHubPullRequestReviewInput),
   'github:merge-pull-request': (args) =>
@@ -363,6 +367,17 @@ function readGitHubPullRequestLocator(value: unknown): GitHubPullRequestLocator 
     repository: readGitHubName(record.repository, 'repository'),
     number: readPositiveInteger(record.number, 'number')
   };
+}
+
+function readGitHubPullRequestReviewGuideArgs(
+  channel: 'github:pull-request-review-guide-state' | 'github:start-pull-request-review-guide',
+  args: readonly unknown[]
+): [GitHubPullRequestLocator, string] {
+  assertArgCount(channel, args, 2);
+  return [
+    readGitHubPullRequestLocator(args[0]),
+    readReviewSourceFingerprint(args[1])
+  ];
 }
 
 function readGitHubPullRequestReviewInput(value: unknown): GitHubPullRequestReviewInput {

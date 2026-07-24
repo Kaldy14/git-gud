@@ -22,6 +22,7 @@ import type {
 
 import { findGhExecutable, listProfiles } from './profiles';
 import { buildReviewPlan, type ReviewPatchInput } from './git/reviewPlan';
+import { githubPullRequestReviewPlans } from './githubReviewPlans';
 
 type GitHubContext = {
   executable: string;
@@ -160,6 +161,8 @@ export async function loadGitHubPullRequestDetail(
   const pull = readRecord(pullRaw, 'pull request');
   const files = filesRaw.map(parsePullRequestFile);
   const headSha = readNestedString(pull, ['head', 'sha'], 'pull request head SHA');
+  const reviewPlan = buildGitHubPullRequestReviewPlan(context.host, summary, headSha, files);
+  githubPullRequestReviewPlans.remember(locator, reviewPlan);
 
   return {
     ...summary,
@@ -168,7 +171,7 @@ export async function loadGitHubPullRequestDetail(
     baseSha: readNestedString(pull, ['base', 'sha'], 'pull request base SHA'),
     commits: readNumber(pull.commits, 'pull request commits'),
     files,
-    reviewPlan: buildGitHubPullRequestReviewPlan(context.host, summary, headSha, files),
+    reviewPlan,
     mergeSettings: parseGitHubRepositoryMergeSettings(repositoryRaw),
     viewerLogin: inbox.viewerLogin,
     reviewComments: reviewCommentsRaw.map(parseReviewComment),
