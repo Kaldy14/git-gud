@@ -10,6 +10,7 @@ import {
   FolderGit2,
   GitBranch,
   GitPullRequest,
+  LayoutDashboard,
   Laptop,
   Loader2,
   PanelLeftClose,
@@ -22,7 +23,7 @@ import {
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
-import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitStashRefInput, GitTagDeleteInput, GitTagRef, RepoTab } from '@shared/types';
+import type { Dashboard, GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitStashRefInput, GitTagDeleteInput, GitTagRef, RepoTab } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 type SidebarProps = {
@@ -39,6 +40,12 @@ type SidebarProps = {
   isPullRequestLoading: boolean;
   isPullRequestInboxActive: boolean;
   onOpenPullRequestInbox: () => void;
+  dashboards: Dashboard[];
+  isDashboardLoading: boolean;
+  isDashboardActive: boolean;
+  activeDashboardId?: string;
+  onOpenDashboards: () => void;
+  onSelectDashboard: (dashboardId: string) => void;
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
   isOperationBusy: boolean;
@@ -123,6 +130,12 @@ export function Sidebar({
   isPullRequestLoading,
   isPullRequestInboxActive,
   onOpenPullRequestInbox,
+  dashboards,
+  isDashboardLoading,
+  isDashboardActive,
+  activeDashboardId,
+  onOpenDashboards,
+  onSelectDashboard,
   onResize,
   onResizeCommit,
   isOperationBusy,
@@ -149,6 +162,7 @@ export function Sidebar({
     tags: false
   });
   const [filter, setFilter] = useState('');
+  const [dashboardsExpanded, setDashboardsExpanded] = useState(true);
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState>();
   const [isResizing, setIsResizing] = useState(false);
   const filterInputRef = useRef<HTMLInputElement>(null);
@@ -320,6 +334,18 @@ export function Sidebar({
             {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
             <span>{formatCollapsedCount(pullRequestCount)}</span>
           </button>
+          <button
+            className="sidebar-collapsed-item"
+            data-kind="dashboard"
+            type="button"
+            data-active={isDashboardActive}
+            onClick={onOpenDashboards}
+            aria-label={`Dashboards, ${dashboards.length} configured`}
+            title={`Dashboards: ${dashboards.length}`}
+          >
+            {isDashboardLoading ? <Loader2 size={16} className="animate-spin" /> : <LayoutDashboard size={16} />}
+            <span>{formatCollapsedCount(dashboards.length)}</span>
+          </button>
           {COLLAPSED_SECTIONS.slice(4).map(renderCollapsedSection)}
         </div>
       </aside>
@@ -371,7 +397,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Pull requests, branches, worktrees, stashes, and tags">
+      <div className="min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Pull requests, dashboards, branches, worktrees, stashes, and tags">
         <button
           className="sidebar-pr-destination"
           type="button"
@@ -388,6 +414,58 @@ export function Sidebar({
             <span className="pr-count-badge">{pullRequestCount}</span>
           )}
         </button>
+        <section className="sidebar-dashboard-group" role="group">
+          <button
+            className="sidebar-pr-destination sidebar-dashboard-destination"
+            data-kind="dashboard"
+            type="button"
+            role="treeitem"
+            aria-expanded={dashboardsExpanded}
+            aria-selected={isDashboardActive}
+            data-active={isDashboardActive}
+            onClick={() => {
+              if (isDashboardActive) {
+                setDashboardsExpanded((value) => !value);
+                return;
+              }
+
+              setDashboardsExpanded(true);
+              onOpenDashboards();
+            }}
+          >
+            {dashboardsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <LayoutDashboard size={14} />
+            <span className="min-w-0 flex-1 text-left">Dashboards</span>
+            {isDashboardLoading ? (
+              <Loader2 size={12} className="animate-spin text-[var(--text-3)]" />
+            ) : (
+              <span className="pr-count-badge">{dashboards.length}</span>
+            )}
+          </button>
+          {dashboardsExpanded && !isDashboardLoading ? (
+            <div className="sidebar-dashboard-items" role="group">
+              {dashboards.length > 0 ? (
+                dashboards.map((dashboard) => (
+                  <button
+                    className="sidebar-dashboard-item"
+                    type="button"
+                    role="treeitem"
+                    aria-selected={isDashboardActive && dashboard.id === activeDashboardId}
+                    data-active={isDashboardActive && dashboard.id === activeDashboardId}
+                    key={dashboard.id}
+                    onClick={() => onSelectDashboard(dashboard.id)}
+                  >
+                    <LayoutDashboard size={12} />
+                    <span>{dashboard.name}</span>
+                    <span>{dashboard.tiles.length}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="sidebar-dashboard-empty">No dashboards yet</p>
+              )}
+            </div>
+          ) : null}
+        </section>
         {SECTIONS.map((section) => {
           const isExpanded = expanded[section.id];
           const sectionCount = counts[section.id as keyof typeof counts];

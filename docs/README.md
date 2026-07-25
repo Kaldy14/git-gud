@@ -27,7 +27,9 @@ src/renderer/src/
     tabs/TabStrip.tsx                 title-bar repo tabs, + menu (open/recent), profile & settings buttons
     profile/ProfileMenu.tsx           profile create/edit/assign popover with identity, SSH, signing, and remote matching
     toolbar/Toolbar.tsx               repository/branch selectors + stacked fetch/pull/push/branch/stash/undo actions
-    sidebar/Sidebar.tsx               Local/Remote/Worktrees/Tags sections, filter input, collapse rail
+    sidebar/Sidebar.tsx               PR destination, expandable dashboard list, refs sections, collapse rail
+    dashboard/DashboardView.tsx       GitHub Actions tiles, live run rows, dashboard and tile dialogs
+    github/PullRequestInboxView.tsx   profile-scoped GitHub pull-request inbox
     graph/GraphView.tsx               virtualized commit graph: ref chips, per-row SVG rails, nodes, date markers,
                                       arrow-key row navigation, viewport-clamped context menus, WIP status counts
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer/actions

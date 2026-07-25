@@ -86,6 +86,43 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(
+      validateIpcArgs('dashboards:save', [
+        {
+          profileId: 'profile:kaldy',
+          name: 'Delivery',
+          tiles: [
+            {
+              kind: 'github-actions',
+              owner: 'acme',
+              repository: 'widgets',
+              limit: 10
+            }
+          ]
+        }
+      ])[0]
+    ).toMatchObject({
+      profileId: 'profile:kaldy',
+      name: 'Delivery',
+      tiles: [{ owner: 'acme', repository: 'widgets', limit: 10 }]
+    });
+    expect(
+      validateIpcArgs('github:actions-runs', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          limit: 10
+        }
+      ])
+    ).toEqual([
+      {
+        profileId: 'profile:kaldy',
+        owner: 'acme',
+        repository: 'widgets',
+        limit: 10
+      }
+    ]);
+    expect(
       validateIpcArgs('github:pull-request-detail', [
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }
       ])
@@ -277,6 +314,16 @@ describe('IPC argument validation', () => {
       ])
     ).toThrow('staged must be a boolean.');
     expect(() => validateIpcArgs('workspace:set-sidebar-width', [420.5])).toThrow('width must be a positive integer.');
+    expect(() =>
+      validateIpcArgs('github:actions-runs', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          limit: 50
+        }
+      ])
+    ).toThrow('limit must be 20 or fewer.');
     expect(() => validateIpcArgs('workspace:set-detail-panel-collapsed', ['yes'])).toThrow('collapsed must be a boolean.');
     expect(() => validateIpcArgs('repo:file-history', ['/repo', 'file.ts', 1.5])).toThrow('limit must be a positive integer.');
     expect(() =>

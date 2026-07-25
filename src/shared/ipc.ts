@@ -2,6 +2,8 @@ import type {
   AppSettings,
   AppSettingsInput,
   CommitGraphPage,
+  DashboardInput,
+  DashboardState,
   GitCommitDetail,
   GitCommitSelectionDetail,
   GitCommitInput,
@@ -25,12 +27,15 @@ import type {
   GitPatchApplyInput,
   GitPullInput,
   GitHubCliAccount,
+  GitHubActionsRuns,
+  GitHubActionsRunsInput,
   GitHubPullRequestActionResult,
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
+  GitHubRepositorySummary,
   GitProfile,
   GitPushInput,
   GitRebaseInput,
@@ -340,6 +345,26 @@ export type IpcChannelMap = {
     args: [];
     result: GitHubCliAccount[];
   };
+  'dashboards:get': {
+    args: [profileId: string];
+    result: DashboardState;
+  };
+  'dashboards:save': {
+    args: [dashboard: DashboardInput];
+    result: DashboardState;
+  };
+  'dashboards:delete': {
+    args: [profileId: string, dashboardId: string];
+    result: DashboardState;
+  };
+  'github:repositories': {
+    args: [profileId: string];
+    result: GitHubRepositorySummary[];
+  };
+  'github:actions-runs': {
+    args: [input: GitHubActionsRunsInput];
+    result: GitHubActionsRuns;
+  };
   'github:pull-request-inbox': {
     args: [profileId: string];
     result: GitHubPullRequestInbox;
@@ -454,6 +479,11 @@ export type RendererApi = {
   updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;
   listProfiles: () => Promise<GitProfile[]>;
   listGitHubAccounts: () => Promise<GitHubCliAccount[]>;
+  getDashboards: (profileId: string) => Promise<DashboardState>;
+  saveDashboard: (dashboard: DashboardInput) => Promise<DashboardState>;
+  deleteDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
+  getGitHubRepositories: (profileId: string) => Promise<GitHubRepositorySummary[]>;
+  getGitHubActionsRuns: (input: GitHubActionsRunsInput) => Promise<GitHubActionsRuns>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
   getGitHubPullRequestReviewGuideState: (

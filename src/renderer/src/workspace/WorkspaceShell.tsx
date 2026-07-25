@@ -24,6 +24,7 @@ import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
+import { DashboardView } from '@renderer/components/dashboard/DashboardView';
 import { GraphView } from '@renderer/components/graph/GraphView';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import { PullRequestInboxView } from '@renderer/components/github/PullRequestInboxView';
@@ -56,7 +57,7 @@ import {
   useRepositoryChangeInvalidation,
   useRepositoryOverview
 } from '@renderer/queries/repository';
-import { useGitHubPullRequestInbox } from '@renderer/queries/github';
+import { useDashboards, useGitHubPullRequestInbox } from '@renderer/queries/github';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
 import {
@@ -156,6 +157,7 @@ type ProfileTransitionState = {
 };
 
 type GitHubWorkspaceView =
+  | { kind: 'dashboard'; dashboardId?: string }
   | { kind: 'inbox' }
   | { kind: 'review'; pullRequest: GitHubPullRequestSummary };
 
@@ -289,6 +291,7 @@ export function WorkspaceShell(): ReactElement {
       ? activeGitHubProfile.id
       : undefined;
   const pullRequestInboxQuery = useGitHubPullRequestInbox(connectedGitHubProfileId);
+  const dashboardsQuery = useDashboards(connectedGitHubProfileId);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
@@ -652,6 +655,12 @@ export function WorkspaceShell(): ReactElement {
 
   function handleClosePullRequestWorkspace(): void {
     setGitHubWorkspaceView(undefined);
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(false);
+  }
+
+  function handleOpenDashboards(dashboardId?: string): void {
+    setGitHubWorkspaceView({ kind: 'dashboard', dashboardId });
     setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
   }
@@ -2149,8 +2158,18 @@ export function WorkspaceShell(): ReactElement {
               onToggleCollapsed={handleToggleSidebar}
               pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
               isPullRequestLoading={pullRequestInboxQuery.isLoading}
-              isPullRequestInboxActive
+              isPullRequestInboxActive={gitHubWorkspaceView.kind !== 'dashboard'}
               onOpenPullRequestInbox={handleOpenPullRequestInbox}
+              dashboards={dashboardsQuery.data?.dashboards ?? []}
+              isDashboardLoading={dashboardsQuery.isLoading}
+              isDashboardActive={gitHubWorkspaceView.kind === 'dashboard'}
+              activeDashboardId={
+                gitHubWorkspaceView.kind === 'dashboard'
+                  ? gitHubWorkspaceView.dashboardId
+                  : undefined
+              }
+              onOpenDashboards={() => handleOpenDashboards()}
+              onSelectDashboard={handleOpenDashboards}
               onResize={handleSidebarResize}
               onResizeCommit={handleSidebarResizeCommit}
               isOperationBusy={isOperationBusy}
@@ -2177,6 +2196,14 @@ export function WorkspaceShell(): ReactElement {
                 onBackToInbox={handleOpenPullRequestInbox}
                 onClose={handleClosePullRequestWorkspace}
                 onMerged={handleOpenPullRequestInbox}
+              />
+            ) : gitHubWorkspaceView.kind === 'dashboard' ? (
+              <DashboardView
+                profile={activeGitHubProfile}
+                requestedDashboardId={gitHubWorkspaceView.dashboardId}
+                onSelectDashboard={(dashboardId) => handleOpenDashboards(dashboardId)}
+                onOpenProfileSettings={handleOpenGitProfileMenu}
+                onClose={handleClosePullRequestWorkspace}
               />
             ) : (
               <PullRequestInboxView
@@ -2235,6 +2262,12 @@ export function WorkspaceShell(): ReactElement {
                 isPullRequestLoading={pullRequestInboxQuery.isLoading}
                 isPullRequestInboxActive={false}
                 onOpenPullRequestInbox={handleOpenPullRequestInbox}
+                dashboards={dashboardsQuery.data?.dashboards ?? []}
+                isDashboardLoading={dashboardsQuery.isLoading}
+                isDashboardActive={false}
+                activeDashboardId={undefined}
+                onOpenDashboards={() => handleOpenDashboards()}
+                onSelectDashboard={handleOpenDashboards}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}

@@ -6,9 +6,64 @@ import {
   buildCompleteFilePatch,
   buildGitHubPullRequestReviewPlan,
   categorizePullRequest,
+  parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
+  parseGitHubRepositoriesResponse,
   parseGitHubRepositoryMergeSettings
 } from './github';
+
+describe('GitHub Actions dashboards', () => {
+  it('parses accessible repositories for the project selector', () => {
+    expect(
+      parseGitHubRepositoriesResponse([
+        {
+          name: 'widgets',
+          full_name: 'acme/widgets',
+          html_url: 'https://github.com/acme/widgets',
+          private: true,
+          default_branch: 'main',
+          owner: { login: 'acme' }
+        }
+      ])
+    ).toEqual([
+      {
+        owner: 'acme',
+        name: 'widgets',
+        fullName: 'acme/widgets',
+        url: 'https://github.com/acme/widgets',
+        isPrivate: true,
+        defaultBranch: 'main'
+      }
+    ]);
+  });
+
+  it('normalizes running and completed workflow runs', () => {
+    const result = parseGitHubActionsRunsResponse(
+      {
+        workflow_runs: [
+          workflowRun({ id: 101, status: 'in_progress', conclusion: null }),
+          workflowRun({ id: 100, status: 'completed', conclusion: 'timed_out' })
+        ]
+      },
+      {
+        profileId: 'profile-1',
+        owner: 'acme',
+        repository: 'widgets',
+        limit: 2
+      }
+    );
+
+    expect(result.runs).toMatchObject([
+      { id: 101, status: 'in-progress', conclusion: undefined },
+      { id: 100, status: 'completed', conclusion: 'timed-out' }
+    ]);
+    expect(result).toMatchObject({
+      profileId: 'profile-1',
+      owner: 'acme',
+      repository: 'widgets'
+    });
+  });
+});
 
 describe('GitHub pull request inbox', () => {
   it('groups direct review requests, team requests, and authored work by next action', () => {
@@ -228,6 +283,25 @@ describe('GitHub pull request inbox', () => {
     });
   });
 });
+
+function workflowRun(overrides: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: 101,
+    name: 'CI',
+    display_title: 'Verify dashboard support',
+    run_number: 42,
+    event: 'push',
+    head_branch: 'feature/dashboards',
+    head_sha: 'abcdef1234567890',
+    status: 'completed',
+    conclusion: 'success',
+    html_url: 'https://github.com/acme/widgets/actions/runs/101',
+    actor: { login: 'developer' },
+    created_at: '2026-07-25T10:00:00Z',
+    updated_at: '2026-07-25T10:02:00Z',
+    ...overrides
+  };
+}
 
 function pullRequestNode(overrides: Record<string, unknown>): Record<string, unknown> {
   return {

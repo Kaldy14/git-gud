@@ -30,8 +30,15 @@ Git Gud is a focused desktop Git client inspired by the strongest parts of GitKr
 - **Rebase workflows:** standard and interactive rebase with reorder, reword, squash, fixup, drop, and conflict recovery.
 - **Safer mutations:** serialized operations, progress reporting, explicit destructive-action confirmation, and operation-aware local undo.
 - **Workspace flow:** multiple repository tabs, restored sessions, per-repository Git profiles, resizable panels, keyboard navigation, and a command palette.
+- **Live dashboards:** persistent, profile-scoped dashboards with GitHub Actions tiles for multiple projects, automatic refresh, running-state visibility, and direct links to workflow runs.
 
 ## Screenshots
+
+### Live GitHub Actions dashboards
+
+Create persistent dashboards for several projects, see queued and running workflows update automatically, and open any run in GitHub.
+
+![Git Gud live GitHub Actions dashboard](docs/images/git-gud-dashboard.png)
 
 ### Syntax-highlighted diffs
 
@@ -142,7 +149,8 @@ Electron preload (context bridge)
 Electron main process
   ├─ repository inspection and filesystem watchers
   ├─ per-repository mutation queue and progress events
-  ├─ profile, workspace, settings, and undo persistence
+  ├─ profile, workspace, dashboard, settings, and undo persistence
+  ├─ GitHub CLI-backed pull requests and Actions monitoring
   └─ system Git processes using the user's environment
 ```
 
@@ -152,7 +160,7 @@ See [docs/README.md](docs/README.md) for the renderer map and graph model, [PROD
 
 ## Project scope
 
-Git Gud deliberately prioritizes local repository work. Pull-request dashboards, issue tracking, teams, cloud patches, embedded AI generation, auto-updates, and App Store distribution are not current goals. The Codex integration is an explicit handoff to the separately installed desktop app: Git Gud prepares repository and code context, but does not submit the prompt or run an AI model itself. Windows and Linux support is possible, but requires platform-specific system integration, packaging, and CI coverage before those builds can be supported.
+Git Gud deliberately prioritizes local repository work, with focused GitHub pull-request and Actions monitoring through an already-connected GitHub CLI profile. General analytics, issue tracking, teams, cloud patches, embedded AI generation, and App Store distribution are not current goals. The Codex integration is an explicit handoff to the separately installed desktop app: Git Gud prepares repository and code context, but does not submit the prompt or run an AI model itself. Windows and Linux support is possible, but requires platform-specific system integration, packaging, and CI coverage before those builds can be supported.
 
 ## Contributing
 

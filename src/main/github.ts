@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 
 import type {
+  GitHubActionsRuns,
+  GitHubActionsRunsInput,
   GitHubPullRequestActionResult,
   GitHubPullRequestCategory,
   GitHubPullRequestChecks,
@@ -14,7 +16,11 @@ import type {
   GitHubPullRequestReviewComment,
   GitHubPullRequestReviewInput,
   GitHubPullRequestSummary,
+  GitHubRepositorySummary,
   GitHubRepositoryMergeSettings,
+  GitHubWorkflowRun,
+  GitHubWorkflowRunConclusion,
+  GitHubWorkflowRunStatus,
   GitProfile,
   GitReviewPlan,
   GitStatusCode
@@ -109,6 +115,28 @@ const CATEGORY_ORDER: GitHubPullRequestCategory[] = [
   'ready-to-merge'
 ];
 
+export async function loadGitHubRepositories(profileId: string): Promise<GitHubRepositorySummary[]> {
+  const context = await getGitHubContext(profileId);
+  const raw = await runGitHubPaginatedArray(
+    context,
+    'user/repos?per_page=100&sort=full_name&affiliation=owner%2Ccollaborator%2Corganization_member'
+  );
+
+  return parseGitHubRepositoriesResponse(raw);
+}
+
+export async function loadGitHubActionsRuns(input: GitHubActionsRunsInput): Promise<GitHubActionsRuns> {
+  const context = await getGitHubContext(input.profileId);
+  const raw = await runGitHubJson(context, [
+    'api',
+    '--hostname',
+    context.host,
+    `repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/actions/runs?per_page=${input.limit}`
+  ]);
+
+  return parseGitHubActionsRunsResponse(raw, input);
+}
+
 export async function loadGitHubPullRequestInbox(profileId: string): Promise<GitHubPullRequestInbox> {
   const context = await getGitHubContext(profileId);
   const raw = await runGitHubJson(context, [
@@ -125,6 +153,113 @@ export async function loadGitHubPullRequestInbox(profileId: string): Promise<Git
   ]);
 
   return parseGitHubInboxResponse(raw, profileId, context.host);
+}
+
+export function parseGitHubRepositoriesResponse(raw: unknown): GitHubRepositorySummary[] {
+  if (!Array.isArray(raw)) {
+    throw new Error('GitHub CLI returned an invalid repository list.');
+  }
+
+  return raw
+    .map((value) => {
+      const repository = readRecord(value, 'repository');
+      const owner = readString(nestedValue(repository, ['owner', 'login']), 'repository owner');
+      const name = readString(repository.name, 'repository name');
+
+      return {
+        owner,
+        name,
+        fullName: readOptionalString(repository.full_name) ?? `${owner}/${name}`,
+        url: readString(repository.html_url, 'repository URL'),
+        isPrivate: repository.private === true,
+        defaultBranch: readOptionalString(repository.default_branch) ?? 'main'
+      };
+    })
+    .sort((left, right) => left.fullName.localeCompare(right.fullName));
+}
+
+export function parseGitHubActionsRunsResponse(
+  raw: unknown,
+  input: GitHubActionsRunsInput
+): GitHubActionsRuns {
+  const response = readRecord(raw, 'workflow runs response');
+  const workflowRuns = response.workflow_runs;
+
+  if (!Array.isArray(workflowRuns)) {
+    throw new Error('GitHub CLI returned an invalid workflow run list.');
+  }
+
+  return {
+    profileId: input.profileId,
+    owner: input.owner,
+    repository: input.repository,
+    runs: workflowRuns.slice(0, input.limit).map(parseWorkflowRun),
+    loadedAt: new Date().toISOString()
+  };
+}
+
+function parseWorkflowRun(value: unknown): GitHubWorkflowRun {
+  const run = readRecord(value, 'workflow run');
+  const name = readOptionalString(run.name) ?? 'Workflow';
+
+  return {
+    id: readNumber(run.id, 'workflow run id'),
+    name,
+    displayTitle: readOptionalString(run.display_title) ?? name,
+    runNumber: readNumber(run.run_number, 'workflow run number'),
+    event: readOptionalString(run.event) ?? 'workflow_dispatch',
+    branch: readOptionalString(run.head_branch),
+    sha: readString(run.head_sha, 'workflow run SHA'),
+    status: normalizeWorkflowRunStatus(readOptionalString(run.status)),
+    conclusion: normalizeWorkflowRunConclusion(readOptionalString(run.conclusion)),
+    url: readString(run.html_url, 'workflow run URL'),
+    actor: readNestedOptionalString(run, ['actor', 'login']),
+    createdAt: readString(run.created_at, 'workflow run created time'),
+    updatedAt: readString(run.updated_at, 'workflow run updated time')
+  };
+}
+
+function normalizeWorkflowRunStatus(value: string | undefined): GitHubWorkflowRunStatus {
+  const normalized = value?.toLowerCase().replaceAll('_', '-');
+
+  if (
+    normalized === 'queued' ||
+    normalized === 'in-progress' ||
+    normalized === 'completed' ||
+    normalized === 'waiting' ||
+    normalized === 'requested' ||
+    normalized === 'pending'
+  ) {
+    return normalized;
+  }
+
+  return 'unknown';
+}
+
+function normalizeWorkflowRunConclusion(
+  value: string | undefined
+): GitHubWorkflowRunConclusion | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.toLowerCase().replaceAll('_', '-');
+
+  if (
+    normalized === 'success' ||
+    normalized === 'failure' ||
+    normalized === 'cancelled' ||
+    normalized === 'skipped' ||
+    normalized === 'timed-out' ||
+    normalized === 'action-required' ||
+    normalized === 'neutral' ||
+    normalized === 'stale' ||
+    normalized === 'startup-failure'
+  ) {
+    return normalized;
+  }
+
+  return 'unknown';
 }
 
 export async function loadGitHubPullRequestDetail(

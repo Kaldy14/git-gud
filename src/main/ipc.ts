@@ -57,8 +57,10 @@ import {
 import { loadRepositoryOverview } from './git/repositoryOverview';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
 import {
+  loadGitHubActionsRuns,
   loadGitHubPullRequestDetail,
   loadGitHubPullRequestInbox,
+  loadGitHubRepositories,
   mergeGitHubPullRequest,
   submitGitHubPullRequestReview
 } from './github';
@@ -76,12 +78,15 @@ import {
   activateWorkspaceTab,
   activateWorkspaceProfile,
   closeWorkspaceTab,
+  deleteDashboard,
   getAppSettings,
+  getDashboards,
   getWorkspace,
   openWorkspaceRepository,
   replaceWorkspaceRepository,
   selectWorkspaceCommit,
   selectWorkspaceFile,
+  saveDashboard,
   updateAppSettings,
   updateDetailPanelCollapsed,
   updateDetailPanelWidth,
@@ -453,6 +458,13 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('settings:update', (_event, settings) => updateAppSettings(settings));
   handle('profiles:list', () => listProfiles());
   handle('profiles:list-github-accounts', () => listGitHubAccounts());
+  handle('dashboards:get', (_event, profileId) => getDashboards(profileId));
+  handle('dashboards:save', (_event, dashboard) => saveDashboard(dashboard));
+  handle('dashboards:delete', (_event, profileId, dashboardId) =>
+    deleteDashboard(profileId, dashboardId)
+  );
+  handle('github:repositories', (_event, profileId) => loadGitHubRepositories(profileId));
+  handle('github:actions-runs', (_event, input) => loadGitHubActionsRuns(input));
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
   handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {

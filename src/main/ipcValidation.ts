@@ -7,6 +7,7 @@ import type {
 import { MAX_CODEX_DEEP_LINK_PROMPT_LENGTH } from '@shared/codex';
 import type {
   AppSettingsInput,
+  DashboardInput,
   GitCheckoutTarget,
   GitCommitInput,
   GitConflictActionInput,
@@ -15,6 +16,7 @@ import type {
   GitDeleteBranchInput,
   GitFileDiffRequest,
   GitHubPullRequestLocator,
+  GitHubActionsRunsInput,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
   GitInteractiveRebaseAction,
@@ -129,6 +131,16 @@ const validators = {
   'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
   'profiles:list': (args) => noArgs('profiles:list', args),
   'profiles:list-github-accounts': (args) => noArgs('profiles:list-github-accounts', args),
+  'dashboards:get': (args) =>
+    readOnlyArg(args, 'dashboards:get', 'profileId', readNonEmptyString),
+  'dashboards:save': (args) =>
+    readOnlyArg(args, 'dashboards:save', 'dashboard', readDashboardInput),
+  'dashboards:delete': (args) =>
+    readStringPair(args, 'dashboards:delete', 'profileId', 'dashboardId'),
+  'github:repositories': (args) =>
+    readOnlyArg(args, 'github:repositories', 'profileId', readNonEmptyString),
+  'github:actions-runs': (args) =>
+    readOnlyArg(args, 'github:actions-runs', 'input', readGitHubActionsRunsInput),
   'github:pull-request-inbox': (args) =>
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
@@ -404,6 +416,59 @@ function readGitHubPullRequestReviewGuideArgs(
     readGitHubPullRequestLocator(args[0]),
     readReviewSourceFingerprint(args[1])
   ];
+}
+
+function readDashboardInput(value: unknown): DashboardInput {
+  const record = readRecord(value, 'dashboard');
+  const tiles = record.tiles;
+
+  if (!Array.isArray(tiles) || tiles.length > 12) {
+    throw new Error('tiles must be an array with at most 12 items.');
+  }
+
+  return {
+    id:
+      record.id === undefined
+        ? undefined
+        : readNonEmptyLimitedString(record.id, 'id', 128),
+    profileId: readNonEmptyLimitedString(record.profileId, 'profileId', 128),
+    name: readNonEmptyLimitedString(record.name, 'name', 80),
+    tiles: tiles.map((value, index) => {
+      const tile = readRecord(value, `tiles[${index}]`);
+      const limit = readPositiveInteger(tile.limit, `tiles[${index}].limit`);
+
+      if (limit > 20) {
+        throw new Error(`tiles[${index}].limit must be 20 or fewer.`);
+      }
+
+      return {
+        id:
+          tile.id === undefined
+            ? undefined
+            : readNonEmptyLimitedString(tile.id, `tiles[${index}].id`, 128),
+        kind: readEnumProperty(tile, 'kind', ['github-actions']),
+        owner: readGitHubName(tile.owner, `tiles[${index}].owner`),
+        repository: readGitHubName(tile.repository, `tiles[${index}].repository`),
+        limit
+      };
+    })
+  };
+}
+
+function readGitHubActionsRunsInput(value: unknown): GitHubActionsRunsInput {
+  const record = readRecord(value, 'GitHub Actions runs input');
+  const limit = readPositiveInteger(record.limit, 'limit');
+
+  if (limit > 20) {
+    throw new Error('limit must be 20 or fewer.');
+  }
+
+  return {
+    profileId: readNonEmptyLimitedString(record.profileId, 'profileId', 128),
+    owner: readGitHubName(record.owner, 'owner'),
+    repository: readGitHubName(record.repository, 'repository'),
+    limit
+  };
 }
 
 function readGitHubPullRequestReviewInput(value: unknown): GitHubPullRequestReviewInput {

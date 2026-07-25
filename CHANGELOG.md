@@ -4,6 +4,13 @@ All notable changes to Git Gud are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added persistent, profile-scoped dashboards with configurable GitHub Actions tiles for multiple projects.
+- Added automatic live refresh, explicit running/failure/success states, and browser links for individual workflow runs.
+
 ## [0.4.10] - 2026-07-24
 
 ### Added

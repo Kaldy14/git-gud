@@ -1,9 +1,19 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import Store from 'electron-store';
 
-import type { AppSettings, AppSettingsInput, GitProfile, RepositorySummary, WorkspaceState } from '@shared/types';
+import type {
+  AppSettings,
+  AppSettingsInput,
+  Dashboard,
+  DashboardInput,
+  DashboardState,
+  GitProfile,
+  RepositorySummary,
+  WorkspaceState
+} from '@shared/types';
 import { createDefaultAppSettings, normalizeAppSettings } from '@shared/settings';
 import {
   activateRepositoryTab,
@@ -30,6 +40,7 @@ type StoreShape = {
   workspacesByProfile: Record<string, WorkspaceState>;
   activeProfileId?: string;
   settings: AppSettings;
+  dashboards: Dashboard[];
 };
 
 const store = new Store<StoreShape>({
@@ -39,7 +50,8 @@ const store = new Store<StoreShape>({
   defaults: {
     workspace: createDefaultWorkspaceState(),
     workspacesByProfile: {},
-    settings: createDefaultAppSettings()
+    settings: createDefaultAppSettings(),
+    dashboards: []
   }
 });
 
@@ -119,6 +131,56 @@ export function updateAppSettings(settings: AppSettingsInput): AppSettings {
   return nextSettings;
 }
 
+export function getDashboards(profileId: string): DashboardState {
+  return {
+    profileId,
+    dashboards: normalizeDashboards(store.get('dashboards', []))
+      .filter((dashboard) => dashboard.profileId === profileId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  };
+}
+
+export function saveDashboard(input: DashboardInput): DashboardState {
+  const dashboards = normalizeDashboards(store.get('dashboards', []));
+  const existing = input.id
+    ? dashboards.find(
+        (dashboard) => dashboard.id === input.id && dashboard.profileId === input.profileId
+      )
+    : undefined;
+  const now = new Date().toISOString();
+  const dashboard: Dashboard = {
+    id: existing?.id ?? randomUUID(),
+    profileId: input.profileId,
+    name: input.name.trim(),
+    tiles: input.tiles.map((tile) => ({
+      id: tile.id || randomUUID(),
+      kind: 'github-actions',
+      owner: tile.owner.trim(),
+      repository: tile.repository.trim(),
+      limit: tile.limit
+    })),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now
+  };
+  const nextDashboards = existing
+    ? dashboards.map((candidate) => (candidate.id === existing.id ? dashboard : candidate))
+    : [...dashboards, dashboard];
+
+  store.set('dashboards', nextDashboards);
+  return getDashboards(input.profileId);
+}
+
+export function deleteDashboard(profileId: string, dashboardId: string): DashboardState {
+  const dashboards = normalizeDashboards(store.get('dashboards', []));
+  store.set(
+    'dashboards',
+    dashboards.filter(
+      (dashboard) => dashboard.id !== dashboardId || dashboard.profileId !== profileId
+    )
+  );
+  return getDashboards(profileId);
+}
+
 export function flushPendingWorkspaceWrites(): void {
   if (pendingWorkspaceWrites.size === 0) {
     return;
@@ -135,6 +197,61 @@ export function flushPendingWorkspaceWrites(): void {
     ...Object.fromEntries(pendingWorkspaceWrites)
   });
   pendingWorkspaceWrites.clear();
+}
+
+function normalizeDashboards(value: unknown): Dashboard[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((dashboard) => {
+    if (!dashboard || typeof dashboard !== 'object') {
+      return [];
+    }
+
+    const candidate = dashboard as Partial<Dashboard>;
+
+    if (
+      typeof candidate.id !== 'string' ||
+      typeof candidate.profileId !== 'string' ||
+      typeof candidate.name !== 'string' ||
+      typeof candidate.createdAt !== 'string' ||
+      typeof candidate.updatedAt !== 'string' ||
+      !Array.isArray(candidate.tiles)
+    ) {
+      return [];
+    }
+
+    const tiles = candidate.tiles.flatMap((tile) => {
+      if (
+        !tile ||
+        typeof tile !== 'object' ||
+        tile.kind !== 'github-actions' ||
+        typeof tile.id !== 'string' ||
+        typeof tile.owner !== 'string' ||
+        typeof tile.repository !== 'string' ||
+        typeof tile.limit !== 'number' ||
+        !Number.isInteger(tile.limit) ||
+        tile.limit < 1 ||
+        tile.limit > 20
+      ) {
+        return [];
+      }
+
+      return [tile];
+    });
+
+    return [
+      {
+        id: candidate.id,
+        profileId: candidate.profileId,
+        name: candidate.name,
+        tiles,
+        createdAt: candidate.createdAt,
+        updatedAt: candidate.updatedAt
+      }
+    ];
+  });
 }
 
 function saveWorkspace(workspace: WorkspaceState, deferPersistence = false): WorkspaceState {

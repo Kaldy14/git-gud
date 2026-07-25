@@ -791,6 +791,100 @@ export type GitHubCliAccount = {
   gitProtocol: string;
 };
 
+export type GitHubRepositorySummary = {
+  owner: string;
+  name: string;
+  fullName: string;
+  url: string;
+  isPrivate: boolean;
+  defaultBranch: string;
+};
+
+export type GitHubWorkflowRunStatus =
+  | 'queued'
+  | 'in-progress'
+  | 'completed'
+  | 'waiting'
+  | 'requested'
+  | 'pending'
+  | 'unknown';
+
+export type GitHubWorkflowRunConclusion =
+  | 'success'
+  | 'failure'
+  | 'cancelled'
+  | 'skipped'
+  | 'timed-out'
+  | 'action-required'
+  | 'neutral'
+  | 'stale'
+  | 'startup-failure'
+  | 'unknown';
+
+export type GitHubWorkflowRun = {
+  id: number;
+  name: string;
+  displayTitle: string;
+  runNumber: number;
+  event: string;
+  branch?: string;
+  sha: string;
+  status: GitHubWorkflowRunStatus;
+  conclusion?: GitHubWorkflowRunConclusion;
+  url: string;
+  actor?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GitHubActionsRunsInput = {
+  profileId: string;
+  owner: string;
+  repository: string;
+  limit: number;
+};
+
+export type GitHubActionsRuns = {
+  profileId: string;
+  owner: string;
+  repository: string;
+  runs: GitHubWorkflowRun[];
+  loadedAt: string;
+};
+
+export type GitHubActionsDashboardTile = {
+  id: string;
+  kind: 'github-actions';
+  owner: string;
+  repository: string;
+  limit: number;
+};
+
+export type GitHubActionsDashboardTileInput = Omit<GitHubActionsDashboardTile, 'id'> & {
+  id?: string;
+};
+
+export type Dashboard = {
+  id: string;
+  profileId: string;
+  name: string;
+  tiles: GitHubActionsDashboardTile[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DashboardInput = {
+  id?: string;
+  profileId: string;
+  name: string;
+  tiles: GitHubActionsDashboardTileInput[];
+};
+
+export type DashboardState = {
+  profileId: string;
+  dashboards: Dashboard[];
+};
+
 export type GitHubPullRequestCategory =
   | 'needs-your-review'
   | 'needs-team-review'
