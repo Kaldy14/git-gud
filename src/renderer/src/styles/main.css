@@ -993,8 +993,8 @@ input {
   left: -4px;
   z-index: 30;
   display: flex;
-  width: min(277px, calc(100vw - 16px));
-  max-width: min(277px, calc(100vw - 16px));
+  width: max-content;
+  max-width: calc(100% + 4px);
   flex-direction: column;
   align-items: stretch;
   gap: 0;
@@ -1084,14 +1084,9 @@ button.ref-chip:active {
 
 .ref-stack-expanded .ref-chip {
   width: 100%;
-  max-width: none;
+  max-width: 100%;
   flex: none;
   border-radius: 0;
-}
-
-.ref-stack-expanded .ref-chip-label {
-  overflow: visible;
-  text-overflow: clip;
 }
 
 .ref-overflow {
