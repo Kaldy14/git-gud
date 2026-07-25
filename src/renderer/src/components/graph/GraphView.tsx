@@ -54,7 +54,7 @@ import {
   laneBandColor,
   laneColor,
   laneRefColor,
-  relativeDateMarkerLabel
+  uniqueRelativeDateMarkerLabels
 } from '@shared/graph';
 import type {
   CommitGraphRow,
@@ -273,6 +273,15 @@ export function GraphView({
   const graphContentWidth = useMemo(() => graphContentWidthForRows(rows, graphWidth), [graphWidth, rows]);
   const currentBranchName = useMemo(() => findCurrentBranchName(rows), [rows]);
   const dateMarkersByRow = useMemo(() => buildDateMarkers(rows), [rows]);
+  const dateSeparatorLabelsByRow = useMemo(
+    () =>
+      uniqueRelativeDateMarkerLabels(
+        rows.map((row, index) =>
+          index > 0 && row.dateMarker ? row.committedAt ?? row.authoredAt : undefined
+        )
+      ),
+    [rows]
+  );
   const refCellWidth = columnWidths.refs;
   const gridTemplateColumns = graphGridTemplate(refCellWidth, graphWidth, visibleColumns);
   const currentDateMarker = dateMarkersByRow[firstVisibleRowIndex];
@@ -799,7 +808,7 @@ export function GraphView({
                       visibleColumns={visibleColumns}
                       remoteAvatars={remoteAvatars}
                       pendingBranchName={checkoutTransition?.targetBranch}
-                      showDateSeparator={virtualRow.index > 0 && Boolean(row.dateMarker)}
+                      dateSeparatorLabel={dateSeparatorLabelsByRow[virtualRow.index]}
                       isSelected={row.sha === selectedSha}
                       isBulkSelected={bulkSelection.has(row.sha)}
                       isSearchMatch={searchMatchShas.has(row.sha)}
@@ -935,7 +944,7 @@ type GraphRowViewProps = {
   visibleColumns: GraphColumnVisibility;
   remoteAvatars: boolean;
   pendingBranchName?: string;
-  showDateSeparator: boolean;
+  dateSeparatorLabel?: string;
   isSelected: boolean;
   isBulkSelected: boolean;
   isSearchMatch: boolean;
@@ -1037,7 +1046,7 @@ function GraphRowView({
   visibleColumns,
   remoteAvatars,
   pendingBranchName,
-  showDateSeparator,
+  dateSeparatorLabel,
   isSelected,
   isBulkSelected,
   isSearchMatch,
@@ -1061,10 +1070,6 @@ function GraphRowView({
   const currentRefColor = row.colorOverride ? hexToRgba(nodeColor, 0.78) : laneRefColor(row.node.lane, true);
   const hasRefConnector = visibleRefs.some((ref) => ref.kind === 'branch' || ref.kind === 'remote' || ref.kind === 'tag');
   const hasCurrentBranch = visibleRefs.some((ref) => ref.kind === 'branch' && ref.current);
-  const dateSeparatorLabel = showDateSeparator
-    ? relativeDateMarkerLabel(row.committedAt ?? row.authoredAt)
-    : undefined;
-
   return (
     <div
       id={graphRowDomId(row.sha)}

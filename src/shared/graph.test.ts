@@ -5,7 +5,8 @@ import {
   laneBandColor,
   laneColor,
   laneRefColor,
-  relativeDateMarkerLabel
+  relativeDateMarkerLabel,
+  uniqueRelativeDateMarkerLabels
 } from './graph';
 import type { GraphCommitInput } from './graph';
 import type { CommitGraphRow, GraphRailSegment } from './types';
@@ -247,6 +248,30 @@ describe('relativeDateMarkerLabel', () => {
   it('ignores missing or invalid dates', () => {
     expect(relativeDateMarkerLabel(undefined, now)).toBeUndefined();
     expect(relativeDateMarkerLabel('not-a-date', now)).toBeUndefined();
+  });
+});
+
+describe('uniqueRelativeDateMarkerLabels', () => {
+  const now = new Date(2026, 6, 25, 12);
+
+  it('emits a relative time label only at its first date boundary', () => {
+    const values = [
+      undefined,
+      new Date(2026, 6, 18, 8).toISOString(),
+      new Date(2026, 6, 17, 8).toISOString(),
+      new Date(2026, 6, 14, 8).toISOString(),
+      new Date(2026, 6, 11, 8).toISOString(),
+      new Date(2026, 6, 10, 8).toISOString()
+    ];
+
+    expect(uniqueRelativeDateMarkerLabels(values, now)).toEqual([
+      undefined,
+      '1 week ago',
+      undefined,
+      undefined,
+      '2 weeks ago',
+      undefined
+    ]);
   });
 });
 

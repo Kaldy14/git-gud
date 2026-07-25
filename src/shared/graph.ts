@@ -188,6 +188,24 @@ export function relativeDateMarkerLabel(value: string | undefined, now = new Dat
   return relativeUnitLabel(Math.floor(daysAgo / 365), 'year');
 }
 
+export function uniqueRelativeDateMarkerLabels(
+  values: Array<string | undefined>,
+  now = new Date()
+): Array<string | undefined> {
+  const seenLabels = new Set<string>();
+
+  return values.map((value) => {
+    const label = relativeDateMarkerLabel(value, now);
+
+    if (!label || seenLabels.has(label)) {
+      return undefined;
+    }
+
+    seenLabels.add(label);
+    return label;
+  });
+}
+
 function buildIncomingRails(
   expectedByLane: Array<string | undefined>,
   styleByLane: Array<GraphRailStyle | undefined>,
