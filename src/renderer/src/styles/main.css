@@ -3754,43 +3754,30 @@ button.ref-chip:active {
 
 .actions-tile-header {
   display: flex;
-  min-height: 52px;
+  min-height: 36px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-graph-header);
-  padding: 7px 8px;
+  padding: 3px 6px 3px 8px;
 }
 
 .actions-tile-identity {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 7px;
-}
-
-.actions-tile-icon {
-  display: grid;
-  width: 31px;
-  height: 31px;
-  flex: 0 0 31px;
-  place-items: center;
-  border: 1px solid rgb(95 214 195 / 0.28);
-  border-radius: 7px;
-  background: rgb(38 184 162 / 0.09);
-  color: var(--accent-2);
 }
 
 .actions-tile-identity > span:last-child {
-  display: grid;
-  gap: 2px;
+  min-width: 0;
 }
 
 .actions-tile-identity strong {
+  display: block;
   overflow: hidden;
   color: var(--text-1);
-  font-size: 12px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3804,20 +3791,25 @@ button.ref-chip:active {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
+}
+
+.actions-tile-remove {
+  width: 22px;
+  height: 22px;
 }
 
 .actions-summary {
   display: inline-flex;
-  height: 23px;
+  height: 19px;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: rgb(255 255 255 / 0.025);
-  padding: 0 8px;
+  padding: 0 6px;
   color: var(--text-2);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
 }
 

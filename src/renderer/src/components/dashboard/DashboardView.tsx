@@ -424,9 +424,6 @@ function GitHubActionsTile({
     <article className="actions-tile" aria-label={`${tile.owner}/${tile.repository} workflow runs`}>
       <header className="actions-tile-header">
         <div className="actions-tile-identity">
-          <span className="actions-tile-icon">
-            <Workflow size={15} />
-          </span>
           <span className="min-w-0">
             <strong>
               <span>{tile.owner}/</span>
@@ -452,13 +449,13 @@ function GitHubActionsTile({
             </span>
           ) : null}
           <button
-            className="icon-btn h-7 w-7"
+            className="actions-tile-remove icon-btn"
             type="button"
             aria-label={`Remove ${tile.owner}/${tile.repository} tile`}
             title="Remove tile"
             onClick={onRemove}
           >
-            <X size={13} />
+            <X size={11} />
           </button>
         </div>
       </header>
