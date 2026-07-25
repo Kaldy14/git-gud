@@ -49,7 +49,13 @@ import {
 } from '@renderer/components/graph/graphInteraction';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
-import { FILE_STATUS_COLORS, laneBandColor, laneColor, laneRefColor } from '@shared/graph';
+import {
+  FILE_STATUS_COLORS,
+  laneBandColor,
+  laneColor,
+  laneRefColor,
+  relativeDateMarkerLabel
+} from '@shared/graph';
 import type {
   CommitGraphRow,
   GitStashRefInput,
@@ -793,6 +799,7 @@ export function GraphView({
                       visibleColumns={visibleColumns}
                       remoteAvatars={remoteAvatars}
                       pendingBranchName={checkoutTransition?.targetBranch}
+                      showDateSeparator={virtualRow.index > 0 && Boolean(row.dateMarker)}
                       isSelected={row.sha === selectedSha}
                       isBulkSelected={bulkSelection.has(row.sha)}
                       isSearchMatch={searchMatchShas.has(row.sha)}
@@ -928,6 +935,7 @@ type GraphRowViewProps = {
   visibleColumns: GraphColumnVisibility;
   remoteAvatars: boolean;
   pendingBranchName?: string;
+  showDateSeparator: boolean;
   isSelected: boolean;
   isBulkSelected: boolean;
   isSearchMatch: boolean;
@@ -1029,6 +1037,7 @@ function GraphRowView({
   visibleColumns,
   remoteAvatars,
   pendingBranchName,
+  showDateSeparator,
   isSelected,
   isBulkSelected,
   isSearchMatch,
@@ -1050,6 +1059,11 @@ function GraphRowView({
   const graphLaneX = graphLaneViewportX(row.node.lane, graphWidth, graphScrollLeft);
   const refColor = row.colorOverride ? hexToRgba(nodeColor, 0.3) : laneRefColor(row.node.lane);
   const currentRefColor = row.colorOverride ? hexToRgba(nodeColor, 0.78) : laneRefColor(row.node.lane, true);
+  const hasRefConnector = visibleRefs.some((ref) => ref.kind === 'branch' || ref.kind === 'remote' || ref.kind === 'tag');
+  const hasCurrentBranch = visibleRefs.some((ref) => ref.kind === 'branch' && ref.current);
+  const dateSeparatorLabel = showDateSeparator
+    ? relativeDateMarkerLabel(row.committedAt ?? row.authoredAt)
+    : undefined;
 
   return (
     <div
@@ -1064,8 +1078,7 @@ function GraphRowView({
       tabIndex={-1}
       style={{
         height: ROW_HEIGHT,
-        gridTemplateColumns,
-        boxShadow: row.dateMarker ? 'inset 0 1px 0 0 var(--graph-separator)' : undefined
+        gridTemplateColumns
       }}
       onClick={onSelect}
       onContextMenu={onContextMenu}
@@ -1085,6 +1098,19 @@ function GraphRowView({
             width: Math.max(0, graphWidth - graphLaneX),
             background: bandBackground
           }}
+        />
+      ) : null}
+
+      {hasRefConnector ? (
+        <span
+          className="graph-ref-connector"
+          data-current={hasCurrentBranch ? 'true' : undefined}
+          style={{
+            left: 12,
+            width: Math.max(0, refCellWidth + graphLaneX - 12),
+            background: hasCurrentBranch ? nodeColor : refColor
+          }}
+          aria-hidden="true"
         />
       ) : null}
 
@@ -1153,6 +1179,12 @@ function GraphRowView({
         <span className="mono relative truncate border-l border-[var(--border)] px-3 text-[11px] text-[var(--text-3)]">
           {isWip ? '' : row.sha.slice(0, 7)}
         </span>
+      ) : null}
+
+      {dateSeparatorLabel ? (
+        <div className="graph-date-separator" aria-hidden="true">
+          <span>{dateSeparatorLabel}</span>
+        </div>
       ) : null}
     </div>
   );

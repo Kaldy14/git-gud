@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCommitGraphRows, laneBandColor, laneColor, laneRefColor } from './graph';
+import {
+  buildCommitGraphRows,
+  laneBandColor,
+  laneColor,
+  laneRefColor,
+  relativeDateMarkerLabel
+} from './graph';
 import type { GraphCommitInput } from './graph';
 import type { CommitGraphRow, GraphRailSegment } from './types';
 
@@ -206,6 +212,27 @@ describe('measured graph palette', () => {
     ]);
     expect(laneRefColor(0, true)).toBe('#2f5e6f');
     expect(laneColor(7)).toBe('#4a9ebc');
+  });
+});
+
+describe('relativeDateMarkerLabel', () => {
+  const now = new Date(2026, 6, 25, 12);
+
+  it.each([
+    [new Date(2026, 6, 25, 8), 'today'],
+    [new Date(2026, 6, 24, 8), 'yesterday'],
+    [new Date(2026, 6, 23, 8), '2 days ago'],
+    [new Date(2026, 6, 18, 8), '1 week ago'],
+    [new Date(2026, 6, 10, 8), '2 weeks ago'],
+    [new Date(2026, 5, 20, 8), '1 month ago'],
+    [new Date(2025, 5, 20, 8), '1 year ago']
+  ])('formats %s as %s', (value, expected) => {
+    expect(relativeDateMarkerLabel(value.toISOString(), now)).toBe(expected);
+  });
+
+  it('ignores missing or invalid dates', () => {
+    expect(relativeDateMarkerLabel(undefined, now)).toBeUndefined();
+    expect(relativeDateMarkerLabel('not-a-date', now)).toBeUndefined();
   });
 });
 

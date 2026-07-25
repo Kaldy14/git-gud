@@ -29,6 +29,7 @@ const dateMarkerFormatter = new Intl.DateTimeFormat('en', {
   day: 'numeric',
   year: 'numeric'
 });
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export const FILE_STATUS_COLORS: Record<GraphFileStatus, string> = {
   added: '#4cc38a',
@@ -145,6 +146,44 @@ export function laneBandColor(lane: number): string {
 
 export function laneRefColor(lane: number, current = false): string {
   return current ? CURRENT_REF_COLOR : LANE_REF_COLORS[lane % LANE_REF_COLORS.length];
+}
+
+export function relativeDateMarkerLabel(value: string | undefined, now = new Date()): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  const today = localDayStart(now);
+  const markerDay = localDayStart(date);
+  const daysAgo = Math.max(0, Math.round((today - markerDay) / MILLISECONDS_PER_DAY));
+
+  if (daysAgo === 0) {
+    return 'today';
+  }
+
+  if (daysAgo === 1) {
+    return 'yesterday';
+  }
+
+  if (daysAgo < 7) {
+    return `${daysAgo} days ago`;
+  }
+
+  if (daysAgo < 30) {
+    return relativeUnitLabel(Math.floor(daysAgo / 7), 'week');
+  }
+
+  if (daysAgo < 365) {
+    return relativeUnitLabel(Math.floor(daysAgo / 30), 'month');
+  }
+
+  return relativeUnitLabel(Math.floor(daysAgo / 365), 'year');
 }
 
 function buildIncomingRails(
@@ -272,7 +311,19 @@ function dayKey(value: string | undefined): string | undefined {
     return undefined;
   }
 
-  return date.toISOString().slice(0, 10);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function localDayStart(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function relativeUnitLabel(value: number, unit: 'week' | 'month' | 'year'): string {
+  return `${value} ${unit}${value === 1 ? '' : 's'} ago`;
 }
 
 function formatDateLabel(value: string | undefined): string {

@@ -753,6 +753,47 @@ input {
   transition: opacity 100ms ease, filter 100ms ease;
 }
 
+.graph-ref-connector {
+  position: absolute;
+  top: 50%;
+  z-index: 0;
+  height: 1px;
+  transform: translateY(-50%);
+  transform-origin: right center;
+  pointer-events: none;
+}
+
+.graph-ref-connector[data-current='true'] {
+  height: 3px;
+}
+
+.graph-date-separator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  height: 1px;
+  border-top: 1px solid var(--graph-separator);
+  pointer-events: none;
+}
+
+.graph-date-separator span {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  padding: 1px 5px 2px;
+  border-radius: 3px;
+  background: var(--bg-graph);
+  box-shadow: 0 0 0 1px var(--graph-separator);
+  color: var(--graph-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
 .graph-row[data-search-muted='true'] {
   opacity: 0.34;
   filter: saturate(0.72);
@@ -771,6 +812,8 @@ input {
 }
 
 .ref-cell {
+  position: relative;
+  z-index: 2;
   display: flex;
   min-width: 0;
   align-items: center;
