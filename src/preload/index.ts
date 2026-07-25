@@ -84,6 +84,7 @@ const api: RendererApi = {
   getDashboards: (profileId) => invoke('dashboards:get', profileId),
   saveDashboard: (dashboard) => invoke('dashboards:save', dashboard),
   deleteDashboard: (profileId, dashboardId) => invoke('dashboards:delete', profileId, dashboardId),
+  selectDashboard: (profileId, dashboardId) => invoke('dashboards:select', profileId, dashboardId),
   getGitHubRepositories: (profileId) => invoke('github:repositories', profileId),
   getGitHubActionsRuns: (input) => invoke('github:actions-runs', input),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),

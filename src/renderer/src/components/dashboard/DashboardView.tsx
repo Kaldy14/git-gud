@@ -1,5 +1,5 @@
 import type { FormEvent, ReactElement } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -34,6 +34,7 @@ import type {
   GitProfile
 } from '@shared/types';
 
+import { resolveActiveDashboard } from './dashboardSelection';
 import { workflowRunPresentation } from './workflowRunPresentation';
 
 type DashboardViewProps = {
@@ -65,8 +66,11 @@ export function DashboardView({
   const [isSaving, setIsSaving] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
   const dashboards = dashboardsQuery.data?.dashboards ?? [];
-  const activeDashboard =
-    dashboards.find((dashboard) => dashboard.id === requestedDashboardId) ?? dashboards[0];
+  const activeDashboard = resolveActiveDashboard(
+    dashboards,
+    requestedDashboardId,
+    dashboardsQuery.data?.selectedDashboardId
+  );
   const availableRepositories = useMemo(
     () =>
       (repositoriesQuery.data ?? []).filter(
@@ -80,16 +84,6 @@ export function DashboardView({
   const dashboardFetchCount = useIsFetching({
     queryKey: profileId ? ['github-actions-runs', profileId] : ['github-actions-runs', 'none']
   });
-
-  useEffect(() => {
-    if (!dashboardsQuery.data) {
-      return;
-    }
-
-    if (activeDashboard?.id !== requestedDashboardId) {
-      onSelectDashboard(activeDashboard?.id);
-    }
-  }, [activeDashboard?.id, dashboardsQuery.data, onSelectDashboard, requestedDashboardId]);
 
   if (!profileId) {
     return (
@@ -250,8 +244,45 @@ export function DashboardView({
         {activeDashboard ? (
           <>
             <header className="dashboard-header">
-              <div className="min-w-0">
-                <h2>{activeDashboard.name}</h2>
+              <div className="dashboard-header-tabs" role="tablist" aria-label="Dashboards">
+                {dashboards.map((dashboard, dashboardIndex) => {
+                  const isActive = dashboard.id === activeDashboard.id;
+
+                  return (
+                    <button
+                      id={dashboardTabDomId(dashboard.id)}
+                      className="dashboard-header-tab"
+                      data-active={isActive}
+                      key={dashboard.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
+                      title={dashboard.name}
+                      onClick={() => onSelectDashboard(dashboard.id)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        const direction = event.key === 'ArrowRight' ? 1 : -1;
+                        const nextIndex =
+                          (dashboardIndex + direction + dashboards.length) % dashboards.length;
+                        const nextDashboard = dashboards[nextIndex];
+
+                        if (nextDashboard) {
+                          onSelectDashboard(nextDashboard.id);
+                          window.requestAnimationFrame(() =>
+                            document.getElementById(dashboardTabDomId(nextDashboard.id))?.focus()
+                          );
+                        }
+                      }}
+                    >
+                      <span>{dashboard.name}</span>
+                    </button>
+                  );
+                })}
               </div>
               <div className="dashboard-header-actions">
                 <button
@@ -395,6 +426,10 @@ export function DashboardView({
       ) : null}
     </section>
   );
+}
+
+function dashboardTabDomId(dashboardId: string): string {
+  return `dashboard-tab-${dashboardId.replace(/[^\dA-Za-z_-]/g, '-')}`;
 }
 
 type GitHubActionsTileProps = {

@@ -85,6 +85,10 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('profiles:activate', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
+    expect(validateIpcArgs('dashboards:select', ['profile:kaldy', 'dashboard:actions'])).toEqual([
+      'profile:kaldy',
+      'dashboard:actions'
+    ]);
     expect(
       validateIpcArgs('dashboards:save', [
         {
@@ -325,6 +329,9 @@ describe('IPC argument validation', () => {
       ])
     ).toThrow('limit must be 20 or fewer.');
     expect(() => validateIpcArgs('workspace:set-detail-panel-collapsed', ['yes'])).toThrow('collapsed must be a boolean.');
+    expect(() => validateIpcArgs('dashboards:select', ['profile:kaldy', ''])).toThrow(
+      'dashboardId must not be empty.'
+    );
     expect(() => validateIpcArgs('repo:file-history', ['/repo', 'file.ts', 1.5])).toThrow('limit must be a positive integer.');
     expect(() =>
       validateIpcArgs('github:pull-request-detail', [

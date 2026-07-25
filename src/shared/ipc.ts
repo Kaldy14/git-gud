@@ -357,6 +357,10 @@ export type IpcChannelMap = {
     args: [profileId: string, dashboardId: string];
     result: DashboardState;
   };
+  'dashboards:select': {
+    args: [profileId: string, dashboardId: string];
+    result: DashboardState;
+  };
   'github:repositories': {
     args: [profileId: string];
     result: GitHubRepositorySummary[];
@@ -482,6 +486,7 @@ export type RendererApi = {
   getDashboards: (profileId: string) => Promise<DashboardState>;
   saveDashboard: (dashboard: DashboardInput) => Promise<DashboardState>;
   deleteDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
+  selectDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
   getGitHubRepositories: (profileId: string) => Promise<GitHubRepositorySummary[]>;
   getGitHubActionsRuns: (input: GitHubActionsRunsInput) => Promise<GitHubActionsRuns>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;

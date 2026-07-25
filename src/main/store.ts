@@ -41,6 +41,7 @@ type StoreShape = {
   activeProfileId?: string;
   settings: AppSettings;
   dashboards: Dashboard[];
+  selectedDashboardIds: Record<string, string>;
 };
 
 const store = new Store<StoreShape>({
@@ -51,7 +52,8 @@ const store = new Store<StoreShape>({
     workspace: createDefaultWorkspaceState(),
     workspacesByProfile: {},
     settings: createDefaultAppSettings(),
-    dashboards: []
+    dashboards: [],
+    selectedDashboardIds: {}
   }
 });
 
@@ -132,11 +134,20 @@ export function updateAppSettings(settings: AppSettingsInput): AppSettings {
 }
 
 export function getDashboards(profileId: string): DashboardState {
+  const dashboards = normalizeDashboards(store.get('dashboards', []))
+    .filter((dashboard) => dashboard.profileId === profileId)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const selectedDashboardIds = normalizeSelectedDashboardIds(
+    store.get('selectedDashboardIds', {})
+  );
+  const persistedDashboardId = selectedDashboardIds[profileId];
+
   return {
     profileId,
-    dashboards: normalizeDashboards(store.get('dashboards', []))
-      .filter((dashboard) => dashboard.profileId === profileId)
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    dashboards,
+    selectedDashboardId:
+      dashboards.find((dashboard) => dashboard.id === persistedDashboardId)?.id ??
+      dashboards[0]?.id
   };
 }
 
@@ -167,6 +178,18 @@ export function saveDashboard(input: DashboardInput): DashboardState {
     : [...dashboards, dashboard];
 
   store.set('dashboards', nextDashboards);
+
+  const selectedDashboardIds = normalizeSelectedDashboardIds(
+    store.get('selectedDashboardIds', {})
+  );
+
+  if (!selectedDashboardIds[input.profileId]) {
+    store.set('selectedDashboardIds', {
+      ...selectedDashboardIds,
+      [input.profileId]: dashboard.id
+    });
+  }
+
   return getDashboards(input.profileId);
 }
 
@@ -178,7 +201,44 @@ export function deleteDashboard(profileId: string, dashboardId: string): Dashboa
       (dashboard) => dashboard.id !== dashboardId || dashboard.profileId !== profileId
     )
   );
-  return getDashboards(profileId);
+  const state = getDashboards(profileId);
+  const selectedDashboardIds = normalizeSelectedDashboardIds(
+    store.get('selectedDashboardIds', {})
+  );
+
+  if (selectedDashboardIds[profileId] === dashboardId) {
+    if (state.selectedDashboardId) {
+      store.set('selectedDashboardIds', {
+        ...selectedDashboardIds,
+        [profileId]: state.selectedDashboardId
+      });
+    } else {
+      const remainingDashboardIds = Object.fromEntries(
+        Object.entries(selectedDashboardIds).filter(([candidateProfileId]) => candidateProfileId !== profileId)
+      );
+      store.set('selectedDashboardIds', remainingDashboardIds);
+    }
+  }
+
+  return state;
+}
+
+export function selectDashboard(profileId: string, dashboardId: string): DashboardState {
+  const state = getDashboards(profileId);
+
+  if (!state.dashboards.some((dashboard) => dashboard.id === dashboardId)) {
+    throw new Error('The selected dashboard does not exist for this profile.');
+  }
+
+  store.set('selectedDashboardIds', {
+    ...normalizeSelectedDashboardIds(store.get('selectedDashboardIds', {})),
+    [profileId]: dashboardId
+  });
+
+  return {
+    ...state,
+    selectedDashboardId: dashboardId
+  };
 }
 
 export function flushPendingWorkspaceWrites(): void {
@@ -389,6 +449,18 @@ function setActiveProfileId(profileId: string | undefined): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeSelectedDashboardIds(value: unknown): Record<string, string> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0
+    )
+  );
 }
 
 function testStoreDirectory(name: string): { cwd: string } | Record<string, never> {

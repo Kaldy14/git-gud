@@ -229,6 +229,20 @@ input {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
+.repo-tab--icon {
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  border-right: 0;
+  border-left: 1px solid var(--border);
+  padding-right: 0;
+}
+
+.repo-tab--icon .repo-tab-main {
+  justify-content: center;
+  padding-left: 0;
+}
+
 /* --- Workspace profile transition ---------------------------------- */
 
 .profile-transition-overlay {
@@ -3545,78 +3559,6 @@ button.ref-chip:active {
 
 /* --- GitHub Actions dashboards -------------------------------------- */
 
-.sidebar-pr-destination[data-kind='dashboard'] > svg,
-.sidebar-collapsed-item[data-kind='dashboard'] > svg {
-  color: var(--accent-2);
-}
-
-.sidebar-collapsed-item[data-kind='dashboard'] > span {
-  color: var(--accent-2);
-}
-
-.sidebar-dashboard-group .sidebar-dashboard-destination {
-  width: calc(100% - 12px);
-  margin-top: 2px;
-}
-
-.sidebar-dashboard-destination > svg:first-child {
-  color: var(--text-3);
-}
-
-.sidebar-dashboard-items {
-  display: grid;
-  gap: 2px;
-  margin: 1px 6px 5px 25px;
-}
-
-.sidebar-dashboard-item {
-  display: grid;
-  min-width: 0;
-  min-height: 29px;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 0 7px;
-  color: var(--text-2);
-  font-size: 10.5px;
-  text-align: left;
-}
-
-.sidebar-dashboard-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-1);
-}
-
-.sidebar-dashboard-item[data-active='true'] {
-  border-color: var(--select-border);
-  background: var(--select-bg);
-  color: var(--text-1);
-}
-
-.sidebar-dashboard-item > svg {
-  color: var(--accent-2);
-}
-
-.sidebar-dashboard-item > span:nth-child(2) {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-dashboard-item > span:last-child {
-  color: var(--text-3);
-  font-size: 9px;
-}
-
-.sidebar-dashboard-empty {
-  margin: 3px 8px 7px;
-  color: var(--text-3);
-  font-size: 9.5px;
-}
-
 .dashboard-view {
   display: flex;
   min-width: 0;
@@ -3644,22 +3586,59 @@ button.ref-chip:active {
   z-index: 5;
   top: 0;
   display: flex;
-  min-height: 38px;
+  min-height: 40px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   border-bottom: 1px solid var(--border);
-  background: rgb(32 37 45 / 0.97);
-  padding: 4px 8px;
-  backdrop-filter: blur(10px);
+  background: var(--bg-graph);
+  padding-right: 8px;
 }
 
-.dashboard-header h2 {
-  overflow: hidden;
-  margin: 0;
+.dashboard-header-tabs {
+  display: flex;
+  min-width: 0;
+  align-self: stretch;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 0 4px;
+  scrollbar-width: none;
+}
+
+.dashboard-header-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.dashboard-header-tab {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 220px;
+  flex-shrink: 0;
+  height: 28px;
+  align-items: center;
+  border-radius: 4px;
+  padding: 0 10px;
+  color: var(--text-3);
   font-size: 12px;
   font-weight: 600;
-  line-height: 16px;
+  text-align: left;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.dashboard-header-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.dashboard-header-tab[data-active='true'] {
+  color: var(--text-1);
+}
+
+.dashboard-header-tab > span {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

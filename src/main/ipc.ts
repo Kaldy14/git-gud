@@ -86,6 +86,7 @@ import {
   replaceWorkspaceRepository,
   selectWorkspaceCommit,
   selectWorkspaceFile,
+  selectDashboard,
   saveDashboard,
   updateAppSettings,
   updateDetailPanelCollapsed,
@@ -462,6 +463,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('dashboards:save', (_event, dashboard) => saveDashboard(dashboard));
   handle('dashboards:delete', (_event, profileId, dashboardId) =>
     deleteDashboard(profileId, dashboardId)
+  );
+  handle('dashboards:select', (_event, profileId, dashboardId) =>
+    selectDashboard(profileId, dashboardId)
   );
   handle('github:repositories', (_event, profileId) => loadGitHubRepositories(profileId));
   handle('github:actions-runs', (_event, input) => loadGitHubActionsRuns(input));

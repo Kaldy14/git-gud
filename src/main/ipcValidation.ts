@@ -137,6 +137,8 @@ const validators = {
     readOnlyArg(args, 'dashboards:save', 'dashboard', readDashboardInput),
   'dashboards:delete': (args) =>
     readStringPair(args, 'dashboards:delete', 'profileId', 'dashboardId'),
+  'dashboards:select': (args) =>
+    readNonEmptyStringPair(args, 'dashboards:select', 'profileId', 'dashboardId'),
   'github:repositories': (args) =>
     readOnlyArg(args, 'github:repositories', 'profileId', readNonEmptyString),
   'github:actions-runs': (args) =>
@@ -214,6 +216,19 @@ function readStringPair(
 ): [string, string] {
   assertArgCount(channel, args, 2);
   return [readString(args[0], firstLabel), readString(args[1], secondLabel)];
+}
+
+function readNonEmptyStringPair(
+  args: readonly unknown[],
+  channel: string,
+  firstLabel: string,
+  secondLabel: string
+): [string, string] {
+  assertArgCount(channel, args, 2);
+  return [
+    readNonEmptyString(args[0], firstLabel),
+    readNonEmptyString(args[1], secondLabel)
+  ];
 }
 
 function readOperationCancellationArgs(args: readonly unknown[]): [string, string] {

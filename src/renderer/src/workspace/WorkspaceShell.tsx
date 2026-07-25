@@ -57,7 +57,11 @@ import {
   useRepositoryChangeInvalidation,
   useRepositoryOverview
 } from '@renderer/queries/repository';
-import { useDashboards, useGitHubPullRequestInbox } from '@renderer/queries/github';
+import {
+  dashboardsQueryKey,
+  useDashboards,
+  useGitHubPullRequestInbox
+} from '@renderer/queries/github';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
 import {
@@ -73,7 +77,9 @@ import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition'
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type {
+  AppSettings,
   CommitGraphRow,
+  DashboardState,
   GitConflictActionInput,
   GitDeleteBranchInput,
   GitFileChangeDetail,
@@ -87,8 +93,7 @@ import type {
   RepoProfileState,
   GitResetInput,
   GitStashRefInput,
-  GitTagDeleteInput,
-  AppSettings
+  GitTagDeleteInput
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
 
@@ -657,12 +662,49 @@ export function WorkspaceShell(): ReactElement {
     setGitHubWorkspaceView(undefined);
     setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
+
+    if (!workspace.activeTabId) {
+      setIsStartTabOpen(true);
+      setIsStartTabActive(true);
+    }
   }
 
-  function handleOpenDashboards(dashboardId?: string): void {
+  function openDashboardSurface(dashboardId?: string): void {
+    setIsStartTabActive(false);
     setGitHubWorkspaceView({ kind: 'dashboard', dashboardId });
     setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
+  }
+
+  function handleActivateDashboardsTab(): void {
+    openDashboardSurface(dashboardsQuery.data?.selectedDashboardId);
+  }
+
+  function handleSelectDashboard(dashboardId: string | undefined): void {
+    openDashboardSurface(dashboardId);
+
+    if (!connectedGitHubProfileId || !dashboardId) {
+      return;
+    }
+
+    queryClient.setQueryData(
+      dashboardsQueryKey(connectedGitHubProfileId),
+      (current: DashboardState | undefined) =>
+        current
+          ? {
+              ...current,
+              selectedDashboardId: dashboardId
+            }
+          : current
+    );
+    void window.api
+      .selectDashboard(connectedGitHubProfileId, dashboardId)
+      .then((state) => queryClient.setQueryData(dashboardsQueryKey(connectedGitHubProfileId), state))
+      .catch(() => {
+        void queryClient.invalidateQueries({
+          queryKey: dashboardsQueryKey(connectedGitHubProfileId)
+        });
+      });
   }
 
   function handleOpenGitProfileMenu(): void {
@@ -805,6 +847,7 @@ export function WorkspaceShell(): ReactElement {
   }
 
   async function handleActivateRepositoryTab(tabId: string): Promise<void> {
+    setGitHubWorkspaceView(undefined);
     setIsStartTabActive(false);
     await activateTab(tabId);
   }
@@ -2094,9 +2137,14 @@ export function WorkspaceShell(): ReactElement {
     >
       <TabStrip
         tabs={workspace.tabs}
-        activeTabId={isStartTabActive ? undefined : workspace.activeTabId}
+        activeTabId={
+          isStartTabActive || gitHubWorkspaceView?.kind === 'dashboard'
+            ? undefined
+            : workspace.activeTabId
+        }
         isStartTabOpen={isStartTabOpen}
         isStartTabActive={isStartTabActive}
+        isDashboardsTabActive={gitHubWorkspaceView?.kind === 'dashboard'}
         profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}
@@ -2104,6 +2152,7 @@ export function WorkspaceShell(): ReactElement {
         onOpenStartTab={handleOpenStartTab}
         onActivateStartTab={handleActivateStartTab}
         onCloseStartTab={handleCloseStartTab}
+        onActivateDashboardsTab={handleActivateDashboardsTab}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onActivateProfile={handleActivateProfile}
         onSaveAndActivateProfile={handleSaveAndActivateProfile}
@@ -2150,7 +2199,15 @@ export function WorkspaceShell(): ReactElement {
       ) : null}
 
       <section className="flex min-h-0 flex-1">
-        {gitHubWorkspaceView ? (
+        {gitHubWorkspaceView?.kind === 'dashboard' ? (
+          <DashboardView
+            profile={activeGitHubProfile}
+            requestedDashboardId={gitHubWorkspaceView.dashboardId}
+            onSelectDashboard={handleSelectDashboard}
+            onOpenProfileSettings={handleOpenGitProfileMenu}
+            onClose={handleClosePullRequestWorkspace}
+          />
+        ) : gitHubWorkspaceView ? (
           <>
             <Sidebar
               activeTab={activeTab}
@@ -2164,18 +2221,8 @@ export function WorkspaceShell(): ReactElement {
               onToggleCollapsed={handleToggleSidebar}
               pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
               isPullRequestLoading={pullRequestInboxQuery.isLoading}
-              isPullRequestInboxActive={gitHubWorkspaceView.kind !== 'dashboard'}
+              isPullRequestInboxActive
               onOpenPullRequestInbox={handleOpenPullRequestInbox}
-              dashboards={dashboardsQuery.data?.dashboards ?? []}
-              isDashboardLoading={dashboardsQuery.isLoading}
-              isDashboardActive={gitHubWorkspaceView.kind === 'dashboard'}
-              activeDashboardId={
-                gitHubWorkspaceView.kind === 'dashboard'
-                  ? gitHubWorkspaceView.dashboardId
-                  : undefined
-              }
-              onOpenDashboards={() => handleOpenDashboards()}
-              onSelectDashboard={handleOpenDashboards}
               onResize={handleSidebarResize}
               onResizeCommit={handleSidebarResizeCommit}
               isOperationBusy={isOperationBusy}
@@ -2202,14 +2249,6 @@ export function WorkspaceShell(): ReactElement {
                 onBackToInbox={handleOpenPullRequestInbox}
                 onClose={handleClosePullRequestWorkspace}
                 onMerged={handleOpenPullRequestInbox}
-              />
-            ) : gitHubWorkspaceView.kind === 'dashboard' ? (
-              <DashboardView
-                profile={activeGitHubProfile}
-                requestedDashboardId={gitHubWorkspaceView.dashboardId}
-                onSelectDashboard={(dashboardId) => handleOpenDashboards(dashboardId)}
-                onOpenProfileSettings={handleOpenGitProfileMenu}
-                onClose={handleClosePullRequestWorkspace}
               />
             ) : (
               <PullRequestInboxView
@@ -2268,12 +2307,6 @@ export function WorkspaceShell(): ReactElement {
                 isPullRequestLoading={pullRequestInboxQuery.isLoading}
                 isPullRequestInboxActive={false}
                 onOpenPullRequestInbox={handleOpenPullRequestInbox}
-                dashboards={dashboardsQuery.data?.dashboards ?? []}
-                isDashboardLoading={dashboardsQuery.isLoading}
-                isDashboardActive={false}
-                activeDashboardId={undefined}
-                onOpenDashboards={() => handleOpenDashboards()}
-                onSelectDashboard={handleOpenDashboards}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}

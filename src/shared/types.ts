@@ -884,6 +884,7 @@ export type DashboardInput = {
 export type DashboardState = {
   profileId: string;
   dashboards: Dashboard[];
+  selectedDashboardId?: string;
 };
 
 export type GitHubPullRequestCategory =

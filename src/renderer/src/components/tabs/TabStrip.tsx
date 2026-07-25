@@ -1,16 +1,18 @@
 import type { ReactElement } from 'react';
-import { FilePlus2, GitBranch, Plus, Settings, X } from 'lucide-react';
+import { FilePlus2, GitBranch, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
 
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
 import type { GitProfile, RepoProfileState, RepoTab } from '@shared/types';
 
 const START_TAB_ID = 'new-repository-tab';
+const DASHBOARDS_TAB_ID = 'dashboards-tab';
 
 type TabStripProps = {
   tabs: RepoTab[];
   activeTabId?: string;
   isStartTabOpen: boolean;
   isStartTabActive: boolean;
+  isDashboardsTabActive: boolean;
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
@@ -18,6 +20,7 @@ type TabStripProps = {
   onOpenStartTab: () => void;
   onActivateStartTab: () => void;
   onCloseStartTab: () => void;
+  onActivateDashboardsTab: () => void;
   onOpenSettings: () => void;
   onActivateProfile: (profileId: string | undefined) => Promise<void>;
   onSaveAndActivateProfile: (profile: GitProfile) => Promise<void>;
@@ -28,6 +31,7 @@ export function TabStrip({
   activeTabId,
   isStartTabOpen,
   isStartTabActive,
+  isDashboardsTabActive,
   profileState,
   activeRepoDirty = false,
   onActivateTab,
@@ -35,14 +39,24 @@ export function TabStrip({
   onOpenStartTab,
   onActivateStartTab,
   onCloseStartTab,
+  onActivateDashboardsTab,
   onOpenSettings,
   onActivateProfile,
   onSaveAndActivateProfile
 }: TabStripProps): ReactElement {
-  const navigationTabIds = [...tabs.map((tab) => tab.id), ...(isStartTabOpen ? [START_TAB_ID] : [])];
+  const navigationTabIds = [
+    ...tabs.map((tab) => tab.id),
+    ...(isStartTabOpen ? [START_TAB_ID] : []),
+    DASHBOARDS_TAB_ID
+  ];
   const activateNavigationTab = (tabId: string): void => {
     if (tabId === START_TAB_ID) {
       onActivateStartTab();
+      return;
+    }
+
+    if (tabId === DASHBOARDS_TAB_ID) {
+      onActivateDashboardsTab();
       return;
     }
 
@@ -51,8 +65,12 @@ export function TabStrip({
 
   return (
     <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
-      <div className="relative flex min-w-0 flex-1 items-stretch">
-        <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Open repositories">
+      <div
+        className="relative flex min-w-0 flex-1 items-stretch"
+        role="tablist"
+        aria-label="Workspace views"
+      >
+        <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map((tab, tabIndex) => {
             const isActive = tab.id === activeTabId;
 
@@ -141,6 +159,36 @@ export function TabStrip({
         </button>
 
         <div className="drag-region min-w-0 flex-1" aria-hidden="true" />
+
+        <div
+          className="no-drag repo-tab repo-tab--icon"
+          data-active={isDashboardsTabActive}
+          title="Dashboards"
+        >
+          <button
+            id={tabDomId(DASHBOARDS_TAB_ID)}
+            className="repo-tab-main"
+            type="button"
+            role="tab"
+            aria-label="Dashboards"
+            aria-selected={isDashboardsTabActive}
+            tabIndex={isDashboardsTabActive ? 0 : -1}
+            onClick={onActivateDashboardsTab}
+            onKeyDown={(event) =>
+              handleTabKeyDown(
+                event,
+                navigationTabIds.length - 1,
+                navigationTabIds,
+                activateNavigationTab
+              )
+            }
+          >
+            <LayoutDashboard
+              size={15}
+              className={isDashboardsTabActive ? 'text-[var(--accent-2)]' : undefined}
+            />
+          </button>
+        </div>
       </div>
 
       <div className="no-drag flex shrink-0 items-center gap-0.5 px-2">

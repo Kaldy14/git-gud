@@ -2,9 +2,9 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-07-25
+- Last refreshed: 2026-07-26
 - Primary product surfaces: repository graph, commit and WIP details, changed-file lists, file diffs, contextual review, GitHub pull requests, persistent monitoring dashboards, and Git operation dialogs.
-- Evidence reviewed: `PRODUCT.md`, `PLAN.md`, `README.md`, `docs/images/git-gud-history.png`, `docs/images/git-gud-diff.png`, the renderer workspace, sidebar, GitHub query/IPC/store layers, and the shared theme tokens.
+- Evidence reviewed: `PRODUCT.md`, `PLAN.md`, `README.md`, `docs/images/git-gud-history.png`, `docs/images/git-gud-diff.png`, `.omx/artifacts/visual-ralph/dashboard-navigation/current-layout.png`, `.omx/artifacts/visual-ralph/dashboard-navigation/dashboard-header.png`, the renderer workspace, sidebar, GitHub query/IPC/store layers, and the shared theme tokens.
 
 ## Brand
 - Personality: Focused, fast, trustworthy, and native to a professional macOS workflow.
@@ -22,13 +22,13 @@
 - Key contexts of use: Dense desktop windows, long file paths, large change sets, repeated keyboard navigation between files, and short monitoring checks while workflows are running.
 
 ## Information architecture
-- Primary navigation: Repository tabs, a single sidebar with Pull requests followed by an expandable Dashboards section, ref navigation, commit graph, commit detail, file detail, and contextual review.
+- Primary navigation: Repository tabs plus one fixed icon-only Dashboards tab in the title bar; the repository sidebar contains Pull requests and ref navigation only; dashboard names appear as tabs in the dashboard header.
 - Core routes/screens: The app uses a single workspace route with stateful repository, dashboard, pull-request inbox, and pull-request review destinations rather than browser-style page navigation.
-- Content hierarchy: The selected destination first; within dashboards, dashboard identity and refresh state, then project tiles, then individual workflow runs.
+- Content hierarchy: The selected top-level tab first; within dashboards, the remembered dashboard tab and refresh state, then project tiles, then individual workflow runs.
 
 ## Design principles
 - Repository truth comes first: Status, scope, and available operations must reflect Git state.
-- Preserve flow: Keep inspection dense, keyboard-accessible, and spatially stable.
+- Preserve flow: Keep inspection dense, keyboard-accessible, and spatially stable; returning to Dashboards restores the last dashboard selected for the active GitHub profile.
 - Earn every control: Avoid duplicated actions or labels; one selected-file diff header contains the change icon, file path, necessary scope control, diff layout switch, and close action.
 - Live truth is visible: Monitoring tiles show when data was loaded, distinguish running from completed workflows without color alone, and keep stale data visible during background refresh.
 - Tradeoffs: Prefer a compact persistent control row over explanatory chrome; use tooltips and accessible labels for icon-only actions.
@@ -36,14 +36,14 @@
 ## Visual language
 - Color: Use the existing dark theme and semantic status tokens; color supplements an icon or label and never carries meaning alone.
 - Typography: System sans-serif for chrome and UI; system monospace for code, hashes, and command content.
-- Spacing/layout rhythm: Dense 28–40px controls and headers, 4–8px internal gaps, minimal vertical chrome around primary content, and a responsive two-column tile grid that collapses at constrained widths.
+- Spacing/layout rhythm: Dense 28–40px controls and headers, 4–8px internal gaps, minimal vertical chrome around primary content, and a responsive two-column tile grid that collapses at constrained widths. Dashboard-name tabs are compact, natural-width toolbar labels rather than boxed title-bar tabs.
 - Shape/radius/elevation: Small radii and restrained borders; elevation is reserved for menus, popovers, and dialogs.
 - Motion: Short functional transitions only, disabled under reduced-motion preferences.
 - Imagery/iconography: Lucide icons, with distinct shapes for added, modified, renamed, and deleted file states.
 
 ## Components
-- Existing components to reuse: Shared buttons, segmented controls, theme variables, `@pierre/diffs` renderers, file status colors, and modal/menu primitives.
-- New/changed components: Expandable dashboard navigation inside the existing repository sidebar, dashboard editor dialogs, GitHub Actions tile, and workflow-run row. The dashboard content area does not add a second navigation sidebar. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
+- Existing components to reuse: Shared buttons, segmented controls, toolbar typography and hover states, theme variables, `@pierre/diffs` renderers, file status colors, and modal/menu primitives.
+- New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs in the dashboard header, dashboard editor dialogs, GitHub Actions tile, and workflow-run row. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
 - Variants and states: Commit, multi-commit, WIP staged/unstaged, loading, empty, binary, too-large, error, unified/split diff layouts, dashboard with no tiles, tile loading/refresh/error, and queued/running/success/failure/cancelled workflow states.
 - Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
 
@@ -74,7 +74,7 @@
 
 ## Implementation constraints
 - Framework/styling system: Electron, React 19, TypeScript, Tailwind v4 utilities, and repository CSS variables.
-- Design-token constraints: Extend existing tokens and shared component classes before adding new styling layers.
+- Design-token constraints: Extend existing tokens and shared component classes before adding new styling layers. Dashboard header selection uses the existing active/inactive text hierarchy; it does not introduce per-tab borders, filled cells, or decorative accent underlines.
 - Performance constraints: Diff rendering must remain bounded for large files and change sets; binary and oversized content uses explicit fallbacks.
 - Compatibility constraints: macOS is the supported build target; Git and GitHub CLI are provided by the user's environment; dashboard access uses the GitHub CLI account connected to the selected Git profile.
 - Test/screenshot expectations: Run focused parser, persistence, IPC-validation, and renderer tests; run typecheck/lint/build; exercise dashboard creation, tile creation, live refresh, error/empty handling, and run opening; capture screenshots for UI changes.
