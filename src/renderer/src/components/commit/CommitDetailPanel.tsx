@@ -267,7 +267,7 @@ export function CommitDetailPanel({
 
   if (isCollapsed) {
     return (
-      <aside className="commit-detail-panel flex min-h-0 w-10 shrink-0 flex-col items-center overflow-hidden border-l border-[var(--border)] bg-[var(--bg-panel)] py-2" aria-label="Commit details">
+      <aside className="commit-detail-panel flex min-h-0 w-10 shrink-0 flex-col items-center overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)] py-2" aria-label="Commit details">
         <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand commit details" title="Expand commit details">
           <PanelRightOpen size={15} />
         </button>
@@ -277,7 +277,7 @@ export function CommitDetailPanel({
 
   if (!row || !repoPath) {
     return (
-      <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
+      <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
         <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
         <div className="flex h-10 shrink-0 items-center justify-end border-b border-[var(--border)] px-2">
           <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
@@ -391,7 +391,7 @@ export function CommitDetailPanel({
   }
 
   return (
-    <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-panel)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
+    <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
       <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
       <WorkingDirectoryBanner
         dirtyCount={wipDirtyCount}
