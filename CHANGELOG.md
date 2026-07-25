@@ -11,6 +11,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added persistent, profile-scoped dashboards with configurable GitHub Actions tiles for multiple projects.
 - Added automatic live refresh, explicit running/failure/success states, and browser links for individual workflow runs.
 
+### Fixed
+
+- Made detected GitHub CLI account rows save and activate the selected profile immediately, so dashboards no longer require a second confirmation click.
+- Tightened GitHub Actions dashboard rows, removed redundant tile metadata, and reduced the dashboard header to its name and compact icon actions.
+
 ## [0.4.10] - 2026-07-24
 
 ### Added

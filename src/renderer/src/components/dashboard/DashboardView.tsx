@@ -251,24 +251,11 @@ export function DashboardView({
           <>
             <header className="dashboard-header">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[11px] text-[var(--text-3)]">
-                  <span className="dashboard-live-dot" aria-hidden="true" />
-                  <span>Live monitoring</span>
-                  <span>·</span>
-                  <span>
-                    {activeDashboard.tiles.length} project
-                    {activeDashboard.tiles.length === 1 ? '' : 's'}
-                  </span>
-                  <span>·</span>
-                  <span>
-                    {profile?.githubHost ?? 'github.com'} · @{profile?.githubLogin}
-                  </span>
-                </div>
                 <h2>{activeDashboard.name}</h2>
               </div>
               <div className="dashboard-header-actions">
                 <button
-                  className="icon-btn h-8 w-8"
+                  className="icon-btn h-7 w-7"
                   type="button"
                   aria-label="Create dashboard"
                   title="Create dashboard"
@@ -277,10 +264,10 @@ export function DashboardView({
                     setDialog({ kind: 'create', name: '' });
                   }}
                 >
-                  <Plus size={13} />
+                  <LayoutDashboard size={13} />
                 </button>
                 <button
-                  className="icon-btn h-8 w-8"
+                  className="icon-btn h-7 w-7"
                   type="button"
                   aria-label="Rename dashboard"
                   title="Rename dashboard"
@@ -292,7 +279,7 @@ export function DashboardView({
                   <Pencil size={13} />
                 </button>
                 <button
-                  className="icon-btn h-8 w-8 text-[var(--danger-text)]"
+                  className="icon-btn h-7 w-7 text-[var(--danger-text)]"
                   type="button"
                   aria-label="Delete dashboard"
                   title="Delete dashboard"
@@ -304,23 +291,29 @@ export function DashboardView({
                   <Trash2 size={13} />
                 </button>
                 <button
-                  className="btn-subtle h-8 text-xs"
+                  className="icon-btn h-7 w-7"
                   type="button"
                   disabled={dashboardFetchCount > 0}
+                  aria-label={dashboardFetchCount > 0 ? 'Refreshing dashboard' : 'Refresh dashboard'}
+                  title={dashboardFetchCount > 0 ? 'Refreshing dashboard' : 'Refresh dashboard'}
                   onClick={refreshDashboard}
                 >
                   <RefreshCw
                     size={13}
                     className={dashboardFetchCount > 0 ? 'animate-spin' : undefined}
                   />
-                  {dashboardFetchCount > 0 ? 'Refreshing' : 'Refresh all'}
-                </button>
-                <button className="btn-primary h-8 text-xs" type="button" onClick={openAddTileDialog}>
-                  <Plus size={13} />
-                  Add tile
                 </button>
                 <button
-                  className="icon-btn h-8 w-8"
+                  className="icon-btn h-7 w-7"
+                  type="button"
+                  aria-label="Add tile"
+                  title="Add tile"
+                  onClick={openAddTileDialog}
+                >
+                  <Plus size={13} />
+                </button>
+                <button
+                  className="icon-btn h-7 w-7"
                   type="button"
                   onClick={onClose}
                   aria-label="Close dashboards and return to commit graph"
@@ -439,7 +432,6 @@ function GitHubActionsTile({
               <span>{tile.owner}/</span>
               {tile.repository}
             </strong>
-            <small>Last {tile.limit} workflow runs</small>
           </span>
         </div>
         <div className="actions-tile-header-actions">
@@ -498,20 +490,6 @@ function GitHubActionsTile({
           <span>No workflow runs found.</span>
         </div>
       ) : null}
-
-      <footer className="actions-tile-footer">
-        <span>
-          {runsQuery.data ? `Updated ${formatRelativeTime(runsQuery.data.loadedAt)}` : 'Waiting for GitHub'}
-        </span>
-        {runsQuery.isFetching && runsQuery.data ? (
-          <span className="flex items-center gap-1">
-            <RefreshCw size={10} className="animate-spin" />
-            Syncing
-          </span>
-        ) : (
-          <span>Auto-refresh · 15s</span>
-        )}
-      </footer>
     </article>
   );
 }

@@ -4,6 +4,8 @@ import { AlertTriangle, Check, ChevronDown, Cloud, GitBranch, Lightbulb, Plus, S
 
 import type { GitHubCliAccount, GitProfile, RepoProfileState } from '@shared/types';
 
+import { gitProfileFromDraft } from './ProfileMenu.logic';
+
 type ProfileMenuProps = {
   profileState?: RepoProfileState;
   onActivateProfile: (profileId: string | undefined) => Promise<void>;
@@ -152,41 +154,59 @@ export function ProfileMenu({
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
+    const profile = currentProfileDraft();
 
-    if (!trimmedName || !trimmedEmail) {
+    if (!profile) {
       setErrorMessage('Name and email are required.');
       return;
     }
 
     await runProfileAction(async () => {
-      await onSaveAndActivateProfile({
-        id: editingProfileId ?? createProfileId(trimmedName, trimmedEmail),
-        name: trimmedName,
-        email: trimmedEmail,
-        avatarColor:
-          activeProfile && activeProfile.id === editingProfileId
-            ? activeProfile.avatarColor
-            : PROFILE_COLOR,
-        sshKeyPath: sshKeyPath.trim() || undefined,
-        ghConfigDir: ghConfigDir.trim() || undefined,
-        githubLogin: githubLogin.trim() || undefined,
-        githubHost: githubHost.trim() || undefined,
-        signingKey: signingKey.trim() || undefined,
-        remoteUrlPatterns: remoteUrlPatterns
-          .split(/[\n,]+/)
-          .map((pattern) => pattern.trim())
-          .filter(Boolean)
-      });
+      await onSaveAndActivateProfile(profile);
       setIsOpen(false);
     });
   }
 
-  function selectGithubAccount(account: GitHubCliAccount | undefined): void {
+  function setGithubAccount(account: GitHubCliAccount | undefined): void {
     setGhConfigDir(account?.configDir ?? '');
     setGithubLogin(account?.login ?? '');
     setGithubHost(account?.host ?? '');
+  }
+
+  async function handleGithubAccountSelect(account: GitHubCliAccount): Promise<void> {
+    setGithubAccount(account);
+    const profile = currentProfileDraft(account);
+
+    if (!profile) {
+      setErrorMessage('Name and email are required before switching GitHub accounts.');
+      return;
+    }
+
+    await runProfileAction(async () => {
+      await onSaveAndActivateProfile(profile);
+      setIsOpen(false);
+    });
+  }
+
+  function currentProfileDraft(githubAccount?: GitHubCliAccount): GitProfile | undefined {
+    return gitProfileFromDraft(
+      {
+        editingProfileId,
+        name,
+        email,
+        avatarColor:
+          activeProfile && activeProfile.id === editingProfileId
+            ? activeProfile.avatarColor
+            : PROFILE_COLOR,
+        sshKeyPath,
+        ghConfigDir,
+        githubLogin,
+        githubHost,
+        signingKey,
+        remoteUrlPatterns
+      },
+      githubAccount
+    );
   }
 
   function updateGhConfigDir(value: string): void {
@@ -317,6 +337,12 @@ export function ProfileMenu({
                 <div className="space-y-1">
                   {githubAccounts.map((account) => {
                     const isConnected = account.configDir === ghConfigDir && account.login === githubLogin;
+                    const isActive = Boolean(
+                      activeProfile &&
+                      activeProfile.id === editingProfileId &&
+                      activeProfile.ghConfigDir === account.configDir &&
+                      activeProfile.githubLogin === account.login
+                    );
 
                     return (
                       <button
@@ -327,7 +353,9 @@ export function ProfileMenu({
                             : 'border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-hover)]'
                         }`}
                         type="button"
-                        onClick={() => selectGithubAccount(account)}
+                        disabled={isPending || isActive}
+                        aria-label={`${isActive ? 'Active GitHub account' : 'Save and switch to GitHub account'} @${account.login}`}
+                        onClick={() => void handleGithubAccountSelect(account)}
                       >
                         <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--bg-panel)] text-[var(--text-2)]">
                           {isConnected ? <Check size={12} className="text-[var(--accent-2)]" /> : <Cloud size={12} />}
@@ -336,11 +364,14 @@ export function ProfileMenu({
                           <span className="block truncate text-[11px] font-semibold text-[var(--text-1)]">@{account.login}</span>
                           <span className="block truncate text-[10px] text-[var(--text-3)]">{account.host} · {account.gitProtocol.toUpperCase()} via GitHub CLI</span>
                         </span>
+                        <span className="shrink-0 text-[10px] font-semibold text-[var(--accent-2)]">
+                          {isActive ? 'Active' : 'Switch'}
+                        </span>
                       </button>
                     );
                   })}
                   {ghConfigDir ? (
-                    <button className="w-full rounded px-2 py-1 text-left text-[10px] text-[var(--text-3)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]" type="button" onClick={() => selectGithubAccount(undefined)}>
+                    <button className="w-full rounded px-2 py-1 text-left text-[10px] text-[var(--text-3)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]" type="button" onClick={() => setGithubAccount(undefined)}>
                       Disconnect GitHub account
                     </button>
                   ) : null}
@@ -424,16 +455,6 @@ function ProfileTextField({
       />
     </label>
   );
-}
-
-function createProfileId(name: string, email: string): string {
-  const slug =
-    (email || name)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'profile';
-
-  return `${slug}-${Date.now().toString(36)}`;
 }
 
 function initials(value: string): string {
