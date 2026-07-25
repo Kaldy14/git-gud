@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import type {
   GitHubPullRequestDetail,
@@ -19,6 +19,28 @@ export const gitHubPullRequestDetailQueryKey = (
   locator.repository,
   locator.number
 ];
+
+export async function refreshGitHubPullRequestInboxAfterMerge(
+  queryClient: QueryClient,
+  locator: GitHubPullRequestLocator
+): Promise<void> {
+  const queryKey = gitHubPullRequestInboxQueryKey(locator.profileId);
+
+  await queryClient.refetchQueries({ queryKey, type: 'all' });
+  queryClient.setQueryData<GitHubPullRequestInbox>(queryKey, (current) =>
+    current
+      ? {
+          ...current,
+          pullRequests: current.pullRequests.filter(
+            (pullRequest) =>
+              pullRequest.owner !== locator.owner ||
+              pullRequest.repository !== locator.repository ||
+              pullRequest.number !== locator.number
+          )
+        }
+      : current
+  );
+}
 
 export function useGitHubPullRequestInbox(profileId: string | undefined) {
   return useQuery({

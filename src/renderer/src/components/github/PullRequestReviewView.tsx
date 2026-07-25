@@ -36,6 +36,7 @@ import {
 import {
   gitHubPullRequestDetailQueryKey,
   gitHubPullRequestInboxQueryKey,
+  refreshGitHubPullRequestInboxAfterMerge,
   useGitHubPullRequestDetail
 } from '@renderer/queries/github';
 import type {
@@ -283,9 +284,7 @@ function PullRequestReviewContent({
       window.api.mergeGitHubPullRequest({ ...locator, method }),
     onSuccess: async (result) => {
       setNotice({ tone: 'success', message: result.message });
-      await queryClient.invalidateQueries({
-        queryKey: gitHubPullRequestInboxQueryKey(locator.profileId)
-      });
+      await refreshGitHubPullRequestInboxAfterMerge(queryClient, locator);
       onMerged();
     },
     onError: (error) => {
