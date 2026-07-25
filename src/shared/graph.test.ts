@@ -134,6 +134,20 @@ describe('buildCommitGraphRows', () => {
     ]);
   });
 
+  it('preserves primary and fallback author avatar sources', () => {
+    const rows = buildCommitGraphRows([
+      commit('avatar', [], {
+        authorAvatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4&s=64',
+        authorAvatarFallbackUrl: 'https://www.gravatar.com/avatar/hash?s=64'
+      })
+    ]);
+
+    expect(rows[0]?.author).toMatchObject({
+      avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4&s=64',
+      fallbackAvatarUrl: 'https://www.gravatar.com/avatar/hash?s=64'
+    });
+  });
+
   it('renders synthetic WIP and stash tips against their base commits', () => {
     const rows = buildCommitGraphRows([
       commit('wip', ['head'], { kind: 'wip', refs: [{ label: 'WIP', kind: 'wip' }] }),

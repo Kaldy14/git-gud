@@ -1059,6 +1059,15 @@ button.ref-chip:active {
   opacity: 0.76;
 }
 
+.ref-chip-avatar {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(4, 7, 10, 0.38);
+}
+
 .ref-stack-expanded .ref-chip {
   width: 100%;
   max-width: none;

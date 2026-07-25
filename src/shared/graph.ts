@@ -45,6 +45,7 @@ export type GraphCommitInput = {
   authorName: string;
   authorEmail?: string;
   authorAvatarUrl?: string;
+  authorAvatarFallbackUrl?: string;
   authoredAt?: string;
   committedAt?: string;
   dateLabel?: string;
@@ -115,7 +116,8 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
         email: commit.authorEmail,
         initials: initials(commit.authorName || commit.authorEmail || commit.sha),
         color: authorColor(commit.authorEmail ?? commit.authorName),
-        avatarUrl: commit.authorAvatarUrl
+        avatarUrl: commit.authorAvatarUrl,
+        fallbackAvatarUrl: commit.authorAvatarFallbackUrl
       },
       authoredAt: commit.authoredAt,
       committedAt: commit.committedAt,

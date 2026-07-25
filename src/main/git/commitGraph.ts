@@ -13,31 +13,54 @@ import type {
   RepoTab
 } from '@shared/types';
 
-import { createProfileCommandEnv } from '../profiles';
+import { createProfileCommandEnv, listProfiles } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
+import {
+  findGitHubRepository,
+  loadGitHubCommitAuthorAvatars
+} from './githubAvatars';
 import { parseGitLog, type GitLogCommit } from './parsers/log';
-import { loadRefs, loadStashes, loadStatus, loadWorktrees } from './repositoryOverview';
+import { loadRefs, loadRemotes, loadStashes, loadStatus, loadWorktrees } from './repositoryOverview';
 import { gravatarUrlForEmail } from './gravatar';
 
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
 
 export async function loadCommitGraph(
   tab: Pick<RepoTab, 'path' | 'assignedProfileId'>,
-  requestedLimit = DEFAULT_COMMIT_GRAPH_LIMIT
+  requestedLimit = DEFAULT_COMMIT_GRAPH_LIMIT,
+  loadRemoteAvatars = true
 ): Promise<CommitGraphPage> {
   const limit = normalizeLimit(requestedLimit);
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
-  const [logCommits, refs, status, stashes, worktrees] = await Promise.all([
+  const [logCommits, refs, status, stashes, worktrees, remotes] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env),
     loadRefs(tab.path, env),
     loadStatus(tab.path, env),
     loadStashes(tab.path, env),
-    loadWorktrees(tab.path, env)
+    loadWorktrees(tab.path, env),
+    loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([])
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
   const refMap = createRefMap(refs);
+  const profile = tab.assignedProfileId
+    ? listProfiles().find((candidate) => candidate.id === tab.assignedProfileId)
+    : undefined;
+  const githubRepository = loadRemoteAvatars
+    ? findGitHubRepository(remotes, profile?.githubHost)
+    : undefined;
+  const githubAvatarUrls = githubRepository
+    ? await loadGitHubCommitAuthorAvatars(
+        githubRepository,
+        commits.map((commit) => ({
+          sha: commit.sha,
+          email: commit.authorEmail,
+          hasRemoteRef: refMap.get(commit.sha)?.some((ref) => ref.kind === 'remote') ?? false
+        })),
+        env
+      )
+    : new Map<string, string>();
   const wipInputs = await loadWorktreeWipInputs(tab.path, worktrees, status, env);
   const wipInputsByBase = createInputsByBase(wipInputs);
   const stashInputsByBase = createStashInputsByBase(stashes);
@@ -58,7 +81,7 @@ export async function loadCommitGraph(
       attachedStashBases.add(commit.sha);
     }
 
-    inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha)));
+    inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha), githubAvatarUrls));
   }
 
   inputs.push(...wipInputs.filter((input) => !loadedCommitShas.has(input.parentShas[0] ?? '')));
@@ -203,7 +226,16 @@ async function loadLogCommits(
   }
 }
 
-function logCommitToGraphInput(commit: GitLogCommit, refs: GraphRefChip[] | undefined): GraphCommitInput {
+function logCommitToGraphInput(
+  commit: GitLogCommit,
+  refs: GraphRefChip[] | undefined,
+  githubAvatarUrls: ReadonlyMap<string, string>
+): GraphCommitInput {
+  const gravatarUrl = gravatarUrlForEmail(commit.authorEmail, 64);
+  const githubAvatarUrl = commit.authorEmail
+    ? githubAvatarUrls.get(commit.authorEmail.trim().toLowerCase())
+    : undefined;
+
   return {
     sha: commit.sha,
     parentShas: commit.parentShas,
@@ -211,7 +243,8 @@ function logCommitToGraphInput(commit: GitLogCommit, refs: GraphRefChip[] | unde
     body: commit.body,
     authorName: commit.authorName,
     authorEmail: commit.authorEmail,
-    authorAvatarUrl: gravatarUrlForEmail(commit.authorEmail, 64),
+    authorAvatarUrl: githubAvatarUrl ?? gravatarUrl,
+    authorAvatarFallbackUrl: githubAvatarUrl ? gravatarUrl : undefined,
     authoredAt: commit.authoredAt,
     committedAt: commit.committedAt,
     refs

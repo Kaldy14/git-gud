@@ -1123,6 +1123,8 @@ function GraphRowView({
             linkedWorktreeBranches={linkedWorktreeBranches}
             color={refColor}
             currentColor={currentRefColor}
+            remoteAvatarUrl={remoteAvatars ? row.author.avatarUrl : undefined}
+            remoteAvatarFallbackUrl={remoteAvatars ? row.author.fallbackAvatarUrl : undefined}
             pendingBranchName={pendingBranchName}
             onRefClick={onRefClick}
             onBranchContextMenu={onBranchContextMenu}
@@ -1598,6 +1600,8 @@ function RefChipStack({
   linkedWorktreeBranches,
   color,
   currentColor,
+  remoteAvatarUrl,
+  remoteAvatarFallbackUrl,
   pendingBranchName,
   onRefClick,
   onBranchContextMenu,
@@ -1607,6 +1611,8 @@ function RefChipStack({
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
   currentColor: string;
+  remoteAvatarUrl?: string;
+  remoteAvatarFallbackUrl?: string;
   pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -1634,6 +1640,8 @@ function RefChipStack({
           linkedWorktreeBranches={linkedWorktreeBranches}
           color={color}
           currentColor={currentColor}
+          remoteAvatarUrl={remoteAvatarUrl}
+          remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
           pendingBranchName={pendingBranchName}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
@@ -1658,6 +1666,8 @@ function RefChipStack({
               linkedWorktreeBranches={linkedWorktreeBranches}
               color={color}
               currentColor={currentColor}
+              remoteAvatarUrl={remoteAvatarUrl}
+              remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
               pendingBranchName={pendingBranchName}
               onRefClick={onRefClick}
               onBranchContextMenu={onBranchContextMenu}
@@ -1675,6 +1685,8 @@ function RefChipView({
   linkedWorktreeBranches,
   color,
   currentColor,
+  remoteAvatarUrl,
+  remoteAvatarFallbackUrl,
   pendingBranchName,
   onRefClick,
   onBranchContextMenu,
@@ -1684,6 +1696,8 @@ function RefChipView({
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
   currentColor: string;
+  remoteAvatarUrl?: string;
+  remoteAvatarFallbackUrl?: string;
   pendingBranchName?: string;
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -1717,7 +1731,9 @@ function RefChipView({
     <>
       {leadingIcon}
       <span className="ref-chip-label" title={label}>{displayLabel}</span>
-      {kind === 'remote' ? <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
+      {kind === 'remote' ? (
+        <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
+      ) : null}
       {kind === 'branch' ? (
         isLinkedWorktree ? (
           <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
@@ -1725,7 +1741,9 @@ function RefChipView({
           <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
         )
       ) : null}
-      {hasRemotePeer ? <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" /> : null}
+      {hasRemotePeer ? (
+        <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
+      ) : null}
     </>
   );
 
@@ -1876,6 +1894,7 @@ function RailCell({
           authorColor={row.author.color}
           authorInitials={row.author.initials}
           avatarUrl={remoteAvatars ? row.author.avatarUrl : undefined}
+          fallbackAvatarUrl={remoteAvatars ? row.author.fallbackAvatarUrl : undefined}
           title={nodeTitle}
         />
       </svg>
@@ -1972,10 +1991,22 @@ type GraphNodeProps = {
   authorColor: string;
   authorInitials: string;
   avatarUrl?: string;
+  fallbackAvatarUrl?: string;
   title: string;
 };
 
-function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, avatarUrl, title }: GraphNodeProps): ReactElement {
+function GraphNode({
+  nodeId,
+  kind,
+  cx,
+  cy,
+  color,
+  authorColor,
+  authorInitials,
+  avatarUrl,
+  fallbackAvatarUrl,
+  title
+}: GraphNodeProps): ReactElement {
   if (kind === 'stash') {
     return (
       <g>
@@ -2007,6 +2038,35 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
     );
   }
 
+  return (
+    <GraphCommitNode
+      nodeId={nodeId}
+      kind={kind}
+      cx={cx}
+      cy={cy}
+      color={color}
+      authorColor={authorColor}
+      authorInitials={authorInitials}
+      avatarUrl={avatarUrl}
+      fallbackAvatarUrl={fallbackAvatarUrl}
+      title={title}
+    />
+  );
+}
+
+function GraphCommitNode({
+  nodeId,
+  kind,
+  cx,
+  cy,
+  color,
+  authorColor,
+  authorInitials,
+  avatarUrl,
+  fallbackAvatarUrl,
+  title
+}: GraphNodeProps): ReactElement {
+  const { imageSource, handleImageError } = useAvatarImageSource(avatarUrl, fallbackAvatarUrl);
   const clipId = `graph-avatar-${nodeId.replace(/[^\dA-Za-z_-]/g, '') || 'node'}`;
   const outerRadius = 11;
   const ringStrokeWidth = 2;
@@ -2026,19 +2086,20 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
         strokeWidth={ringStrokeWidth}
       />
       <circle cx={cx} cy={cy} r={matRadius} fill="var(--avatar-card-bg)" />
-      {avatarUrl ? (
+      {imageSource ? (
         <>
           <clipPath id={clipId}>
             <circle cx={cx} cy={cy} r={imageRadius} />
           </clipPath>
           <image
-            href={avatarUrl}
+            href={imageSource}
             x={cx - imageRadius}
             y={cy - imageRadius}
             width={imageSize}
             height={imageSize}
             clipPath={`url(#${clipId})`}
             preserveAspectRatio="xMidYMid slice"
+            onError={handleImageError}
           />
         </>
       ) : (
@@ -2055,6 +2116,56 @@ function GraphNode({ nodeId, kind, cx, cy, color, authorColor, authorInitials, a
       ) : null}
     </g>
   );
+}
+
+function RemoteRefIcon({
+  avatarUrl,
+  fallbackAvatarUrl
+}: {
+  avatarUrl?: string;
+  fallbackAvatarUrl?: string;
+}): ReactElement {
+  const { imageSource, handleImageError } = useAvatarImageSource(avatarUrl, fallbackAvatarUrl);
+
+  if (!imageSource) {
+    return <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" />;
+  }
+
+  return (
+    <img
+      src={imageSource}
+      alt=""
+      aria-hidden="true"
+      className="ref-chip-avatar"
+      referrerPolicy="no-referrer"
+      draggable={false}
+      onError={handleImageError}
+    />
+  );
+}
+
+function useAvatarImageSource(
+  avatarUrl: string | undefined,
+  fallbackAvatarUrl: string | undefined
+): {
+  imageSource?: string;
+  handleImageError: () => void;
+} {
+  const sources = useMemo(
+    () => [...new Set([avatarUrl, fallbackAvatarUrl].filter((value): value is string => Boolean(value)))],
+    [avatarUrl, fallbackAvatarUrl]
+  );
+  const [failedSources, setFailedSources] = useState<ReadonlySet<string>>(() => new Set());
+  const imageSource = sources.find((source) => !failedSources.has(source));
+
+  return {
+    imageSource,
+    handleImageError: () => {
+      if (imageSource) {
+        setFailedSources((current) => new Set(current).add(imageSource));
+      }
+    }
+  };
 }
 
 function GraphMessage({ icon, label }: { icon: ReactElement; label: string }): ReactElement {

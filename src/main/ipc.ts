@@ -311,7 +311,7 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
       throw new Error('Repository is not open in this workspace.');
     }
 
-    return loadCommitGraph(tab, limit);
+    return loadCommitGraph(tab, limit, getAppSettings().remoteAvatars);
   });
   handle('repo:commit-detail', async (_event, repoPath, sha) => loadCommitDetail(getOpenRepositoryTab(repoPath), sha));
   handle('repo:commit-selection-detail', async (_event, repoPath, shas) =>

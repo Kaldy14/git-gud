@@ -162,7 +162,7 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
               />
               <span className="min-w-0">
                 <span className="block font-semibold text-[var(--text-1)]">Load remote author avatars</span>
-                <span className="mt-1 block leading-5 text-[var(--text-3)]">On by default. Disable to keep author identities local and use generated avatars.</span>
+                <span className="mt-1 block leading-5 text-[var(--text-3)]">Uses GitHub identities for GitHub repositories, then falls back to Gravatar. Disable to keep author identities local.</span>
               </span>
             </label>
           </section>

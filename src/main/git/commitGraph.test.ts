@@ -73,6 +73,8 @@ describe('loadCommitGraph', () => {
       );
       expect(page.rows[3]?.refs?.[0]).toMatchObject({ label: 'main', current: true });
       expect(page.rows[3]?.body).toContain('Graph body searchable description');
+      expect(page.rows[3]?.author.avatarUrl).toMatch(/^https:\/\/www\.gravatar\.com\/avatar\//);
+      expect(page.rows[3]?.author.fallbackAvatarUrl).toBeUndefined();
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

@@ -873,9 +873,15 @@ export function WorkspaceShell(): ReactElement {
     setSettingsErrorMessage(undefined);
 
     try {
+      const remoteAvatarsChanged = nextSettings.remoteAvatars !== settings.remoteAvatars;
       const savedSettings = await window.api.updateSettings(nextSettings);
       setSettings(savedSettings);
       setGraphLimitByTab({});
+
+      if (remoteAvatarsChanged) {
+        await queryClient.invalidateQueries({ queryKey: ['commit-graph'] });
+      }
+
       setIsSettingsOpen(false);
     } catch (error) {
       setSettingsErrorMessage(error instanceof Error ? error.message : 'Unable to save settings.');

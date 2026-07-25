@@ -677,6 +677,7 @@ type GraphAuthor = {
   initials: string;
   color: string;
   avatarUrl?: string;
+  fallbackAvatarUrl?: string;
 };
 
 export type CommitGraphRow = {
