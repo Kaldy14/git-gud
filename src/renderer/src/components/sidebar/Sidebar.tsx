@@ -13,11 +13,11 @@ import {
   Laptop,
   Loader2,
   PanelLeftClose,
-  PanelLeftOpen,
   Pencil,
   Search,
   Tag,
-  Trash2
+  Trash2,
+  Trees
 } from 'lucide-react';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
@@ -95,7 +95,19 @@ const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
   { id: 'tags', title: 'Tags', icon: <Tag size={14} /> }
 ];
 
+const COLLAPSED_SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
+  { id: 'local', title: 'Local branches', icon: <Laptop size={16} /> },
+  { id: 'remote', title: 'Remote branches', icon: <Cloud size={16} /> },
+  { id: 'worktrees', title: 'Worktrees', icon: <Trees size={16} /> },
+  { id: 'stashes', title: 'Stashes', icon: <Archive size={16} /> },
+  { id: 'tags', title: 'Tags', icon: <Tag size={16} /> }
+];
+
 const SIDEBAR_REF_PAGE_SIZE = 10;
+
+function formatCollapsedCount(count: number): string {
+  return count > 999 ? '999+' : String(count);
+}
 
 export function Sidebar({
   activeTab,
@@ -261,28 +273,54 @@ export function Sidebar({
   }
 
   if (isCollapsed) {
-    return (
-      <aside className="workspace-sidebar flex w-12 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--bg-sidebar)] py-2" aria-label="Repository navigation">
-        <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Expand sidebar">
-          <PanelLeftOpen size={15} />
-        </button>
+    const renderCollapsedSection = (section: (typeof COLLAPSED_SECTIONS)[number]): ReactElement => {
+      const count = counts[section.id];
+
+      return (
         <button
-          className="sidebar-collapsed-destination"
+          key={section.id}
+          className="sidebar-collapsed-item"
           type="button"
-          data-active={isPullRequestInboxActive}
-          onClick={onOpenPullRequestInbox}
-          aria-label={`Pull request inbox${pullRequestCount > 0 ? `, ${pullRequestCount} items` : ''}`}
-          title="Pull request inbox"
+          onClick={() => {
+            setExpanded((value) => ({ ...value, [section.id]: true }));
+            onToggleCollapsed();
+          }}
+          aria-label={`Expand sidebar to view ${section.title}, ${count} items`}
+          title={`${section.title}: ${count}`}
         >
-          <GitPullRequest size={15} />
-          {pullRequestCount > 0 ? <span>{pullRequestCount > 99 ? '99+' : pullRequestCount}</span> : null}
+          {section.icon}
+          <span>{formatCollapsedCount(count)}</span>
         </button>
-        <div className="mt-1 flex flex-col gap-1 text-[var(--text-3)]">
-          {SECTIONS.map((section) => (
-            <span key={section.id} className="grid h-7 w-7 place-items-center" title={section.title}>
-              {section.icon}
-            </span>
-          ))}
+      );
+    };
+
+    return (
+      <aside className="workspace-sidebar workspace-sidebar--collapsed" aria-label="Repository navigation">
+        <button
+          className="sidebar-collapsed-toggle"
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+        >
+          <span className="sidebar-collapsed-toggle-mark" aria-hidden="true">
+            <ChevronRight size={11} strokeWidth={3.25} />
+          </span>
+        </button>
+        <div className="sidebar-collapsed-items">
+          {COLLAPSED_SECTIONS.slice(0, 4).map(renderCollapsedSection)}
+          <button
+            className="sidebar-collapsed-item"
+            type="button"
+            data-active={isPullRequestInboxActive}
+            onClick={onOpenPullRequestInbox}
+            aria-label={`Pull request inbox, ${pullRequestCount} items`}
+            title={`Pull requests: ${pullRequestCount}`}
+          >
+            {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
+            <span>{formatCollapsedCount(pullRequestCount)}</span>
+          </button>
+          {COLLAPSED_SECTIONS.slice(4).map(renderCollapsedSection)}
         </div>
       </aside>
     );

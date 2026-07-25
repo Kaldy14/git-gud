@@ -17,6 +17,11 @@
   --bg-field: #20242c;
   --bg-popover: #303641;
   --worktree-banner-bg: #405b93;
+  --collapsed-sidebar-bg: #272a32;
+  --collapsed-sidebar-border: #393b42;
+  --collapsed-sidebar-icon: #a9aaad;
+  --collapsed-sidebar-toggle: #c9cacb;
+  --collapsed-sidebar-count: #93aaec;
 
   /* Lines */
   --border: #3b414c;
@@ -456,6 +461,96 @@ input {
 }
 
 /* --- Sidebar --------------------------------------------------------- */
+
+.workspace-sidebar--collapsed {
+  display: flex;
+  width: 36px;
+  flex: 0 0 36px;
+  flex-direction: column;
+  align-items: center;
+  border-right: 1px solid var(--collapsed-sidebar-border);
+  background: var(--collapsed-sidebar-bg);
+  padding-top: 6px;
+}
+
+.sidebar-collapsed-toggle {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  color: var(--collapsed-sidebar-toggle);
+  transition: opacity 120ms ease;
+}
+
+.sidebar-collapsed-toggle:hover {
+  opacity: 0.78;
+}
+
+.sidebar-collapsed-toggle-mark {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sidebar-collapsed-toggle-mark > svg {
+  color: var(--collapsed-sidebar-bg);
+  transform: translateX(0.5px);
+}
+
+.sidebar-collapsed-items {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-top: 4px;
+}
+
+.sidebar-collapsed-item {
+  display: flex;
+  width: 30px;
+  height: 37px;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--collapsed-sidebar-icon);
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.sidebar-collapsed-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.sidebar-collapsed-item[data-active='true'] {
+  border-color: var(--select-border);
+  background: var(--select-bg);
+  color: var(--text-1);
+}
+
+.sidebar-collapsed-item > svg {
+  flex: none;
+}
+
+.sidebar-collapsed-item > span {
+  min-width: 0;
+  max-width: 28px;
+  overflow: hidden;
+  color: var(--collapsed-sidebar-count);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 13px;
+  text-overflow: clip;
+  white-space: nowrap;
+}
 
 .side-section {
   display: flex;
@@ -2012,38 +2107,6 @@ button.ref-chip:active {
 
 .sidebar-pr-destination > svg {
   color: var(--success-text);
-}
-
-.sidebar-collapsed-destination {
-  position: relative;
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid transparent;
-  color: var(--success-text);
-}
-
-.sidebar-collapsed-destination:hover,
-.sidebar-collapsed-destination[data-active='true'] {
-  border-color: var(--select-border);
-  background: var(--select-bg);
-}
-
-.sidebar-collapsed-destination > span {
-  position: absolute;
-  right: -4px;
-  top: -4px;
-  min-width: 16px;
-  height: 16px;
-  border: 2px solid var(--bg-sidebar);
-  border-radius: 999px;
-  background: var(--accent);
-  padding: 0 3px;
-  color: #071712;
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 12px;
 }
 
 .pr-count-badge {
