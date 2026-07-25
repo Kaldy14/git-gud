@@ -55,6 +55,22 @@ describe('IPC argument validation', () => {
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
+    expect(
+      validateIpcArgs('repo:initialize', [
+        { parentDirectory: '/projects', name: 'git-gud', defaultBranch: 'main' }
+      ])
+    ).toEqual([{ parentDirectory: '/projects', name: 'git-gud', defaultBranch: 'main' }]);
+    expect(
+      validateIpcArgs('repo:clone', [
+        { parentDirectory: '/projects', sourceUrl: 'https://github.com/acme/widgets.git' }
+      ])
+    ).toEqual([
+      {
+        parentDirectory: '/projects',
+        sourceUrl: 'https://github.com/acme/widgets.git',
+        directoryName: undefined
+      }
+    ]);
     expect(validateIpcArgs('system:open-codex-task', ['/repo', 'Explain this selection.'])).toEqual([
       '/repo',
       'Explain this selection.'

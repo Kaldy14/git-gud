@@ -1,4 +1,9 @@
-import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
+import type {
+  IpcChannelMap,
+  IpcChannelName,
+  RepositoryCloneInput,
+  RepositoryInitializeInput
+} from '@shared/ipc';
 import { MAX_CODEX_DEEP_LINK_PROMPT_LENGTH } from '@shared/codex';
 import type {
   AppSettingsInput,
@@ -44,6 +49,9 @@ const MAX_BULK_CHERRY_PICK_COMMITS = 100;
 const validators = {
   'workspace:get': (args) => noArgs('workspace:get', args),
   'repo:open-dialog': (args) => noArgs('repo:open-dialog', args),
+  'repo:choose-parent-directory': (args) => noArgs('repo:choose-parent-directory', args),
+  'repo:initialize': (args) => readOnlyArg(args, 'repo:initialize', 'input', readRepositoryInitializeInput),
+  'repo:clone': (args) => readOnlyArg(args, 'repo:clone', 'input', readRepositoryCloneInput),
   'repo:open-path': (args) => readOnlyArg(args, 'repo:open-path', 'repoPath', readString),
   'repo:replace-path': (args) => readStringPair(args, 'repo:replace-path', 'tabId', 'repoPath'),
   'tabs:activate': (args) => readOnlyArg(args, 'tabs:activate', 'tabId', readString),
@@ -281,6 +289,24 @@ function readCommitInput(value: unknown): GitCommitInput {
   return {
     message: readStringProperty(record, 'message'),
     amend: readBooleanProperty(record, 'amend')
+  };
+}
+
+function readRepositoryInitializeInput(value: unknown): RepositoryInitializeInput {
+  const record = readRecord(value, 'repository initialize input');
+  return {
+    parentDirectory: readNonEmptyString(record.parentDirectory, 'parentDirectory'),
+    name: readNonEmptyString(record.name, 'name'),
+    defaultBranch: readNonEmptyString(record.defaultBranch, 'defaultBranch')
+  };
+}
+
+function readRepositoryCloneInput(value: unknown): RepositoryCloneInput {
+  const record = readRecord(value, 'repository clone input');
+  return {
+    parentDirectory: readNonEmptyString(record.parentDirectory, 'parentDirectory'),
+    sourceUrl: readNonEmptyString(record.sourceUrl, 'sourceUrl'),
+    directoryName: readOptionalString(record.directoryName, 'directoryName')
   };
 }
 

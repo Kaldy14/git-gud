@@ -70,6 +70,7 @@ import {
 } from '@renderer/workspace/branchActivation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
+import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type {
   CommitGraphRow,
   GitConflictActionInput,
@@ -169,6 +170,9 @@ export function WorkspaceShell(): ReactElement {
     initialize,
     openRepository,
     openRepositoryAtPath,
+    chooseRepositoryParentDirectory,
+    initializeRepository,
+    cloneRepository,
     replaceRepositoryAtPath,
     activateTab,
     closeTab,
@@ -211,6 +215,9 @@ export function WorkspaceShell(): ReactElement {
   const [sidebarFilterFocusSignal, setSidebarFilterFocusSignal] = useState(0);
   const [profileTransition, setProfileTransition] = useState<ProfileTransitionState>();
   const [gitHubWorkspaceView, setGitHubWorkspaceView] = useState<GitHubWorkspaceView>();
+  const [isStartTabOpen, setIsStartTabOpen] = useState(true);
+  const [isStartTabActive, setIsStartTabActive] = useState(true);
+  const initialSurfaceResolvedRef = useRef(false);
   const operationRetryActionsRef = useRef(
     new Map<
       string,
@@ -234,10 +241,11 @@ export function WorkspaceShell(): ReactElement {
   });
   const queryClient = useQueryClient();
 
-  const activeTab = useMemo(
+  const workspaceActiveTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId),
     [workspace.activeTabId, workspace.tabs]
   );
+  const activeTab = isStartTabActive ? undefined : workspaceActiveTab;
   const localMutationCount = useIsMutating({ mutationKey: ['repository-mutation', activeTab?.path] });
   const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? settings.graphPageSize) : settings.graphPageSize;
   const relatedRepoPaths = useMemo(
@@ -366,6 +374,26 @@ export function WorkspaceShell(): ReactElement {
   useEffect(() => {
     void initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (isLoading || initialSurfaceResolvedRef.current) {
+      return;
+    }
+
+    initialSurfaceResolvedRef.current = true;
+    const shouldShowStartTab = workspace.tabs.length === 0;
+    setIsStartTabOpen(shouldShowStartTab);
+    setIsStartTabActive(shouldShowStartTab);
+  }, [isLoading, workspace.tabs.length]);
+
+  useEffect(() => {
+    if (isLoading || !initialSurfaceResolvedRef.current || workspace.tabs.length > 0) {
+      return;
+    }
+
+    setIsStartTabOpen(true);
+    setIsStartTabActive(true);
+  }, [isLoading, workspace.tabs.length]);
 
   useEffect(() => {
     setSidebarWidthDraft(workspace.sidebarWidth);
@@ -745,6 +773,82 @@ export function WorkspaceShell(): ReactElement {
     setCommitComposerFocusByTab((value) => withoutRecordKey(value, tabId));
     setFileFocusByTab((value) => withoutRecordKey(value, tabId));
     setReviewTargetByTab((value) => withoutRecordKey(value, tabId));
+  }
+
+  function handleOpenStartTab(): void {
+    setGitHubWorkspaceView(undefined);
+    setIsStartTabOpen(true);
+    setIsStartTabActive(true);
+  }
+
+  function handleActivateStartTab(): void {
+    setGitHubWorkspaceView(undefined);
+    setIsStartTabActive(true);
+  }
+
+  function handleCloseStartTab(): void {
+    if (workspace.tabs.length === 0) {
+      return;
+    }
+
+    setIsStartTabOpen(false);
+    setIsStartTabActive(false);
+  }
+
+  async function handleActivateRepositoryTab(tabId: string): Promise<void> {
+    setIsStartTabActive(false);
+    await activateTab(tabId);
+  }
+
+  function completeStartPageAction(): void {
+    setIsStartTabOpen(false);
+    setIsStartTabActive(false);
+  }
+
+  async function handleOpenRepositoryFromStart(): Promise<boolean> {
+    const openedWorkspace = await openRepository();
+
+    if (!openedWorkspace) {
+      return false;
+    }
+
+    completeStartPageAction();
+    return true;
+  }
+
+  async function handleOpenRecentRepositoryFromStart(repoPath: string): Promise<boolean> {
+    const openedWorkspace = await openRepositoryAtPath(repoPath);
+
+    if (!openedWorkspace) {
+      return false;
+    }
+
+    completeStartPageAction();
+    return true;
+  }
+
+  async function handleInitializeRepositoryFromStart(
+    input: RepositoryInitializeInput
+  ): Promise<boolean> {
+    const initializedWorkspace = await initializeRepository(input);
+
+    if (!initializedWorkspace) {
+      return false;
+    }
+
+    completeStartPageAction();
+    return true;
+  }
+
+  async function handleCloneRepositoryFromStart(input: RepositoryCloneInput): Promise<boolean> {
+    const clonedWorkspace = await cloneRepository(input);
+
+    if (!clonedWorkspace) {
+      return false;
+    }
+
+    completeStartPageAction();
+    return true;
   }
 
   function handleSetDiffStyle(style: DiffStyle): void {
@@ -1975,20 +2079,22 @@ export function WorkspaceShell(): ReactElement {
     >
       <TabStrip
         tabs={workspace.tabs}
-        activeTabId={workspace.activeTabId}
-        recentRepos={workspace.recentRepos}
+        activeTabId={isStartTabActive ? undefined : workspace.activeTabId}
+        isStartTabOpen={isStartTabOpen}
+        isStartTabActive={isStartTabActive}
         profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
-        onActivateTab={(tabId) => void activateTab(tabId)}
+        onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}
         onCloseTab={handleCloseTab}
-        onOpenRepository={() => void openRepository()}
-        onOpenRecentRepository={(repoPath) => void openRepositoryAtPath(repoPath)}
+        onOpenStartTab={handleOpenStartTab}
+        onActivateStartTab={handleActivateStartTab}
+        onCloseStartTab={handleCloseStartTab}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onActivateProfile={handleActivateProfile}
         onSaveAndActivateProfile={handleSaveAndActivateProfile}
       />
 
-      {!gitHubWorkspaceView ? (
+      {!gitHubWorkspaceView && !isStartTabActive ? (
         <Toolbar
           activeTab={activeTab}
           repositoryOverview={repositoryQuery.data}
@@ -2019,7 +2125,7 @@ export function WorkspaceShell(): ReactElement {
         </div>
       ) : null}
 
-      {!gitHubWorkspaceView ? (
+      {!gitHubWorkspaceView && !isStartTabActive ? (
         <ConflictBanner
           conflictState={repositoryQuery.data?.conflictState}
           isBusy={isOperationBusy}
@@ -2092,6 +2198,16 @@ export function WorkspaceShell(): ReactElement {
               />
             )}
           </>
+        ) : isStartTabActive ? (
+          <StartPage
+            isLoading={isLoading}
+            recentRepos={workspace.recentRepos}
+            onOpenRepository={handleOpenRepositoryFromStart}
+            onOpenRecentRepository={handleOpenRecentRepositoryFromStart}
+            onChooseParentDirectory={chooseRepositoryParentDirectory}
+            onInitializeRepository={handleInitializeRepositoryFromStart}
+            onCloneRepository={handleCloneRepositoryFromStart}
+          />
         ) : activeTab ? (
           interactiveRebaseDialog ? (
             <InteractiveRebaseDialog
@@ -2277,45 +2393,19 @@ export function WorkspaceShell(): ReactElement {
             </>
           )
         ) : (
-          <>
-            <Sidebar
-              repositoryOverview={undefined}
-              isLoading={false}
-              isRefreshing={false}
-              isCollapsed={isSidebarCollapsed}
-              width={effectiveSidebarWidth}
-              filterFocusSignal={sidebarFilterFocusSignal}
-              onToggleCollapsed={handleToggleSidebar}
-              pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
-              isPullRequestLoading={pullRequestInboxQuery.isLoading}
-              isPullRequestInboxActive={false}
-              onOpenPullRequestInbox={handleOpenPullRequestInbox}
-              onResize={handleSidebarResize}
-              onResizeCommit={handleSidebarResizeCommit}
-              isOperationBusy={false}
-              onCheckoutBranch={handleCheckoutBranch}
-              onCheckoutRemoteBranch={handleActivateRemoteBranch}
-              onRenameBranch={handleRenameBranch}
-              onReviewBranch={handleOpenBranchReview}
-              onDeleteBranch={handleDeleteBranch}
-              onDeleteRemoteBranch={handleDeleteRemoteBranch}
-              onPushTag={handlePushTag}
-              onDeleteTag={handleDeleteTag}
-              onStashApply={handleStashApply}
-              onStashPop={handleStashPop}
-              onStashDrop={handleStashDrop}
-            />
-            <StartPage
-              isLoading={isLoading}
-              recentRepos={workspace.recentRepos}
-              onOpenRepository={() => void openRepository()}
-              onOpenRecentRepository={(repoPath) => void openRepositoryAtPath(repoPath)}
-            />
-          </>
+          <StartPage
+            isLoading={isLoading}
+            recentRepos={workspace.recentRepos}
+            onOpenRepository={handleOpenRepositoryFromStart}
+            onOpenRecentRepository={handleOpenRecentRepositoryFromStart}
+            onChooseParentDirectory={chooseRepositoryParentDirectory}
+            onInitializeRepository={handleInitializeRepositoryFromStart}
+            onCloneRepository={handleCloneRepositoryFromStart}
+          />
         )}
       </section>
 
-      {!gitHubWorkspaceView ? (
+      {!gitHubWorkspaceView && !isStartTabActive ? (
         <StatusBar
           activeTab={activeTab}
           repositoryOverview={repositoryQuery.data}
@@ -2345,7 +2435,7 @@ export function WorkspaceShell(): ReactElement {
           paletteActions={paletteActions}
           isOperationBusy={isOperationBusy}
           onClose={() => setIsQuickJumpOpen(false)}
-          onActivateTab={(tabId) => void activateTab(tabId)}
+          onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}
           onCheckoutBranch={handleCheckoutBranch}
           onCheckoutRemoteBranch={handleActivateRemoteBranch}
           onSelectCommit={handleSelectRow}

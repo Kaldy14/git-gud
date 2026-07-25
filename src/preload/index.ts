@@ -12,6 +12,9 @@ function invoke<TChannel extends keyof IpcChannelMap>(
 const api: RendererApi = {
   getWorkspace: () => invoke('workspace:get'),
   openRepository: () => invoke('repo:open-dialog'),
+  chooseRepositoryParentDirectory: () => invoke('repo:choose-parent-directory'),
+  initializeRepository: (input) => invoke('repo:initialize', input),
+  cloneRepository: (input) => invoke('repo:clone', input),
   openRepositoryAtPath: (repoPath) => invoke('repo:open-path', repoPath),
   replaceRepositoryAtPath: (tabId, repoPath) => invoke('repo:replace-path', tabId, repoPath),
   activateTab: (tabId) => invoke('tabs:activate', tabId),

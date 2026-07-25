@@ -16,6 +16,7 @@ import { loadCommitGraph } from './git/commitGraph';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
+import { cloneRepository, initializeRepository } from './git/repositoryCreation';
 import {
   checkoutRef,
   cherryPickCommits,
@@ -218,6 +219,30 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     const repository = await validateRepository(result.filePaths[0]);
     const workspace = openWorkspaceRepository(repository);
     return syncWorkspaceWatchers(workspace, repoWatchers);
+  });
+
+  handle('repo:choose-parent-directory', async (event) => {
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    const dialogOptions: OpenDialogOptions = {
+      title: 'Choose Repository Location',
+      buttonLabel: 'Choose',
+      properties: ['openDirectory', 'createDirectory']
+    };
+    const result = browserWindow
+      ? await dialog.showOpenDialog(browserWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+
+  handle('repo:initialize', async (_event, input) => {
+    const repository = await initializeRepository(input);
+    return syncWorkspaceWatchers(openWorkspaceRepository(repository), repoWatchers);
+  });
+
+  handle('repo:clone', async (_event, input) => {
+    const repository = await cloneRepository(input);
+    return syncWorkspaceWatchers(openWorkspaceRepository(repository), repoWatchers);
   });
 
   handle('repo:open-path', async (_event, repoPath) => {

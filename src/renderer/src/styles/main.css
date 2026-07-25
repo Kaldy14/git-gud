@@ -128,6 +128,35 @@ input {
   font: inherit;
 }
 
+.repository-start-input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  outline: none;
+  background: var(--bg-field);
+  padding: 0 11px;
+  color: var(--text-1);
+  font-size: 13px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.repository-start-input::placeholder {
+  color: var(--text-3);
+}
+
+.repository-start-input:focus {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 2px rgb(95 214 195 / 0.12);
+}
+
+.repository-start-input:disabled {
+  color: var(--text-3);
+  opacity: 0.68;
+}
+
 .drag-region {
   -webkit-app-region: drag;
 }

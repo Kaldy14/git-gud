@@ -51,6 +51,18 @@ import type {
   WorkspaceState
 } from './types';
 
+export type RepositoryInitializeInput = {
+  parentDirectory: string;
+  name: string;
+  defaultBranch: string;
+};
+
+export type RepositoryCloneInput = {
+  parentDirectory: string;
+  sourceUrl: string;
+  directoryName?: string;
+};
+
 export type IpcChannelMap = {
   'workspace:get': {
     args: [];
@@ -59,6 +71,18 @@ export type IpcChannelMap = {
   'repo:open-dialog': {
     args: [];
     result: WorkspaceState | null;
+  };
+  'repo:choose-parent-directory': {
+    args: [];
+    result: string | null;
+  };
+  'repo:initialize': {
+    args: [input: RepositoryInitializeInput];
+    result: WorkspaceState;
+  };
+  'repo:clone': {
+    args: [input: RepositoryCloneInput];
+    result: WorkspaceState;
   };
   'repo:open-path': {
     args: [repoPath: string];
@@ -359,6 +383,9 @@ export type IpcChannelName = keyof IpcChannelMap;
 export type RendererApi = {
   getWorkspace: () => Promise<WorkspaceState>;
   openRepository: () => Promise<WorkspaceState | null>;
+  chooseRepositoryParentDirectory: () => Promise<string | null>;
+  initializeRepository: (input: RepositoryInitializeInput) => Promise<WorkspaceState>;
+  cloneRepository: (input: RepositoryCloneInput) => Promise<WorkspaceState>;
   openRepositoryAtPath: (repoPath: string) => Promise<WorkspaceState>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState>;
   activateTab: (tabId: string) => Promise<WorkspaceState>;

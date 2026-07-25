@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type { WorkspaceState } from '@shared/types';
 import {
   createDefaultWorkspaceState,
@@ -15,8 +16,11 @@ type WorkspaceStore = {
   isLoading: boolean;
   errorMessage?: string;
   initialize: () => Promise<void>;
-  openRepository: () => Promise<void>;
-  openRepositoryAtPath: (repoPath: string) => Promise<void>;
+  openRepository: () => Promise<WorkspaceState | undefined>;
+  openRepositoryAtPath: (repoPath: string) => Promise<WorkspaceState | undefined>;
+  chooseRepositoryParentDirectory: () => Promise<string | undefined>;
+  initializeRepository: (input: RepositoryInitializeInput) => Promise<WorkspaceState | undefined>;
+  cloneRepository: (input: RepositoryCloneInput) => Promise<WorkspaceState | undefined>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState | undefined>;
   activateTab: (tabId: string) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
@@ -38,10 +42,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     await runWorkspaceAction(set, () => window.api.getWorkspace());
   },
   async openRepository() {
-    await runWorkspaceAction(set, () => window.api.openRepository());
+    return runWorkspaceAction(set, () => window.api.openRepository());
   },
   async openRepositoryAtPath(repoPath) {
-    await runWorkspaceAction(set, () => window.api.openRepositoryAtPath(repoPath));
+    return runWorkspaceAction(set, () => window.api.openRepositoryAtPath(repoPath));
+  },
+  async chooseRepositoryParentDirectory() {
+    set({ errorMessage: undefined });
+
+    try {
+      return (await window.api.chooseRepositoryParentDirectory()) ?? undefined;
+    } catch (error) {
+      set({ errorMessage: workspaceActionErrorMessage(error) });
+      return undefined;
+    }
+  },
+  async initializeRepository(input) {
+    return runWorkspaceAction(set, () => window.api.initializeRepository(input));
+  },
+  async cloneRepository(input) {
+    return runWorkspaceAction(set, () => window.api.cloneRepository(input));
   },
   async replaceRepositoryAtPath(tabId, repoPath) {
     return runWorkspaceAction(set, () => window.api.replaceRepositoryAtPath(tabId, repoPath));
