@@ -1278,7 +1278,7 @@ function CommitSubjectLine({ subject, isMerge }: { subject: string; isMerge: boo
   const [primary, secondary] = splitCommitSubject(subject);
 
   return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] leading-none">
+    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] leading-4">
       <span className={isMerge ? 'min-w-0 truncate text-[var(--graph-text-muted)]' : 'min-w-0 truncate text-[var(--graph-text)]'}>
         {primary}
       </span>
