@@ -132,6 +132,7 @@ type GraphViewProps = {
   onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
   onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onPushBranch?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
   onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
   onActivateRemoteBranch?: (name: string) => Promise<void> | void;
@@ -220,6 +221,7 @@ export function GraphView({
   onStashPop,
   onStashDrop,
   onCheckoutBranch,
+  onPushBranch,
   onRenameBranch,
   onReviewBranch,
   onActivateRemoteBranch,
@@ -889,6 +891,7 @@ export function GraphView({
             scrollRef.current?.focus({ preventScroll: true });
           }}
           onCheckoutBranch={onCheckoutBranch}
+          onPushBranch={onPushBranch}
           onRenameBranch={onRenameBranch}
           onReviewBranch={onReviewBranch}
           onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
@@ -2368,6 +2371,7 @@ function GraphBranchContextMenu({
   state,
   onClose,
   onCheckoutBranch,
+  onPushBranch,
   onRenameBranch,
   onReviewBranch,
   onCreateTagAtCommit,
@@ -2380,6 +2384,7 @@ function GraphBranchContextMenu({
   state: BranchContextMenuState;
   onClose: () => void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onPushBranch?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
   onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
@@ -2443,6 +2448,19 @@ function GraphBranchContextMenu({
       >
         <BookOpenCheck size={14} />
         <span>Review entire branch</span>
+      </button>
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onPushBranch || isOperationBusy}
+        onClick={() => {
+          void onPushBranch?.(state.branchName);
+          onClose();
+        }}
+      >
+        <Cloud size={14} />
+        <span>Push branch to remote</span>
       </button>
       <MenuSeparator />
       <button

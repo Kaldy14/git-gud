@@ -370,6 +370,7 @@ export type GitPullInput = {
 
 export type GitPushInput = {
   forceWithLease: boolean;
+  branch?: string;
 };
 
 export type GitCreateBranchInput = {

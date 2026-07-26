@@ -592,7 +592,8 @@ function readPullInput(value: unknown): GitPullInput {
 function readPushInput(value: unknown): GitPushInput {
   const record = readRecord(value, 'push input');
   return {
-    forceWithLease: readBooleanProperty(record, 'forceWithLease')
+    forceWithLease: readBooleanProperty(record, 'forceWithLease'),
+    branch: readOptionalStringProperty(record, 'branch')
   };
 }
 

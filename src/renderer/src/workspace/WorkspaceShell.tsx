@@ -1280,6 +1280,12 @@ export function WorkspaceShell(): ReactElement {
     void runRepositoryOperation('Push', (repoPath) => window.api.pushRepository(repoPath, { forceWithLease: false }));
   }
 
+  function handlePushBranch(name: string): void {
+    void runRepositoryOperation(`Push ${name}`, (repoPath) =>
+      window.api.pushRepository(repoPath, { forceWithLease: false, branch: name })
+    );
+  }
+
   function handleDiscardWipFile(file: GitFileChangeDetail): void {
     openCommandDialog({
       title: 'Discard file changes',
@@ -2284,6 +2290,7 @@ export function WorkspaceShell(): ReactElement {
               isOperationBusy={isOperationBusy}
               onCheckoutBranch={handleCheckoutBranch}
               onCheckoutRemoteBranch={handleActivateRemoteBranch}
+              onPushBranch={handlePushBranch}
               onRenameBranch={handleRenameBranch}
               onReviewBranch={handleOpenBranchReview}
               onDeleteBranch={handleDeleteBranch}
@@ -2368,6 +2375,7 @@ export function WorkspaceShell(): ReactElement {
                 isOperationBusy={isOperationBusy}
                 onCheckoutBranch={handleCheckoutBranch}
                 onCheckoutRemoteBranch={handleActivateRemoteBranch}
+                onPushBranch={handlePushBranch}
                 onRenameBranch={handleRenameBranch}
                 onReviewBranch={handleOpenBranchReview}
                 onDeleteBranch={handleDeleteBranch}
@@ -2460,6 +2468,7 @@ export function WorkspaceShell(): ReactElement {
                   onStashPop={handleStashPop}
                   onStashDrop={handleStashDrop}
                   onCheckoutBranch={handleCheckoutBranch}
+                  onPushBranch={handlePushBranch}
                   onRenameBranch={handleRenameBranch}
                   onActivateRemoteBranch={handleActivateRemoteBranch}
                   onMergeBranch={handleMergeBranch}

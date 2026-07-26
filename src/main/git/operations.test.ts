@@ -16,6 +16,7 @@ import {
   deleteTag,
   mergeRef,
   pullRepository,
+  pushRepository,
   pushTag,
   resetToCommit,
   resolveConflict,
@@ -503,6 +504,68 @@ describe('git operations', () => {
       expect((await git(repoPath, ['merge-base', '--is-ancestor', secondUpstreamHead, 'HEAD'])).exitCode).toBe(0);
       expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('local work');
       expect(await readFile(join(repoPath, 'generated/unrelated.txt'), 'utf8')).toBe('keep me\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('pushes a selected local branch without checking it out and sets its upstream', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['checkout', '-b', 'feature/publish']);
+      await commitFile(repoPath, 'publish.txt', 'publish me\n', 'publish feature');
+      const featureHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+
+      const result = await pushRepository(tab, {
+        forceWithLease: false,
+        branch: 'feature/publish'
+      });
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect((await git(remotePath, ['rev-parse', 'refs/heads/feature/publish'])).stdout.trim()).toBe(featureHead);
+      expect(await branchUpstream(repoPath, 'feature/publish')).toBe('origin/feature/publish');
+      expect(result.operation?.label).toBe('Push feature/publish to origin');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('pushes a selected local branch to its existing upstream branch', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['checkout', '-b', 'feature/local-name']);
+      await commitFile(repoPath, 'published.txt', 'first\n', 'first published commit');
+      await git(repoPath, [
+        'push',
+        '-u',
+        'origin',
+        'refs/heads/feature/local-name:refs/heads/review/published'
+      ]);
+      await commitFile(repoPath, 'published.txt', 'second\n', 'second published commit');
+      const featureHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+
+      await pushRepository(tab, {
+        forceWithLease: false,
+        branch: 'feature/local-name'
+      });
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect((await git(remotePath, ['rev-parse', 'refs/heads/review/published'])).stdout.trim()).toBe(featureHead);
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/heads/feature/local-name']);
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

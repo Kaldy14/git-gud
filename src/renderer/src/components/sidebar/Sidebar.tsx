@@ -44,6 +44,7 @@ type SidebarProps = {
   isOperationBusy: boolean;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
+  onPushBranch: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onReviewBranch: (name: string, sha: string) => void;
   onDeleteBranch: (name: string) => void;
@@ -128,6 +129,7 @@ export function Sidebar({
   isOperationBusy,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
+  onPushBranch,
   onRenameBranch,
   onReviewBranch,
   onDeleteBranch,
@@ -450,6 +452,7 @@ export function Sidebar({
           onClose={() => setContextMenu(undefined)}
           onCheckoutBranch={onCheckoutBranch}
           onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+          onPushBranch={onPushBranch}
           onRenameBranch={onRenameBranch}
           onReviewBranch={onReviewBranch}
           onDeleteBranch={onDeleteBranch}
@@ -866,6 +869,7 @@ function SidebarContextMenu({
   onClose,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
+  onPushBranch,
   onRenameBranch,
   onReviewBranch,
   onDeleteBranch,
@@ -882,6 +886,7 @@ function SidebarContextMenu({
   onClose: () => void;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
+  onPushBranch: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onReviewBranch: (name: string, sha: string) => void;
   onDeleteBranch: (name: string) => void;
@@ -948,6 +953,19 @@ function SidebarContextMenu({
           >
             <BookOpenCheck size={14} />
             <span>Review entire branch</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onPushBranch(state.branch.name);
+              onClose();
+            }}
+          >
+            <Cloud size={14} />
+            <span>Push branch to remote</span>
           </button>
           <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
           <button

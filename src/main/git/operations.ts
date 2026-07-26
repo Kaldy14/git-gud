@@ -107,12 +107,55 @@ export async function pullRepository(
 
 export async function pushRepository(tab: OperationTab, input: GitPushInput): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const status = await loadStatus(tab.path, env);
   const args = ['push'];
 
   if (input.forceWithLease) {
     args.push('--force-with-lease');
   }
+
+  if (input.branch) {
+    const branchName = normalizeRequiredName(input.branch, 'Branch name');
+    await assertValidBranchName(tab.path, branchName, env);
+    await revParse(tab.path, `refs/heads/${branchName}^{commit}`, env);
+
+    const remotes = await loadRemotes(tab.path, env);
+    const upstream = await branchUpstream(tab.path, branchName, env);
+    const upstreamRemote = upstream
+      ? [...remotes]
+          .sort((left, right) => right.name.length - left.name.length)
+          .find((candidate) => upstream.startsWith(`${candidate.name}/`))
+      : undefined;
+    const remote = upstreamRemote ?? remotes.find((candidate) => candidate.name === 'origin') ?? remotes[0];
+
+    if (!remote) {
+      throw new Error('Push requires a configured Git remote.');
+    }
+
+    const remoteBranchName = upstreamRemote && upstream
+      ? upstream.slice(upstreamRemote.name.length + 1)
+      : branchName;
+
+    if (!upstreamRemote) {
+      args.push('-u');
+    }
+
+    args.push('--', remote.name, `refs/heads/${branchName}:refs/heads/${remoteBranchName}`);
+    await gitExecutor.run(args, {
+      cwd: tab.path,
+      kind: 'mutation',
+      env,
+      cancellable: true,
+      timeoutMs: NETWORK_GIT_TIMEOUT_MS
+    });
+    return createOperationResult(
+      tab,
+      env,
+      'push',
+      `${input.forceWithLease ? 'Push with lease' : 'Push'} ${branchName} to ${remote.name}`
+    );
+  }
+
+  const status = await loadStatus(tab.path, env);
 
   if (!status.branch.isDetached && !status.branch.upstream) {
     const remotes = await loadRemotes(tab.path, env);
