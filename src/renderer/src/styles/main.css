@@ -3590,6 +3590,14 @@ button.ref-chip:active {
   padding-right: 8px;
 }
 
+.dashboard-header-navigation {
+  display: flex;
+  min-width: 0;
+  align-self: stretch;
+  align-items: center;
+  gap: 2px;
+}
+
 .dashboard-header-tabs {
   display: flex;
   min-width: 0;

@@ -244,49 +244,49 @@ export function DashboardView({
         {activeDashboard ? (
           <>
             <header className="dashboard-header">
-              <div className="dashboard-header-tabs" role="tablist" aria-label="Dashboards">
-                {dashboards.map((dashboard, dashboardIndex) => {
-                  const isActive = dashboard.id === activeDashboard.id;
+              <div className="dashboard-header-navigation">
+                <div className="dashboard-header-tabs" role="tablist" aria-label="Dashboards">
+                  {dashboards.map((dashboard, dashboardIndex) => {
+                    const isActive = dashboard.id === activeDashboard.id;
 
-                  return (
-                    <button
-                      id={dashboardTabDomId(dashboard.id)}
-                      className="dashboard-header-tab"
-                      data-active={isActive}
-                      key={dashboard.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      tabIndex={isActive ? 0 : -1}
-                      title={dashboard.name}
-                      onClick={() => onSelectDashboard(dashboard.id)}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
-                          return;
-                        }
+                    return (
+                      <button
+                        id={dashboardTabDomId(dashboard.id)}
+                        className="dashboard-header-tab"
+                        data-active={isActive}
+                        key={dashboard.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        title={dashboard.name}
+                        onClick={() => onSelectDashboard(dashboard.id)}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                            return;
+                          }
 
-                        event.preventDefault();
-                        const direction = event.key === 'ArrowRight' ? 1 : -1;
-                        const nextIndex =
-                          (dashboardIndex + direction + dashboards.length) % dashboards.length;
-                        const nextDashboard = dashboards[nextIndex];
+                          event.preventDefault();
+                          const direction = event.key === 'ArrowRight' ? 1 : -1;
+                          const nextIndex =
+                            (dashboardIndex + direction + dashboards.length) % dashboards.length;
+                          const nextDashboard = dashboards[nextIndex];
 
-                        if (nextDashboard) {
-                          onSelectDashboard(nextDashboard.id);
-                          window.requestAnimationFrame(() =>
-                            document.getElementById(dashboardTabDomId(nextDashboard.id))?.focus()
-                          );
-                        }
-                      }}
-                    >
-                      <span>{dashboard.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="dashboard-header-actions">
+                          if (nextDashboard) {
+                            onSelectDashboard(nextDashboard.id);
+                            window.requestAnimationFrame(() =>
+                              document.getElementById(dashboardTabDomId(nextDashboard.id))?.focus()
+                            );
+                          }
+                        }}
+                      >
+                        <span>{dashboard.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
                 <button
-                  className="icon-btn h-7 w-7"
+                  className="icon-btn h-7 w-7 shrink-0"
                   type="button"
                   aria-label="Create dashboard"
                   title="Create dashboard"
@@ -295,8 +295,10 @@ export function DashboardView({
                     setDialog({ kind: 'create', name: '' });
                   }}
                 >
-                  <LayoutDashboard size={13} />
+                  <Plus size={13} />
                 </button>
+              </div>
+              <div className="dashboard-header-actions">
                 <button
                   className="icon-btn h-7 w-7"
                   type="button"
