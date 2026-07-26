@@ -42,6 +42,7 @@ type StoreShape = {
   settings: AppSettings;
   dashboards: Dashboard[];
   selectedDashboardIds: Record<string, string>;
+  repositoryFetchTimestamps: Record<string, string>;
 };
 
 const store = new Store<StoreShape>({
@@ -53,7 +54,8 @@ const store = new Store<StoreShape>({
     workspacesByProfile: {},
     settings: createDefaultAppSettings(),
     dashboards: [],
-    selectedDashboardIds: {}
+    selectedDashboardIds: {},
+    repositoryFetchTimestamps: {}
   }
 });
 
@@ -68,6 +70,20 @@ export function getWorkspace(): WorkspaceState {
   const workspace = normalizeWorkspaceState(storedWorkspace ?? createDefaultWorkspaceState(activeProfileId));
 
   return workspaceForProfile(workspace, activeProfileId);
+}
+
+export function getRepositoryLastFetchedAt(commonDir: string): string | undefined {
+  return store.get('repositoryFetchTimestamps')?.[commonDir];
+}
+
+export function recordRepositoryFetch(
+  commonDir: string,
+  fetchedAt = new Date().toISOString()
+): void {
+  store.set('repositoryFetchTimestamps', {
+    ...(store.get('repositoryFetchTimestamps') ?? {}),
+    [commonDir]: fetchedAt
+  });
 }
 
 export function activateWorkspaceProfile(profileId: string | undefined): WorkspaceState {

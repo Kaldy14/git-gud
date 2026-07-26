@@ -435,9 +435,13 @@ describe('git operations', () => {
       const upstreamHead = (await git(remoteWriterPath, ['rev-parse', 'HEAD'])).stdout.trim();
       const localHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
       await writeRepoFile(repoPath, 'generated/output.txt', 'ignored local value\n');
+      const onFetchCompleted = vi.fn();
 
-      await expect(pullRepository(tab, { mode: 'ff-only' })).rejects.toThrow('overwrite ignored path');
+      await expect(
+        pullRepository(tab, { mode: 'ff-only' }, onFetchCompleted)
+      ).rejects.toThrow('overwrite ignored path');
 
+      expect(onFetchCompleted).toHaveBeenCalledOnce();
       expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(localHead);
       expect((await git(repoPath, ['rev-parse', 'refs/remotes/origin/main'])).stdout.trim()).toBe(upstreamHead);
       expect(await readFile(join(repoPath, 'generated/output.txt'), 'utf8')).toBe('ignored local value\n');

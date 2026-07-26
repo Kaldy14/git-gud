@@ -54,6 +54,7 @@ import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
   prepareRepositoryForProfileTransition,
+  repositoryOverviewQueryKey,
   useCommitGraph,
   useRepositoryChangeInvalidation,
   useRepositoryOverview
@@ -75,6 +76,10 @@ import {
   resolveRemoteBranchActivation
 } from '@renderer/workspace/branchActivation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
+import {
+  autoFetchRepositoryOnTabActivation,
+  createRepositoryAutoFetchCoordinator
+} from '@renderer/workspace/autoFetch';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type {
@@ -91,6 +96,7 @@ import type {
   GitProfile,
   GitRemoteBranchRef,
   GitReviewTarget,
+  RepoTab,
   RepoProfileState,
   GitResetInput,
   GitStashRefInput,
@@ -226,6 +232,7 @@ export function WorkspaceShell(): ReactElement {
   const [isStartTabOpen, setIsStartTabOpen] = useState(true);
   const [isStartTabActive, setIsStartTabActive] = useState(true);
   const initialSurfaceResolvedRef = useRef(false);
+  const autoFetchCoordinatorRef = useRef(createRepositoryAutoFetchCoordinator<RepoTab>());
   const operationRetryActionsRef = useRef(
     new Map<
       string,
@@ -854,7 +861,51 @@ export function WorkspaceShell(): ReactElement {
   async function handleActivateRepositoryTab(tabId: string): Promise<void> {
     setGitHubWorkspaceView(undefined);
     setIsStartTabActive(false);
-    await activateTab(tabId);
+    const activatedWorkspace = await activateTab(tabId);
+    const activatedTab = activatedWorkspace?.tabs.find((tab) => tab.id === tabId);
+
+    if (!activatedTab) {
+      return;
+    }
+
+    autoFetchCoordinatorRef.current.schedule(activatedTab, (repository) =>
+      autoFetchRepositoryOnTabActivation({
+        loadRepository: () =>
+          queryClient.fetchQuery({
+            queryKey: repositoryOverviewQueryKey(repository.path),
+            queryFn: () => window.api.getRepositoryOverview(repository.path),
+            staleTime: 1500,
+            retry: false
+          }),
+        fetchRepository: async () => {
+          const completed = await runRepositoryOperation(
+            'Fetch',
+            (repoPath) => window.api.fetchRepository(repoPath),
+            {
+              repoPath: repository.path,
+              retryable: true
+            }
+          );
+
+          if (completed) {
+            await Promise.all(
+              workspace.tabs
+                .filter(
+                  (tab) =>
+                    tab.commonDir === repository.commonDir && tab.path !== repository.path
+                )
+                .map((tab) =>
+                  queryClient.invalidateQueries({
+                    queryKey: repositoryOverviewQueryKey(tab.path)
+                  })
+                )
+            );
+          }
+
+          return completed;
+        }
+      })
+    );
   }
 
   function completeStartPageAction(): void {

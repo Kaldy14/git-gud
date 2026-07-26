@@ -22,7 +22,7 @@ type WorkspaceStore = {
   initializeRepository: (input: RepositoryInitializeInput) => Promise<WorkspaceState | undefined>;
   cloneRepository: (input: RepositoryCloneInput) => Promise<WorkspaceState | undefined>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState | undefined>;
-  activateTab: (tabId: string) => Promise<void>;
+  activateTab: (tabId: string) => Promise<WorkspaceState | undefined>;
   closeTab: (tabId: string) => Promise<void>;
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<void>;
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<void>;
@@ -67,7 +67,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     return runWorkspaceAction(set, () => window.api.replaceRepositoryAtPath(tabId, repoPath));
   },
   async activateTab(tabId) {
-    await runWorkspaceAction(set, () => window.api.activateTab(tabId));
+    return runWorkspaceAction(set, () => window.api.activateTab(tabId));
   },
   async closeTab(tabId) {
     let previousWorkspace = createDefaultWorkspaceState();

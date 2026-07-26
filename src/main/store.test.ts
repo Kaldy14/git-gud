@@ -9,7 +9,9 @@ import {
   deleteDashboard,
   flushPendingWorkspaceWrites,
   getDashboards,
+  getRepositoryLastFetchedAt,
   openWorkspaceRepository,
+  recordRepositoryFetch,
   saveDashboard,
   selectDashboard,
   selectWorkspaceCommit,
@@ -17,6 +19,15 @@ import {
 } from './store';
 
 describe('workspace persistence', () => {
+  it('persists successful fetch timestamps by shared Git directory', () => {
+    const commonDir = `/tmp/git-gud-fetch-${randomUUID()}/.git`;
+    const fetchedAt = '2026-07-26T12:30:00.000Z';
+
+    expect(getRepositoryLastFetchedAt(commonDir)).toBeUndefined();
+    recordRepositoryFetch(commonDir, fetchedAt);
+    expect(getRepositoryLastFetchedAt(commonDir)).toBe(fetchedAt);
+  });
+
   it('flushes deferred commit and file selections before shutdown', async () => {
     const repoPath = '/tmp/git-gud-store-test-repo';
     const workspace = openWorkspaceRepository({

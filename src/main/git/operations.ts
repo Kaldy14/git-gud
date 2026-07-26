@@ -59,7 +59,11 @@ export async function fetchRepository(tab: OperationTab): Promise<GitOperationRe
   return createOperationResult(tab, env, 'fetch', gitCommandLabel('fetch'));
 }
 
-export async function pullRepository(tab: OperationTab, input: GitPullInput): Promise<GitOperationResult> {
+export async function pullRepository(
+  tab: OperationTab,
+  input: GitPullInput,
+  onFetchCompleted?: (fetchedAt: string) => void
+): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
 
   return gitExecutor.transaction(tab.path, async () => {
@@ -70,6 +74,7 @@ export async function pullRepository(tab: OperationTab, input: GitPullInput): Pr
       cancellable: true,
       timeoutMs: NETWORK_GIT_TIMEOUT_MS
     });
+    onFetchCompleted?.(new Date().toISOString());
     const upstreamCommit = await resolvePullUpstream(tab.path, env);
 
     if (input.mode === 'rebase') {

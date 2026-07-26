@@ -81,9 +81,11 @@ import {
   deleteDashboard,
   getAppSettings,
   getDashboards,
+  getRepositoryLastFetchedAt,
   getWorkspace,
   openWorkspaceRepository,
   replaceWorkspaceRepository,
+  recordRepositoryFetch,
   selectWorkspaceCommit,
   selectWorkspaceFile,
   selectDashboard,
@@ -298,7 +300,10 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
       throw new Error('Repository is not open in this workspace.');
     }
 
-    const overview = await loadRepositoryOverview(tab);
+    const overview = {
+      ...(await loadRepositoryOverview(tab)),
+      lastFetchedAt: getRepositoryLastFetchedAt(tab.commonDir)
+    };
     repoWatchers.syncWorktrees(
       repoPath,
       overview.worktrees.filter((worktree) => !worktree.bare).map((worktree) => worktree.path)
@@ -379,9 +384,17 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('repo:commit', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => commitChanges(tab, input))
   );
-  handle('repo:fetch', async (_event, repoPath) => inRepositoryTransaction(repoPath, fetchRepository));
+  handle('repo:fetch', async (_event, repoPath) =>
+    inRepositoryTransaction(repoPath, async (tab) => {
+      const result = await fetchRepository(tab);
+      recordRepositoryFetch(tab.commonDir, result.happenedAt);
+      return result;
+    })
+  );
   handle('repo:pull', async (_event, repoPath, input) =>
-    inRepositoryTransaction(repoPath, (tab) => pullRepository(tab, input))
+    inRepositoryTransaction(repoPath, (tab) =>
+      pullRepository(tab, input, (fetchedAt) => recordRepositoryFetch(tab.commonDir, fetchedAt))
+    )
   );
   handle('repo:push', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => pushRepository(tab, input))

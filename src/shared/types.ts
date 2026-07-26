@@ -1065,6 +1065,7 @@ export type RepoProfileState = {
 export type GitRepositoryOverview = {
   repoPath: string;
   loadedAt: string;
+  lastFetchedAt?: string;
   status: GitStatusSummary;
   conflictState: GitConflictState;
   refs: GitRefsSummary;
