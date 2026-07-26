@@ -142,6 +142,7 @@ type GraphViewProps = {
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string, name: string) => Promise<boolean>;
+  suggestedTagName?: string;
   tagPushRemote?: string;
   onPushTag?: (name: string, remote: string) => Promise<void> | void;
   onDeleteTag?: (input: GitTagDeleteInput) => Promise<void> | void;
@@ -229,6 +230,7 @@ export function GraphView({
   onCheckoutCommit,
   onCreateBranchAtCommit,
   onCreateTagAtCommit,
+  suggestedTagName,
   tagPushRemote,
   onPushTag,
   onDeleteTag,
@@ -795,7 +797,11 @@ export function GraphView({
                   <div
                     key={row.sha}
                     className="graph-row-shell absolute left-0 top-0 w-full"
-                    style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start}px)` }}
+                    style={{
+                      height: virtualRow.size,
+                      transform: `translateY(${virtualRow.start}px)`,
+                      zIndex: row.sha === tagCreationTargetSha ? 40 : undefined
+                    }}
                   >
                     <GraphRowView
                       row={row}
@@ -824,6 +830,7 @@ export function GraphView({
                           ? (name) => onCreateTagAtCommit(row.sha, name)
                           : undefined
                       }
+                      suggestedTagName={suggestedTagName}
                       onCancelTagCreation={handleCancelTagCreation}
                     />
                   </div>
@@ -956,6 +963,7 @@ type GraphRowViewProps = {
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
   onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
   onCreateTag?: (name: string) => Promise<boolean>;
+  suggestedTagName?: string;
   onCancelTagCreation: (restoreGraphFocus?: boolean) => void;
 };
 
@@ -1058,6 +1066,7 @@ function GraphRowView({
   onBranchContextMenu,
   onTagContextMenu,
   onCreateTag,
+  suggestedTagName,
   onCancelTagCreation
 }: GraphRowViewProps): ReactElement {
   const nodeColor = row.colorOverride ?? laneColor(row.node.lane);
@@ -1152,6 +1161,7 @@ function GraphRowView({
           targetSha={row.sha}
           refCellWidth={refCellWidth}
           onCreate={onCreateTag}
+          suggestedTagName={suggestedTagName}
           onCancel={onCancelTagCreation}
         />
       ) : null}
@@ -1201,11 +1211,13 @@ function InlineTagEditor({
   targetSha,
   refCellWidth,
   onCreate,
+  suggestedTagName,
   onCancel
 }: {
   targetSha: string;
   refCellWidth: number;
   onCreate: (name: string) => Promise<boolean>;
+  suggestedTagName?: string;
   onCancel: (restoreGraphFocus?: boolean) => void;
 }): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1214,10 +1226,18 @@ function InlineTagEditor({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const editorLeft = 8;
   const editorWidth = Math.max(112, refCellWidth - editorLeft - 6);
+  const suggestionWidth = suggestedTagName
+    ? Math.max(104, suggestedTagName.length * 7 + 44)
+    : 0;
+  const showSuggestionInline = Boolean(suggestedTagName) && editorWidth >= 116 + 8 + suggestionWidth;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const tagName = name.trim();
+    await submitTag(name);
+  }
+
+  async function submitTag(candidate: string): Promise<void> {
+    const tagName = candidate.trim();
 
     if (!tagName || submittingRef.current) {
       return;
@@ -1239,7 +1259,7 @@ function InlineTagEditor({
 
   return (
     <form
-      className="absolute inset-y-0 z-30 flex cursor-default items-center"
+      className="absolute inset-y-0 z-50 flex cursor-default items-center"
       style={{ left: editorLeft, width: editorWidth }}
       aria-label={`Create tag at ${targetSha.slice(0, 8)}`}
       aria-busy={isSubmitting}
@@ -1249,15 +1269,20 @@ function InlineTagEditor({
         event.preventDefault();
         event.stopPropagation();
       }}
-      onBlur={() => {
-        if (!submittingRef.current) {
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+
+        if (
+          !submittingRef.current &&
+          (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget))
+        ) {
           onCancel();
         }
       }}
     >
       <input
         ref={inputRef}
-        className="h-7 w-full cursor-text rounded-md border-2 border-[var(--select-border)] bg-[var(--bg-field)] px-3 text-[13px] text-[var(--text-1)] shadow-lg shadow-black/30 outline-none placeholder:text-[var(--text-3)] focus:ring-1 focus:ring-[var(--select-border)]"
+        className="h-7 min-w-0 flex-1 cursor-text rounded-md border-2 border-[var(--select-border)] bg-[var(--bg-field)] px-3 text-[13px] text-[var(--text-1)] shadow-lg shadow-black/30 outline-none placeholder:text-[var(--text-3)] focus:ring-1 focus:ring-[var(--select-border)]"
         type="text"
         value={name}
         placeholder="Enter tag name"
@@ -1275,6 +1300,31 @@ function InlineTagEditor({
           }
         }}
       />
+      {suggestedTagName ? (
+        <button
+          className={
+            showSuggestionInline
+              ? 'relative z-10 ml-2 flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-[var(--select-border)] bg-[var(--bg-popover)] px-2.5 text-[11px] font-semibold text-[var(--accent-2)] shadow-lg shadow-black/30 transition hover:brightness-110 disabled:opacity-60'
+              : 'absolute left-0 top-[calc(100%+4px)] z-10 flex h-7 max-w-64 items-center gap-1.5 rounded-md border border-[var(--select-border)] bg-[var(--bg-popover)] px-2.5 text-[11px] font-semibold text-[var(--accent-2)] shadow-xl shadow-black/40 transition hover:brightness-110 disabled:opacity-60'
+          }
+          style={{
+            width: showSuggestionInline ? suggestionWidth : undefined,
+            border: '1px solid var(--select-border)',
+            backgroundColor: 'var(--bg-popover)'
+          }}
+          type="button"
+          disabled={isSubmitting}
+          aria-label={`Create suggested tag ${suggestedTagName}`}
+          title={`Create ${suggestedTagName}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void submitTag(suggestedTagName)}
+        >
+          <Tag size={12} />
+          <span className={showSuggestionInline ? 'whitespace-nowrap' : 'truncate'}>
+            {showSuggestionInline ? suggestedTagName : `Create ${suggestedTagName}`}
+          </span>
+        </button>
+      ) : null}
     </form>
   );
 }

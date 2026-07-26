@@ -27,6 +27,7 @@ import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDe
 import { DashboardView } from '@renderer/components/dashboard/DashboardView';
 import { GraphView } from '@renderer/components/graph/GraphView';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
+import { suggestNextTagName } from '@renderer/lib/tagSuggestion';
 import { PullRequestInboxView } from '@renderer/components/github/PullRequestInboxView';
 import { PullRequestReviewView } from '@renderer/components/github/PullRequestReviewView';
 import {
@@ -316,6 +317,10 @@ export function WorkspaceShell(): ReactElement {
   const tagPushRemote =
     repositoryQuery.data?.remotes.find((remote) => remote.name === 'origin')?.name ??
     repositoryQuery.data?.remotes[0]?.name;
+  const suggestedTagName = useMemo(
+    () => suggestNextTagName(repositoryQuery.data?.refs.tags ?? []),
+    [repositoryQuery.data?.refs.tags]
+  );
   const selectedSha = activeTab?.selectedCommit;
   const conflictedPaths = useMemo(
     () => repositoryQuery.data?.conflictState.files.map((file) => file.path) ?? [],
@@ -2414,6 +2419,7 @@ export function WorkspaceShell(): ReactElement {
                   onCheckoutCommit={handleCheckoutCommit}
                   onCreateBranchAtCommit={handleCreateBranch}
                   onCreateTagAtCommit={handleCreateTagAtCommit}
+                  suggestedTagName={suggestedTagName}
                   tagPushRemote={tagPushRemote}
                   onPushTag={handlePushTag}
                   onDeleteTag={handleDeleteTag}
