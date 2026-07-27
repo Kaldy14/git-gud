@@ -215,6 +215,7 @@ select {
 /* --- Title bar tabs -------------------------------------------------- */
 
 .repo-tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -228,6 +229,37 @@ select {
   font-weight: 600;
   border-radius: 0;
   transition: color 120ms ease, background 120ms ease;
+}
+
+.repo-tab[data-reorderable='true'] {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.repo-tab[data-dragging='true'] {
+  cursor: grabbing;
+  opacity: 0.52;
+}
+
+.repo-tab[data-drop-position]::before {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent-2);
+  box-shadow: 0 0 0 1px rgb(95 214 195 / 0.18);
+  content: '';
+}
+
+.repo-tab[data-drop-position='before']::before {
+  left: -1px;
+}
+
+.repo-tab[data-drop-position='after']::before {
+  right: -1px;
 }
 
 .repo-tab-main {

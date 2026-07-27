@@ -23,6 +23,7 @@ import {
   normalizeWorkspaceState,
   partitionWorkspaceByProfile,
   profileWorkspaceKey,
+  reorderRepositoryTab,
   replaceRepositoryTab,
   selectRepositoryCommit,
   selectRepositoryFile,
@@ -105,6 +106,10 @@ export function replaceWorkspaceRepository(tabId: string, repository: Repository
 
 export function activateWorkspaceTab(tabId: string): WorkspaceState {
   return saveWorkspace(activateRepositoryTab(getWorkspace(), tabId));
+}
+
+export function reorderWorkspaceTab(tabId: string, targetIndex: number): WorkspaceState {
+  return saveWorkspace(reorderRepositoryTab(getWorkspace(), tabId, targetIndex));
 }
 
 export function closeWorkspaceTab(tabId: string): WorkspaceState {

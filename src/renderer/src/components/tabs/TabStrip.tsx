@@ -1,11 +1,27 @@
-import type { ReactElement } from 'react';
+import { useRef, useState, type PointerEvent, type ReactElement } from 'react';
 import { FilePlus2, GitBranch, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
 
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
+import {
+  resolveTabDropIndex,
+  type TabDropPosition
+} from '@renderer/components/tabs/tabReordering';
 import type { GitProfile, RepoProfileState, RepoTab } from '@shared/types';
 
 const START_TAB_ID = 'new-repository-tab';
 const DASHBOARDS_TAB_ID = 'dashboards-tab';
+
+type TabDropTarget = {
+  tabId: string;
+  position: TabDropPosition;
+};
+
+type TabDragSession = {
+  tabId: string;
+  pointerId: number;
+  startX: number;
+  dragging: boolean;
+};
 
 type TabStripProps = {
   tabs: RepoTab[];
@@ -16,6 +32,7 @@ type TabStripProps = {
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
+  onReorderTab: (tabId: string, targetIndex: number) => void;
   onCloseTab: (tabId: string) => void;
   onOpenStartTab: () => void;
   onActivateStartTab: () => void;
@@ -35,6 +52,7 @@ export function TabStrip({
   profileState,
   activeRepoDirty = false,
   onActivateTab,
+  onReorderTab,
   onCloseTab,
   onOpenStartTab,
   onActivateStartTab,
@@ -44,6 +62,11 @@ export function TabStrip({
   onActivateProfile,
   onSaveAndActivateProfile
 }: TabStripProps): ReactElement {
+  const [draggedTabId, setDraggedTabId] = useState<string>();
+  const [dropTarget, setDropTarget] = useState<TabDropTarget>();
+  const dragSessionRef = useRef<TabDragSession | undefined>(undefined);
+  const dropTargetRef = useRef<TabDropTarget | undefined>(undefined);
+  const suppressTabClickRef = useRef<string | undefined>(undefined);
   const navigationTabIds = [
     ...tabs.map((tab) => tab.id),
     ...(isStartTabOpen ? [START_TAB_ID] : []),
@@ -62,6 +85,109 @@ export function TabStrip({
 
     onActivateTab(tabId);
   };
+  const finishTabDrag = (): void => {
+    dragSessionRef.current = undefined;
+    dropTargetRef.current = undefined;
+    setDraggedTabId(undefined);
+    setDropTarget(undefined);
+  };
+  const handleTabPointerDown = (
+    event: PointerEvent<HTMLDivElement>,
+    tabId: string
+  ): void => {
+    if (
+      event.button !== 0 ||
+      tabs.length < 2 ||
+      (event.target as HTMLElement).closest('[data-tab-close]')
+    ) {
+      return;
+    }
+
+    dragSessionRef.current = {
+      tabId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      dragging: false
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dropTargetRef.current = undefined;
+    setDropTarget(undefined);
+  };
+  const handleTabPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
+    const session = dragSessionRef.current;
+
+    if (!session || session.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (!session.dragging && Math.abs(event.clientX - session.startX) < 5) {
+      return;
+    }
+
+    if (!session.dragging) {
+      session.dragging = true;
+      setDraggedTabId(session.tabId);
+    }
+
+    event.preventDefault();
+    const targetElement = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>('[data-tab-id]');
+    const targetTabId = targetElement?.dataset.tabId;
+
+    if (!targetElement || !targetTabId) {
+      dropTargetRef.current = undefined;
+      setDropTarget(undefined);
+      return;
+    }
+
+    const position = dropPositionForPointer(event.clientX, targetElement.getBoundingClientRect());
+    const nextDropTarget = { tabId: targetTabId, position };
+    dropTargetRef.current = nextDropTarget;
+    setDropTarget((current) =>
+      current?.tabId === targetTabId && current.position === position
+        ? current
+        : nextDropTarget
+    );
+  };
+  const handleTabPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
+    const session = dragSessionRef.current;
+
+    if (!session || session.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const target = dropTargetRef.current;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (!session.dragging) {
+      finishTabDrag();
+      return;
+    }
+
+    event.preventDefault();
+    const targetIndex = resolveTabDropIndex(
+      tabs.map((tab) => tab.id),
+      session.tabId,
+      target?.tabId ?? '',
+      target?.position ?? 'before'
+    );
+
+    suppressTabClickRef.current = session.tabId;
+    window.setTimeout(() => {
+      if (suppressTabClickRef.current === session.tabId) {
+        suppressTabClickRef.current = undefined;
+      }
+    }, 0);
+    finishTabDrag();
+
+    if (typeof targetIndex === 'number') {
+      onReorderTab(session.tabId, targetIndex);
+    }
+  };
 
   return (
     <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
@@ -79,7 +205,19 @@ export function TabStrip({
                 key={tab.id}
                 className="no-drag repo-tab group"
                 data-active={isActive}
+                data-dragging={draggedTabId === tab.id}
+                data-drop-position={
+                  dropTarget?.tabId === tab.id && draggedTabId !== tab.id
+                    ? dropTarget.position
+                    : undefined
+                }
+                data-tab-id={tab.id}
+                data-reorderable={tabs.length > 1}
                 title={tab.path}
+                onPointerDown={(event) => handleTabPointerDown(event, tab.id)}
+                onPointerMove={handleTabPointerMove}
+                onPointerUp={handleTabPointerUp}
+                onPointerCancel={finishTabDrag}
               >
                 <button
                   id={tabDomId(tab.id)}
@@ -88,7 +226,14 @@ export function TabStrip({
                   role="tab"
                   aria-selected={isActive}
                   tabIndex={isActive ? 0 : -1}
-                  onClick={() => onActivateTab(tab.id)}
+                  onClick={() => {
+                    if (suppressTabClickRef.current === tab.id) {
+                      suppressTabClickRef.current = undefined;
+                      return;
+                    }
+
+                    onActivateTab(tab.id);
+                  }}
                   onKeyDown={(event) =>
                     handleTabKeyDown(event, tabIndex, navigationTabIds, activateNavigationTab)
                   }
@@ -102,6 +247,7 @@ export function TabStrip({
                 <button
                   type="button"
                   aria-label={`Close ${tab.name}`}
+                  data-tab-close
                   className="grid h-5 w-5 shrink-0 place-items-center rounded text-[var(--text-3)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] focus:opacity-100 group-hover:opacity-100 group-data-[active=true]:opacity-100"
                   onClick={() => onCloseTab(tab.id)}
                 >
@@ -236,4 +382,8 @@ function handleTabKeyDown(
 
 function tabDomId(tabId: string): string {
   return `repo-tab-${tabId.replace(/[^\dA-Za-z_-]/g, '-')}`;
+}
+
+function dropPositionForPointer(clientX: number, bounds: DOMRect): TabDropPosition {
+  return clientX < bounds.left + bounds.width / 2 ? 'before' : 'after';
 }

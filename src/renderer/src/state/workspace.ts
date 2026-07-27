@@ -7,6 +7,7 @@ import {
   closeRepositoryTab,
   normalizeDetailPanelWidth,
   normalizeSidebarWidth,
+  reorderRepositoryTab,
   selectRepositoryCommit,
   selectRepositoryFile
 } from '@shared/workspace';
@@ -23,6 +24,7 @@ type WorkspaceStore = {
   cloneRepository: (input: RepositoryCloneInput) => Promise<WorkspaceState | undefined>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState | undefined>;
   activateTab: (tabId: string) => Promise<WorkspaceState | undefined>;
+  reorderTab: (tabId: string, targetIndex: number) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<void>;
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<void>;
@@ -34,6 +36,8 @@ type WorkspaceStore = {
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<void>;
   clearError: () => void;
 };
+
+let latestReorderRequestId = 0;
 
 export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   workspace: createDefaultWorkspaceState(),
@@ -68,6 +72,45 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   },
   async activateTab(tabId) {
     return runWorkspaceAction(set, () => window.api.activateTab(tabId));
+  },
+  async reorderTab(tabId, targetIndex) {
+    const requestId = ++latestReorderRequestId;
+    let previousWorkspace = createDefaultWorkspaceState();
+    let nextWorkspace = createDefaultWorkspaceState();
+    set((state) => {
+      previousWorkspace = state.workspace;
+      nextWorkspace = reorderRepositoryTab(state.workspace, tabId, targetIndex);
+      return {
+        workspace: nextWorkspace,
+        errorMessage: undefined
+      };
+    });
+
+    if (nextWorkspace === previousWorkspace) {
+      return;
+    }
+
+    try {
+      await window.api.reorderTab(tabId, targetIndex);
+    } catch (error) {
+      const previousIndex = previousWorkspace.tabs.findIndex((tab) => tab.id === tabId);
+
+      set((state) => {
+        if (
+          requestId !== latestReorderRequestId ||
+          previousIndex === -1 ||
+          state.workspace.activeProfileId !== previousWorkspace.activeProfileId ||
+          !hasSameTabOrder(state.workspace, nextWorkspace)
+        ) {
+          return {};
+        }
+
+        return {
+          workspace: reorderRepositoryTab(state.workspace, tabId, previousIndex),
+          errorMessage: workspaceActionErrorMessage(error)
+        };
+      });
+    }
   },
   async closeTab(tabId) {
     let previousWorkspace = createDefaultWorkspaceState();
@@ -200,4 +243,11 @@ async function runWorkspaceAction(
 
 function workspaceActionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The requested workspace action failed.';
+}
+
+function hasSameTabOrder(left: WorkspaceState, right: WorkspaceState): boolean {
+  return (
+    left.tabs.length === right.tabs.length &&
+    left.tabs.every((tab, index) => tab.id === right.tabs[index]?.id)
+  );
 }
