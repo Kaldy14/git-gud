@@ -427,6 +427,8 @@ export type GitMergeInput = {
 export type GitTagCreateInput = {
   name: string;
   targetSha?: string;
+  annotated?: boolean;
+  pushRemote?: string;
 };
 
 export type GitTagPushInput = {

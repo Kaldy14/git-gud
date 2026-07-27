@@ -1097,7 +1097,7 @@ function SidebarContextMenu({
             }}
           >
             <Tag size={14} />
-            <span>Create tag here</span>
+            <span>Create tag here and push</span>
           </button>
           {canIntegrateBranch ? (
             <>
@@ -1210,7 +1210,7 @@ function SidebarContextMenu({
             }}
           >
             <Tag size={14} />
-            <span>Create tag here</span>
+            <span>Create tag here and push</span>
           </button>
           {canIntegrateBranch ? (
             <>

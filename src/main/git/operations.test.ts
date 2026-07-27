@@ -1540,6 +1540,63 @@ describe('git operations', () => {
     }
   });
 
+  it('creates an empty-message annotated tag and pushes it to the requested remote', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      const targetSha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      const result = await createTag(tab, {
+        name: 'release/v1',
+        targetSha,
+        annotated: true,
+        pushRemote: 'origin'
+      });
+
+      expect((await git(repoPath, ['cat-file', '-t', 'refs/tags/release/v1'])).stdout.trim()).toBe('tag');
+      expect((await git(repoPath, ['for-each-ref', 'refs/tags/release/v1', '--format=%(contents)'])).stdout).toBe('\n');
+      expect((await git(repoPath, ['rev-parse', 'refs/tags/release/v1^{}'])).stdout.trim()).toBe(targetSha);
+      expect((await git(remotePath, ['cat-file', '-t', 'refs/tags/release/v1'])).stdout.trim()).toBe('tag');
+      expect((await git(remotePath, ['rev-parse', 'refs/tags/release/v1^{}'])).stdout.trim()).toBe(targetSha);
+      expect(result.operation?.label).toBe('Create annotated tag release/v1 and push to origin');
+      expect(result.invalidates).toEqual(['overview', 'graph']);
+      expect(result.undoEntry?.affectedRefs).toEqual(['refs/tags/release/v1']);
+      expect(result.undoEntry?.targetSha).toBe(
+        (await git(repoPath, ['rev-parse', 'refs/tags/release/v1'])).stdout.trim()
+      );
+      expect(result.undoEntry?.warning).toBe(
+        'Undo removes only the local tag. The pushed tag remains on origin.'
+      );
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('does not create a tag when its requested remote does not exist', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      await expect(
+        createTag(tab, {
+          name: 'release/v1',
+          annotated: true,
+          pushRemote: 'origin'
+        })
+      ).rejects.toThrow('Remote origin does not exist.');
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/tags/release/v1']);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('deletes a tag locally, remotely, or from both locations', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 

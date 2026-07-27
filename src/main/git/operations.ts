@@ -441,12 +441,34 @@ export async function createTag(tab: OperationTab, input: GitTagCreateInput): Pr
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const tagName = normalizeRequiredName(input.name, 'Tag name');
   const target = input.targetSha?.trim() || 'HEAD';
+  const remoteName = input.pushRemote
+    ? normalizeRequiredName(input.pushRemote, 'Remote name')
+    : undefined;
   await assertValidTagName(tab.path, tagName, env);
   const targetSha = await revParse(tab.path, target, env);
   const tagRef = `refs/tags/${tagName}`;
 
-  await gitExecutor.run(['update-ref', tagRef, targetSha, ZERO_SHA], { cwd: tab.path, kind: 'mutation', env });
-  const createdTarget = await revParse(tab.path, tagRef, env);
+  if (remoteName) {
+    await assertRemoteExists(tab.path, remoteName, env);
+  }
+
+  if (input.annotated) {
+    await gitExecutor.run(
+      ['tag', '--annotate', '--no-sign', '--message=', '--', tagName, targetSha],
+      { cwd: tab.path, kind: 'mutation', env }
+    );
+  } else {
+    await gitExecutor.run(['update-ref', tagRef, targetSha, ZERO_SHA], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+  }
+
+  const createdRefSha = await revParse(tab.path, tagRef, env);
+  const createdTarget = input.annotated
+    ? await revParse(tab.path, `${tagRef}^{}`, env)
+    : createdRefSha;
 
   if (createdTarget !== targetSha) {
     throw new Error(`Tag ${tagName} was not created at the requested target.`);
@@ -454,11 +476,22 @@ export async function createTag(tab: OperationTab, input: GitTagCreateInput): Pr
 
   const undoEntry = recordUndo(tab, 'tag-create', `Undo create tag ${tagName}`, {
     refName: tagName,
-    targetSha,
-    affectedRefs: [tagRef]
+    targetSha: createdRefSha,
+    affectedRefs: [tagRef],
+    ...(remoteName
+      ? { warning: `Undo removes only the local tag. The pushed tag remains on ${remoteName}.` }
+      : {})
   });
 
-  return createOperationResult(tab, env, 'tag-create', `Create tag ${tagName}`, undoEntry);
+  if (remoteName) {
+    await pushTagRef(tab.path, tagName, remoteName, env);
+  }
+
+  const label = remoteName
+    ? `Create${input.annotated ? ' annotated' : ''} tag ${tagName} and push to ${remoteName}`
+    : `Create${input.annotated ? ' annotated' : ''} tag ${tagName}`;
+
+  return createOperationResult(tab, env, 'tag-create', label, undoEntry);
 }
 
 export async function pushTag(tab: OperationTab, input: GitTagPushInput): Promise<GitOperationResult> {
@@ -466,22 +499,7 @@ export async function pushTag(tab: OperationTab, input: GitTagPushInput): Promis
   const tagName = normalizeRequiredName(input.name, 'Tag name');
   const remoteName = normalizeRequiredName(input.remote, 'Remote name');
   await assertValidTagName(tab.path, tagName, env);
-  const tagRef = `refs/tags/${tagName}`;
-  await revParse(tab.path, tagRef, env);
-
-  const remotes = await loadRemotes(tab.path, env);
-
-  if (!remotes.some((remote) => remote.name === remoteName)) {
-    throw new Error(`Remote ${remoteName} does not exist.`);
-  }
-
-  await gitExecutor.run(['push', '--', remoteName, `${tagRef}:${tagRef}`], {
-    cwd: tab.path,
-    kind: 'mutation',
-    env,
-    cancellable: true,
-    timeoutMs: NETWORK_GIT_TIMEOUT_MS
-  });
+  await pushTagRef(tab.path, tagName, remoteName, env);
 
   return createOperationResult(tab, env, 'tag-push', `Push tag ${tagName} to ${remoteName}`);
 }
@@ -1491,6 +1509,36 @@ function normalizeRequiredName(value: string, label: string): string {
   }
 
   return normalized;
+}
+
+async function assertRemoteExists(
+  repoPath: string,
+  remoteName: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const remotes = await loadRemotes(repoPath, env);
+
+  if (!remotes.some((remote) => remote.name === remoteName)) {
+    throw new Error(`Remote ${remoteName} does not exist.`);
+  }
+}
+
+async function pushTagRef(
+  repoPath: string,
+  tagName: string,
+  remoteName: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  const tagRef = `refs/tags/${tagName}`;
+  await revParse(repoPath, tagRef, env);
+  await assertRemoteExists(repoPath, remoteName, env);
+  await gitExecutor.run(['push', '--', remoteName, `${tagRef}:${tagRef}`], {
+    cwd: repoPath,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
 }
 
 function capitalize(value: string): string {

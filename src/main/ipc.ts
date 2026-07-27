@@ -134,7 +134,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:delete-branch': { label: 'Delete branch' },
   'repo:checkout': { label: 'Checkout' },
   'repo:merge': { label: 'Merge' },
-  'repo:create-tag': { label: 'Create tag' },
+  'repo:create-tag': { label: 'Create tag', cancellable: true },
   'repo:push-tag': { label: 'Push tag', cancellable: true },
   'repo:delete-tag': { label: 'Delete tag' },
   'repo:stash-push': { label: 'Stash changes' },

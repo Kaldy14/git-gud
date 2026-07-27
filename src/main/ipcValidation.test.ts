@@ -41,6 +41,15 @@ describe('IPC argument validation', () => {
         branch: 'feature/ipc-validation'
       }
     ]);
+    const tagArgs = validateIpcArgs('repo:create-tag', [
+      '/repo',
+      {
+        name: 'v1.0.0',
+        targetSha: 'abc123',
+        annotated: true,
+        pushRemote: 'origin'
+      }
+    ]);
 
     expect(branchArgs[1]).toMatchObject({
       name: 'feature/ipc-validation',
@@ -63,6 +72,12 @@ describe('IPC argument validation', () => {
     expect(pushArgs[1]).toEqual({
       forceWithLease: false,
       branch: 'feature/ipc-validation'
+    });
+    expect(tagArgs[1]).toEqual({
+      name: 'v1.0.0',
+      targetSha: 'abc123',
+      annotated: true,
+      pushRemote: 'origin'
     });
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
@@ -471,6 +486,9 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:push-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
       'remote must be a string.'
     );
+    expect(() =>
+      validateIpcArgs('repo:create-tag', ['/repo', { name: 'v1.0.0', annotated: 'yes' }])
+    ).toThrow('annotated must be a boolean.');
     expect(() => validateIpcArgs('repo:delete-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
       'target must be one of: local, remote, both.'
     );

@@ -1803,6 +1803,17 @@ export function WorkspaceShell(): ReactElement {
     );
   }
 
+  async function handleCreateAndPushTagAtCommit(sha: string, name: string): Promise<boolean> {
+    return runRepositoryOperation(`Create tag ${name} and push to origin`, (repoPath) =>
+      window.api.createTag(repoPath, {
+        name,
+        targetSha: sha,
+        annotated: true,
+        pushRemote: 'origin'
+      })
+    );
+  }
+
   function handleOpenCreateTagDialog(sha: string): void {
     openCommandDialog({
       title: 'Create tag here',
@@ -1827,6 +1838,34 @@ export function WorkspaceShell(): ReactElement {
         }
 
         void handleCreateTagAtCommit(sha, name);
+      }
+    });
+  }
+
+  function handleOpenCreateAndPushTagDialog(sha: string): void {
+    openCommandDialog({
+      title: 'Create tag here and push',
+      description: `Create an annotated tag at ${sha.slice(0, 8)} and push it to origin.`,
+      confirmLabel: 'Create Tag and Push',
+      fields: [
+        {
+          id: 'name',
+          kind: 'text',
+          label: 'Tag name',
+          value: '',
+          placeholder: 'v1.0.0',
+          required: true,
+          autoFocus: true
+        }
+      ],
+      onSubmit(values) {
+        const name = dialogText(values, 'name');
+
+        if (!name) {
+          return;
+        }
+
+        void handleCreateAndPushTagAtCommit(sha, name);
       }
     });
   }
@@ -2399,7 +2438,7 @@ export function WorkspaceShell(): ReactElement {
               remotePullRequestsByBranch={pullRequestsByBranch.remote}
               onMergeBranch={handleMergeBranch}
               onRebaseOntoBranch={handleRebaseOntoBranch}
-              onCreateTagAtCommit={handleOpenCreateTagDialog}
+              onCreateTagAtCommit={handleOpenCreateAndPushTagDialog}
               onDeleteBranch={handleDeleteBranch}
               onDeleteRemoteBranch={handleDeleteRemoteBranch}
               tagPushRemote={tagPushRemote}
@@ -2493,7 +2532,7 @@ export function WorkspaceShell(): ReactElement {
                 remotePullRequestsByBranch={pullRequestsByBranch.remote}
                 onMergeBranch={handleMergeBranch}
                 onRebaseOntoBranch={handleRebaseOntoBranch}
-                onCreateTagAtCommit={handleOpenCreateTagDialog}
+                onCreateTagAtCommit={handleOpenCreateAndPushTagDialog}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
                 tagPushRemote={tagPushRemote}
@@ -2601,7 +2640,7 @@ export function WorkspaceShell(): ReactElement {
                   onDeleteBranch={handleDeleteBranch}
                   onCheckoutCommit={handleCheckoutCommit}
                   onCreateBranchAtCommit={handleCreateBranch}
-                  onCreateTagAtCommit={handleCreateTagAtCommit}
+                  onCreateTagAtCommit={handleCreateAndPushTagAtCommit}
                   suggestedTagName={suggestedTagName}
                   tagPushRemote={tagPushRemote}
                   onPushTag={handlePushTag}

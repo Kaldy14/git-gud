@@ -2561,7 +2561,7 @@ function GraphBranchContextMenu({
         }}
       >
         <Tag size={14} />
-        <span>Create tag here</span>
+        <span>Create tag here and push</span>
       </button>
       <button
         className="menu-row"
@@ -2859,7 +2859,7 @@ function GraphContextMenu({
             }}
           >
             <Tag size={14} />
-            <span>Create tag here</span>
+            <span>Create tag here and push</span>
           </button>
           <ContextMenuSeparator />
           <button

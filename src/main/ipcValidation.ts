@@ -753,7 +753,9 @@ function readTagCreateInput(value: unknown): GitTagCreateInput {
   const record = readRecord(value, 'tag create input');
   return {
     name: readStringProperty(record, 'name'),
-    targetSha: readOptionalStringProperty(record, 'targetSha')
+    targetSha: readOptionalStringProperty(record, 'targetSha'),
+    annotated: readOptionalBooleanProperty(record, 'annotated'),
+    pushRemote: readOptionalStringProperty(record, 'pushRemote')
   };
 }
 
