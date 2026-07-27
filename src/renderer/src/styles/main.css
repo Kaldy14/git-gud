@@ -1,7 +1,24 @@
 @import 'tailwindcss';
 
+@font-face {
+  font-family: 'Open Sans';
+  src: url('../assets/fonts/OpenSans-Variable.ttf') format('truetype-variations');
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  src: url('../assets/fonts/OpenSans-VariableItalic.ttf') format('truetype-variations');
+  font-style: italic;
+  font-weight: 300 800;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
+  --font-ui: 'Open Sans', sans-serif;
 
   /* Surfaces */
   --bg-app: #1f232b;
@@ -88,14 +105,9 @@ body,
 
 body {
   overflow: hidden;
-  font-family:
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'SF Pro Text',
-    'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-ui);
   font-size: 13px;
+  font-weight: 400;
   background: var(--bg-app);
   color: var(--text-1);
   -webkit-font-smoothing: antialiased;
@@ -125,6 +137,11 @@ button:disabled {
 }
 
 input {
+  font: inherit;
+}
+
+textarea,
+select {
   font: inherit;
 }
 
@@ -2108,13 +2125,7 @@ button.ref-chip:active {
   --diffs-bg-deletion-emphasis-override: rgba(173, 44, 60, 0.26);
   --diffs-modified-color-override: var(--accent-2);
   --diffs-font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  --diffs-header-font-family:
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'SF Pro Text',
-    'Helvetica Neue',
-    sans-serif;
+  --diffs-header-font-family: var(--font-ui);
   --diffs-font-size: 12px;
   --diffs-line-height: 19px;
 }
@@ -2932,12 +2943,7 @@ button.ref-chip:active {
   background: #232831;
   box-shadow: 0 7px 20px rgb(0 0 0 / 0.2);
   color: var(--text-2);
-  font-family:
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'SF Pro Text',
-    sans-serif;
+  font-family: var(--font-ui);
   white-space: normal;
 }
 
