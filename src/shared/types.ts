@@ -847,6 +847,7 @@ export type GitHubWorkflowRun = {
   actor?: string;
   pullRequestNumbers: number[];
   createdAt: string;
+  startedAt?: string;
   updatedAt: string;
 };
 

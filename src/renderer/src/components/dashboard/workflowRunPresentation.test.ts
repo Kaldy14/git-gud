@@ -21,6 +21,17 @@ describe('workflow run presentation', () => {
       tone: 'muted'
     });
   });
+
+  it('does not present pending or unknown workflow states as running', () => {
+    expect(workflowRunPresentation(workflowRun({ status: 'pending' }))).toMatchObject({
+      label: 'Queued',
+      tone: 'running'
+    });
+    expect(workflowRunPresentation(workflowRun({ status: 'unknown' }))).toMatchObject({
+      label: 'Unknown',
+      tone: 'muted'
+    });
+  });
 });
 
 function workflowRun(overrides: Partial<GitHubWorkflowRun>): GitHubWorkflowRun {
@@ -38,6 +49,7 @@ function workflowRun(overrides: Partial<GitHubWorkflowRun>): GitHubWorkflowRun {
     actor: 'developer',
     pullRequestNumbers: [],
     createdAt: '2026-07-25T10:00:00Z',
+    startedAt: '2026-07-25T10:01:00Z',
     updatedAt: '2026-07-25T10:02:00Z',
     ...overrides
   };

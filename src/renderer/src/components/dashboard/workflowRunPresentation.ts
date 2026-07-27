@@ -8,11 +8,24 @@ export type WorkflowRunPresentation = {
 
 export function workflowRunPresentation(run: GitHubWorkflowRun): WorkflowRunPresentation {
   if (run.status !== 'completed') {
-    if (run.status === 'queued' || run.status === 'requested' || run.status === 'waiting') {
+    if (
+      run.status === 'queued' ||
+      run.status === 'requested' ||
+      run.status === 'waiting' ||
+      run.status === 'pending'
+    ) {
       return {
         label: 'Queued',
         tone: 'running',
         icon: 'running'
+      };
+    }
+
+    if (run.status === 'unknown') {
+      return {
+        label: 'Unknown',
+        tone: 'muted',
+        icon: 'cancelled'
       };
     }
 

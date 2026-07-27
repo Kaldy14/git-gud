@@ -48,7 +48,12 @@ describe('GitHub Actions dashboards', () => {
       {
         workflow_runs: [
           workflowRun({ id: 101, status: 'in_progress', conclusion: null }),
-          workflowRun({ id: 100, status: 'completed', conclusion: 'timed_out' })
+          workflowRun({
+            id: 100,
+            status: 'completed',
+            conclusion: 'timed_out',
+            run_started_at: null
+          })
         ]
       },
       {
@@ -65,8 +70,14 @@ describe('GitHub Actions dashboards', () => {
     );
 
     expect(result.runs).toMatchObject([
-      { id: 101, status: 'in-progress', conclusion: undefined },
-      { id: 100, status: 'completed', conclusion: 'timed-out' }
+      {
+        id: 101,
+        status: 'in-progress',
+        conclusion: undefined,
+        createdAt: '2026-07-25T10:00:00Z',
+        startedAt: '2026-07-25T10:01:00Z'
+      },
+      { id: 100, status: 'completed', conclusion: 'timed-out', startedAt: undefined }
     ]);
     expect(result).toMatchObject({
       profileId: 'profile-1',
@@ -555,6 +566,7 @@ function workflowRun(overrides: Record<string, unknown>): Record<string, unknown
     html_url: 'https://github.com/acme/widgets/actions/runs/101',
     actor: { login: 'developer' },
     created_at: '2026-07-25T10:00:00Z',
+    run_started_at: '2026-07-25T10:01:00Z',
     updated_at: '2026-07-25T10:02:00Z',
     ...overrides
   };

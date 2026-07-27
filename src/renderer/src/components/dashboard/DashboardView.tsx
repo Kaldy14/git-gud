@@ -478,9 +478,16 @@ function GitHubActionsTile({
   const isFiltered = hasWorkflowRunFilters(tile.filters);
   const searchLimitReached = runsQuery.data?.searchLimitReached === true;
   const searchedRunCount = runsQuery.data?.searchedRunCount ?? 0;
-  const runningCount = runs.filter((run) => run.status !== 'completed').length;
-  const failedCount = runs.filter(
-    (run) => workflowRunPresentation(run).tone === 'danger'
+  const runPresentations = runs.map(workflowRunPresentation);
+  const runningCount = runs.filter((run) => run.status === 'in-progress').length;
+  const queuedCount = runPresentations.filter(
+    (presentation) => presentation.label === 'Queued'
+  ).length;
+  const failedCount = runPresentations.filter(
+    (presentation) => presentation.tone === 'danger'
+  ).length;
+  const unknownCount = runPresentations.filter(
+    (presentation) => presentation.label === 'Unknown'
   ).length;
 
   return (
@@ -502,12 +509,22 @@ function GitHubActionsTile({
           {runningCount > 0 ? (
             <span className="actions-summary" data-tone="running">
               <Loader2 size={11} className="animate-spin" />
-              {runningCount} running
+              {runningCount} Running
+            </span>
+          ) : queuedCount > 0 ? (
+            <span className="actions-summary" data-tone="running">
+              <Loader2 size={11} className="animate-spin" />
+              {queuedCount} Queued
             </span>
           ) : failedCount > 0 ? (
             <span className="actions-summary" data-tone="danger">
               <XCircle size={11} />
               {failedCount} failed
+            </span>
+          ) : unknownCount > 0 ? (
+            <span className="actions-summary">
+              <CircleSlash2 size={11} />
+              {unknownCount} Unknown
             </span>
           ) : runs.length > 0 ? (
             <span className="actions-summary" data-tone="success">
@@ -573,6 +590,8 @@ function GitHubActionsTile({
 
 function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
   const presentation = workflowRunPresentation(run);
+  const triggeredRelativeTime = formatRelativeTime(run.createdAt);
+  const startedRelativeTime = run.startedAt ? formatRelativeTime(run.startedAt) : undefined;
   const statusIcon =
     presentation.icon === 'running' ? (
       <Loader2 size={14} className="animate-spin" />
@@ -590,7 +609,9 @@ function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
       href={run.url}
       target="_blank"
       rel="noreferrer"
-      aria-label={`${run.displayTitle}, ${presentation.label}. Open workflow run in browser`}
+      aria-label={`${run.displayTitle}, ${presentation.label}, triggered ${triggeredRelativeTime}${
+        startedRelativeTime ? `, started ${startedRelativeTime}` : ''
+      }. Open workflow run in browser`}
     >
       <span className="workflow-run-status" data-tone={presentation.tone} title={presentation.label}>
         {statusIcon}
@@ -610,7 +631,16 @@ function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
       </span>
       <span className="workflow-run-meta">
         <span data-tone={presentation.tone}>{presentation.label}</span>
-        <small>{formatRelativeTime(run.updatedAt)}</small>
+        <small className="workflow-run-times">
+          <time dateTime={run.createdAt} title={formatAbsoluteTime(run.createdAt)}>
+            Triggered {triggeredRelativeTime}
+          </time>
+          {run.startedAt ? (
+            <time dateTime={run.startedAt} title={formatAbsoluteTime(run.startedAt)}>
+              Started {startedRelativeTime}
+            </time>
+          ) : null}
+        </small>
       </span>
       <ExternalLink size={12} className="workflow-run-external" aria-hidden="true" />
     </a>
@@ -950,6 +980,11 @@ function formatRelativeTime(isoDate: string): string {
 
   const days = Math.floor(hours / 24);
   return days < 30 ? `${days}d ago` : new Date(isoDate).toLocaleDateString();
+}
+
+function formatAbsoluteTime(isoDate: string): string {
+  const date = new Date(isoDate);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : isoDate;
 }
 
 function errorMessage(error: unknown): string {

@@ -395,6 +395,7 @@ function parseWorkflowRun(value: unknown): GitHubWorkflowRun {
     actor: readNestedOptionalString(run, ['actor', 'login']),
     pullRequestNumbers: parseWorkflowRunPullRequestNumbers(run.pull_requests),
     createdAt: readString(run.created_at, 'workflow run created time'),
+    startedAt: readOptionalString(run.run_started_at),
     updatedAt: readString(run.updated_at, 'workflow run updated time')
   };
 }

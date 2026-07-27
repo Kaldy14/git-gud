@@ -7,7 +7,7 @@ import {
   gitHubActionsRunsQueryKey,
   gitHubRepositoriesQueryKey
 } from '@renderer/queries/github';
-import type { Dashboard, GitProfile } from '@shared/types';
+import type { Dashboard, GitHubWorkflowRun, GitProfile } from '@shared/types';
 
 import { DashboardView, WorkflowBranchFilterField } from './DashboardView';
 
@@ -134,6 +134,45 @@ describe('DashboardView', () => {
     expect(markup).toContain('aria-errormessage="dashboard-branch-filter-error"');
     expect(markup).toContain('id="dashboard-branch-filter-error"');
   });
+
+  it('shows the number of running workflows and their trigger and start times', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-27T10:09:00Z'));
+
+    try {
+      const runs = [
+        workflowRun({ id: 101, runNumber: 101 }),
+        workflowRun({ id: 100, runNumber: 100 }),
+        workflowRun({ id: 99, runNumber: 99 }),
+        workflowRun({ id: 98, runNumber: 98, status: 'queued', startedAt: undefined }),
+        workflowRun({ id: 97, runNumber: 97, status: 'pending', startedAt: undefined }),
+        workflowRun({ id: 96, runNumber: 96, status: 'unknown', startedAt: undefined })
+      ];
+
+      const markup = renderActionsDashboard(runs);
+
+      expect(markup).toContain('3 Running');
+      expect(markup).toContain('Triggered 9m ago');
+      expect(markup).toContain('Started 8m ago');
+      expect(markup).toContain('Queued');
+      expect(markup).toContain('Unknown');
+      expect(markup).not.toContain('2m ago');
+
+      expect(
+        renderActionsDashboard([
+          workflowRun({ status: 'queued', startedAt: undefined }),
+          workflowRun({ id: 100, status: 'pending', startedAt: undefined })
+        ])
+      ).toContain('2 Queued');
+      expect(
+        renderActionsDashboard([
+          workflowRun({ status: 'unknown', startedAt: undefined })
+        ])
+      ).toContain('1 Unknown');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function createDashboard(id: string, name: string): Dashboard {
@@ -144,5 +183,84 @@ function createDashboard(id: string, name: string): Dashboard {
     tiles: [],
     createdAt: '2026-07-26T00:00:00.000Z',
     updatedAt: '2026-07-26T00:00:00.000Z'
+  };
+}
+
+function renderActionsDashboard(runs: GitHubWorkflowRun[]): string {
+  const queryClient = new QueryClient();
+  const filters = {
+    branches: [],
+    includeTags: false,
+    includeMyPullRequests: false
+  };
+  const dashboard: Dashboard = {
+    ...createDashboard('dashboard:actions', 'Actions'),
+    tiles: [
+      {
+        id: 'tile:actions',
+        kind: 'github-actions',
+        owner: 'acme',
+        repository: 'widgets',
+        limit: 10,
+        filters
+      }
+    ]
+  };
+
+  queryClient.setQueryData(dashboardsQueryKey(profile.id), {
+    profileId: profile.id,
+    dashboards: [dashboard],
+    selectedDashboardId: dashboard.id
+  });
+  queryClient.setQueryData(gitHubRepositoriesQueryKey(profile.id), []);
+  queryClient.setQueryData(
+    gitHubActionsRunsQueryKey({
+      profileId: profile.id,
+      owner: 'acme',
+      repository: 'widgets',
+      limit: 10,
+      filters
+    }),
+    {
+      profileId: profile.id,
+      owner: 'acme',
+      repository: 'widgets',
+      runs,
+      searchedRunCount: runs.length,
+      searchLimitReached: false,
+      loadedAt: '2026-07-27T10:09:00Z'
+    }
+  );
+
+  return renderToStaticMarkup(
+    <QueryClientProvider client={queryClient}>
+      <DashboardView
+        profile={profile}
+        requestedDashboardId={dashboard.id}
+        onSelectDashboard={vi.fn()}
+        onOpenProfileSettings={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+}
+
+function workflowRun(overrides: Partial<GitHubWorkflowRun>): GitHubWorkflowRun {
+  return {
+    id: 101,
+    name: 'CI',
+    displayTitle: 'Verify dashboard support',
+    runNumber: 101,
+    event: 'push',
+    branch: 'main',
+    sha: 'abcdef1234567890',
+    status: 'in-progress',
+    url: 'https://github.com/acme/widgets/actions/runs/101',
+    actor: 'developer',
+    pullRequestNumbers: [],
+    createdAt: '2026-07-27T10:00:00Z',
+    startedAt: '2026-07-27T10:01:00Z',
+    updatedAt: '2026-07-27T10:07:00Z',
+    ...overrides
   };
 }

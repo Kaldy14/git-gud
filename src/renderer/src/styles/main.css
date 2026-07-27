@@ -4225,6 +4225,20 @@ button.ref-chip:active {
   font-weight: 500;
 }
 
+.workflow-run-times {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.workflow-run-times time + time::before {
+  margin-right: 5px;
+  color: var(--text-3);
+  content: '·';
+  opacity: 0.7;
+}
+
 .workflow-run-external {
   color: var(--text-3);
   opacity: 0.36;
