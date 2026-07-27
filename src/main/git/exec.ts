@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { accessSync, constants, statSync } from 'node:fs';
+import { delimiter, dirname, join } from 'node:path';
 
 export type GitCommandKind = 'read' | 'mutation';
 
@@ -162,6 +164,7 @@ export class GitExecutor {
   private readonly activeCommands = new Set<ActiveCommand>();
   private readonly idleWaiters = new Set<() => void>();
   private readonly progressListeners = new Set<GitProgressListener>();
+  private readonly resolvedGitExecutables = new Map<string, string>();
 
   getMutationGeneration(cwd: string): number {
     return this.mutationGenerations.get(cwd) ?? 0;
@@ -484,13 +487,24 @@ export class GitExecutor {
       ...process.env,
       ...options.env
     };
+    const resolutionKey = gitResolutionKey(env);
+    const cachedExecutable = resolutionKey
+      ? this.resolvedGitExecutables.get(resolutionKey)
+      : undefined;
+    const executable = cachedExecutable ?? resolveGitExecutable(env);
+
+    if (cachedExecutable) {
+      addGitDirectoryToPath(env, dirname(cachedExecutable));
+    } else if (resolutionKey) {
+      this.resolvedGitExecutables.set(resolutionKey, executable);
+    }
 
     if (kind === 'read') {
       env.GIT_OPTIONAL_LOCKS = '0';
     }
 
     return new Promise((resolve, reject) => {
-      const child = spawn('git', args, {
+      const child = spawn(executable, args, {
         cwd: options.cwd,
         env,
         detached: process.platform !== 'win32',
@@ -606,6 +620,9 @@ export class GitExecutor {
         }
       });
       child.on('error', (error) => {
+        if (resolutionKey) {
+          this.resolvedGitExecutables.delete(resolutionKey);
+        }
         spawnError = error;
       });
       child.on('close', (exitCode) => {
@@ -783,6 +800,56 @@ const forceTerminationDelayMs = 750;
 const defaultReadTimeoutMs = 120_000;
 type GitProgressEventOutputStream = Extract<GitProgressEvent, { type: 'output' }>['stream'];
 const progressStreamOrder: readonly GitProgressEventOutputStream[] = ['stdout', 'stderr'];
+const knownMacGitPaths = ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git'];
+
+function gitResolutionKey(env: NodeJS.ProcessEnv): string | undefined {
+  return process.platform === 'darwin'
+    ? `${env.GIT_EXECUTABLE_PATH?.trim() ?? ''}\0${env.PATH ?? ''}`
+    : undefined;
+}
+
+function resolveGitExecutable(env: NodeJS.ProcessEnv): string {
+  if (process.platform !== 'darwin') {
+    return 'git';
+  }
+
+  const configuredPath = env.GIT_EXECUTABLE_PATH?.trim();
+  const pathDirectories = (env.PATH ?? '')
+    .split(delimiter)
+    .map((directory) => directory.trim())
+    .filter(Boolean);
+  const pathCandidates = pathDirectories.map((directory) => join(directory, 'git'));
+  const candidates = configuredPath
+    ? [configuredPath]
+    : [...pathCandidates, ...knownMacGitPaths];
+
+  for (const candidate of new Set(candidates)) {
+    if (isExecutable(candidate)) {
+      addGitDirectoryToPath(env, dirname(candidate));
+      return candidate;
+    }
+  }
+
+  if (configuredPath) {
+    throw new Error(`The configured Git executable is unavailable: ${configuredPath}`);
+  }
+
+  throw new Error('Git was not found. Install Git or configure GIT_EXECUTABLE_PATH.');
+}
+
+function addGitDirectoryToPath(env: NodeJS.ProcessEnv, gitDirectory: string): void {
+  const directories = (env.PATH ?? '').split(delimiter).filter(Boolean);
+  env.PATH = [...new Set([gitDirectory, ...directories])].join(delimiter);
+}
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
 
 function createGitErrorMessage(args: string[], result: GitCommandResult): string {
   return result.stderr.trim() || `git ${args.join(' ')} failed with exit code ${result.exitCode}`;

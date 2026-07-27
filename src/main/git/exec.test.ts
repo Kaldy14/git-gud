@@ -1,3 +1,7 @@
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -144,6 +148,37 @@ describe('GitExecutor coordination', () => {
     expect(events.some((event) => event.type === 'start')).toBe(true);
     expect(events.some((event) => event.type === 'output' && event.stream === 'stdout')).toBe(false);
     expect(events.some((event) => event.type === 'close' && event.exitCode === 0)).toBe(true);
+  });
+
+  it.runIf(process.platform === 'darwin')('finds Git when a GUI-style PATH omits its install location', async () => {
+    const executor = new GitExecutor();
+
+    await expect(
+      executor.run(['--version'], {
+        cwd: process.cwd(),
+        env: { PATH: '/path/that-does-not-exist' }
+      })
+    ).resolves.toMatchObject({
+      exitCode: 0
+    });
+  });
+
+  it.runIf(process.platform === 'darwin')('skips executable directories named git while resolving PATH', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-executable-resolution-'));
+    await mkdir(join(directory, 'git'), { mode: 0o755 });
+
+    try {
+      await expect(
+        new GitExecutor().run(['--version'], {
+          cwd: process.cwd(),
+          env: { PATH: directory }
+        })
+      ).resolves.toMatchObject({
+        exitCode: 0
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('correlates progress only with the operation async context that owns the command', async () => {
