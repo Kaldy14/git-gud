@@ -80,6 +80,7 @@ import {
   autoFetchRepositoryOnTabActivation,
   createRepositoryAutoFetchCoordinator
 } from '@renderer/workspace/autoFetch';
+import { indexPullRequestsByBranch } from '@renderer/workspace/pullRequestBranches';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type {
@@ -304,6 +305,23 @@ export function WorkspaceShell(): ReactElement {
       ? activeGitHubProfile.id
       : undefined;
   const pullRequestInboxQuery = useGitHubPullRequestInbox(connectedGitHubProfileId);
+  const pullRequestsByBranch = useMemo(
+    () =>
+      indexPullRequestsByBranch(
+        pullRequestInboxQuery.data?.pullRequests ?? [],
+        {
+          localBranches: repositoryQuery.data?.refs.localBranches ?? [],
+          remoteBranches: repositoryQuery.data?.refs.remoteBranches ?? [],
+          remotes: repositoryQuery.data?.remotes ?? []
+        }
+      ),
+    [
+      pullRequestInboxQuery.data?.pullRequests,
+      repositoryQuery.data?.refs.localBranches,
+      repositoryQuery.data?.refs.remoteBranches,
+      repositoryQuery.data?.remotes
+    ]
+  );
   const dashboardsQuery = useDashboards(connectedGitHubProfileId);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
@@ -666,6 +684,12 @@ export function WorkspaceShell(): ReactElement {
 
   function handleOpenPullRequestInbox(): void {
     setGitHubWorkspaceView({ kind: 'inbox' });
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(false);
+  }
+
+  function handleViewPullRequest(pullRequest: GitHubPullRequestSummary): void {
+    setGitHubWorkspaceView({ kind: 'review', pullRequest });
     setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
   }
@@ -1273,7 +1297,69 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handlePull(): void {
-    void runRepositoryOperation('Pull fast-forward', (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }));
+    const branch = repositoryQuery.data?.status.branch;
+    const expectedBranch = branch && !branch.isDetached ? branch.head : undefined;
+    void runRepositoryOperation('Pull fast-forward', (repoPath) =>
+      window.api.pullRepository(repoPath, { mode: 'ff-only', expectedBranch })
+    );
+  }
+
+  function handlePullBranch(name: string): void {
+    void runRepositoryOperation(`Pull ${name}`, (repoPath) =>
+      window.api.pullRepository(repoPath, { mode: 'ff-only', expectedBranch: name })
+    );
+  }
+
+  function handleCopyBranchName(name: string): void {
+    void navigator.clipboard.writeText(name);
+  }
+
+  function handleSetBranchUpstream(name: string): void {
+    const remoteBranches = [...(repositoryQuery.data?.refs.remoteBranches ?? [])].sort(
+      (left, right) => {
+        const leftMatches = branchNameFromRemoteRef(left.name) === name ? 0 : 1;
+        const rightMatches = branchNameFromRemoteRef(right.name) === name ? 0 : 1;
+        return leftMatches - rightMatches || left.name.localeCompare(right.name);
+      }
+    );
+    const firstRemoteBranch = remoteBranches[0];
+
+    if (!firstRemoteBranch) {
+      return;
+    }
+
+    openCommandDialog({
+      title: `Set upstream for ${name}`,
+      description: 'Choose the existing remote branch this local branch should track.',
+      confirmLabel: 'Set Upstream',
+      fields: [
+        {
+          id: 'upstream',
+          kind: 'select',
+          label: 'Remote branch',
+          value: firstRemoteBranch.name,
+          options: remoteBranches.map((branch) => ({
+            value: branch.name,
+            label: branch.name,
+            description:
+              branchNameFromRemoteRef(branch.name) === name
+                ? 'Same branch name'
+                : `Track ${branch.name}`
+          }))
+        }
+      ],
+      onSubmit(values) {
+        const upstream = dialogText(values, 'upstream');
+
+        if (!upstream) {
+          return;
+        }
+
+        void runRepositoryOperation(`Set upstream for ${name}`, (repoPath) =>
+          window.api.setBranchUpstream(repoPath, { branch: name, upstream })
+        );
+      }
+    });
   }
 
   function handlePush(): void {
@@ -1778,13 +1864,18 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleMergeRef(ref: string, label: string): void {
+    const branch = repositoryQuery.data?.status.branch;
+    const expectedCurrentBranch = branch && !branch.isDetached ? branch.head : undefined;
+
     openCommandDialog({
       title: 'Merge into current branch',
       description: `Merge ${label} into the checked-out branch.`,
       confirmLabel: 'Merge',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Merge ${label}`, (repoPath) => window.api.mergeRef(repoPath, { ref }));
+        void runRepositoryOperation(`Merge ${label}`, (repoPath) =>
+          window.api.mergeRef(repoPath, { ref, expectedCurrentBranch })
+        );
       }
     });
   }
@@ -1877,13 +1968,18 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleRebaseOntoRef(ref: string, label: string): void {
+    const branch = repositoryQuery.data?.status.branch;
+    const expectedCurrentBranch = branch && !branch.isDetached ? branch.head : undefined;
+
     openCommandDialog({
       title: 'Rebase current branch',
       description: `Replay the current branch onto ${label}.`,
       confirmLabel: 'Rebase',
       fields: [],
       onSubmit() {
-        void runRepositoryOperation(`Rebase onto ${label}`, (repoPath) => window.api.rebaseOnto(repoPath, { target: ref }));
+        void runRepositoryOperation(`Rebase onto ${label}`, (repoPath) =>
+          window.api.rebaseOnto(repoPath, { target: ref, expectedCurrentBranch })
+        );
       }
     });
   }
@@ -2290,9 +2386,18 @@ export function WorkspaceShell(): ReactElement {
               isOperationBusy={isOperationBusy}
               onCheckoutBranch={handleCheckoutBranch}
               onCheckoutRemoteBranch={handleActivateRemoteBranch}
+              onCopyBranchName={handleCopyBranchName}
+              onPullBranch={handlePullBranch}
               onPushBranch={handlePushBranch}
+              onSetBranchUpstream={handleSetBranchUpstream}
               onRenameBranch={handleRenameBranch}
               onReviewBranch={handleOpenBranchReview}
+              onViewPullRequest={handleViewPullRequest}
+              localPullRequestsByBranch={pullRequestsByBranch.local}
+              remotePullRequestsByBranch={pullRequestsByBranch.remote}
+              onMergeBranch={handleMergeBranch}
+              onRebaseOntoBranch={handleRebaseOntoBranch}
+              onCreateTagAtCommit={handleOpenCreateTagDialog}
               onDeleteBranch={handleDeleteBranch}
               onDeleteRemoteBranch={handleDeleteRemoteBranch}
               tagPushRemote={tagPushRemote}
@@ -2375,9 +2480,18 @@ export function WorkspaceShell(): ReactElement {
                 isOperationBusy={isOperationBusy}
                 onCheckoutBranch={handleCheckoutBranch}
                 onCheckoutRemoteBranch={handleActivateRemoteBranch}
+                onCopyBranchName={handleCopyBranchName}
+                onPullBranch={handlePullBranch}
                 onPushBranch={handlePushBranch}
+                onSetBranchUpstream={handleSetBranchUpstream}
                 onRenameBranch={handleRenameBranch}
                 onReviewBranch={handleOpenBranchReview}
+                onViewPullRequest={handleViewPullRequest}
+                localPullRequestsByBranch={pullRequestsByBranch.local}
+                remotePullRequestsByBranch={pullRequestsByBranch.remote}
+                onMergeBranch={handleMergeBranch}
+                onRebaseOntoBranch={handleRebaseOntoBranch}
+                onCreateTagAtCommit={handleOpenCreateTagDialog}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
                 tagPushRemote={tagPushRemote}
@@ -2468,8 +2582,15 @@ export function WorkspaceShell(): ReactElement {
                   onStashPop={handleStashPop}
                   onStashDrop={handleStashDrop}
                   onCheckoutBranch={handleCheckoutBranch}
+                  localBranches={repositoryQuery.data?.refs.localBranches}
+                  canSetBranchUpstream={Boolean(repositoryQuery.data?.refs.remoteBranches.length)}
+                  pullRequestsByBranch={pullRequestsByBranch.local}
+                  onCopyBranchName={handleCopyBranchName}
+                  onPullBranch={handlePullBranch}
                   onPushBranch={handlePushBranch}
+                  onSetBranchUpstream={handleSetBranchUpstream}
                   onRenameBranch={handleRenameBranch}
+                  onViewPullRequest={handleViewPullRequest}
                   onActivateRemoteBranch={handleActivateRemoteBranch}
                   onMergeBranch={handleMergeBranch}
                   onRebaseOntoBranch={handleRebaseOntoBranch}

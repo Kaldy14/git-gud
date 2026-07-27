@@ -56,6 +56,7 @@ const api: RendererApi = {
   pushRepository: (repoPath, input) => invoke('repo:push', repoPath, input),
   createBranch: (repoPath, input) => invoke('repo:create-branch', repoPath, input),
   renameBranch: (repoPath, input) => invoke('repo:rename-branch', repoPath, input),
+  setBranchUpstream: (repoPath, input) => invoke('repo:set-branch-upstream', repoPath, input),
   deleteBranch: (repoPath, input) => invoke('repo:delete-branch', repoPath, input),
   checkoutRef: (repoPath, target) => invoke('repo:checkout', repoPath, target),
   mergeRef: (repoPath, input) => invoke('repo:merge', repoPath, input),

@@ -45,6 +45,7 @@ import type {
   GitReviewProgressUpdate,
   GitReviewTarget,
   GitRenameBranchInput,
+  GitSetBranchUpstreamInput,
   GitResetInput,
   GitStashPushInput,
   GitStashRefInput,
@@ -243,6 +244,10 @@ export type IpcChannelMap = {
   };
   'repo:rename-branch': {
     args: [repoPath: string, input: GitRenameBranchInput];
+    result: GitOperationResult;
+  };
+  'repo:set-branch-upstream': {
+    args: [repoPath: string, input: GitSetBranchUpstreamInput];
     result: GitOperationResult;
   };
   'repo:delete-branch': {
@@ -458,6 +463,10 @@ export type RendererApi = {
   pushRepository: (repoPath: string, input: GitPushInput) => Promise<GitOperationResult>;
   createBranch: (repoPath: string, input: GitCreateBranchInput) => Promise<GitOperationResult>;
   renameBranch: (repoPath: string, input: GitRenameBranchInput) => Promise<GitOperationResult>;
+  setBranchUpstream: (
+    repoPath: string,
+    input: GitSetBranchUpstreamInput
+  ) => Promise<GitOperationResult>;
   deleteBranch: (repoPath: string, input: GitDeleteBranchInput) => Promise<GitOperationResult>;
   checkoutRef: (repoPath: string, target: GitCheckoutTarget) => Promise<GitOperationResult>;
   mergeRef: (repoPath: string, input: GitMergeInput) => Promise<GitOperationResult>;

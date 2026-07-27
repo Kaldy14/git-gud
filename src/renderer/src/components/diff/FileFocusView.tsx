@@ -285,7 +285,7 @@ export function FileFocusView({
               </div>
             </ContextMenuPrimitive.Trigger>
             <ContextMenuPrimitive.Portal>
-              <ContextMenuPrimitive.Content className="z-50 min-w-56 overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 text-[var(--text-2)] shadow-2xl shadow-black/60 outline-none">
+              <ContextMenuPrimitive.Content className="context-menu-surface">
                 <ContextMenuPrimitive.Label className="px-2.5 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
                   Code selection
                 </ContextMenuPrimitive.Label>

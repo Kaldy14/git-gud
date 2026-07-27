@@ -406,9 +406,11 @@ function pullRequestNode(overrides: Record<string, unknown>): Record<string, unk
     additions: 8,
     deletions: 3,
     headRefName: 'feature/review',
+    headRefOid: 'head-sha',
     baseRefName: 'main',
     author: { login: 'developer', avatarUrl: 'https://avatars.example/developer' },
     repository: { nameWithOwner: 'acme/widgets' },
+    headRepository: { nameWithOwner: 'acme/widgets' },
     totalCommentsCount: 5,
     reviewRequests: { nodes: [] },
     statusCheckRollup: {

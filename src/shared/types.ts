@@ -366,6 +366,7 @@ export type GitCommitInput = {
 
 export type GitPullInput = {
   mode: 'ff-only' | 'rebase';
+  expectedBranch?: string;
 };
 
 export type GitPushInput = {
@@ -382,6 +383,11 @@ export type GitCreateBranchInput = {
 export type GitRenameBranchInput = {
   oldName: string;
   newName: string;
+};
+
+export type GitSetBranchUpstreamInput = {
+  branch: string;
+  upstream: string;
 };
 
 export type GitDeleteBranchInput = {
@@ -415,6 +421,7 @@ export type GitCheckoutTarget =
 
 export type GitMergeInput = {
   ref: string;
+  expectedCurrentBranch?: string;
 };
 
 export type GitTagCreateInput = {
@@ -455,6 +462,7 @@ export type GitResetInput = {
 
 export type GitRebaseInput = {
   target: string;
+  expectedCurrentBranch?: string;
 };
 
 export type GitInteractiveRebaseAction = 'pick' | 'reword' | 'squash' | 'fixup' | 'drop';
@@ -929,6 +937,9 @@ export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   additions: number;
   deletions: number;
   headRefName: string;
+  headRepositoryOwner?: string;
+  headRepository?: string;
+  headSha?: string;
   baseRefName: string;
   checks: GitHubPullRequestChecks;
 };

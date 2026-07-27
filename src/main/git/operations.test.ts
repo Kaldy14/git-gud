@@ -18,6 +18,7 @@ import {
   pullRepository,
   pushRepository,
   pushTag,
+  setBranchUpstream,
   resetToCommit,
   resolveConflict,
   revertCommit,
@@ -202,6 +203,39 @@ describe('git operations', () => {
 
       expect(await currentBranch(repoPath)).toBe('main');
       expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects pull, merge, and rebase when the checked-out branch changed', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['branch', 'feature/expected']);
+
+      await expect(
+        pullRepository(tab, {
+          mode: 'ff-only',
+          expectedBranch: 'feature/expected'
+        })
+      ).rejects.toThrow('Branch changed before the operation started');
+      await expect(
+        mergeRef(tab, {
+          ref: 'feature/expected',
+          expectedCurrentBranch: 'feature/expected'
+        })
+      ).rejects.toThrow('Branch changed before the operation started');
+      await expect(
+        rebaseOnto(tab, {
+          target: 'origin/main',
+          expectedCurrentBranch: 'feature/expected'
+        })
+      ).rejects.toThrow('Branch changed before the operation started');
+
+      expect(await currentBranch(repoPath)).toBe('main');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
@@ -566,6 +600,45 @@ describe('git operations', () => {
       expect(await currentBranch(repoPath)).toBe('main');
       expect((await git(remotePath, ['rev-parse', 'refs/heads/review/published'])).stdout.trim()).toBe(featureHead);
       await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/heads/feature/local-name']);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('sets an existing remote branch as the upstream without checking out the local branch', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['branch', 'feature/tracking', 'main']);
+      await git(repoPath, ['checkout', 'main']);
+
+      const result = await setBranchUpstream(tab, {
+        branch: 'feature/tracking',
+        upstream: 'origin/main'
+      });
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect(await branchUpstream(repoPath, 'feature/tracking')).toBe('origin/main');
+      expect(result.operation?.label).toBe('Set upstream for feature/tracking to origin/main');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an upstream that is not an existing remote-tracking branch', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+
+      await expect(
+        setBranchUpstream(
+          { path: repoPath, assignedProfileId: undefined },
+          { branch: 'main', upstream: 'origin/missing' }
+        )
+      ).rejects.toThrow();
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

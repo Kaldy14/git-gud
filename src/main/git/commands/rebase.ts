@@ -62,8 +62,29 @@ export async function rebaseOnto(tab: RebaseTab, input: GitRebaseInput): Promise
   const targetCommit = await revParse(tab.path, `${target}^{commit}`, env);
   await assertNoIgnoredUntrackedTreeTransitionCollisions(tab.path, 'HEAD', targetCommit, env, 'the target tree');
   await assertNoIgnoredUntrackedReplayCollisionsForRange(tab.path, `${targetCommit}..HEAD`, env);
+  await assertExpectedCurrentBranch(tab.path, input.expectedCurrentBranch, env);
   const { conflictState } = await runMutationAllowingConflicts(tab, ['rebase', target], env);
   return createOperationResult(tab, env, `Rebase onto ${target.slice(0, 8)}`, conflictState);
+}
+
+async function assertExpectedCurrentBranch(
+  repoPath: string,
+  expectedBranch: string | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  if (!expectedBranch) {
+    return;
+  }
+
+  const expected = normalizeRequiredName(expectedBranch, 'Expected branch');
+  const status = await loadStatus(repoPath, env);
+  const current = status.branch.isDetached ? undefined : status.branch.head;
+
+  if (current !== expected) {
+    throw new Error(
+      `Branch changed before the operation started. Expected ${expected}, but ${current ?? 'HEAD is detached'} is checked out.`
+    );
+  }
 }
 
 export async function prepareInteractiveRebasePlan(tab: RebaseTab, base: string): Promise<GitInteractiveRebasePlan> {

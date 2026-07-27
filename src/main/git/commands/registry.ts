@@ -6,6 +6,7 @@ export type GitCommandId =
   | 'push'
   | 'branch-create'
   | 'branch-rename'
+  | 'branch-set-upstream'
   | 'branch-delete'
   | 'checkout'
   | 'merge'
@@ -45,6 +46,7 @@ export const GIT_COMMANDS = {
   push: command('push', 'Push', 'remote', 'none', 'none', ['overview']),
   'branch-create': command('branch-create', 'Create branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
   'branch-rename': command('branch-rename', 'Rename branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
+  'branch-set-upstream': command('branch-set-upstream', 'Set upstream', 'refs', 'none', 'none', ['overview']),
   'branch-delete': command('branch-delete', 'Delete branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
   checkout: command('checkout', 'Checkout', 'working-tree', 'conditional', 'none', allMutableRepositoryQueries),
   merge: command('merge', 'Merge', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),

@@ -14,11 +14,14 @@ import {
   Check,
   Cloud,
   Copy,
+  Download,
   GitBranch,
   GitBranchPlus,
   GitCommit,
   GitMerge,
+  GitPullRequest,
   LaptopMinimal,
+  Link,
   Loader2,
   Pencil,
   RefreshCw,
@@ -36,6 +39,7 @@ import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboa
 import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
 import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
+import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
 import {
   findCurrentBranchName,
   findSelectedContextMenuRow,
@@ -58,6 +62,8 @@ import {
 } from '@shared/graph';
 import type {
   CommitGraphRow,
+  GitBranchRef,
+  GitHubPullRequestSummary,
   GitStashRefInput,
   GitTagDeleteInput,
   GraphFile,
@@ -116,6 +122,9 @@ const GRAPH_COLUMN_LIMITS: Record<ResizableGraphColumn, GraphColumnLimit> = {
 type GraphViewProps = {
   rows: CommitGraphRow[];
   linkedWorktreeBranches: ReadonlySet<string>;
+  localBranches?: readonly GitBranchRef[];
+  canSetBranchUpstream?: boolean;
+  pullRequestsByBranch?: ReadonlyMap<string, GitHubPullRequestSummary>;
   selectedSha?: string;
   bulkSelectedShas: string[];
   isLoading: boolean;
@@ -132,9 +141,13 @@ type GraphViewProps = {
   onStashPop?: (input: GitStashRefInput) => Promise<void> | void;
   onStashDrop?: (input: GitStashRefInput) => Promise<void> | void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onCopyBranchName?: (name: string) => Promise<void> | void;
+  onPullBranch?: (name: string) => Promise<void> | void;
   onPushBranch?: (name: string) => Promise<void> | void;
+  onSetBranchUpstream?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
   onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
+  onViewPullRequest?: (pullRequest: GitHubPullRequestSummary) => Promise<void> | void;
   onActivateRemoteBranch?: (name: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -189,6 +202,7 @@ type BranchContextMenuState = {
   branchName: string;
   currentBranchName: string;
   targetSha: string;
+  upstream?: string;
   x: number;
   y: number;
 };
@@ -205,6 +219,9 @@ type ContextMenuState = CommitContextMenuState | BranchContextMenuState | TagCon
 export function GraphView({
   rows,
   linkedWorktreeBranches,
+  localBranches,
+  canSetBranchUpstream = false,
+  pullRequestsByBranch,
   selectedSha,
   bulkSelectedShas,
   isLoading,
@@ -221,9 +238,13 @@ export function GraphView({
   onStashPop,
   onStashDrop,
   onCheckoutBranch,
+  onCopyBranchName,
+  onPullBranch,
   onPushBranch,
+  onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
+  onViewPullRequest,
   onActivateRemoteBranch,
   onMergeBranch,
   onRebaseOntoBranch,
@@ -545,6 +566,7 @@ export function GraphView({
       branchName,
       currentBranchName,
       targetSha: row.sha,
+      upstream: localBranches?.find((branch) => branch.name === branchName)?.upstream,
       x: event.clientX,
       y: event.clientY
     });
@@ -891,9 +913,15 @@ export function GraphView({
             scrollRef.current?.focus({ preventScroll: true });
           }}
           onCheckoutBranch={onCheckoutBranch}
+          onCopyBranchName={onCopyBranchName}
+          onPullBranch={onPullBranch}
           onPushBranch={onPushBranch}
+          onSetBranchUpstream={onSetBranchUpstream}
           onRenameBranch={onRenameBranch}
           onReviewBranch={onReviewBranch}
+          pullRequest={pullRequestsByBranch?.get(contextMenu.branchName)}
+          onViewPullRequest={onViewPullRequest}
+          canSetBranchUpstream={canSetBranchUpstream}
           onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
           onMergeBranch={onMergeBranch}
           onRebaseOntoBranch={onRebaseOntoBranch}
@@ -2306,10 +2334,6 @@ function BulkCommitActions({
   );
 }
 
-function MenuSeparator(): ReactElement {
-  return <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />;
-}
-
 function GraphTagContextMenu({
   state,
   remoteName,
@@ -2344,9 +2368,9 @@ function GraphTagContextMenu({
   }, [state]);
 
   return (
-    <div
+    <ContextMenuSurface
       ref={menuRef}
-      className="fixed z-50 w-[22rem] rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      className="fixed"
       style={{ left: position.left, top: position.top }}
       role="menu"
       aria-label={`${state.tagName} tag actions`}
@@ -2361,7 +2385,7 @@ function GraphTagContextMenu({
         onDeleteTag={onDeleteTag}
         onClose={onClose}
       />
-    </div>
+    </ContextMenuSurface>
   );
 }
 
@@ -2369,9 +2393,15 @@ function GraphBranchContextMenu({
   state,
   onClose,
   onCheckoutBranch,
+  onCopyBranchName,
+  onPullBranch,
   onPushBranch,
+  onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
+  pullRequest,
+  onViewPullRequest,
+  canSetBranchUpstream,
   onCreateTagAtCommit,
   onMergeBranch,
   onRebaseOntoBranch,
@@ -2382,9 +2412,15 @@ function GraphBranchContextMenu({
   state: BranchContextMenuState;
   onClose: () => void;
   onCheckoutBranch?: (name: string) => Promise<void> | void;
+  onCopyBranchName?: (name: string) => Promise<void> | void;
+  onPullBranch?: (name: string) => Promise<void> | void;
   onPushBranch?: (name: string) => Promise<void> | void;
+  onSetBranchUpstream?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
   onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
+  pullRequest?: GitHubPullRequestSummary;
+  onViewPullRequest?: (pullRequest: GitHubPullRequestSummary) => Promise<void> | void;
+  canSetBranchUpstream: boolean;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -2412,9 +2448,9 @@ function GraphBranchContextMenu({
   }, [state]);
 
   return (
-    <div
+    <ContextMenuSurface
       ref={menuRef}
-      className="fixed z-50 w-80 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      className="fixed"
       style={{ left: position.left, top: position.top }}
       role="menu"
       aria-label={`${state.branchName} branch actions`}
@@ -2434,6 +2470,36 @@ function GraphBranchContextMenu({
         <Check size={14} />
         <span>Checkout {state.branchName}</span>
       </button>
+      {isCurrentBranch && state.upstream ? (
+        <button
+          className="menu-row"
+          type="button"
+          role="menuitem"
+          disabled={!onPullBranch || isOperationBusy}
+          onClick={() => {
+            void onPullBranch?.(state.branchName);
+            onClose();
+          }}
+        >
+          <Download size={14} />
+          <span>Pull</span>
+        </button>
+      ) : null}
+      {!state.upstream && canSetBranchUpstream ? (
+        <button
+          className="menu-row"
+          type="button"
+          role="menuitem"
+          disabled={!onSetBranchUpstream || isOperationBusy}
+          onClick={() => {
+            void onSetBranchUpstream?.(state.branchName);
+            onClose();
+          }}
+        >
+          <Link size={14} />
+          <span>Set upstream…</span>
+        </button>
+      ) : null}
       <button
         className="menu-row"
         type="button"
@@ -2460,7 +2526,25 @@ function GraphBranchContextMenu({
         <Cloud size={14} />
         <span>Push branch to remote</span>
       </button>
-      <MenuSeparator />
+      {pullRequest ? (
+        <>
+          <ContextMenuSeparator />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={!onViewPullRequest}
+            onClick={() => {
+              void onViewPullRequest?.(pullRequest);
+              onClose();
+            }}
+          >
+            <GitPullRequest size={14} />
+            <span>View pull request #{pullRequest.number}</span>
+          </button>
+        </>
+      ) : null}
+      <ContextMenuSeparator />
       <button
         className="menu-row"
         type="button"
@@ -2526,7 +2610,20 @@ function GraphBranchContextMenu({
         <Workflow size={14} />
         <span>Interactive rebase {state.currentBranchName} onto {state.branchName}</span>
       </button>
-      <MenuSeparator />
+      <ContextMenuSeparator />
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        disabled={!onCopyBranchName}
+        onClick={() => {
+          void onCopyBranchName?.(state.branchName);
+          onClose();
+        }}
+      >
+        <Copy size={14} />
+        <span>Copy branch name</span>
+      </button>
       <button
         className="menu-row"
         type="button"
@@ -2540,7 +2637,7 @@ function GraphBranchContextMenu({
         <Trash2 size={14} />
         <span>Delete local or remote branch…</span>
       </button>
-    </div>
+    </ContextMenuSurface>
   );
 }
 
@@ -2622,9 +2719,9 @@ function GraphContextMenu({
   }
 
   return (
-    <div
+    <ContextMenuSurface
       ref={menuRef}
-      className="fixed z-50 w-80 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60"
+      className="fixed"
       style={{ left: position.left, top: position.top }}
       role="menu"
       aria-label="Commit actions"
@@ -2725,7 +2822,7 @@ function GraphContextMenu({
             <Trash2 size={14} />
             <span>Drop stash</span>
           </button>
-          <MenuSeparator />
+          <ContextMenuSeparator />
           <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
             <Copy size={14} />
             <span>Copy stash SHA</span>
@@ -2772,7 +2869,7 @@ function GraphContextMenu({
             <Tag size={14} />
             <span>Create tag here</span>
           </button>
-          <MenuSeparator />
+          <ContextMenuSeparator />
           <button
             className="menu-row"
             type="button"
@@ -2812,7 +2909,7 @@ function GraphContextMenu({
             <Workflow size={14} />
             <span>Interactive rebase from here</span>
           </button>
-          <MenuSeparator />
+          <ContextMenuSeparator />
           <button
             className="menu-row"
             type="button"
@@ -2852,7 +2949,7 @@ function GraphContextMenu({
             <RotateCcw size={14} />
             <span>Reset {currentBranchName ?? 'HEAD'} to this commit…</span>
           </button>
-          <MenuSeparator />
+          <ContextMenuSeparator />
           <button className="menu-row" type="button" role="menuitem" onClick={() => void copySha()}>
             <Copy size={14} />
             <span>Copy commit SHA</span>
@@ -2870,7 +2967,7 @@ function GraphContextMenu({
           </button>
         </>
       )}
-    </div>
+    </ContextMenuSurface>
   );
 }
 

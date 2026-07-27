@@ -7,13 +7,18 @@ import {
   ChevronDown,
   ChevronRight,
   Cloud,
+  Copy,
+  Download,
   FolderGit2,
   GitBranch,
+  GitMerge,
   GitPullRequest,
   Laptop,
+  Link,
   Loader2,
   PanelLeftClose,
   Pencil,
+  RefreshCw,
   Search,
   Tag,
   Trash2,
@@ -22,7 +27,19 @@ import {
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
-import type { GitBranchRef, GitRemoteBranchRef, GitRepositoryOverview, GitStashEntry, GitStashRefInput, GitTagDeleteInput, GitTagRef, RepoTab } from '@shared/types';
+import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
+import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
+import type {
+  GitBranchRef,
+  GitHubPullRequestSummary,
+  GitRemoteBranchRef,
+  GitRepositoryOverview,
+  GitStashEntry,
+  GitStashRefInput,
+  GitTagDeleteInput,
+  GitTagRef,
+  RepoTab
+} from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 type SidebarProps = {
@@ -44,9 +61,18 @@ type SidebarProps = {
   isOperationBusy: boolean;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
+  onCopyBranchName: (name: string) => void;
+  onPullBranch: (name: string) => void;
   onPushBranch: (name: string) => void;
+  onSetBranchUpstream: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onReviewBranch: (name: string, sha: string) => void;
+  onViewPullRequest: (pullRequest: GitHubPullRequestSummary) => void;
+  localPullRequestsByBranch: ReadonlyMap<string, GitHubPullRequestSummary>;
+  remotePullRequestsByBranch: ReadonlyMap<string, GitHubPullRequestSummary>;
+  onMergeBranch: (name: string) => void;
+  onRebaseOntoBranch: (name: string) => void;
+  onCreateTagAtCommit: (sha: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
@@ -129,9 +155,18 @@ export function Sidebar({
   isOperationBusy,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
+  onCopyBranchName,
+  onPullBranch,
   onPushBranch,
+  onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
+  onViewPullRequest,
+  localPullRequestsByBranch,
+  remotePullRequestsByBranch,
+  onMergeBranch,
+  onRebaseOntoBranch,
+  onCreateTagAtCommit,
   onDeleteBranch,
   onDeleteRemoteBranch,
   tagPushRemote,
@@ -449,12 +484,27 @@ export function Sidebar({
         <SidebarContextMenu
           state={contextMenu}
           isOperationBusy={isOperationBusy}
+          currentBranchName={
+            repositoryOverview?.status.branch.isDetached
+              ? undefined
+              : repositoryOverview?.status.branch.head
+          }
+          canSetBranchUpstream={Boolean(repositoryOverview?.refs.remoteBranches.length)}
           onClose={() => setContextMenu(undefined)}
           onCheckoutBranch={onCheckoutBranch}
           onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+          onCopyBranchName={onCopyBranchName}
+          onPullBranch={onPullBranch}
           onPushBranch={onPushBranch}
+          onSetBranchUpstream={onSetBranchUpstream}
           onRenameBranch={onRenameBranch}
           onReviewBranch={onReviewBranch}
+          onViewPullRequest={onViewPullRequest}
+          localPullRequestsByBranch={localPullRequestsByBranch}
+          remotePullRequestsByBranch={remotePullRequestsByBranch}
+          onMergeBranch={onMergeBranch}
+          onRebaseOntoBranch={onRebaseOntoBranch}
+          onCreateTagAtCommit={onCreateTagAtCommit}
           onDeleteBranch={onDeleteBranch}
           onDeleteRemoteBranch={onDeleteRemoteBranch}
           tagPushRemote={tagPushRemote}
@@ -866,12 +916,23 @@ function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLElement>): void 
 function SidebarContextMenu({
   state,
   isOperationBusy,
+  currentBranchName,
+  canSetBranchUpstream,
   onClose,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
+  onCopyBranchName,
+  onPullBranch,
   onPushBranch,
+  onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
+  onViewPullRequest,
+  localPullRequestsByBranch,
+  remotePullRequestsByBranch,
+  onMergeBranch,
+  onRebaseOntoBranch,
+  onCreateTagAtCommit,
   onDeleteBranch,
   onDeleteRemoteBranch,
   tagPushRemote,
@@ -883,12 +944,23 @@ function SidebarContextMenu({
 }: {
   state: SidebarContextMenuState;
   isOperationBusy: boolean;
+  currentBranchName?: string;
+  canSetBranchUpstream: boolean;
   onClose: () => void;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
+  onCopyBranchName: (name: string) => void;
+  onPullBranch: (name: string) => void;
   onPushBranch: (name: string) => void;
+  onSetBranchUpstream: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onReviewBranch: (name: string, sha: string) => void;
+  onViewPullRequest: (pullRequest: GitHubPullRequestSummary) => void;
+  localPullRequestsByBranch: ReadonlyMap<string, GitHubPullRequestSummary>;
+  remotePullRequestsByBranch: ReadonlyMap<string, GitHubPullRequestSummary>;
+  onMergeBranch: (name: string) => void;
+  onRebaseOntoBranch: (name: string) => void;
+  onCreateTagAtCommit: (sha: string) => void;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
@@ -900,6 +972,22 @@ function SidebarContextMenu({
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
+  const branchName =
+    state.kind === 'local'
+      ? state.branch.name
+      : state.kind === 'remote'
+        ? branchNameFromRemoteRef(state.branch.name)
+        : undefined;
+  const pullRequest =
+    state.kind === 'local'
+      ? localPullRequestsByBranch.get(state.branch.name)
+      : state.kind === 'remote'
+        ? remotePullRequestsByBranch.get(state.branch.name)
+        : undefined;
+  const canIntegrateBranch =
+    Boolean(currentBranchName) &&
+    Boolean(branchName) &&
+    (state.kind === 'remote' || branchName !== currentBranchName);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -917,9 +1005,9 @@ function SidebarContextMenu({
   }, [state]);
 
   return (
-    <div
+    <ContextMenuSurface
       ref={menuRef}
-      className={`fixed z-50 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 shadow-2xl shadow-black/60 ${state.kind === 'tag' ? 'w-[22rem]' : 'w-56'}`}
+      className="fixed"
       style={{ left: position.left, top: position.top }}
       role="menu"
       aria-label="Reference actions"
@@ -928,32 +1016,51 @@ function SidebarContextMenu({
     >
       {state.kind === 'local' ? (
         <>
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={state.branch.current || isOperationBusy}
-            onClick={() => {
-              onCheckoutBranch(state.branch.name);
-              onClose();
-            }}
-          >
-            <Check size={14} />
-            <span>Checkout branch</span>
-          </button>
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onReviewBranch(state.branch.name, state.branch.sha);
-              onClose();
-            }}
-          >
-            <BookOpenCheck size={14} />
-            <span>Review entire branch</span>
-          </button>
+          {!state.branch.current ? (
+            <button
+              className="menu-row"
+              type="button"
+              role="menuitem"
+              disabled={isOperationBusy}
+              onClick={() => {
+                onCheckoutBranch(state.branch.name);
+                onClose();
+              }}
+            >
+              <Check size={14} />
+              <span>Checkout {state.branch.name}</span>
+            </button>
+          ) : null}
+          {state.branch.current && state.branch.upstream ? (
+            <button
+              className="menu-row"
+              type="button"
+              role="menuitem"
+              disabled={isOperationBusy}
+              onClick={() => {
+                onPullBranch(state.branch.name);
+                onClose();
+              }}
+            >
+              <Download size={14} />
+              <span>Pull</span>
+            </button>
+          ) : null}
+          {!state.branch.upstream && canSetBranchUpstream ? (
+            <button
+              className="menu-row"
+              type="button"
+              role="menuitem"
+              disabled={isOperationBusy}
+              onClick={() => {
+                onSetBranchUpstream(state.branch.name);
+                onClose();
+              }}
+            >
+              <Link size={14} />
+              <span>Set upstream…</span>
+            </button>
+          ) : null}
           <button
             className="menu-row"
             type="button"
@@ -967,7 +1074,80 @@ function SidebarContextMenu({
             <Cloud size={14} />
             <span>Push branch to remote</span>
           </button>
-          <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
+          {pullRequest ? (
+            <>
+              <ContextMenuSeparator />
+              <button
+                className="menu-row"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onViewPullRequest(pullRequest);
+                  onClose();
+                }}
+              >
+                <GitPullRequest size={14} />
+                <span>View pull request #{pullRequest.number}</span>
+              </button>
+            </>
+          ) : null}
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onReviewBranch(state.branch.name, state.branch.sha);
+              onClose();
+            }}
+          >
+            <BookOpenCheck size={14} />
+            <span>Review entire branch</span>
+          </button>
+          <ContextMenuSeparator />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onCreateTagAtCommit(state.branch.sha);
+              onClose();
+            }}
+          >
+            <Tag size={14} />
+            <span>Create tag here</span>
+          </button>
+          {canIntegrateBranch ? (
+            <>
+              <button
+                className="menu-row"
+                type="button"
+                role="menuitem"
+                disabled={isOperationBusy}
+                onClick={() => {
+                  onMergeBranch(state.branch.name);
+                  onClose();
+                }}
+              >
+                <GitMerge size={14} />
+                <span>Merge {state.branch.name} into {currentBranchName}</span>
+              </button>
+              <button
+                className="menu-row"
+                type="button"
+                role="menuitem"
+                disabled={isOperationBusy}
+                onClick={() => {
+                  onRebaseOntoBranch(state.branch.name);
+                  onClose();
+                }}
+              >
+                <RefreshCw size={14} />
+                <span>Rebase {currentBranchName} onto {state.branch.name}</span>
+              </button>
+            </>
+          ) : null}
           <button
             className="menu-row"
             type="button"
@@ -980,6 +1160,19 @@ function SidebarContextMenu({
           >
             <Pencil size={14} />
             <span>Rename branch</span>
+          </button>
+          <ContextMenuSeparator />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onCopyBranchName(state.branch.name);
+              onClose();
+            }}
+          >
+            <Copy size={14} />
+            <span>Copy branch name</span>
           </button>
           <button
             className="menu-row"
@@ -1010,7 +1203,77 @@ function SidebarContextMenu({
             <GitBranch size={14} />
             <span>Checkout tracking branch</span>
           </button>
-          <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
+          {pullRequest ? (
+            <button
+              className="menu-row"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onViewPullRequest(pullRequest);
+                onClose();
+              }}
+            >
+              <GitPullRequest size={14} />
+              <span>View pull request #{pullRequest.number}</span>
+            </button>
+          ) : null}
+          <ContextMenuSeparator />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onCreateTagAtCommit(state.branch.sha);
+              onClose();
+            }}
+          >
+            <Tag size={14} />
+            <span>Create tag here</span>
+          </button>
+          {canIntegrateBranch ? (
+            <>
+              <button
+                className="menu-row"
+                type="button"
+                role="menuitem"
+                disabled={isOperationBusy}
+                onClick={() => {
+                  onMergeBranch(state.branch.name);
+                  onClose();
+                }}
+              >
+                <GitMerge size={14} />
+                <span>Merge {state.branch.name} into {currentBranchName}</span>
+              </button>
+              <button
+                className="menu-row"
+                type="button"
+                role="menuitem"
+                disabled={isOperationBusy}
+                onClick={() => {
+                  onRebaseOntoBranch(state.branch.name);
+                  onClose();
+                }}
+              >
+                <RefreshCw size={14} />
+                <span>Rebase {currentBranchName} onto {state.branch.name}</span>
+              </button>
+            </>
+          ) : null}
+          <ContextMenuSeparator />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onCopyBranchName(state.branch.name);
+              onClose();
+            }}
+          >
+            <Copy size={14} />
+            <span>Copy branch name</span>
+          </button>
           <button
             className="menu-row"
             type="button"
@@ -1077,7 +1340,7 @@ function SidebarContextMenu({
           </button>
         </>
       )}
-    </div>
+    </ContextMenuSurface>
   );
 }
 

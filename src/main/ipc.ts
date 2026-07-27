@@ -30,6 +30,7 @@ import {
   pushTag,
   pushRepository,
   renameBranch,
+  setBranchUpstream,
   resetToCommit,
   resolveConflict,
   revertCommit,
@@ -127,6 +128,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:push': { label: 'Push' },
   'repo:create-branch': { label: 'Create branch' },
   'repo:rename-branch': { label: 'Rename branch' },
+  'repo:set-branch-upstream': { label: 'Set upstream' },
   'repo:delete-branch': { label: 'Delete branch' },
   'repo:checkout': { label: 'Checkout' },
   'repo:merge': { label: 'Merge' },
@@ -404,6 +406,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   );
   handle('repo:rename-branch', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => renameBranch(tab, input))
+  );
+  handle('repo:set-branch-upstream', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => setBranchUpstream(tab, input))
   );
   handle('repo:delete-branch', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => deleteBranch(tab, input))

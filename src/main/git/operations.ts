@@ -11,6 +11,7 @@ import type {
   GitPullInput,
   GitPushInput,
   GitRenameBranchInput,
+  GitSetBranchUpstreamInput,
   GitResetInput,
   GitStashPushInput,
   GitStashRefInput,
@@ -67,6 +68,7 @@ export async function pullRepository(
   const env = createProfileCommandEnv(tab.assignedProfileId);
 
   return gitExecutor.transaction(tab.path, async () => {
+    await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
     await gitExecutor.run(['fetch'], {
       cwd: tab.path,
       kind: 'mutation',
@@ -75,11 +77,15 @@ export async function pullRepository(
       timeoutMs: NETWORK_GIT_TIMEOUT_MS
     });
     onFetchCompleted?.(new Date().toISOString());
+    await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
     const upstreamCommit = await resolvePullUpstream(tab.path, env);
 
     if (input.mode === 'rebase') {
       await assertNoIgnoredTreeCollisions(tab.path, upstreamCommit, env, 'Pull with rebase');
-      const result = await rebaseOnto(tab, { target: upstreamCommit });
+      const result = await rebaseOnto(tab, {
+        target: upstreamCommit,
+        expectedCurrentBranch: input.expectedBranch
+      });
       return createOperationResult(tab, env, 'pull', 'Pull with rebase', undefined, result.conflictState);
     }
 
@@ -96,6 +102,7 @@ export async function pullRepository(
     }
 
     await assertNoIgnoredTreeCollisions(tab.path, upstreamCommit, env, 'Pull fast-forward');
+    await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
 
     if (headCommit !== upstreamCommit) {
       await gitExecutor.run(['merge', '--ff-only', upstreamCommit], { cwd: tab.path, kind: 'mutation', env });
@@ -236,6 +243,39 @@ export async function renameBranch(tab: OperationTab, input: GitRenameBranchInpu
   });
 
   return createOperationResult(tab, env, 'branch-rename', `Rename branch ${oldName} to ${newName}`, undoEntry);
+}
+
+export async function setBranchUpstream(
+  tab: OperationTab,
+  input: GitSetBranchUpstreamInput
+): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const branchName = normalizeRequiredName(input.branch, 'Branch name');
+  const upstream = normalizeRequiredName(input.upstream, 'Upstream branch');
+  await assertValidBranchName(tab.path, branchName, env);
+  await gitExecutor.run(['check-ref-format', `refs/remotes/${upstream}`], { cwd: tab.path, env });
+  await Promise.all([
+    revParse(tab.path, `refs/heads/${branchName}^{commit}`, env),
+    revParse(tab.path, `refs/remotes/${upstream}^{commit}`, env)
+  ]);
+  await gitExecutor.run(['branch', `--set-upstream-to=${upstream}`, '--', branchName], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env
+  });
+
+  const configuredUpstream = await branchUpstream(tab.path, branchName, env);
+
+  if (configuredUpstream !== upstream) {
+    throw new Error(`Branch ${branchName} did not start tracking ${upstream}.`);
+  }
+
+  return createOperationResult(
+    tab,
+    env,
+    'branch-set-upstream',
+    `Set upstream for ${branchName} to ${upstream}`
+  );
 }
 
 export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInput): Promise<GitOperationResult> {
@@ -380,6 +420,7 @@ export async function mergeRef(tab: OperationTab, input: GitMergeInput): Promise
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const ref = normalizeRequiredName(input.ref, 'Merge ref');
   await assertNoIgnoredMergeCollisions(tab.path, ref, env, `Merge ${ref}`);
+  await assertExpectedCurrentBranch(tab.path, input.expectedCurrentBranch, env);
   const headBefore = await revParseOptional(tab.path, 'HEAD', env);
   const { conflictState } = await runMutationAllowingConflicts(tab, ['merge', '--no-edit', ref], env);
   const headAfter = await revParseOptional(tab.path, 'HEAD', env);
@@ -1023,6 +1064,25 @@ async function currentBranchName(repoPath: string, env: NodeJS.ProcessEnv | unde
     allowedExitCodes: [1]
   });
   return result.exitCode === 0 ? result.stdout.trim() || undefined : undefined;
+}
+
+async function assertExpectedCurrentBranch(
+  repoPath: string,
+  expectedBranch: string | undefined,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<void> {
+  if (!expectedBranch) {
+    return;
+  }
+
+  const expected = normalizeRequiredName(expectedBranch, 'Expected branch');
+  const current = await currentBranchName(repoPath, env);
+
+  if (current !== expected) {
+    throw new Error(
+      `Branch changed before the operation started. Expected ${expected}, but ${current ?? 'HEAD is detached'} is checked out.`
+    );
+  }
 }
 
 async function branchUpstream(repoPath: string, branchName: string, env: NodeJS.ProcessEnv | undefined): Promise<string | undefined> {

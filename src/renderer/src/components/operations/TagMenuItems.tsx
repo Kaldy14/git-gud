@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Copy, Trash2, Upload } from 'lucide-react';
 
+import { ContextMenuSeparator } from '@renderer/components/ui/context-menu';
 import type { GitTagDeleteInput } from '@shared/types';
 
 type TagMenuItemsProps = {
@@ -54,7 +55,7 @@ export function TagMenuItems({
         <Upload size={14} />
         <span>{remoteName ? `Push ${tagName} to ${remoteName}` : `Push ${tagName}`}</span>
       </button>
-      <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
+      <ContextMenuSeparator />
       <button
         className="menu-row"
         type="button"
@@ -95,7 +96,7 @@ export function TagMenuItems({
         <Trash2 size={14} />
         <span>{remoteName ? `Delete ${tagName} locally and from ${remoteName}` : `Delete ${tagName} locally and remotely`}</span>
       </button>
-      <div className="mx-1.5 my-1 h-px bg-[var(--border)]" />
+      <ContextMenuSeparator />
       <button
         className="menu-row"
         type="button"

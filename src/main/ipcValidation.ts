@@ -30,6 +30,7 @@ import type {
   GitReviewProgressUpdate,
   GitReviewTarget,
   GitRenameBranchInput,
+  GitSetBranchUpstreamInput,
   GitResetInput,
   GitStashPushInput,
   GitStashRefInput,
@@ -98,6 +99,8 @@ const validators = {
   'repo:push': (args) => readRepoPathWithObject(args, 'repo:push', readPushInput),
   'repo:create-branch': (args) => readRepoPathWithObject(args, 'repo:create-branch', readCreateBranchInput),
   'repo:rename-branch': (args) => readRepoPathWithObject(args, 'repo:rename-branch', readRenameBranchInput),
+  'repo:set-branch-upstream': (args) =>
+    readRepoPathWithObject(args, 'repo:set-branch-upstream', readSetBranchUpstreamInput),
   'repo:delete-branch': (args) => readRepoPathWithObject(args, 'repo:delete-branch', readDeleteBranchInput),
   'repo:checkout': (args) => readRepoPathWithObject(args, 'repo:checkout', readCheckoutTarget),
   'repo:merge': (args) => readRepoPathWithObject(args, 'repo:merge', readMergeInput),
@@ -585,7 +588,8 @@ function readGitHubPullRequestMergeInput(value: unknown): GitHubPullRequestMerge
 function readPullInput(value: unknown): GitPullInput {
   const record = readRecord(value, 'pull input');
   return {
-    mode: readEnumProperty(record, 'mode', ['ff-only', 'rebase'])
+    mode: readEnumProperty(record, 'mode', ['ff-only', 'rebase']),
+    expectedBranch: readOptionalStringProperty(record, 'expectedBranch')
   };
 }
 
@@ -611,6 +615,14 @@ function readRenameBranchInput(value: unknown): GitRenameBranchInput {
   return {
     oldName: readStringProperty(record, 'oldName'),
     newName: readStringProperty(record, 'newName')
+  };
+}
+
+function readSetBranchUpstreamInput(value: unknown): GitSetBranchUpstreamInput {
+  const record = readRecord(value, 'set branch upstream input');
+  return {
+    branch: readStringProperty(record, 'branch'),
+    upstream: readStringProperty(record, 'upstream')
   };
 }
 
@@ -678,7 +690,8 @@ function readCheckoutTarget(value: unknown): GitCheckoutTarget {
 function readMergeInput(value: unknown): GitMergeInput {
   const record = readRecord(value, 'merge input');
   return {
-    ref: readStringProperty(record, 'ref')
+    ref: readStringProperty(record, 'ref'),
+    expectedCurrentBranch: readOptionalStringProperty(record, 'expectedCurrentBranch')
   };
 }
 
@@ -744,7 +757,8 @@ function readResetInput(value: unknown): GitResetInput {
 function readRebaseInput(value: unknown): GitRebaseInput {
   const record = readRecord(value, 'rebase input');
   return {
-    target: readStringProperty(record, 'target')
+    target: readStringProperty(record, 'target'),
+    expectedCurrentBranch: readOptionalStringProperty(record, 'expectedCurrentBranch')
   };
 }
 

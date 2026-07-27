@@ -292,6 +292,25 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('tabs:select-file', ['tab-1', undefined])).toEqual(['tab-1', undefined]);
   });
 
+  it('validates branch upstream inputs before they reach Git', () => {
+    expect(
+      validateIpcArgs('repo:set-branch-upstream', [
+        '/repo',
+        { branch: 'feature/tracking', upstream: 'origin/main' }
+      ])
+    ).toEqual([
+      '/repo',
+      { branch: 'feature/tracking', upstream: 'origin/main' }
+    ]);
+
+    expect(() =>
+      validateIpcArgs('repo:set-branch-upstream', [
+        '/repo',
+        { branch: 'feature/tracking', upstream: 42 }
+      ])
+    ).toThrow('upstream must be a string.');
+  });
+
   it('rejects invalid enums before they reach Git commands', () => {
     expect(() =>
       validateIpcArgs('repo:pull', [

@@ -55,9 +55,10 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
     nodes {
       ... on PullRequest {
         id number title url updatedAt isDraft state reviewDecision mergeStateStatus mergeable
-        viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName baseRefName
+        viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName headRefOid baseRefName
         author { login avatarUrl }
         repository { nameWithOwner }
+        headRepository { nameWithOwner }
         totalCommentsCount
         reviewRequests(first: 20) {
           nodes {
@@ -86,9 +87,10 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
     nodes {
       ... on PullRequest {
         id number title url updatedAt isDraft state reviewDecision mergeStateStatus mergeable
-        viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName baseRefName
+        viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName headRefOid baseRefName
         author { login avatarUrl }
         repository { nameWithOwner }
+        headRepository { nameWithOwner }
         totalCommentsCount
         reviewRequests(first: 20) {
           nodes {
@@ -777,11 +779,17 @@ function parsePullRequestSummary(
   const pullRequest = readRecord(value, 'pull request');
   const repository = readRecord(pullRequest.repository, 'pull request repository');
   const nameWithOwner = readString(repository.nameWithOwner, 'repository name');
-  const [owner, repositoryName, ...extraParts] = nameWithOwner.split('/');
-
-  if (!owner || !repositoryName || extraParts.length > 0) {
-    throw new Error(`GitHub returned an invalid repository name: ${nameWithOwner}`);
-  }
+  const { owner, repository: repositoryName } = parseRepositoryNameWithOwner(
+    nameWithOwner,
+    'repository'
+  );
+  const headNameWithOwner = readNestedOptionalString(
+    pullRequest,
+    ['headRepository', 'nameWithOwner']
+  );
+  const headRepository = headNameWithOwner
+    ? parseRepositoryNameWithOwner(headNameWithOwner, 'head repository')
+    : undefined;
 
   const checks = parseChecks(pullRequest);
   const reviewDecision = normalizeReviewDecision(readOptionalString(pullRequest.reviewDecision));
@@ -820,9 +828,27 @@ function parsePullRequestSummary(
     additions: readNumber(pullRequest.additions, 'pull request additions'),
     deletions: readNumber(pullRequest.deletions, 'pull request deletions'),
     headRefName: readString(pullRequest.headRefName, 'pull request head branch'),
+    headRepositoryOwner: headRepository?.owner,
+    headRepository: headRepository?.repository,
+    headSha: readString(pullRequest.headRefOid, 'pull request head SHA'),
     baseRefName: readString(pullRequest.baseRefName, 'pull request base branch'),
     checks
   };
+}
+
+function parseRepositoryNameWithOwner(
+  nameWithOwner: string,
+  label: string
+): { owner: string; repository: string } {
+  const [owner, repository, ...extraParts] = nameWithOwner.split('/');
+
+  if (!owner || !repository || extraParts.length > 0) {
+    throw new Error(
+      `GitHub returned an invalid ${label} name: ${nameWithOwner}`
+    );
+  }
+
+  return { owner, repository };
 }
 
 export function categorizePullRequest(input: {
