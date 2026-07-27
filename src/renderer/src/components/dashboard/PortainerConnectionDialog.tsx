@@ -271,8 +271,12 @@ export function PortainerConnectionDialog({
               <CheckCircle2 size={13} />
               <span>
                 Connected{testResult.version ? ` to Portainer ${testResult.version}` : ''}.{' '}
-                {testResult.swarmEnvironmentCount} Swarm environment
-                {testResult.swarmEnvironmentCount === 1 ? '' : 's'} available.
+                {testResult.dockerEnvironmentCount} Docker environment
+                {testResult.dockerEnvironmentCount === 1 ? '' : 's'} available
+                {testResult.swarmEnvironmentCount > 0
+                  ? ` (${testResult.swarmEnvironmentCount} Swarm)`
+                  : ''}
+                .
               </span>
             </div>
           ) : null}

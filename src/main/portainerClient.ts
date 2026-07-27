@@ -6,11 +6,14 @@ import type {
   PortainerConnectionTestResult,
   PortainerImageFreshness,
   PortainerServiceHealth,
+  PortainerServiceImageStatus,
+  PortainerServiceRuntime,
   PortainerStackCatalog,
   PortainerStackHealth,
   PortainerStackImages,
   PortainerStackRuntime,
-  PortainerStackStatusInput
+  PortainerStackStatusInput,
+  PortainerStackSummary
 } from '@shared/types';
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -18,6 +21,9 @@ const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 const MAX_ERROR_LENGTH = 240;
 const IMAGE_STATUS_CONCURRENCY = 4;
 const STACK_LABEL = 'com.docker.stack.namespace';
+const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
+const COMPOSE_SERVICE_LABEL = 'com.docker.compose.service';
+const COMPOSE_ONEOFF_LABEL = 'com.docker.compose.oneoff';
 
 export type PortainerClientCredentials = {
   connection: PortainerConnection;
@@ -41,6 +47,7 @@ type PortainerEnvironment = {
   name: string;
   status: 'up' | 'down' | 'unknown';
   imageNotificationsEnabled: boolean;
+  isSwarm: boolean;
 };
 
 type SwarmService = {
@@ -63,6 +70,23 @@ type SwarmTask = {
   image?: string;
 };
 
+type ComposeContainer = {
+  id: string;
+  serviceName: string;
+  image: string;
+  state?: string;
+  status?: string;
+};
+
+type ComposeService = {
+  id: string;
+  name: string;
+  image: string;
+  containers: ComposeContainer[];
+};
+
+type PortainerStackType = PortainerStackSummary['stackType'];
+
 class PortainerHttpClient implements PortainerClient {
   private readonly baseUrl: URL;
 
@@ -84,48 +108,34 @@ class PortainerHttpClient implements PortainerClient {
     const environments = parseEnvironments(await this.getJson('/api/endpoints'));
     return {
       version: readString(systemStatus, 'Version', 'version'),
-      edition: readString(systemStatus, 'Edition', 'edition'),
       environmentCount: environments.allCount,
-      swarmEnvironmentCount: environments.swarm.length
+      dockerEnvironmentCount: environments.docker.length,
+      swarmEnvironmentCount: environments.docker.filter((environment) => environment.isSwarm)
+        .length
     };
   }
 
   async loadStackCatalog(): Promise<PortainerStackCatalog> {
-    const environments = parseEnvironments(await this.getJson('/api/endpoints')).swarm;
+    const environments = parseEnvironments(await this.getJson('/api/endpoints')).docker;
     const catalogEnvironments = await Promise.all(
       environments.map(async (environment) => {
-        const filters = JSON.stringify({ EndpointID: String(environment.id) });
-        const stacks = asArray(
-          await this.getJson('/api/stacks', { filters })
-        ).flatMap((value) => {
-          const stack = asRecord(value);
-          const id = readNumber(stack, 'Id', 'ID');
-          const endpointId = readNumber(stack, 'EndpointId', 'EndpointID');
-          const name = readString(stack, 'Name');
-          const type = readNumber(stack, 'Type');
-
-          if (
-            id === undefined ||
-            endpointId !== environment.id ||
-            name === undefined ||
-            type !== 1
-          ) {
-            return [];
-          }
-
-          return [
-            {
-              id,
-              name,
-              endpointId,
-              status: readNumber(stack, 'Status') === 1 ? ('active' as const) : ('inactive' as const)
-            }
-          ];
-        });
+        const composeStacks = this.loadCatalogStacks(
+          environment.id,
+          'compose',
+          { EndpointID: environment.id }
+        );
+        const swarmStacks = environment.isSwarm
+          ? this.loadSwarmCatalogStacks(environment.id)
+          : Promise.resolve([]);
+        const [compose, swarm] = await Promise.all([composeStacks, swarmStacks]);
+        const stacks = dedupeStacks([...compose, ...swarm]).sort(compareStacks);
 
         return {
-          ...environment,
-          stacks: stacks.sort((left, right) => left.name.localeCompare(right.name))
+          id: environment.id,
+          name: environment.name,
+          status: environment.status,
+          imageNotificationsEnabled: environment.imageNotificationsEnabled,
+          stacks
         };
       })
     );
@@ -139,12 +149,73 @@ class PortainerHttpClient implements PortainerClient {
     };
   }
 
+  private async loadSwarmCatalogStacks(
+    endpointId: number
+  ): Promise<PortainerStackSummary[]> {
+    const swarm = asRecord(
+      await this.getJson(`/api/endpoints/${endpointId}/docker/swarm`)
+    );
+    const swarmId = readString(swarm, 'ID', 'Id');
+
+    if (!swarmId) {
+      throw new Error(`Portainer environment ${endpointId} did not return a Swarm identifier.`);
+    }
+
+    return this.loadCatalogStacks(endpointId, 'swarm', { SwarmID: swarmId });
+  }
+
+  private async loadCatalogStacks(
+    endpointId: number,
+    stackType: PortainerStackType,
+    filters: { EndpointID: number } | { SwarmID: string }
+  ): Promise<PortainerStackSummary[]> {
+    return asArray(
+      await this.getJson('/api/stacks', { filters: JSON.stringify(filters) })
+    ).flatMap((value) => {
+      const stack = parseStackSummary(value);
+      return stack?.endpointId === endpointId && stack.stackType === stackType
+        ? [stack]
+        : [];
+    });
+  }
+
   async loadStackRuntime(input: PortainerStackStatusInput): Promise<PortainerStackRuntime> {
     this.assertConnection(input);
-    await this.assertStackIdentity(input);
-    const services = await this.loadServices(input);
+    const stackType = await this.assertStackIdentity(input);
+    const serviceRuntimes =
+      stackType === 'swarm'
+        ? await this.loadSwarmServiceRuntimes(input)
+        : await this.loadComposeServiceRuntimes(input);
+    const desiredTasks = sum(serviceRuntimes.map((service) => service.desiredTasks));
+    const runningTasks = sum(serviceRuntimes.map((service) => service.runningTasks));
+    const completedTasks = sum(serviceRuntimes.map((service) => service.completedTasks));
+
+    return {
+      connectionId: input.connectionId,
+      endpointId: input.endpointId,
+      stackId: input.stackId,
+      stackName: input.stackName,
+      stackType,
+      health: deriveStackHealth(
+        serviceRuntimes.map((service) => service.health),
+        desiredTasks,
+        stackType === 'compose'
+      ),
+      desiredTasks,
+      runningTasks,
+      completedTasks,
+      services: serviceRuntimes,
+      portainerUrl: buildStackUrl(this.baseUrl, input, stackType),
+      loadedAt: new Date().toISOString()
+    };
+  }
+
+  private async loadSwarmServiceRuntimes(
+    input: PortainerStackStatusInput
+  ): Promise<PortainerServiceRuntime[]> {
+    const services = await this.loadSwarmServices(input);
     const tasks = await this.loadTasks(input.endpointId, services.map((service) => service.id));
-    const serviceRuntimes = services.map((service) => {
+    return services.map((service) => {
       const serviceTasks = tasks.filter((task) => task.serviceId === service.id);
       const desiredTasks =
         service.desiredTasks ?? serviceTasks.filter(isDesiredRunningTask).length;
@@ -168,26 +239,12 @@ class PortainerHttpClient implements PortainerClient {
         ...(lastError ? { lastError } : {})
       };
     });
-    const desiredTasks = sum(serviceRuntimes.map((service) => service.desiredTasks));
-    const runningTasks = sum(serviceRuntimes.map((service) => service.runningTasks));
-    const completedTasks = sum(serviceRuntimes.map((service) => service.completedTasks));
+  }
 
-    return {
-      connectionId: input.connectionId,
-      endpointId: input.endpointId,
-      stackId: input.stackId,
-      stackName: input.stackName,
-      health: deriveStackHealth(
-        serviceRuntimes.map((service) => service.health),
-        desiredTasks
-      ),
-      desiredTasks,
-      runningTasks,
-      completedTasks,
-      services: serviceRuntimes,
-      portainerUrl: buildStackUrl(this.baseUrl, input),
-      loadedAt: new Date().toISOString()
-    };
+  private async loadComposeServiceRuntimes(
+    input: PortainerStackStatusInput
+  ): Promise<PortainerServiceRuntime[]> {
+    return (await this.loadComposeServices(input)).map(mapComposeServiceRuntime);
   }
 
   async loadStackImages(
@@ -195,42 +252,26 @@ class PortainerHttpClient implements PortainerClient {
     refresh = false
   ): Promise<PortainerStackImages> {
     this.assertConnection(input);
-    await this.assertStackIdentity(input);
-    const environments = parseEnvironments(await this.getJson('/api/endpoints')).swarm;
+    const stackType = await this.assertStackIdentity(input);
+    const environments = parseEnvironments(await this.getJson('/api/endpoints')).docker;
     const environment = environments.find((candidate) => candidate.id === input.endpointId);
 
     if (!environment) {
-      throw new Error('The selected Portainer Swarm environment no longer exists.');
+      throw new Error('The selected Portainer environment no longer exists.');
     }
 
-    const services = await this.loadServices(input);
-    const serviceStatuses = environment.imageNotificationsEnabled
-      ? await mapWithConcurrency(
-          services.map(
-            (service) => async () => {
-              const response = asRecord(
-                await this.getJson(
-                  `/api/docker/${input.endpointId}/services/${encodeURIComponent(service.id)}/image_status`,
-                  { refresh: String(refresh) }
-                )
-              );
-              const status = readString(response, 'Status', 'status');
-              const message = readString(response, 'Message', 'message');
-
-              return {
-                serviceId: service.id,
-                freshness: mapImageFreshness(status),
-                ...(message ? { message: truncate(message, MAX_ERROR_LENGTH) } : {})
-              };
-            }
-          ),
-          IMAGE_STATUS_CONCURRENCY
-        )
-      : services.map((service) => ({
-          serviceId: service.id,
-          freshness: 'unknown' as const,
-          message: 'Image update notifications are disabled for this environment.'
-        }));
+    const serviceStatuses =
+      stackType === 'swarm'
+        ? await this.loadSwarmImageStatuses(
+            input,
+            environment.imageNotificationsEnabled,
+            refresh
+          )
+        : await this.loadComposeImageStatuses(
+            input,
+            environment.imageNotificationsEnabled,
+            refresh
+          );
 
     return {
       connectionId: input.connectionId,
@@ -247,7 +288,9 @@ class PortainerHttpClient implements PortainerClient {
     }
   }
 
-  private async assertStackIdentity(input: PortainerStackStatusInput): Promise<void> {
+  private async assertStackIdentity(
+    input: PortainerStackStatusInput
+  ): Promise<PortainerStackType> {
     let stack: JsonRecord | undefined;
 
     try {
@@ -269,11 +312,13 @@ class PortainerHttpClient implements PortainerClient {
     const type = readNumber(stack, 'Type');
     const status = readNumber(stack, 'Status');
 
+    const stackType = mapStackType(type);
+
     if (
       id !== input.stackId ||
       endpointId !== input.endpointId ||
       name !== input.stackName ||
-      type !== 1
+      stackType === undefined
     ) {
       throw new Error(
         `The Portainer stack "${input.stackName}" changed identity. Remove or replace this dashboard tile.`
@@ -283,9 +328,11 @@ class PortainerHttpClient implements PortainerClient {
     if (status !== 1) {
       throw new Error(`The Portainer stack "${input.stackName}" is inactive.`);
     }
+
+    return stackType;
   }
 
-  private async loadServices(input: PortainerStackStatusInput): Promise<SwarmService[]> {
+  private async loadSwarmServices(input: PortainerStackStatusInput): Promise<SwarmService[]> {
     const labelValue = `${STACK_LABEL}=${input.stackName}`;
     const filters = JSON.stringify({ label: [labelValue] });
     const response = asArray(
@@ -327,6 +374,135 @@ class PortainerHttpClient implements PortainerClient {
         }
       ];
     });
+  }
+
+  private async loadComposeServices(
+    input: PortainerStackStatusInput
+  ): Promise<ComposeService[]> {
+    const labelValue = `${COMPOSE_PROJECT_LABEL}=${input.stackName}`;
+    const filters = JSON.stringify({ label: [labelValue] });
+    const containers = asArray(
+      await this.getJson(`/api/endpoints/${input.endpointId}/docker/containers/json`, {
+        all: 'true',
+        filters
+      })
+    ).flatMap<ComposeContainer>((value) => {
+      const container = asRecord(value);
+      const labels = asRecord(container?.Labels);
+      const id = readString(container, 'Id', 'ID');
+      const serviceName = readString(labels, COMPOSE_SERVICE_LABEL);
+
+      if (
+        id === undefined ||
+        serviceName === undefined ||
+        readString(labels, COMPOSE_PROJECT_LABEL) !== input.stackName ||
+        readString(labels, COMPOSE_ONEOFF_LABEL)?.toLowerCase() === 'true'
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          serviceName,
+          image: readString(container, 'Image') ?? 'Unknown image',
+          state: readString(container, 'State')?.toLowerCase(),
+          status: readString(container, 'Status')
+        }
+      ];
+    });
+    const services = new Map<string, ComposeService>();
+
+    for (const container of containers) {
+      const service = services.get(container.serviceName);
+
+      if (service) {
+        service.containers.push(container);
+        continue;
+      }
+
+      services.set(container.serviceName, {
+        id: container.serviceName,
+        name: container.serviceName,
+        image: container.image,
+        containers: [container]
+      });
+    }
+
+    return [...services.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  private async loadSwarmImageStatuses(
+    input: PortainerStackStatusInput,
+    imageNotificationsEnabled: boolean,
+    refresh: boolean
+  ): Promise<PortainerServiceImageStatus[]> {
+    const services = await this.loadSwarmServices(input);
+
+    if (!imageNotificationsEnabled) {
+      return imageNotificationsDisabled(services.map((service) => service.id));
+    }
+
+    return mapWithConcurrency(
+      services.map(
+        (service) => async () => ({
+          serviceId: service.id,
+          ...(await this.loadImageStatus(
+            `/api/docker/${input.endpointId}/services/${encodeURIComponent(service.id)}/image_status`,
+            refresh
+          ))
+        })
+      ),
+      IMAGE_STATUS_CONCURRENCY
+    );
+  }
+
+  private async loadComposeImageStatuses(
+    input: PortainerStackStatusInput,
+    imageNotificationsEnabled: boolean,
+    refresh: boolean
+  ): Promise<PortainerServiceImageStatus[]> {
+    const services = await this.loadComposeServices(input);
+
+    if (!imageNotificationsEnabled) {
+      return imageNotificationsDisabled(services.map((service) => service.id));
+    }
+
+    const containerStatuses = await mapWithConcurrency(
+      services.flatMap((service) =>
+        service.containers.map(
+          (container) => async () => ({
+            serviceId: service.id,
+            ...(await this.loadImageStatus(
+              `/api/docker/${input.endpointId}/containers/${encodeURIComponent(container.id)}/image_status`,
+              refresh
+            ))
+          })
+        )
+      ),
+      IMAGE_STATUS_CONCURRENCY
+    );
+
+    return services.map((service) =>
+      aggregateImageStatuses(
+        service.id,
+        containerStatuses.filter((status) => status.serviceId === service.id)
+      )
+    );
+  }
+
+  private async loadImageStatus(
+    apiPath: string,
+    refresh: boolean
+  ): Promise<Omit<PortainerServiceImageStatus, 'serviceId'>> {
+    const response = asRecord(await this.getJson(apiPath, { refresh: String(refresh) }));
+    const status = readString(response, 'Status', 'status');
+    const message = readString(response, 'Message', 'message');
+
+    return {
+      freshness: mapImageFreshness(status),
+      ...(message ? { message: truncate(message, MAX_ERROR_LENGTH) } : {})
+    };
   }
 
   private async loadTasks(endpointId: number, serviceIds: string[]): Promise<SwarmTask[]> {
@@ -480,19 +656,24 @@ function buildApiUrl(
 
 function parseEnvironments(value: unknown): {
   allCount: number;
-  swarm: PortainerEnvironment[];
+  docker: PortainerEnvironment[];
 } {
   const endpoints = asArray(value);
   return {
     allCount: endpoints.length,
-    swarm: endpoints.flatMap((value) => {
+    docker: endpoints.flatMap((value) => {
       const endpoint = asRecord(value);
       const snapshots = asArray(endpoint?.Snapshots);
       const isSwarm = snapshots.some((snapshot) => asRecord(snapshot)?.Swarm === true);
       const id = readNumber(endpoint, 'Id', 'ID');
       const name = readString(endpoint, 'Name');
+      const type = readNumber(endpoint, 'Type');
+      const containerEngine = readString(endpoint, 'ContainerEngine')?.toLowerCase();
+      const isDockerEndpoint =
+        containerEngine === 'docker' ||
+        (containerEngine === undefined && type !== undefined && [1, 2, 4].includes(type));
 
-      if (!isSwarm || id === undefined || name === undefined) {
+      if (!isDockerEndpoint || id === undefined || name === undefined) {
         return [];
       }
 
@@ -501,11 +682,59 @@ function parseEnvironments(value: unknown): {
           id,
           name,
           status: mapEnvironmentStatus(readNumber(endpoint, 'Status')),
-          imageNotificationsEnabled: endpoint?.EnableImageNotification === true
+          imageNotificationsEnabled: endpoint?.EnableImageNotification === true,
+          isSwarm
         }
       ];
     })
   };
+}
+
+function parseStackSummary(value: unknown): PortainerStackSummary | undefined {
+  const stack = asRecord(value);
+  const id = readNumber(stack, 'Id', 'ID');
+  const endpointId = readNumber(stack, 'EndpointId', 'EndpointID');
+  const name = readString(stack, 'Name');
+  const stackType = mapStackType(readNumber(stack, 'Type'));
+
+  if (
+    id === undefined ||
+    endpointId === undefined ||
+    name === undefined ||
+    stackType === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    id,
+    name,
+    endpointId,
+    stackType,
+    status: readNumber(stack, 'Status') === 1 ? 'active' : 'inactive'
+  };
+}
+
+function mapStackType(type?: number): PortainerStackType | undefined {
+  if (type === 1) {
+    return 'swarm';
+  }
+  if (type === 2) {
+    return 'compose';
+  }
+  return undefined;
+}
+
+function compareStacks(left: PortainerStackSummary, right: PortainerStackSummary): number {
+  return (
+    left.name.localeCompare(right.name) ||
+    left.stackType.localeCompare(right.stackType) ||
+    left.id - right.id
+  );
+}
+
+function dedupeStacks(stacks: PortainerStackSummary[]): PortainerStackSummary[] {
+  return [...new Map(stacks.map((stack) => [stack.id, stack])).values()];
 }
 
 function deriveServiceHealth(
@@ -540,14 +769,89 @@ function deriveServiceHealth(
   return 'healthy';
 }
 
-function deriveStackHealth(
-  serviceHealth: PortainerServiceHealth[],
-  desiredTasks: number
-): PortainerStackHealth {
-  if (serviceHealth.length === 0 || desiredTasks === 0) {
+function mapComposeServiceRuntime(service: ComposeService): PortainerServiceRuntime {
+  const desiredTasks = service.containers.length;
+  const runningTasks = service.containers.filter(
+    (container) => container.state === 'running'
+  ).length;
+  const completedTasks = service.containers.filter(
+    (container) => container.state === 'exited' || container.state === 'dead'
+  ).length;
+  const health = deriveComposeServiceHealth(service.containers, runningTasks);
+  const lastError = service.containers.find(
+    (container) =>
+      container.status &&
+      container.state !== 'running' &&
+      container.state !== 'created' &&
+      container.state !== 'restarting'
+  )?.status;
+  const runningImage =
+    service.containers.find((container) => container.state === 'running')?.image ??
+    service.image;
+
+  return {
+    id: service.id,
+    name: service.name,
+    image: runningImage,
+    desiredTasks,
+    runningTasks,
+    completedTasks,
+    health,
+    ...(lastError ? { lastError: truncate(lastError, MAX_ERROR_LENGTH) } : {})
+  };
+}
+
+function deriveComposeServiceHealth(
+  containers: ComposeContainer[],
+  runningTasks: number
+): PortainerServiceHealth {
+  if (containers.length === 0) {
     return 'stopped';
   }
-  if (serviceHealth.includes('degraded')) {
+
+  if (
+    containers.some(
+      (container) => container.state === 'created' || container.state === 'restarting'
+    )
+  ) {
+    return 'updating';
+  }
+
+  if (runningTasks === 0) {
+    return 'stopped';
+  }
+
+  if (
+    runningTasks < containers.length ||
+    containers.some(
+      (container) =>
+        container.state === 'paused' ||
+        container.state === 'dead' ||
+        container.status?.toLowerCase().includes('(unhealthy)')
+    )
+  ) {
+    return 'degraded';
+  }
+
+  return 'healthy';
+}
+
+function deriveStackHealth(
+  serviceHealth: PortainerServiceHealth[],
+  desiredTasks: number,
+  stoppedIsDegraded = false
+): PortainerStackHealth {
+  if (
+    serviceHealth.length === 0 ||
+    desiredTasks === 0 ||
+    serviceHealth.every((health) => health === 'stopped')
+  ) {
+    return 'stopped';
+  }
+  if (
+    serviceHealth.includes('degraded') ||
+    (stoppedIsDegraded && serviceHealth.includes('stopped'))
+  ) {
     return 'degraded';
   }
   if (serviceHealth.includes('updating')) {
@@ -599,6 +903,49 @@ function mapImageFreshness(status?: string): PortainerImageFreshness {
   }
 }
 
+function imageNotificationsDisabled(serviceIds: string[]): PortainerServiceImageStatus[] {
+  return serviceIds.map((serviceId) => ({
+    serviceId,
+    freshness: 'unknown',
+    message: 'Image update notifications are disabled for this environment.'
+  }));
+}
+
+function aggregateImageStatuses(
+  serviceId: string,
+  statuses: PortainerServiceImageStatus[]
+): PortainerServiceImageStatus {
+  let freshness: PortainerImageFreshness;
+
+  if (statuses.some((status) => status.freshness === 'update-available')) {
+    freshness = 'update-available';
+  } else if (statuses.some((status) => status.freshness === 'checking')) {
+    freshness = 'checking';
+  } else if (
+    statuses.length > 0 &&
+    statuses.every((status) => status.freshness === 'up-to-date')
+  ) {
+    freshness = 'up-to-date';
+  } else {
+    freshness = 'unknown';
+  }
+
+  const messages = [
+    ...new Set(
+      statuses
+        .map((status) => status.message?.trim())
+        .filter((message): message is string => Boolean(message))
+    )
+  ];
+  const message = messages.length > 0 ? truncate(messages.join(' · '), MAX_ERROR_LENGTH) : undefined;
+
+  return {
+    serviceId,
+    freshness,
+    ...(message ? { message } : {})
+  };
+}
+
 function mapEnvironmentStatus(status?: number): PortainerEnvironment['status'] {
   if (status === 1) {
     return 'up';
@@ -609,9 +956,18 @@ function mapEnvironmentStatus(status?: number): PortainerEnvironment['status'] {
   return 'unknown';
 }
 
-function buildStackUrl(baseUrl: URL, input: PortainerStackStatusInput): string {
+function buildStackUrl(
+  baseUrl: URL,
+  input: PortainerStackStatusInput,
+  stackType: PortainerStackType
+): string {
   const url = new URL(baseUrl.toString());
-  url.hash = `!/${input.endpointId}/docker/stacks/${input.stackId}`;
+  const query = new URLSearchParams({
+    id: String(input.stackId),
+    type: stackType === 'swarm' ? '1' : '2',
+    regular: 'true'
+  });
+  url.hash = `!/${input.endpointId}/docker/stacks/${encodeURIComponent(input.stackName)}?${query.toString()}`;
   return url.toString();
 }
 

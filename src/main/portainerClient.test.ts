@@ -26,24 +26,27 @@ afterEach(async () => {
 });
 
 describe('Portainer client', () => {
-  it('tests a subpath connection and counts only Swarm environments', async () => {
+  it('tests a subpath connection and counts Docker and Swarm environments', async () => {
     const requests: FixtureRequest[] = [];
     const baseUrl = await startFixtureServer(requests, (request, response) => {
       if (request.url.pathname === '/portainer/api/system/status') {
-        json(response, 200, { Version: '2.39.5', Edition: 'BE' });
+        json(response, 200, {
+          Version: '2.39.0',
+          InstanceID: '299ab403-70a8-4c05-92f7-bf7a994d50df'
+        });
         return;
       }
       json(response, 200, [
         swarmEnvironment({ Id: 3, Name: 'Production' }),
-        { Id: 4, Name: 'Docker', Status: 1, Snapshots: [{ Swarm: false }] }
+        dockerEnvironment({ Id: 4, Name: 'Docker' })
       ]);
     });
     const client = createPortainerClient(credentials(`${baseUrl}/portainer`));
 
     await expect(client.testConnection()).resolves.toEqual({
-      version: '2.39.5',
-      edition: 'BE',
+      version: '2.39.0',
       environmentCount: 2,
+      dockerEnvironmentCount: 2,
       swarmEnvironmentCount: 1
     });
     expect(requests.map((request) => request.url.pathname)).toEqual([
@@ -64,11 +67,12 @@ describe('Portainer client', () => {
 
     await expect(createPortainerClient(credentials(baseUrl)).testConnection()).resolves.toEqual({
       environmentCount: 1,
+      dockerEnvironmentCount: 1,
       swarmEnvironmentCount: 1
     });
   });
 
-  it('loads and filters the Swarm stack catalog with encoded filters', async () => {
+  it('loads Swarm and Compose stacks with their version-correct Portainer filters', async () => {
     const requests: FixtureRequest[] = [];
     const baseUrl = await startFixtureServer(requests, (request, response) => {
       if (request.url.pathname === '/api/endpoints') {
@@ -79,21 +83,47 @@ describe('Portainer client', () => {
             Status: 2,
             EnableImageNotification: true
           }),
-          swarmEnvironment({ Id: 8, Name: 'Alpha', Status: 1 })
+          dockerEnvironment({ Id: 8, Name: 'Alpha', Status: 1 }),
+          {
+            Id: 9,
+            Name: 'Kubernetes',
+            Type: 5,
+            ContainerEngine: '',
+            Status: 1,
+            Snapshots: []
+          }
         ]);
         return;
       }
 
+      if (request.url.pathname === '/api/endpoints/7/docker/swarm') {
+        json(response, 200, { ID: 'swarm-zeta' });
+        return;
+      }
+
       const filters = JSON.parse(request.url.searchParams.get('filters') ?? '{}');
-      if (filters.EndpointID === '7') {
+      if (filters.EndpointID === 7) {
         json(response, 200, [
-          { Id: 12, Name: 'web', EndpointId: 7, Type: 1, Status: 1 },
           { Id: 13, Name: 'compose', EndpointId: 7, Type: 2, Status: 1 },
-          { Id: 14, Name: 'wrong endpoint', EndpointId: 8, Type: 1, Status: 1 }
+          { Id: 12, Name: 'wrong type', EndpointId: 7, Type: 1, Status: 1 }
         ]);
         return;
       }
-      json(response, 200, [{ Id: 15, Name: 'api', EndpointId: 8, Type: 1, Status: 2 }]);
+      if (filters.EndpointID === 8) {
+        json(response, 200, [
+          { Id: 15, Name: 'api', EndpointId: 8, Type: 2, Status: 2 }
+        ]);
+        return;
+      }
+      if (filters.SwarmID === 'swarm-zeta') {
+        json(response, 200, [
+          { Id: 12, Name: 'web', EndpointId: 7, Type: 1, Status: 1 },
+          { Id: 16, Name: 'wrong endpoint', EndpointId: 8, Type: 1, Status: 1 }
+        ]);
+        return;
+      }
+
+      json(response, 400, { message: 'Invalid query parameter: filters' });
     });
     const client = createPortainerClient(credentials(baseUrl));
 
@@ -105,19 +135,55 @@ describe('Portainer client', () => {
         name: 'Alpha',
         status: 'up',
         imageNotificationsEnabled: false,
-        stacks: [{ id: 15, name: 'api', endpointId: 8, status: 'inactive' }]
+        stacks: [
+          {
+            id: 15,
+            name: 'api',
+            endpointId: 8,
+            stackType: 'compose',
+            status: 'inactive'
+          }
+        ]
       },
       {
         id: 7,
         name: 'Zeta',
         status: 'down',
         imageNotificationsEnabled: true,
-        stacks: [{ id: 12, name: 'web', endpointId: 7, status: 'active' }]
+        stacks: [
+          {
+            id: 13,
+            name: 'compose',
+            endpointId: 7,
+            stackType: 'compose',
+            status: 'active'
+          },
+          {
+            id: 12,
+            name: 'web',
+            endpointId: 7,
+            stackType: 'swarm',
+            status: 'active'
+          }
+        ]
       }
     ]);
     const stackRequests = requests.filter((request) => request.url.pathname === '/api/stacks');
-    expect(stackRequests).toHaveLength(2);
-    expect(stackRequests[0]?.url.href).toContain('filters=%7B%22EndpointID%22%3A%227%22%7D');
+    expect(stackRequests).toHaveLength(3);
+    expect(
+      stackRequests.map((request) =>
+        JSON.parse(request.url.searchParams.get('filters') ?? '{}')
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        { EndpointID: 7 },
+        { EndpointID: 8 },
+        { SwarmID: 'swarm-zeta' }
+      ])
+    );
+    expect(
+      requests.filter((request) => request.url.pathname.endsWith('/docker/swarm'))
+    ).toHaveLength(1);
   });
 
   it('derives degraded runtime, service uptime, and bounded recent task errors', async () => {
@@ -190,6 +256,7 @@ describe('Portainer client', () => {
       endpointId: 7,
       stackId: 12,
       stackName: 'shop',
+      stackType: 'swarm',
       health: 'degraded',
       desiredTasks: 2,
       runningTasks: 1,
@@ -204,7 +271,9 @@ describe('Portainer client', () => {
       ]
     });
     expect(runtime.services[0]?.lastError).toHaveLength(240);
-    expect(runtime.portainerUrl).toBe(`${baseUrl}/#!/7/docker/stacks/12`);
+    expect(runtime.portainerUrl).toBe(
+      `${baseUrl}/#!/7/docker/stacks/shop?id=12&type=1&regular=true`
+    );
     const servicesRequest = requests.find((request) => request.url.pathname.endsWith('/services'));
     expect(JSON.parse(servicesRequest?.url.searchParams.get('filters') ?? '{}')).toEqual({
       label: ['com.docker.stack.namespace=shop']
@@ -212,6 +281,109 @@ describe('Portainer client', () => {
     const tasksRequest = requests.find((request) => request.url.pathname.endsWith('/tasks'));
     expect(JSON.parse(tasksRequest?.url.searchParams.get('filters') ?? '{}')).toEqual({
       service: ['service-api']
+    });
+  });
+
+  it('groups Compose containers by service and builds a Compose stack link', async () => {
+    const requests: FixtureRequest[] = [];
+    const baseUrl = await startFixtureServer(requests, (request, response) => {
+      if (request.url.pathname === '/api/stacks/12') {
+        json(response, 200, {
+          Id: 12,
+          Name: 'shop',
+          EndpointId: 7,
+          Type: 2,
+          Status: 1
+        });
+        return;
+      }
+      if (request.url.pathname.endsWith('/containers/json')) {
+        json(response, 200, [
+          composeContainerFixture({
+            id: 'web-a',
+            service: 'web',
+            image: 'web:latest',
+            state: 'running',
+            status: 'Up 2 hours (healthy)'
+          }),
+          composeContainerFixture({
+            id: 'web-b',
+            service: 'web',
+            image: 'web:latest',
+            state: 'exited',
+            status: 'Exited (1) 10 minutes ago'
+          }),
+          composeContainerFixture({
+            id: 'db-a',
+            service: 'db',
+            image: 'postgres:17',
+            state: 'running',
+            status: 'Up 2 hours'
+          }),
+          composeContainerFixture({
+            id: 'oneoff',
+            service: 'web',
+            image: 'web:latest',
+            state: 'exited',
+            status: 'Exited (0) 1 minute ago',
+            oneoff: true
+          }),
+          composeContainerFixture({
+            id: 'other',
+            service: 'api',
+            image: 'api:latest',
+            state: 'running',
+            status: 'Up 1 hour',
+            project: 'other'
+          })
+        ]);
+        return;
+      }
+
+      json(response, 500, { message: 'Unexpected request' });
+    });
+
+    const runtime = await createPortainerClient(credentials(baseUrl)).loadStackRuntime(
+      stackInput()
+    );
+
+    expect(runtime).toMatchObject({
+      stackType: 'compose',
+      health: 'degraded',
+      desiredTasks: 3,
+      runningTasks: 2,
+      completedTasks: 1,
+      services: [
+        {
+          id: 'db',
+          name: 'db',
+          image: 'postgres:17',
+          desiredTasks: 1,
+          runningTasks: 1,
+          completedTasks: 0,
+          health: 'healthy'
+        },
+        {
+          id: 'web',
+          name: 'web',
+          image: 'web:latest',
+          desiredTasks: 2,
+          runningTasks: 1,
+          completedTasks: 1,
+          health: 'degraded',
+          lastError: 'Exited (1) 10 minutes ago'
+        }
+      ]
+    });
+    expect(runtime.portainerUrl).toBe(
+      `${baseUrl}/#!/7/docker/stacks/shop?id=12&type=2&regular=true`
+    );
+    const containersRequest = requests.find((request) =>
+      request.url.pathname.endsWith('/containers/json')
+    );
+    expect(containersRequest?.url.searchParams.get('all')).toBe('true');
+    expect(JSON.parse(containersRequest?.url.searchParams.get('filters') ?? '{}')).toEqual({
+      label: ['com.docker.compose.project=shop']
     });
   });
 
@@ -314,6 +486,87 @@ describe('Portainer client', () => {
     );
     expect(statusRequests).toHaveLength(4);
     expect(statusRequests.every((request) => request.url.searchParams.get('refresh') === 'true')).toBe(true);
+  });
+
+  it('aggregates Compose container image statuses by service', async () => {
+    const requests: FixtureRequest[] = [];
+    const imageStatuses = new Map([
+      ['web-a', { Status: 'updated', Message: 'Current' }],
+      ['web-b', { Status: 'outdated', Message: 'A newer digest exists' }],
+      ['db-a', { Status: 'updated' }]
+    ]);
+    const baseUrl = await startFixtureServer(requests, (request, response) => {
+      if (request.url.pathname === '/api/stacks/12') {
+        json(response, 200, {
+          Id: 12,
+          Name: 'shop',
+          EndpointId: 7,
+          Type: 2,
+          Status: 1
+        });
+        return;
+      }
+      if (request.url.pathname === '/api/endpoints') {
+        json(response, 200, [
+          dockerEnvironment({
+            Id: 7,
+            Name: 'Production',
+            EnableImageNotification: true
+          })
+        ]);
+        return;
+      }
+      if (request.url.pathname.endsWith('/containers/json')) {
+        json(response, 200, [
+          composeContainerFixture({
+            id: 'web-a',
+            service: 'web',
+            image: 'web:latest',
+            state: 'running',
+            status: 'Up 2 hours'
+          }),
+          composeContainerFixture({
+            id: 'web-b',
+            service: 'web',
+            image: 'web:latest',
+            state: 'running',
+            status: 'Up 2 hours'
+          }),
+          composeContainerFixture({
+            id: 'db-a',
+            service: 'db',
+            image: 'postgres:17',
+            state: 'running',
+            status: 'Up 2 hours'
+          })
+        ]);
+        return;
+      }
+
+      const containerId = request.url.pathname.split('/').at(-2) ?? '';
+      json(response, 200, imageStatuses.get(containerId));
+    });
+
+    const images = await createPortainerClient(credentials(baseUrl)).loadStackImages(
+      stackInput(),
+      true
+    );
+
+    expect(images.services).toEqual([
+      { serviceId: 'db', freshness: 'up-to-date' },
+      {
+        serviceId: 'web',
+        freshness: 'update-available',
+        message: 'Current · A newer digest exists'
+      }
+    ]);
+    const statusRequests = requests.filter((request) =>
+      request.url.pathname.endsWith('/image_status')
+    );
+    expect(statusRequests).toHaveLength(3);
+    expect(
+      statusRequests.every((request) => request.url.searchParams.get('refresh') === 'true')
+    ).toBe(true);
   });
 
   it('does not call image-status endpoints when notifications are disabled', async () => {
@@ -555,9 +808,24 @@ function swarmEnvironment(
   overrides: Record<string, unknown>
 ): Record<string, unknown> {
   return {
+    Type: 1,
+    ContainerEngine: 'docker',
     Status: 1,
     EnableImageNotification: false,
     Snapshots: [{ Swarm: true }],
+    ...overrides
+  };
+}
+
+function dockerEnvironment(
+  overrides: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    Type: 1,
+    ContainerEngine: 'docker',
+    Status: 1,
+    EnableImageNotification: false,
+    Snapshots: [{ Swarm: false }],
     ...overrides
   };
 }
@@ -585,6 +853,28 @@ function serviceFixture(input: {
       CompletedTasks: input.completed
     },
     ...(input.updateState ? { UpdateStatus: { State: input.updateState } } : {})
+  };
+}
+
+function composeContainerFixture(input: {
+  id: string;
+  service: string;
+  image: string;
+  state: string;
+  status: string;
+  project?: string;
+  oneoff?: boolean;
+}): Record<string, unknown> {
+  return {
+    Id: input.id,
+    Image: input.image,
+    State: input.state,
+    Status: input.status,
+    Labels: {
+      'com.docker.compose.project': input.project ?? 'shop',
+      'com.docker.compose.service': input.service,
+      'com.docker.compose.oneoff': input.oneoff ? 'True' : 'False'
+    }
   };
 }
 

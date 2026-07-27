@@ -347,6 +347,7 @@ describe('DashboardView', () => {
     queryClient.setQueryData(portainerConnectionsQueryKey, []);
     queryClient.setQueryData(portainerStackRuntimeQueryKey(input), {
       ...input,
+      stackType: 'swarm',
       health: 'healthy',
       desiredTasks: 3,
       runningTasks: 3,
@@ -363,7 +364,8 @@ describe('DashboardView', () => {
           runningSince: '2026-07-27T10:00:00.000Z'
         }
       ],
-      portainerUrl: 'https://portainer.example.com/#!/3/docker/stacks/12',
+      portainerUrl:
+        'https://portainer.example.com/#!/3/docker/stacks/storefront?id=12&type=1&regular=true',
       loadedAt: new Date().toISOString()
     });
     queryClient.setQueryData(portainerStackImagesQueryKey(input), {

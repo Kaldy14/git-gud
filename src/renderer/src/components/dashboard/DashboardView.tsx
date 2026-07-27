@@ -323,7 +323,7 @@ export function DashboardView({
           }
 
           if (!environment || !stack) {
-            throw new Error('Select a Portainer Swarm stack.');
+            throw new Error('Select a Portainer stack.');
           }
 
           nextTile = {
@@ -803,7 +803,7 @@ export function DashboardView({
                 </div>
                 <h3>Add your first monitor</h3>
                 <p>
-                  Choose a GitHub project or Portainer Swarm stack and keep its live
+                  Choose a GitHub project or Portainer stack and keep its live
                   status in this dashboard.
                 </p>
                 <button className="btn-primary mt-4" type="button" onClick={openAddTileDialog}>
@@ -1322,7 +1322,7 @@ export function DashboardDialogSurface({
                   <option value="github-actions" disabled={!canConfigureGitHubTile}>
                     GitHub Actions
                   </option>
-                  <option value="portainer-swarm-stack">Portainer Swarm stack</option>
+                  <option value="portainer-swarm-stack">Portainer stack</option>
                 </select>
               </label>
 
@@ -1508,7 +1508,7 @@ export function DashboardDialogSurface({
                   </div>
 
                   <label className="dashboard-field">
-                    <span>Swarm environment</span>
+                    <span>Portainer environment</span>
                     <select
                       value={selectedEnvironment?.id ?? ''}
                       disabled={
@@ -1527,7 +1527,7 @@ export function DashboardDialogSurface({
                     >
                       {catalogLoading ? <option value="">Loading environments…</option> : null}
                       {!catalogLoading && catalog?.environments.length === 0 ? (
-                        <option value="">No Swarm environments available</option>
+                        <option value="">No Docker environments available</option>
                       ) : null}
                       {catalog?.environments.map((environment) => (
                         <option key={environment.id} value={environment.id}>
@@ -1548,11 +1548,12 @@ export function DashboardDialogSurface({
                       }
                     >
                       {selectedEnvironment?.stacks.length === 0 ? (
-                        <option value="">No Swarm stacks available</option>
+                        <option value="">No Portainer stacks available</option>
                       ) : null}
                       {selectedEnvironment?.stacks.map((stack) => (
                         <option key={stack.id} value={stack.id}>
                           {stack.name}
+                          {` · ${stack.stackType === 'swarm' ? 'Swarm' : 'Compose'}`}
                           {stack.status === 'inactive' ? ' · Inactive' : ''}
                         </option>
                       ))}
@@ -1562,8 +1563,8 @@ export function DashboardDialogSurface({
                   <div className="dashboard-dialog-note">
                     <Lock size={13} />
                     <span>
-                      Monitors services, tasks, uptime, and Business Edition image
-                      freshness using the selected connection.
+                      Monitors services or containers, runtime health, and Business Edition
+                      image freshness using the selected connection.
                     </span>
                   </div>
 

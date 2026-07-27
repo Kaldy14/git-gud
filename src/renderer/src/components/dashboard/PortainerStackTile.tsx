@@ -53,6 +53,7 @@ export function PortainerStackTile({
   const runtimeQuery = usePortainerStackRuntime(input);
   const imagesQuery = usePortainerStackImages(input);
   const runtime = runtimeQuery.data;
+  const stackTypeLabel = runtime?.stackType === 'compose' ? 'Compose stack' : 'Swarm stack';
   const imagesByService = new Map(
     (imagesQuery.data?.services ?? []).map((service) => [service.serviceId, service])
   );
@@ -70,7 +71,7 @@ export function PortainerStackTile({
   return (
     <article
       className="actions-tile portainer-tile"
-      aria-label={`${tile.environmentName}/${tile.stackName} Portainer Swarm stack`}
+      aria-label={`${tile.environmentName}/${tile.stackName} Portainer stack`}
     >
       <header className="actions-tile-header">
         <div className="actions-tile-identity portainer-tile-identity">
@@ -82,7 +83,7 @@ export function PortainerStackTile({
               <span>{tile.environmentName}/</span>
               {tile.stackName}
             </strong>
-            <small>Portainer · Swarm stack</small>
+            <small>Portainer · {stackTypeLabel}</small>
           </span>
         </div>
         <div className="actions-tile-header-actions">
@@ -134,7 +135,7 @@ export function PortainerStackTile({
       {runtimeQuery.isLoading && !runtime ? (
         <div className="actions-tile-loading" role="status">
           <Loader2 size={18} className="animate-spin" />
-          <span>Loading Swarm stack…</span>
+          <span>Loading Portainer stack…</span>
         </div>
       ) : runtime ? (
         <>
@@ -146,7 +147,7 @@ export function PortainerStackTile({
               tone={healthPresentation?.tone ?? 'neutral'}
             />
             <SummaryCell
-              label="Tasks"
+              label={runtime.stackType === 'compose' ? 'Containers' : 'Tasks'}
               value={`${runtime.runningTasks} / ${runtime.desiredTasks}`}
               detail="running"
               tone={
@@ -233,7 +234,7 @@ export function PortainerStackTile({
       ) : !runtimeQuery.error ? (
         <div className="actions-tile-empty">
           <CircleSlash2 size={17} />
-          <span>No Swarm services found.</span>
+          <span>No stack workloads found.</span>
         </div>
       ) : null}
     </article>

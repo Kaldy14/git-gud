@@ -907,8 +907,8 @@ export type PortainerConnectionInput = {
 
 export type PortainerConnectionTestResult = {
   version?: string;
-  edition?: string;
   environmentCount: number;
+  dockerEnvironmentCount: number;
   swarmEnvironmentCount: number;
 };
 
@@ -916,6 +916,7 @@ export type PortainerStackSummary = {
   id: number;
   name: string;
   endpointId: number;
+  stackType: 'swarm' | 'compose';
   status: 'active' | 'inactive';
 };
 
@@ -1011,6 +1012,7 @@ export type PortainerStackRuntime = {
   endpointId: number;
   stackId: number;
   stackName: string;
+  stackType: 'swarm' | 'compose';
   health: PortainerStackHealth;
   desiredTasks: number;
   runningTasks: number;
