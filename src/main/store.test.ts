@@ -112,6 +112,40 @@ describe('workspace persistence', () => {
     });
     expect(getDashboards(profileId)).toEqual(saved);
 
+    const savedDashboard = saved.dashboards[0];
+    const githubTile = savedDashboard?.tiles.find(
+      (tile) => tile.kind === 'github-actions'
+    );
+    const portainerTile = savedDashboard?.tiles.find(
+      (tile) => tile.kind === 'portainer-swarm-stack'
+    );
+
+    if (
+      !savedDashboard ||
+      githubTile?.kind !== 'github-actions' ||
+      portainerTile?.kind !== 'portainer-swarm-stack'
+    ) {
+      throw new Error('Expected both persisted dashboard tile kinds.');
+    }
+
+    const reordered = saveDashboard({
+      id: savedDashboard.id,
+      profileId,
+      name: savedDashboard.name,
+      tiles: [portainerTile, { ...githubTile, limit: 15 }]
+    });
+
+    expect(reordered.dashboards[0]?.tiles.map((tile) => tile.id)).toEqual([
+      portainerTile.id,
+      githubTile.id
+    ]);
+    expect(reordered.dashboards[0]?.tiles[1]).toMatchObject({
+      id: githubTile.id,
+      kind: 'github-actions',
+      limit: 15
+    });
+    expect(getDashboards(profileId)).toEqual(reordered);
+
     const withSecondDashboard = saveDashboard({
       profileId,
       name: 'Main branch',

@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Layers,
   Loader2,
+  Pencil,
   X,
   XCircle
 } from 'lucide-react';
@@ -30,11 +31,17 @@ import {
 
 type PortainerStackTileProps = {
   tile: PortainerStackDashboardTile;
+  dragHandle: ReactElement;
+  isSaving: boolean;
+  onEdit: () => void;
   onRemove: () => void;
 };
 
 export function PortainerStackTile({
   tile,
+  dragHandle,
+  isSaving,
+  onEdit,
   onRemove
 }: PortainerStackTileProps): ReactElement {
   const input = {
@@ -91,8 +98,20 @@ export function PortainerStackTile({
             </span>
           ) : null}
           <button
+            className="actions-tile-edit icon-btn"
+            type="button"
+            disabled={isSaving}
+            aria-label={`Edit ${tile.environmentName}/${tile.stackName} tile`}
+            title="Edit tile"
+            onClick={onEdit}
+          >
+            <Pencil size={11} />
+          </button>
+          {dragHandle}
+          <button
             className="actions-tile-remove icon-btn"
             type="button"
+            disabled={isSaving}
             aria-label={`Remove ${tile.environmentName}/${tile.stackName} tile`}
             title="Remove tile"
             onClick={onRemove}

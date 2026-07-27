@@ -14,7 +14,11 @@ import {
 } from '@renderer/queries/portainer';
 import type { Dashboard, GitHubWorkflowRun, GitProfile } from '@shared/types';
 
-import { DashboardView, WorkflowBranchFilterField } from './DashboardView';
+import {
+  DashboardDialogSurface,
+  DashboardView,
+  WorkflowBranchFilterField
+} from './DashboardView';
 
 const profile: GitProfile = {
   id: 'profile:dashboard-tabs',
@@ -121,6 +125,139 @@ describe('DashboardView', () => {
 
     expect(markup).toContain('Run filters: main · tags · my PRs');
     expect(markup).toContain('No workflow runs match these filters.');
+  });
+
+  it('exposes edit controls and accessible drag handles for saved tiles', () => {
+    const queryClient = new QueryClient();
+    const filters = {
+      branches: [],
+      includeTags: false,
+      includeMyPullRequests: false
+    };
+    const dashboard: Dashboard = {
+      ...createDashboard('dashboard:layout', 'Delivery layout'),
+      tiles: [
+        {
+          id: 'tile:widgets',
+          kind: 'github-actions',
+          owner: 'acme',
+          repository: 'widgets',
+          limit: 10,
+          filters
+        },
+        {
+          id: 'tile:api',
+          kind: 'github-actions',
+          owner: 'acme',
+          repository: 'api',
+          limit: 5,
+          filters
+        }
+      ]
+    };
+    queryClient.setQueryData(dashboardsQueryKey(profile.id), {
+      profileId: profile.id,
+      dashboards: [dashboard],
+      selectedDashboardId: dashboard.id
+    });
+    queryClient.setQueryData(gitHubRepositoriesQueryKey(profile.id), []);
+
+    for (const tile of dashboard.tiles) {
+      if (tile.kind !== 'github-actions') {
+        continue;
+      }
+
+      queryClient.setQueryData(
+        gitHubActionsRunsQueryKey({
+          profileId: profile.id,
+          owner: tile.owner,
+          repository: tile.repository,
+          limit: tile.limit,
+          filters: tile.filters
+        }),
+        {
+          profileId: profile.id,
+          owner: tile.owner,
+          repository: tile.repository,
+          runs: [],
+          searchedRunCount: 0,
+          searchLimitReached: false,
+          loadedAt: '2026-07-27T10:00:00.000Z'
+        }
+      );
+    }
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <DashboardView
+          profile={profile}
+          requestedDashboardId={dashboard.id}
+          onSelectDashboard={vi.fn()}
+          onOpenProfileSettings={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(markup).toContain('data-dashboard-tile-id="tile:widgets"');
+    expect(markup).toContain('data-dashboard-tile-id="tile:api"');
+    expect(markup).toContain('aria-label="Edit acme/widgets tile"');
+    expect(markup).toContain('aria-label="Edit acme/api tile"');
+    expect(markup).toContain(
+      'aria-label="Reorder acme/widgets tile, position 1 of 2. Drag or use arrow keys."'
+    );
+    expect(markup).toContain(
+      'aria-label="Reorder acme/api tile, position 2 of 2. Drag or use arrow keys."'
+    );
+  });
+
+  it('renders saved GitHub tile settings in the edit dialog', () => {
+    const markup = renderToStaticMarkup(
+      <DashboardDialogSurface
+        dialog={{
+          kind: 'edit-tile',
+          tileId: 'tile:widgets',
+          tileKind: 'github-actions',
+          repository: 'acme/widgets',
+          limit: 15,
+          branches: 'main, release/next',
+          includeTags: true,
+          includeMyPullRequests: false,
+          connectionId: '',
+          endpointId: 0,
+          stackId: 0
+        }}
+        repositories={[
+          {
+            owner: 'acme',
+            name: 'widgets',
+            fullName: 'acme/widgets',
+            url: 'https://github.com/acme/widgets',
+            isPrivate: true,
+            defaultBranch: 'main'
+          }
+        ]}
+        repositoriesLoading={false}
+        gitHubConnected
+        connections={[]}
+        connectionsLoading={false}
+        catalogLoading={false}
+        isSaving={false}
+        onChange={vi.fn()}
+        onConfigurePortainer={vi.fn()}
+        onOpenGitHubSettings={vi.fn()}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('Edit dashboard tile');
+    expect(markup).toContain(
+      'Update this tile without changing its position in the dashboard.'
+    );
+    expect(markup).toContain('value="main, release/next"');
+    expect(markup).toContain('value="15" selected=""');
+    expect(markup).toContain('Save tile');
   });
 
   it('keeps the branch validation message associated with the invalid input', () => {
@@ -254,6 +391,9 @@ describe('DashboardView', () => {
     expect(markup).toContain('registry.example.com/storefront:web');
     expect(markup).toContain('Up to date');
     expect(markup).toContain('Open in Portainer');
+    expect(markup).toContain(
+      'aria-label="Edit Production Swarm/storefront tile"'
+    );
   });
 });
 

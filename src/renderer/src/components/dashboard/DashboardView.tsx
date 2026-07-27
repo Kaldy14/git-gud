@@ -1,11 +1,17 @@
-import type { FormEvent, ReactElement } from 'react';
-import { useMemo, useState } from 'react';
+import type {
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement
+} from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
   CircleSlash2,
   ExternalLink,
   GitBranch,
+  GripVertical,
   LayoutDashboard,
   Loader2,
   Lock,
@@ -36,6 +42,7 @@ import {
 import { dashboardProfileId } from '@shared/dashboard';
 import type {
   Dashboard,
+  DashboardTile,
   GitHubActionsDashboardTile,
   GitHubRepositorySummary,
   GitHubWorkflowRun,
@@ -47,6 +54,12 @@ import type {
 import { PortainerConnectionDialog } from './PortainerConnectionDialog';
 import { PortainerStackTile } from './PortainerStackTile';
 import { resolveActiveDashboard } from './dashboardSelection';
+import {
+  dashboardTileDropPositionForPointer,
+  moveDashboardTile,
+  reorderDashboardTiles,
+  type DashboardTileDropPosition
+} from './dashboardTileLayout';
 import {
   hasWorkflowRunFilters,
   parseWorkflowRunBranches,
@@ -63,22 +76,46 @@ type DashboardViewProps = {
   onClose: () => void;
 };
 
+type DashboardTileDialogFields = {
+  tileKind: 'github-actions' | 'portainer-swarm-stack';
+  repository: string;
+  limit: number;
+  branches: string;
+  includeTags: boolean;
+  includeMyPullRequests: boolean;
+  connectionId: string;
+  endpointId: number;
+  stackId: number;
+};
+
+type DashboardTileDialog =
+  | ({ kind: 'add-tile' } & DashboardTileDialogFields)
+  | ({ kind: 'edit-tile'; tileId: string } & DashboardTileDialogFields);
+
 type DashboardDialog =
   | { kind: 'create'; name: string }
   | { kind: 'rename'; name: string }
-  | {
-      kind: 'add-tile';
-      tileKind: 'github-actions' | 'portainer-swarm-stack';
-      repository: string;
-      limit: number;
-      branches: string;
-      includeTags: boolean;
-      includeMyPullRequests: boolean;
-      connectionId: string;
-      endpointId: number;
-      stackId: number;
-    }
+  | DashboardTileDialog
   | { kind: 'delete' };
+
+type DashboardTileDragSession = {
+  tileId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  dragging: boolean;
+};
+
+type DashboardTileDropTarget = {
+  tileId: string;
+  position: DashboardTileDropPosition;
+};
+
+function isTileDialog(
+  dialog: DashboardDialog | undefined
+): dialog is DashboardTileDialog {
+  return dialog?.kind === 'add-tile' || dialog?.kind === 'edit-tile';
+}
 
 export function DashboardView({
   profile,
@@ -101,32 +138,63 @@ export function DashboardView({
   }>();
   const [isSaving, setIsSaving] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
+  const [draggedTileId, setDraggedTileId] = useState<string>();
+  const [dropTarget, setDropTarget] = useState<DashboardTileDropTarget>();
+  const [tileOrderAnnouncement, setTileOrderAnnouncement] = useState('');
+  const tileDragSessionRef = useRef<DashboardTileDragSession | undefined>(undefined);
+  const tileDropTargetRef = useRef<DashboardTileDropTarget | undefined>(undefined);
   const dashboards = dashboardsQuery.data?.dashboards ?? [];
   const activeDashboard = resolveActiveDashboard(
     dashboards,
     requestedDashboardId,
     dashboardsQuery.data?.selectedDashboardId
   );
-  const availableRepositories = useMemo(
-    () =>
-      (repositoriesQuery.data ?? []).filter(
+  const editingTileId = dialog?.kind === 'edit-tile' ? dialog.tileId : undefined;
+  const availableRepositories = useMemo(() => {
+    const repositories = (repositoriesQuery.data ?? []).filter(
+      (repository) =>
+        !activeDashboard?.tiles.some(
+          (tile) =>
+            tile.id !== editingTileId &&
+            tile.kind === 'github-actions' &&
+            tile.owner === repository.owner &&
+            tile.repository === repository.name
+        )
+    );
+    const editingTile = activeDashboard?.tiles.find(
+      (tile) => tile.id === editingTileId && tile.kind === 'github-actions'
+    );
+
+    if (
+      editingTile?.kind === 'github-actions' &&
+      !repositories.some(
         (repository) =>
-          !activeDashboard?.tiles.some(
-            (tile) =>
-              tile.kind === 'github-actions' &&
-              tile.owner === repository.owner &&
-              tile.repository === repository.name
-          )
-      ),
-    [activeDashboard?.tiles, repositoriesQuery.data]
-  );
+          repository.owner === editingTile.owner &&
+          repository.name === editingTile.repository
+      )
+    ) {
+      return [
+        {
+          owner: editingTile.owner,
+          name: editingTile.repository,
+          fullName: `${editingTile.owner}/${editingTile.repository}`,
+          url: '',
+          isPrivate: false,
+          defaultBranch: ''
+        },
+        ...repositories
+      ];
+    }
+
+    return repositories;
+  }, [activeDashboard?.tiles, editingTileId, repositoriesQuery.data]);
   const selectedConnectionId =
-    dialog?.kind === 'add-tile' && dialog.tileKind === 'portainer-swarm-stack'
+    isTileDialog(dialog) && dialog.tileKind === 'portainer-swarm-stack'
       ? dialog.connectionId || connectionsQuery.data?.[0]?.id
       : undefined;
   const catalogQuery = usePortainerStackCatalog(
     selectedConnectionId,
-    dialog?.kind === 'add-tile' && dialog.tileKind === 'portainer-swarm-stack'
+    isTileDialog(dialog) && dialog.tileKind === 'portainer-swarm-stack'
   );
   const gitHubFetchCount = useIsFetching({
     queryKey: gitHubProfileId
@@ -213,7 +281,9 @@ export function DashboardView({
         onSelectDashboard(state.dashboards.at(-1)?.id);
       } else if (dialog.kind === 'rename' && activeDashboard) {
         await persistDashboard({ ...activeDashboard, name: dialog.name });
-      } else if (dialog.kind === 'add-tile' && activeDashboard) {
+      } else if (isTileDialog(dialog) && activeDashboard) {
+        let nextTile: DashboardTile;
+
         if (dialog.tileKind === 'github-actions') {
           const repository = availableRepositories.find(
             (candidate) =>
@@ -225,24 +295,18 @@ export function DashboardView({
             throw new Error('Select a GitHub project.');
           }
 
-          await persistDashboard({
-            ...activeDashboard,
-            tiles: [
-              ...activeDashboard.tiles,
-              {
-                id: '',
-                kind: 'github-actions',
-                owner: repository.owner,
-                repository: repository.name,
-                limit: dialog.limit,
-                filters: {
-                  branches: parseWorkflowRunBranches(dialog.branches),
-                  includeTags: dialog.includeTags,
-                  includeMyPullRequests: dialog.includeMyPullRequests
-                }
-              }
-            ]
-          });
+          nextTile = {
+            id: dialog.kind === 'edit-tile' ? dialog.tileId : '',
+            kind: 'github-actions',
+            owner: repository.owner,
+            repository: repository.name,
+            limit: dialog.limit,
+            filters: {
+              branches: parseWorkflowRunBranches(dialog.branches),
+              includeTags: dialog.includeTags,
+              includeMyPullRequests: dialog.includeMyPullRequests
+            }
+          };
         } else {
           const connectionId =
             dialog.connectionId || connectionsQuery.data?.[0]?.id;
@@ -262,22 +326,26 @@ export function DashboardView({
             throw new Error('Select a Portainer Swarm stack.');
           }
 
-          await persistDashboard({
-            ...activeDashboard,
-            tiles: [
-              ...activeDashboard.tiles,
-              {
-                id: '',
-                kind: 'portainer-swarm-stack',
-                connectionId,
-                endpointId: environment.id,
-                stackId: stack.id,
-                stackName: stack.name,
-                environmentName: environment.name
-              }
-            ]
-          });
+          nextTile = {
+            id: dialog.kind === 'edit-tile' ? dialog.tileId : '',
+            kind: 'portainer-swarm-stack',
+            connectionId,
+            endpointId: environment.id,
+            stackId: stack.id,
+            stackName: stack.name,
+            environmentName: environment.name
+          };
         }
+
+        await persistDashboard({
+          ...activeDashboard,
+          tiles:
+            dialog.kind === 'edit-tile'
+              ? activeDashboard.tiles.map((tile) =>
+                  tile.id === dialog.tileId ? nextTile : tile
+                )
+              : [...activeDashboard.tiles, nextTile]
+        });
       } else if (dialog.kind === 'delete' && activeDashboard) {
         setIsSaving(true);
         const state = await window.api.deleteDashboard(activeProfileId, activeDashboard.id);
@@ -322,6 +390,189 @@ export function DashboardView({
       endpointId: 0,
       stackId: 0
     });
+  }
+
+  function openEditTileDialog(tile: DashboardTile): void {
+    setMutationError(undefined);
+
+    if (tile.kind === 'github-actions') {
+      setDialog({
+        kind: 'edit-tile',
+        tileId: tile.id,
+        tileKind: tile.kind,
+        repository: `${tile.owner}/${tile.repository}`,
+        limit: tile.limit,
+        branches: tile.filters.branches.join(', '),
+        includeTags: tile.filters.includeTags,
+        includeMyPullRequests: tile.filters.includeMyPullRequests,
+        connectionId: connectionsQuery.data?.[0]?.id ?? '',
+        endpointId: 0,
+        stackId: 0
+      });
+      return;
+    }
+
+    setDialog({
+      kind: 'edit-tile',
+      tileId: tile.id,
+      tileKind: tile.kind,
+      repository: availableRepositories[0]?.fullName ?? '',
+      limit: 10,
+      branches: '',
+      includeTags: false,
+      includeMyPullRequests: false,
+      connectionId: tile.connectionId,
+      endpointId: tile.endpointId,
+      stackId: tile.stackId
+    });
+  }
+
+  function finishTileDrag(): void {
+    tileDragSessionRef.current = undefined;
+    tileDropTargetRef.current = undefined;
+    setDraggedTileId(undefined);
+    setDropTarget(undefined);
+  }
+
+  function handleTilePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    tileId: string
+  ): void {
+    if (event.button !== 0 || isSaving || (activeDashboard?.tiles.length ?? 0) < 2) {
+      return;
+    }
+
+    tileDragSessionRef.current = {
+      tileId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false
+    };
+    tileDropTargetRef.current = undefined;
+    setDropTarget(undefined);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleTilePointerMove(event: ReactPointerEvent<HTMLButtonElement>): void {
+    const session = tileDragSessionRef.current;
+
+    if (!session || session.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const movement = Math.max(
+      Math.abs(event.clientX - session.startX),
+      Math.abs(event.clientY - session.startY)
+    );
+
+    if (!session.dragging && movement < 5) {
+      return;
+    }
+
+    if (!session.dragging) {
+      session.dragging = true;
+      setDraggedTileId(session.tileId);
+    }
+
+    event.preventDefault();
+    const targetElement = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>('[data-dashboard-tile-id]');
+    const targetTileId = targetElement?.dataset.dashboardTileId;
+
+    if (!targetElement || !targetTileId) {
+      tileDropTargetRef.current = undefined;
+      setDropTarget(undefined);
+      return;
+    }
+
+    const grid = targetElement.parentElement;
+    const gridColumnCount = grid
+      ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length
+      : 1;
+    const position = dashboardTileDropPositionForPointer(
+      event.clientX,
+      event.clientY,
+      targetElement.getBoundingClientRect(),
+      gridColumnCount
+    );
+    const nextDropTarget = { tileId: targetTileId, position };
+    tileDropTargetRef.current = nextDropTarget;
+    setDropTarget((current) =>
+      current?.tileId === targetTileId && current.position === position
+        ? current
+        : nextDropTarget
+    );
+  }
+
+  function handleTilePointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
+    const session = tileDragSessionRef.current;
+
+    if (!session || session.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const target = tileDropTargetRef.current;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    finishTileDrag();
+
+    if (!session.dragging || !activeDashboard || !target) {
+      return;
+    }
+
+    event.preventDefault();
+    const reorderedTiles = reorderDashboardTiles(
+      activeDashboard.tiles,
+      session.tileId,
+      target.tileId,
+      target.position
+    );
+    void persistReorderedTiles(activeDashboard, reorderedTiles, session.tileId);
+  }
+
+  function handleTileReorderKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    tileId: string
+  ): void {
+    const offset =
+      event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+        ? -1
+        : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+          ? 1
+          : undefined;
+
+    if (!offset || !activeDashboard || isSaving) {
+      return;
+    }
+
+    event.preventDefault();
+    const reorderedTiles = moveDashboardTile(activeDashboard.tiles, tileId, offset);
+    void persistReorderedTiles(activeDashboard, reorderedTiles, tileId);
+  }
+
+  async function persistReorderedTiles(
+    dashboard: Dashboard,
+    reorderedTiles: DashboardTile[],
+    movedTileId: string
+  ): Promise<void> {
+    if (reorderedTiles === dashboard.tiles) {
+      return;
+    }
+
+    try {
+      await persistDashboard({ ...dashboard, tiles: reorderedTiles });
+      const movedTileIndex = reorderedTiles.findIndex((tile) => tile.id === movedTileId);
+      setTileOrderAnnouncement(
+        `Tile moved to position ${movedTileIndex + 1} of ${reorderedTiles.length}.`
+      );
+    } catch {
+      // The persisted order remains visible and the dashboard header shows the error.
+    }
   }
 
   function refreshDashboard(): void {
@@ -485,25 +736,65 @@ export function DashboardView({
                 <span>{mutationError}</span>
               </div>
             ) : null}
+            <p className="sr-only" aria-live="polite">
+              {tileOrderAnnouncement}
+            </p>
 
             {activeDashboard.tiles.length > 0 ? (
               <div className="dashboard-grid">
-                {activeDashboard.tiles.map((tile) =>
-                  tile.kind === 'github-actions' ? (
-                    <GitHubActionsTile
-                      key={tile.id}
-                      profileId={gitHubProfileId}
-                      tile={tile}
-                      onRemove={() => void handleRemoveTile(tile.id)}
+                {activeDashboard.tiles.map((tile, tileIndex) => {
+                  const tileLabel =
+                    tile.kind === 'github-actions'
+                      ? `${tile.owner}/${tile.repository}`
+                      : `${tile.environmentName}/${tile.stackName}`;
+                  const dragHandle = (
+                    <TileDragHandle
+                      label={tileLabel}
+                      position={tileIndex + 1}
+                      tileCount={activeDashboard.tiles.length}
+                      isDragging={draggedTileId === tile.id}
+                      isDisabled={isSaving}
+                      onPointerDown={(event) => handleTilePointerDown(event, tile.id)}
+                      onPointerMove={handleTilePointerMove}
+                      onPointerUp={handleTilePointerUp}
+                      onPointerCancel={finishTileDrag}
+                      onKeyDown={(event) => handleTileReorderKeyDown(event, tile.id)}
                     />
-                  ) : (
-                    <PortainerStackTile
+                  );
+
+                  return (
+                    <div
+                      className="dashboard-tile-slot"
                       key={tile.id}
-                      tile={tile}
-                      onRemove={() => void handleRemoveTile(tile.id)}
-                    />
-                  )
-                )}
+                      data-dashboard-tile-id={tile.id}
+                      data-dragging={draggedTileId === tile.id}
+                      data-drop-position={
+                        dropTarget?.tileId === tile.id && draggedTileId !== tile.id
+                          ? dropTarget.position
+                          : undefined
+                      }
+                    >
+                      {tile.kind === 'github-actions' ? (
+                        <GitHubActionsTile
+                          profileId={gitHubProfileId}
+                          tile={tile}
+                          dragHandle={dragHandle}
+                          isSaving={isSaving}
+                          onEdit={() => openEditTileDialog(tile)}
+                          onRemove={() => void handleRemoveTile(tile.id)}
+                        />
+                      ) : (
+                        <PortainerStackTile
+                          tile={tile}
+                          dragHandle={dragHandle}
+                          isSaving={isSaving}
+                          onEdit={() => openEditTileDialog(tile)}
+                          onRemove={() => void handleRemoveTile(tile.id)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="dashboard-empty">
@@ -586,7 +877,7 @@ export function DashboardView({
           onSaved={(connectionId) => {
             if (connectionDialog.returnToAddTile) {
               setDialog((current) =>
-                current?.kind === 'add-tile'
+                isTileDialog(current)
                   ? {
                       ...current,
                       tileKind: 'portainer-swarm-stack',
@@ -613,15 +904,71 @@ function dashboardTabDomId(dashboardId: string): string {
   return `dashboard-tab-${dashboardId.replace(/[^\dA-Za-z_-]/g, '-')}`;
 }
 
+type TileDragHandleProps = {
+  label: string;
+  position: number;
+  tileCount: number;
+  isDragging: boolean;
+  isDisabled: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerCancel: () => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+};
+
+function TileDragHandle({
+  label,
+  position,
+  tileCount,
+  isDragging,
+  isDisabled,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onKeyDown
+}: TileDragHandleProps): ReactElement {
+  const isReorderable = tileCount > 1 && !isDisabled;
+
+  return (
+    <button
+      className="dashboard-tile-drag-handle icon-btn"
+      type="button"
+      disabled={!isReorderable}
+      aria-label={`Reorder ${label} tile, position ${position} of ${tileCount}. Drag or use arrow keys.`}
+      title={
+        tileCount > 1
+          ? 'Drag to reorder · Arrow keys also move this tile'
+          : 'Add another tile to reorder'
+      }
+      data-dragging={isDragging}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onKeyDown={onKeyDown}
+    >
+      <GripVertical size={12} />
+    </button>
+  );
+}
+
 type GitHubActionsTileProps = {
   profileId?: string;
   tile: GitHubActionsDashboardTile;
+  dragHandle: ReactElement;
+  isSaving: boolean;
+  onEdit: () => void;
   onRemove: () => void;
 };
 
 function GitHubActionsTile({
   profileId,
   tile,
+  dragHandle,
+  isSaving,
+  onEdit,
   onRemove
 }: GitHubActionsTileProps): ReactElement {
   const runsQuery = useGitHubActionsRuns(
@@ -695,8 +1042,20 @@ function GitHubActionsTile({
             </span>
           ) : null}
           <button
+            className="actions-tile-edit icon-btn"
+            type="button"
+            disabled={isSaving}
+            aria-label={`Edit ${tile.owner}/${tile.repository} tile`}
+            title="Edit tile"
+            onClick={onEdit}
+          >
+            <Pencil size={11} />
+          </button>
+          {dragHandle}
+          <button
             className="actions-tile-remove icon-btn"
             type="button"
+            disabled={isSaving}
             aria-label={`Remove ${tile.owner}/${tile.repository} tile`}
             title="Remove tile"
             onClick={onRemove}
@@ -835,7 +1194,7 @@ type DashboardDialogSurfaceProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-function DashboardDialogSurface({
+export function DashboardDialogSurface({
   dialog,
   repositories,
   repositoriesLoading,
@@ -855,17 +1214,19 @@ function DashboardDialogSurface({
   onClose,
   onSubmit
 }: DashboardDialogSurfaceProps): ReactElement {
-  const branchFilterError =
-    dialog.kind === 'add-tile'
-      ? workflowRunBranchFilterError(dialog.branches)
-      : undefined;
+  const branchFilterError = isTileDialog(dialog)
+    ? workflowRunBranchFilterError(dialog.branches)
+    : undefined;
   const selectedRepository =
-    dialog.kind === 'add-tile'
+    isTileDialog(dialog)
       ? repositories.find(
           (repository) =>
             repository.fullName === (dialog.repository || repositories[0]?.fullName)
         )
       : undefined;
+  const canConfigureGitHubTile =
+    gitHubConnected ||
+    (dialog.kind === 'edit-tile' && dialog.tileKind === 'github-actions');
   const title =
     dialog.kind === 'create'
       ? 'Create dashboard'
@@ -873,32 +1234,38 @@ function DashboardDialogSurface({
         ? 'Rename dashboard'
         : dialog.kind === 'add-tile'
           ? 'Add dashboard tile'
-          : 'Delete dashboard';
+          : dialog.kind === 'edit-tile'
+            ? 'Edit dashboard tile'
+            : 'Delete dashboard';
   const description =
     dialog.kind === 'add-tile'
       ? 'Choose a live signal to keep in this dashboard.'
+      : dialog.kind === 'edit-tile'
+        ? 'Update this tile without changing its position in the dashboard.'
       : dialog.kind === 'delete'
         ? 'This removes the dashboard configuration and all of its tiles.'
         : 'Use a short name that describes the projects or delivery signal you monitor.';
   const selectedConnectionId =
-    dialog.kind === 'add-tile'
+    isTileDialog(dialog)
       ? dialog.connectionId || connections[0]?.id || ''
       : '';
   const selectedEnvironment =
-    dialog.kind === 'add-tile'
+    isTileDialog(dialog)
       ? catalog?.environments.find(
           (environment) => environment.id === dialog.endpointId
         ) ?? catalog?.environments[0]
       : undefined;
   const selectedStack =
-    dialog.kind === 'add-tile'
+    isTileDialog(dialog)
       ? selectedEnvironment?.stacks.find((stack) => stack.id === dialog.stackId) ??
         selectedEnvironment?.stacks[0]
       : undefined;
-  const addTileUnavailable =
-    dialog.kind === 'add-tile' &&
+  const tileSaveUnavailable =
+    isTileDialog(dialog) &&
     (dialog.tileKind === 'github-actions'
-      ? !gitHubConnected || repositories.length === 0 || Boolean(branchFilterError)
+      ? !canConfigureGitHubTile ||
+        repositories.length === 0 ||
+        Boolean(branchFilterError)
       : !selectedConnectionId || !selectedEnvironment || !selectedStack);
 
   return (
@@ -933,13 +1300,16 @@ function DashboardDialogSurface({
                 onChange={(event) => onChange({ ...dialog, name: event.target.value })}
               />
             </label>
-          ) : dialog.kind === 'add-tile' ? (
+          ) : isTileDialog(dialog) ? (
             <>
               <label className="dashboard-field">
                 <span>Tile type</span>
                 <select
-                  data-modal-initial-focus="true"
+                  data-modal-initial-focus={
+                    dialog.kind === 'add-tile' ? 'true' : undefined
+                  }
                   value={dialog.tileKind}
+                  disabled={dialog.kind === 'edit-tile'}
                   onChange={(event) =>
                     onChange({
                       ...dialog,
@@ -949,7 +1319,7 @@ function DashboardDialogSurface({
                     })
                   }
                 >
-                  <option value="github-actions" disabled={!gitHubConnected}>
+                  <option value="github-actions" disabled={!canConfigureGitHubTile}>
                     GitHub Actions
                   </option>
                   <option value="portainer-swarm-stack">Portainer Swarm stack</option>
@@ -958,11 +1328,14 @@ function DashboardDialogSurface({
 
               {dialog.tileKind === 'github-actions' ? (
                 <>
-                  {gitHubConnected ? (
+                  {canConfigureGitHubTile ? (
                     <>
                       <label className="dashboard-field">
                         <span>GitHub project</span>
                         <select
+                          data-modal-initial-focus={
+                            dialog.kind === 'edit-tile' ? 'true' : undefined
+                          }
                           value={dialog.repository || repositories[0]?.fullName || ''}
                           required
                           disabled={repositoriesLoading || repositories.length === 0}
@@ -1002,7 +1375,7 @@ function DashboardDialogSurface({
                         <WorkflowBranchFilterField
                           value={dialog.branches}
                           placeholder={
-                            selectedRepository?.defaultBranch ?? 'main, release/next'
+                            selectedRepository?.defaultBranch || 'main, release/next'
                           }
                           onChange={(branches) => onChange({ ...dialog, branches })}
                         />
@@ -1046,8 +1419,30 @@ function DashboardDialogSurface({
                         </p>
                       </fieldset>
                       <div className="dashboard-dialog-note">
-                        <Lock size={13} />
-                        <span>Uses the GitHub CLI credentials attached to the active Git profile.</span>
+                        {gitHubConnected ? (
+                          <>
+                            <Lock size={13} />
+                            <span>
+                              Uses the GitHub CLI credentials attached to the active Git
+                              profile.
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle size={13} />
+                            <span>
+                              Settings can be saved, but runs will not refresh until GitHub
+                              is reconnected.
+                            </span>
+                            <button
+                              className="dashboard-note-action"
+                              type="button"
+                              onClick={onOpenGitHubSettings}
+                            >
+                              Open settings
+                            </button>
+                          </>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -1077,6 +1472,9 @@ function DashboardDialogSurface({
                     <label className="dashboard-field">
                       <span>Portainer connection</span>
                       <select
+                        data-modal-initial-focus={
+                          dialog.kind === 'edit-tile' ? 'true' : undefined
+                        }
                         value={selectedConnectionId}
                         disabled={connectionsLoading || connections.length === 0}
                         onChange={(event) =>
@@ -1203,7 +1601,7 @@ function DashboardDialogSurface({
             disabled={
               isSaving ||
               ((dialog.kind === 'create' || dialog.kind === 'rename') && !dialog.name.trim()) ||
-              addTileUnavailable
+              tileSaveUnavailable
             }
           >
             {isSaving ? <Loader2 size={13} className="animate-spin" /> : null}
@@ -1213,7 +1611,9 @@ function DashboardDialogSurface({
                 ? 'Save name'
                 : dialog.kind === 'add-tile'
                   ? 'Add tile'
-                  : 'Delete dashboard'}
+                  : dialog.kind === 'edit-tile'
+                    ? 'Save tile'
+                    : 'Delete dashboard'}
           </button>
         </footer>
       </form>

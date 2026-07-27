@@ -12,9 +12,9 @@
 - Avoid: Decorative chrome, duplicated information, oversized panels, novelty controls, and inactive product surfaces.
 
 ## Product goals
-- Goals: Make local repository state legible; keep history, diff, staging, and review flows fast; preserve graph context while inspecting code; let a developer monitor live GitHub Actions and selected Portainer Swarm stacks without leaving the app; let each Actions tile focus on exact branches, current tags, and pull requests authored by the connected GitHub user.
+- Goals: Make local repository state legible; keep history, diff, staging, and review flows fast; preserve graph context while inspecting code; let a developer monitor live GitHub Actions and selected Portainer Swarm stacks without leaving the app; let each Actions tile focus on exact branches, current tags, and pull requests authored by the connected GitHub user; and let developers edit and arrange saved tiles into the monitoring layout they need.
 - Non-goals: General analytics, team administration, issue tracking, promotional surfaces, or reproducing another product's branding.
-- Success signals: Common Git inspection and mutation flows remain direct and understandable; configured dashboards and tile filters survive restarts; workflow runs refresh automatically; each tile only shows runs matching its configured union of branch, tag, and authored-PR filters; and a run opens its canonical GitHub page in the system browser.
+- Success signals: Common Git inspection and mutation flows remain direct and understandable; configured dashboards, edited tile settings, tile filters, and tile order survive restarts; workflow runs refresh automatically; each tile only shows runs matching its configured union of branch, tag, and authored-PR filters; and a run opens its canonical GitHub page in the system browser.
 
 ## Personas and jobs
 - Primary personas: macOS developers and Git power users working in local repositories.
@@ -30,6 +30,7 @@
 - Repository truth comes first: Status, scope, and available operations must reflect Git state.
 - Preserve flow: Keep inspection dense, keyboard-accessible, and spatially stable; returning to Dashboards restores the last dashboard selected for the active GitHub profile.
 - Earn every control: Avoid duplicated actions or labels; one selected-file diff header contains the change icon, file path, necessary scope control, diff layout switch, and close action.
+- Spatial control is direct: Tile headers expose compact edit and drag controls; dragging gives immediate placement feedback and dropping persists the new reading order.
 - Live truth is visible: Monitoring tiles show when data was loaded, distinguish running from completed workflows without color alone, and keep stale data visible during background refresh.
 - Operational state is derived: A Portainer tile distinguishes stack configuration from live service/task health, and labels image freshness separately from rollout convergence.
 - Tradeoffs: Prefer a compact persistent control row over explanatory chrome; use tooltips and accessible labels for icon-only actions.
@@ -39,18 +40,18 @@
 - Typography: System sans-serif for chrome and UI; system monospace for code, hashes, and command content.
 - Spacing/layout rhythm: Dense 28–40px controls and headers, 4–8px internal gaps, minimal vertical chrome around primary content, and a responsive two-column tile grid that collapses at constrained widths. Dashboard-name tabs are compact, natural-width toolbar labels rather than boxed title-bar tabs.
 - Shape/radius/elevation: Small radii and restrained borders; elevation is reserved for menus, popovers, and dialogs.
-- Motion: Short functional transitions only, disabled under reduced-motion preferences.
+- Motion: Short functional transitions only, disabled under reduced-motion preferences. Tile dragging uses border, opacity, and insertion feedback without decorative motion.
 - Imagery/iconography: Lucide icons, with distinct shapes for added, modified, renamed, and deleted file states.
 
 ## Components
 - Existing components to reuse: Shared buttons, segmented controls, toolbar typography and hover states, theme variables, `@pierre/diffs` renderers, file status colors, and modal/menu primitives.
-- New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs followed immediately by the create-dashboard control, dashboard editor dialogs, reusable external-service connection dialog, GitHub Actions tile, Portainer Swarm stack tile, workflow-run filter controls, workflow-run row, and Swarm service row. The add-tile dialog reuses native text and checkbox controls for comma-separated exact branch names, current tag runs, and pull requests authored by the connected GitHub user. The GitHub tile header summarizes active filters. Dashboard-wide actions remain right-aligned. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
+- New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs followed immediately by the create-dashboard control, dashboard editor dialogs, reusable external-service connection dialog, GitHub Actions tile, Portainer Swarm stack tile, workflow-run filter controls, workflow-run row, Swarm service row, and a shared tile drag handle. The tile dialog supports both add and edit flows with the same native form controls; editing preserves the tile ID and grid position. The GitHub tile header summarizes active filters. Dashboard-wide actions remain right-aligned. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
 - Variants and states: Commit, multi-commit, WIP staged/unstaged, loading, empty, binary, too-large, error, unified/split diff layouts, dashboard with no tiles, tile loading/refresh/error/stale, unfiltered GitHub tile, filtered GitHub tile with no matching runs, queued/running/success/failure/cancelled workflow states, and healthy/updating/degraded/stopped/unavailable Swarm states. Image freshness uses up-to-date/update-available/checking/unknown states independently of service health.
 - Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
 
 ## Accessibility
 - Target standard: WCAG 2.2 AA.
-- Keyboard/focus behavior: Focused panels accept Escape to close and arrow keys where documented; all actions remain native buttons.
+- Keyboard/focus behavior: Focused panels accept Escape to close and arrow keys where documented; all actions remain native buttons. A focused tile drag handle moves its tile backward or forward with the arrow keys and announces its position, providing the same persisted ordering outcome as pointer drag and drop.
 - Contrast/readability: Use existing semantic text, border, selection, success, and danger tokens.
 - Screen-reader semantics: Icon-only actions and file-state icons require accessible labels; headings and regions use semantic elements where practical; workflow filter checkboxes use native labels; workflow rows expose status, repository, branch, and run name as text.
 - Reduced motion and sensory considerations: Respect `prefers-reduced-motion`; do not rely on color alone for file state or selection.
@@ -65,6 +66,7 @@
 - Empty: Explain what selection is required or why no content exists. An empty dashboard provides one direct “Add tile” action. A filtered GitHub tile distinguishes “no matching runs” from an unfiltered repository with no runs.
 - Error: Show the concrete operation or retrieval error in context. A failed tile keeps its last successful data visible when available and offers a retry. Portainer authentication, TLS, environment access, deleted-stack, and registry-freshness errors remain distinguishable.
 - Success: Refresh repository or GitHub truth and preserve the user's current spatial context where possible.
+- Save failure: If editing or reordering cannot be saved, keep the last persisted tile configuration and show the concrete error in the dashboard header.
 - Disabled: Keep controls legible and explain unavailable actions through title or adjacent context.
 - Offline/slow network, if applicable: Core repository workflows are local-first; remote operations expose progress and cancellation; dashboard tiles retain their configuration and clearly identify GitHub or Portainer fetch failures. Portainer image-freshness checks may update less frequently than task health and display their own checked time.
 
@@ -83,4 +85,4 @@
 ## Open questions
 - [x] The initial implementation targets the documented Portainer Business Edition 2.39.5 API contract; connected installations remain discoverable through connection testing.
 - [x] The first Portainer slice is monitoring-only; stack updates, restarts, and other write actions are excluded.
-- [ ] Freeform tile rearrangement remains intentionally out of scope.
+- [x] Tiles use ordered-grid rearrangement rather than freeform coordinates; the saved tile array is the persistent reading and layout order.
