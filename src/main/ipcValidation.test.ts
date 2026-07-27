@@ -135,6 +135,14 @@ describe('IPC argument validation', () => {
                 includeTags: true,
                 includeMyPullRequests: false
               }
+            },
+            {
+              kind: 'portainer-swarm-stack',
+              connectionId: 'portainer:production',
+              endpointId: 3,
+              stackId: 12,
+              stackName: 'storefront',
+              environmentName: 'Production Swarm'
             }
           ]
         }
@@ -142,17 +150,80 @@ describe('IPC argument validation', () => {
     ).toMatchObject({
       profileId: 'profile:kaldy',
       name: 'Delivery',
-      tiles: [{
-        owner: 'acme',
-        repository: 'widgets',
-        limit: 10,
-        filters: {
-          branches: ['main', 'release/next'],
-          includeTags: true,
-          includeMyPullRequests: false
+      tiles: [
+        {
+          owner: 'acme',
+          repository: 'widgets',
+          limit: 10,
+          filters: {
+            branches: ['main', 'release/next'],
+            includeTags: true,
+            includeMyPullRequests: false
+          }
+        },
+        {
+          connectionId: 'portainer:production',
+          endpointId: 3,
+          stackId: 12,
+          stackName: 'storefront',
+          environmentName: 'Production Swarm'
         }
-      }]
+      ]
     });
+    expect(
+      validateIpcArgs('portainer:connection-save', [
+        {
+          name: 'Production',
+          baseUrl: 'https://portainer.example.com',
+          accessToken: 'ptr_secret',
+          tlsVerify: true
+        }
+      ])
+    ).toEqual([
+      {
+        id: undefined,
+        name: 'Production',
+        baseUrl: 'https://portainer.example.com',
+        accessToken: 'ptr_secret',
+        tlsVerify: true
+      }
+    ]);
+    expect(
+      validateIpcArgs('portainer:stack-runtime', [
+        {
+          connectionId: 'portainer:production',
+          endpointId: 3,
+          stackId: 12,
+          stackName: 'storefront'
+        }
+      ])
+    ).toEqual([
+      {
+        connectionId: 'portainer:production',
+        endpointId: 3,
+        stackId: 12,
+        stackName: 'storefront'
+      }
+    ]);
+    expect(
+      validateIpcArgs('portainer:stack-images', [
+        {
+          connectionId: 'portainer:production',
+          endpointId: 3,
+          stackId: 12,
+          stackName: 'storefront',
+          refresh: true
+        }
+      ])
+    ).toEqual([
+      {
+        connectionId: 'portainer:production',
+        endpointId: 3,
+        stackId: 12,
+        stackName: 'storefront',
+        refresh: true
+      }
+    ]);
     expect(
       validateIpcArgs('github:actions-runs', [
         {
@@ -460,6 +531,44 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('dashboards:select', ['profile:kaldy', ''])).toThrow(
       'dashboardId must not be empty.'
     );
+    expect(() =>
+      validateIpcArgs('portainer:connection-save', [
+        {
+          name: 'Production',
+          baseUrl: 'https://portainer.example.com',
+          accessToken: 42,
+          tlsVerify: true
+        }
+      ])
+    ).toThrow('accessToken must be a string.');
+    expect(() =>
+      validateIpcArgs('portainer:stack-runtime', [
+        {
+          connectionId: 'portainer:production',
+          endpointId: 0,
+          stackId: 12,
+          stackName: 'storefront'
+        }
+      ])
+    ).toThrow('endpointId must be a positive integer.');
+    expect(() =>
+      validateIpcArgs('dashboards:save', [
+        {
+          profileId: 'profile:kaldy',
+          name: 'Delivery',
+          tiles: [
+            {
+              kind: 'portainer-swarm-stack',
+              connectionId: 'portainer:production',
+              endpointId: 3,
+              stackId: 0,
+              stackName: 'storefront',
+              environmentName: 'Production Swarm'
+            }
+          ]
+        }
+      ])
+    ).toThrow('stackId must be a positive integer.');
     expect(() => validateIpcArgs('repo:file-history', ['/repo', 'file.ts', 1.5])).toThrow('limit must be a positive integer.');
     expect(() =>
       validateIpcArgs('github:pull-request-detail', [

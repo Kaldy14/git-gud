@@ -10,6 +10,7 @@ import {
   Loader2,
   Lock,
   Pencil,
+  PlugZap,
   Plus,
   RefreshCw,
   Trash2,
@@ -26,14 +27,25 @@ import {
   useGitHubActionsRuns,
   useGitHubRepositories
 } from '@renderer/queries/github';
+import {
+  portainerConnectionsQueryKey,
+  refreshPortainerStackImages,
+  usePortainerConnections,
+  usePortainerStackCatalog
+} from '@renderer/queries/portainer';
+import { dashboardProfileId } from '@shared/dashboard';
 import type {
   Dashboard,
   GitHubActionsDashboardTile,
   GitHubRepositorySummary,
   GitHubWorkflowRun,
-  GitProfile
+  GitProfile,
+  PortainerConnection,
+  PortainerStackCatalog
 } from '@shared/types';
 
+import { PortainerConnectionDialog } from './PortainerConnectionDialog';
+import { PortainerStackTile } from './PortainerStackTile';
 import { resolveActiveDashboard } from './dashboardSelection';
 import {
   hasWorkflowRunFilters,
@@ -56,11 +68,15 @@ type DashboardDialog =
   | { kind: 'rename'; name: string }
   | {
       kind: 'add-tile';
+      tileKind: 'github-actions' | 'portainer-swarm-stack';
       repository: string;
       limit: number;
       branches: string;
       includeTags: boolean;
       includeMyPullRequests: boolean;
+      connectionId: string;
+      endpointId: number;
+      stackId: number;
     }
   | { kind: 'delete' };
 
@@ -71,11 +87,18 @@ export function DashboardView({
   onOpenProfileSettings,
   onClose
 }: DashboardViewProps): ReactElement {
-  const profileId = profile?.ghConfigDir && profile.githubLogin ? profile.id : undefined;
-  const dashboardsQuery = useDashboards(profileId);
-  const repositoriesQuery = useGitHubRepositories(profileId);
+  const activeDashboardProfileId = dashboardProfileId(profile);
+  const gitHubProfileId =
+    profile?.ghConfigDir && profile.githubLogin ? profile.id : undefined;
+  const dashboardsQuery = useDashboards(activeDashboardProfileId);
+  const repositoriesQuery = useGitHubRepositories(gitHubProfileId);
+  const connectionsQuery = usePortainerConnections();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<DashboardDialog>();
+  const [connectionDialog, setConnectionDialog] = useState<{
+    returnToAddTile: boolean;
+    initialConnectionId?: string;
+  }>();
   const [isSaving, setIsSaving] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
   const dashboards = dashboardsQuery.data?.dashboards ?? [];
@@ -89,34 +112,42 @@ export function DashboardView({
       (repositoriesQuery.data ?? []).filter(
         (repository) =>
           !activeDashboard?.tiles.some(
-            (tile) => tile.owner === repository.owner && tile.repository === repository.name
+            (tile) =>
+              tile.kind === 'github-actions' &&
+              tile.owner === repository.owner &&
+              tile.repository === repository.name
           )
       ),
     [activeDashboard?.tiles, repositoriesQuery.data]
   );
-  const dashboardFetchCount = useIsFetching({
-    queryKey: profileId ? ['github-actions-runs', profileId] : ['github-actions-runs', 'none']
+  const selectedConnectionId =
+    dialog?.kind === 'add-tile' && dialog.tileKind === 'portainer-swarm-stack'
+      ? dialog.connectionId || connectionsQuery.data?.[0]?.id
+      : undefined;
+  const catalogQuery = usePortainerStackCatalog(
+    selectedConnectionId,
+    dialog?.kind === 'add-tile' && dialog.tileKind === 'portainer-swarm-stack'
+  );
+  const gitHubFetchCount = useIsFetching({
+    queryKey: gitHubProfileId
+      ? ['github-actions-runs', gitHubProfileId]
+      : ['github-actions-runs', 'none']
   });
-
-  if (!profileId) {
-    return (
-      <DashboardMessage
-        icon={<LayoutDashboard size={21} />}
-        title="Connect a GitHub account"
-        detail="Dashboards use the GitHub CLI account attached to the active Git profile."
-        actionLabel="Open profile settings"
-        onAction={onOpenProfileSettings}
-        onClose={onClose}
-      />
-    );
-  }
+  const portainerFetchCount = useIsFetching({
+    queryKey: ['portainer-stack-runtime']
+  });
+  const portainerImageFetchCount = useIsFetching({
+    queryKey: ['portainer-stack-images']
+  });
+  const dashboardFetchCount =
+    gitHubFetchCount + portainerFetchCount + portainerImageFetchCount;
 
   if (dashboardsQuery.isLoading && !dashboardsQuery.data) {
     return (
       <DashboardMessage
         icon={<Loader2 size={21} className="animate-spin" />}
         title="Loading dashboards"
-        detail={`Restoring dashboard configuration for @${profile?.githubLogin}.`}
+        detail="Restoring your saved monitoring dashboards."
         onClose={onClose}
       />
     );
@@ -136,7 +167,7 @@ export function DashboardView({
     );
   }
 
-  const activeProfileId = profileId;
+  const activeProfileId = activeDashboardProfileId;
 
   async function persistDashboard(dashboard: Dashboard): Promise<void> {
     setIsSaving(true);
@@ -183,34 +214,70 @@ export function DashboardView({
       } else if (dialog.kind === 'rename' && activeDashboard) {
         await persistDashboard({ ...activeDashboard, name: dialog.name });
       } else if (dialog.kind === 'add-tile' && activeDashboard) {
-        const repository = availableRepositories.find(
-          (candidate) =>
-            candidate.fullName ===
-            (dialog.repository || availableRepositories[0]?.fullName)
-        );
+        if (dialog.tileKind === 'github-actions') {
+          const repository = availableRepositories.find(
+            (candidate) =>
+              candidate.fullName ===
+              (dialog.repository || availableRepositories[0]?.fullName)
+          );
 
-        if (!repository) {
-          throw new Error('Select a GitHub project.');
-        }
+          if (!repository) {
+            throw new Error('Select a GitHub project.');
+          }
 
-        await persistDashboard({
-          ...activeDashboard,
-          tiles: [
-            ...activeDashboard.tiles,
-            {
-              id: '',
-              kind: 'github-actions',
-              owner: repository.owner,
-              repository: repository.name,
-              limit: dialog.limit,
-              filters: {
-                branches: parseWorkflowRunBranches(dialog.branches),
-                includeTags: dialog.includeTags,
-                includeMyPullRequests: dialog.includeMyPullRequests
+          await persistDashboard({
+            ...activeDashboard,
+            tiles: [
+              ...activeDashboard.tiles,
+              {
+                id: '',
+                kind: 'github-actions',
+                owner: repository.owner,
+                repository: repository.name,
+                limit: dialog.limit,
+                filters: {
+                  branches: parseWorkflowRunBranches(dialog.branches),
+                  includeTags: dialog.includeTags,
+                  includeMyPullRequests: dialog.includeMyPullRequests
+                }
               }
-            }
-          ]
-        });
+            ]
+          });
+        } else {
+          const connectionId =
+            dialog.connectionId || connectionsQuery.data?.[0]?.id;
+          const environment =
+            catalogQuery.data?.environments.find(
+              (candidate) => candidate.id === dialog.endpointId
+            ) ?? catalogQuery.data?.environments[0];
+          const stack =
+            environment?.stacks.find((candidate) => candidate.id === dialog.stackId) ??
+            environment?.stacks[0];
+
+          if (!connectionId) {
+            throw new Error('Configure a Portainer connection.');
+          }
+
+          if (!environment || !stack) {
+            throw new Error('Select a Portainer Swarm stack.');
+          }
+
+          await persistDashboard({
+            ...activeDashboard,
+            tiles: [
+              ...activeDashboard.tiles,
+              {
+                id: '',
+                kind: 'portainer-swarm-stack',
+                connectionId,
+                endpointId: environment.id,
+                stackId: stack.id,
+                stackName: stack.name,
+                environmentName: environment.name
+              }
+            ]
+          });
+        }
       } else if (dialog.kind === 'delete' && activeDashboard) {
         setIsSaving(true);
         const state = await window.api.deleteDashboard(activeProfileId, activeDashboard.id);
@@ -245,18 +312,38 @@ export function DashboardView({
     setMutationError(undefined);
     setDialog({
       kind: 'add-tile',
+      tileKind: gitHubProfileId ? 'github-actions' : 'portainer-swarm-stack',
       repository: availableRepositories[0]?.fullName ?? '',
       limit: 10,
       branches: '',
       includeTags: false,
-      includeMyPullRequests: false
+      includeMyPullRequests: false,
+      connectionId: connectionsQuery.data?.[0]?.id ?? '',
+      endpointId: 0,
+      stackId: 0
     });
   }
 
   function refreshDashboard(): void {
-    void queryClient.invalidateQueries({
-      queryKey: ['github-actions-runs', activeProfileId]
-    });
+    const portainerTiles =
+      activeDashboard?.tiles.filter(
+        (tile) => tile.kind === 'portainer-swarm-stack'
+      ) ?? [];
+
+    void Promise.allSettled([
+      queryClient.invalidateQueries({
+        queryKey: ['github-actions-runs', gitHubProfileId ?? 'none']
+      }),
+      queryClient.invalidateQueries({ queryKey: ['portainer-stack-runtime'] }),
+      ...portainerTiles.map((tile) =>
+        refreshPortainerStackImages(queryClient, {
+          connectionId: tile.connectionId,
+          endpointId: tile.endpointId,
+          stackId: tile.stackId,
+          stackName: tile.stackName
+        })
+      )
+    ]);
   }
 
   return (
@@ -347,6 +434,20 @@ export function DashboardView({
                 <button
                   className="icon-btn h-7 w-7"
                   type="button"
+                  aria-label="Portainer connections"
+                  title="Portainer connections"
+                  onClick={() =>
+                    setConnectionDialog({
+                      returnToAddTile: false,
+                      initialConnectionId: connectionsQuery.data?.[0]?.id
+                    })
+                  }
+                >
+                  <PlugZap size={13} />
+                </button>
+                <button
+                  className="icon-btn h-7 w-7"
+                  type="button"
                   disabled={dashboardFetchCount > 0}
                   aria-label={dashboardFetchCount > 0 ? 'Refreshing dashboard' : 'Refresh dashboard'}
                   title={dashboardFetchCount > 0 ? 'Refreshing dashboard' : 'Refresh dashboard'}
@@ -387,25 +488,36 @@ export function DashboardView({
 
             {activeDashboard.tiles.length > 0 ? (
               <div className="dashboard-grid">
-                {activeDashboard.tiles.map((tile) => (
-                  <GitHubActionsTile
-                    key={tile.id}
-                    profileId={activeProfileId}
-                    tile={tile}
-                    onRemove={() => void handleRemoveTile(tile.id)}
-                  />
-                ))}
+                {activeDashboard.tiles.map((tile) =>
+                  tile.kind === 'github-actions' ? (
+                    <GitHubActionsTile
+                      key={tile.id}
+                      profileId={gitHubProfileId}
+                      tile={tile}
+                      onRemove={() => void handleRemoveTile(tile.id)}
+                    />
+                  ) : (
+                    <PortainerStackTile
+                      key={tile.id}
+                      tile={tile}
+                      onRemove={() => void handleRemoveTile(tile.id)}
+                    />
+                  )
+                )}
               </div>
             ) : (
               <div className="dashboard-empty">
                 <div className="dashboard-empty-icon">
                   <Workflow size={22} />
                 </div>
-                <h3>Add your first project</h3>
-                <p>Choose a GitHub project and show its latest workflow runs in this dashboard.</p>
+                <h3>Add your first monitor</h3>
+                <p>
+                  Choose a GitHub project or Portainer Swarm stack and keep its live
+                  status in this dashboard.
+                </p>
                 <button className="btn-primary mt-4" type="button" onClick={openAddTileDialog}>
                   <Plus size={14} />
-                  Add GitHub Actions tile
+                  Add tile
                 </button>
               </div>
             )}
@@ -416,7 +528,10 @@ export function DashboardView({
               <LayoutDashboard size={22} />
             </div>
             <h2>Create a dashboard</h2>
-            <p>Group the GitHub Actions state you check across projects into one persistent view.</p>
+            <p>
+              Group the delivery and infrastructure state you check into one persistent
+              view.
+            </p>
             <button
               className="btn-primary mt-4"
               type="button"
@@ -429,7 +544,7 @@ export function DashboardView({
         )}
       </div>
 
-      {dialog ? (
+      {dialog && !connectionDialog ? (
         <DashboardDialogSurface
           dialog={dialog}
           repositories={availableRepositories}
@@ -437,14 +552,57 @@ export function DashboardView({
           repositoriesError={
             repositoriesQuery.error ? errorMessage(repositoriesQuery.error) : undefined
           }
+          gitHubConnected={Boolean(gitHubProfileId)}
+          connections={connectionsQuery.data ?? []}
+          connectionsLoading={connectionsQuery.isLoading}
+          connectionsError={
+            connectionsQuery.error ? errorMessage(connectionsQuery.error) : undefined
+          }
+          catalog={catalogQuery.data}
+          catalogLoading={catalogQuery.isLoading}
+          catalogError={catalogQuery.error ? errorMessage(catalogQuery.error) : undefined}
           isSaving={isSaving}
           errorMessage={mutationError}
           onChange={setDialog}
+          onConfigurePortainer={(connectionId) =>
+            setConnectionDialog({
+              returnToAddTile: true,
+              initialConnectionId: connectionId
+            })
+          }
+          onOpenGitHubSettings={onOpenProfileSettings}
           onClose={() => {
             setMutationError(undefined);
             setDialog(undefined);
           }}
           onSubmit={(event) => void handleDialogSubmit(event)}
+        />
+      ) : null}
+
+      {connectionDialog ? (
+        <PortainerConnectionDialog
+          initialConnectionId={connectionDialog.initialConnectionId}
+          onClose={() => setConnectionDialog(undefined)}
+          onSaved={(connectionId) => {
+            if (connectionDialog.returnToAddTile) {
+              setDialog((current) =>
+                current?.kind === 'add-tile'
+                  ? {
+                      ...current,
+                      tileKind: 'portainer-swarm-stack',
+                      connectionId,
+                      endpointId: 0,
+                      stackId: 0
+                    }
+                  : current
+              );
+            }
+
+            setConnectionDialog(undefined);
+            void queryClient.invalidateQueries({
+              queryKey: portainerConnectionsQueryKey
+            });
+          }}
         />
       ) : null}
     </section>
@@ -456,7 +614,7 @@ function dashboardTabDomId(dashboardId: string): string {
 }
 
 type GitHubActionsTileProps = {
-  profileId: string;
+  profileId?: string;
   tile: GitHubActionsDashboardTile;
   onRemove: () => void;
 };
@@ -466,13 +624,17 @@ function GitHubActionsTile({
   tile,
   onRemove
 }: GitHubActionsTileProps): ReactElement {
-  const runsQuery = useGitHubActionsRuns({
-    profileId,
-    owner: tile.owner,
-    repository: tile.repository,
-    limit: tile.limit,
-    filters: tile.filters
-  });
+  const runsQuery = useGitHubActionsRuns(
+    profileId
+      ? {
+          profileId,
+          owner: tile.owner,
+          repository: tile.repository,
+          limit: tile.limit,
+          filters: tile.filters
+        }
+      : undefined
+  );
   const runs = runsQuery.data?.runs ?? [];
   const filterSummary = workflowRunFilterSummary(tile.filters);
   const isFiltered = hasWorkflowRunFilters(tile.filters);
@@ -544,7 +706,12 @@ function GitHubActionsTile({
         </div>
       </header>
 
-      {runsQuery.error ? (
+      {!profileId ? (
+        <div className="actions-tile-error" role="alert">
+          <AlertTriangle size={13} />
+          <span>Connect a GitHub account to refresh this tile.</span>
+        </div>
+      ) : runsQuery.error ? (
         <div className="actions-tile-error" role="alert">
           <AlertTriangle size={13} />
           <span>{errorMessage(runsQuery.error)}</span>
@@ -572,7 +739,7 @@ function GitHubActionsTile({
             </div>
           ) : null}
         </>
-      ) : !runsQuery.error ? (
+      ) : profileId && !runsQuery.error ? (
         <div className="actions-tile-empty">
           <CircleSlash2 size={17} />
           <span>
@@ -652,9 +819,18 @@ type DashboardDialogSurfaceProps = {
   repositories: GitHubRepositorySummary[];
   repositoriesLoading: boolean;
   repositoriesError?: string;
+  gitHubConnected: boolean;
+  connections: PortainerConnection[];
+  connectionsLoading: boolean;
+  connectionsError?: string;
+  catalog?: PortainerStackCatalog;
+  catalogLoading: boolean;
+  catalogError?: string;
   isSaving: boolean;
   errorMessage?: string;
   onChange: (dialog: DashboardDialog) => void;
+  onConfigurePortainer: (connectionId?: string) => void;
+  onOpenGitHubSettings: () => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
@@ -664,9 +840,18 @@ function DashboardDialogSurface({
   repositories,
   repositoriesLoading,
   repositoriesError,
+  gitHubConnected,
+  connections,
+  connectionsLoading,
+  connectionsError,
+  catalog,
+  catalogLoading,
+  catalogError,
   isSaving,
   errorMessage,
   onChange,
+  onConfigurePortainer,
+  onOpenGitHubSettings,
   onClose,
   onSubmit
 }: DashboardDialogSurfaceProps): ReactElement {
@@ -687,14 +872,34 @@ function DashboardDialogSurface({
       : dialog.kind === 'rename'
         ? 'Rename dashboard'
         : dialog.kind === 'add-tile'
-          ? 'Add GitHub Actions tile'
+          ? 'Add dashboard tile'
           : 'Delete dashboard';
   const description =
     dialog.kind === 'add-tile'
-      ? 'Choose a project, the runs that matter, and how many results to show.'
+      ? 'Choose a live signal to keep in this dashboard.'
       : dialog.kind === 'delete'
         ? 'This removes the dashboard configuration and all of its tiles.'
         : 'Use a short name that describes the projects or delivery signal you monitor.';
+  const selectedConnectionId =
+    dialog.kind === 'add-tile'
+      ? dialog.connectionId || connections[0]?.id || ''
+      : '';
+  const selectedEnvironment =
+    dialog.kind === 'add-tile'
+      ? catalog?.environments.find(
+          (environment) => environment.id === dialog.endpointId
+        ) ?? catalog?.environments[0]
+      : undefined;
+  const selectedStack =
+    dialog.kind === 'add-tile'
+      ? selectedEnvironment?.stacks.find((stack) => stack.id === dialog.stackId) ??
+        selectedEnvironment?.stacks[0]
+      : undefined;
+  const addTileUnavailable =
+    dialog.kind === 'add-tile' &&
+    (dialog.tileKind === 'github-actions'
+      ? !gitHubConnected || repositories.length === 0 || Boolean(branchFilterError)
+      : !selectedConnectionId || !selectedEnvironment || !selectedStack);
 
   return (
     <ModalSurface
@@ -731,95 +936,247 @@ function DashboardDialogSurface({
           ) : dialog.kind === 'add-tile' ? (
             <>
               <label className="dashboard-field">
-                <span>GitHub project</span>
+                <span>Tile type</span>
                 <select
                   data-modal-initial-focus="true"
-                  value={dialog.repository || repositories[0]?.fullName || ''}
-                  required
-                  disabled={repositoriesLoading || repositories.length === 0}
+                  value={dialog.tileKind}
                   onChange={(event) =>
-                    onChange({ ...dialog, repository: event.target.value })
+                    onChange({
+                      ...dialog,
+                      tileKind: event.target.value as
+                        | 'github-actions'
+                        | 'portainer-swarm-stack'
+                    })
                   }
                 >
-                  {repositoriesLoading ? <option value="">Loading projects…</option> : null}
-                  {!repositoriesLoading && repositories.length === 0 ? (
-                    <option value="">No additional projects available</option>
+                  <option value="github-actions" disabled={!gitHubConnected}>
+                    GitHub Actions
+                  </option>
+                  <option value="portainer-swarm-stack">Portainer Swarm stack</option>
+                </select>
+              </label>
+
+              {dialog.tileKind === 'github-actions' ? (
+                <>
+                  {gitHubConnected ? (
+                    <>
+                      <label className="dashboard-field">
+                        <span>GitHub project</span>
+                        <select
+                          value={dialog.repository || repositories[0]?.fullName || ''}
+                          required
+                          disabled={repositoriesLoading || repositories.length === 0}
+                          onChange={(event) =>
+                            onChange({ ...dialog, repository: event.target.value })
+                          }
+                        >
+                          {repositoriesLoading ? <option value="">Loading projects…</option> : null}
+                          {!repositoriesLoading && repositories.length === 0 ? (
+                            <option value="">No additional projects available</option>
+                          ) : null}
+                          {repositories.map((repository) => (
+                            <option key={repository.fullName} value={repository.fullName}>
+                              {repository.fullName}
+                              {repository.isPrivate ? ' · Private' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="dashboard-field">
+                        <span>Workflow runs to show</span>
+                        <select
+                          value={dialog.limit}
+                          onChange={(event) =>
+                            onChange({ ...dialog, limit: Number(event.target.value) })
+                          }
+                        >
+                          {[5, 10, 15, 20].map((limit) => (
+                            <option key={limit} value={limit}>
+                              Last {limit} runs
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <fieldset className="dashboard-filter-field">
+                        <legend>Runs to include</legend>
+                        <WorkflowBranchFilterField
+                          value={dialog.branches}
+                          placeholder={
+                            selectedRepository?.defaultBranch ?? 'main, release/next'
+                          }
+                          onChange={(branches) => onChange({ ...dialog, branches })}
+                        />
+                        <div className="dashboard-filter-options">
+                          <label className="dashboard-filter-option">
+                            <input
+                              type="checkbox"
+                              checked={dialog.includeTags}
+                              onChange={(event) =>
+                                onChange({
+                                  ...dialog,
+                                  includeTags: event.target.checked
+                                })
+                              }
+                            />
+                            <span>
+                              <strong>Tags</strong>
+                              <small>Runs matching current repository tags.</small>
+                            </span>
+                          </label>
+                          <label className="dashboard-filter-option">
+                            <input
+                              type="checkbox"
+                              checked={dialog.includeMyPullRequests}
+                              onChange={(event) =>
+                                onChange({
+                                  ...dialog,
+                                  includeMyPullRequests: event.target.checked
+                                })
+                              }
+                            />
+                            <span>
+                              <strong>My pull requests</strong>
+                              <small>Runs linked to pull requests you authored.</small>
+                            </span>
+                          </label>
+                        </div>
+                        <p className="dashboard-filter-help">
+                          Matches any selected filter. Leave everything empty to show all
+                          runs.
+                        </p>
+                      </fieldset>
+                      <div className="dashboard-dialog-note">
+                        <Lock size={13} />
+                        <span>Uses the GitHub CLI credentials attached to the active Git profile.</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="dashboard-dialog-note">
+                      <AlertTriangle size={13} />
+                      <span>Connect a GitHub account before adding an Actions tile.</span>
+                      <button
+                        className="dashboard-note-action"
+                        type="button"
+                        onClick={onOpenGitHubSettings}
+                      >
+                        Open settings
+                      </button>
+                    </div>
+                  )}
+
+                  {repositoriesError ? (
+                    <div className="dashboard-dialog-error" role="alert">
+                      <AlertTriangle size={13} />
+                      {repositoriesError}
+                    </div>
                   ) : null}
-                  {repositories.map((repository) => (
-                    <option key={repository.fullName} value={repository.fullName}>
-                      {repository.fullName}
-                      {repository.isPrivate ? ' · Private' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="dashboard-field">
-                <span>Workflow runs to show</span>
-                <select
-                  value={dialog.limit}
-                  onChange={(event) =>
-                    onChange({ ...dialog, limit: Number(event.target.value) })
-                  }
-                >
-                  {[5, 10, 15, 20].map((limit) => (
-                    <option key={limit} value={limit}>
-                      Last {limit} runs
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <fieldset className="dashboard-filter-field">
-                <legend>Runs to include</legend>
-                <WorkflowBranchFilterField
-                  value={dialog.branches}
-                  placeholder={selectedRepository?.defaultBranch ?? 'main, release/next'}
-                  onChange={(branches) => onChange({ ...dialog, branches })}
-                />
-                <div className="dashboard-filter-options">
-                  <label className="dashboard-filter-option">
-                    <input
-                      type="checkbox"
-                      checked={dialog.includeTags}
-                      onChange={(event) =>
-                        onChange({ ...dialog, includeTags: event.target.checked })
+                </>
+              ) : (
+                <>
+                  <div className="dashboard-field-with-action">
+                    <label className="dashboard-field">
+                      <span>Portainer connection</span>
+                      <select
+                        value={selectedConnectionId}
+                        disabled={connectionsLoading || connections.length === 0}
+                        onChange={(event) =>
+                          onChange({
+                            ...dialog,
+                            connectionId: event.target.value,
+                            endpointId: 0,
+                            stackId: 0
+                          })
+                        }
+                      >
+                        {connectionsLoading ? <option value="">Loading connections…</option> : null}
+                        {!connectionsLoading && connections.length === 0 ? (
+                          <option value="">No Portainer connections configured</option>
+                        ) : null}
+                        {connections.map((connection) => (
+                          <option key={connection.id} value={connection.id}>
+                            {connection.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="btn-subtle"
+                      type="button"
+                      onClick={() => onConfigurePortainer(selectedConnectionId || undefined)}
+                    >
+                      <PlugZap size={13} />
+                      {connections.length === 0 ? 'Configure' : 'Edit'}
+                    </button>
+                  </div>
+
+                  <label className="dashboard-field">
+                    <span>Swarm environment</span>
+                    <select
+                      value={selectedEnvironment?.id ?? ''}
+                      disabled={
+                        !selectedConnectionId ||
+                        catalogLoading ||
+                        !catalog ||
+                        catalog.environments.length === 0
                       }
-                    />
-                    <span>
-                      <strong>Tags</strong>
-                      <small>Runs matching current repository tags.</small>
-                    </span>
-                  </label>
-                  <label className="dashboard-filter-option">
-                    <input
-                      type="checkbox"
-                      checked={dialog.includeMyPullRequests}
                       onChange={(event) =>
                         onChange({
                           ...dialog,
-                          includeMyPullRequests: event.target.checked
+                          endpointId: Number(event.target.value),
+                          stackId: 0
                         })
                       }
-                    />
-                    <span>
-                      <strong>My pull requests</strong>
-                      <small>Runs linked to pull requests you authored.</small>
-                    </span>
+                    >
+                      {catalogLoading ? <option value="">Loading environments…</option> : null}
+                      {!catalogLoading && catalog?.environments.length === 0 ? (
+                        <option value="">No Swarm environments available</option>
+                      ) : null}
+                      {catalog?.environments.map((environment) => (
+                        <option key={environment.id} value={environment.id}>
+                          {environment.name}
+                          {environment.status === 'down' ? ' · Offline' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                </div>
-                <p className="dashboard-filter-help">
-                  Matches any selected filter. Leave everything empty to show all runs.
-                </p>
-              </fieldset>
-              <div className="dashboard-dialog-note">
-                <Lock size={13} />
-                <span>Uses the GitHub CLI credentials attached to the active Git profile.</span>
-              </div>
-              {repositoriesError ? (
-                <div className="dashboard-dialog-error" role="alert">
-                  <AlertTriangle size={13} />
-                  {repositoriesError}
-                </div>
-              ) : null}
+
+                  <label className="dashboard-field">
+                    <span>Stack</span>
+                    <select
+                      value={selectedStack?.id ?? ''}
+                      disabled={!selectedEnvironment || selectedEnvironment.stacks.length === 0}
+                      onChange={(event) =>
+                        onChange({ ...dialog, stackId: Number(event.target.value) })
+                      }
+                    >
+                      {selectedEnvironment?.stacks.length === 0 ? (
+                        <option value="">No Swarm stacks available</option>
+                      ) : null}
+                      {selectedEnvironment?.stacks.map((stack) => (
+                        <option key={stack.id} value={stack.id}>
+                          {stack.name}
+                          {stack.status === 'inactive' ? ' · Inactive' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="dashboard-dialog-note">
+                    <Lock size={13} />
+                    <span>
+                      Monitors services, tasks, uptime, and Business Edition image
+                      freshness using the selected connection.
+                    </span>
+                  </div>
+
+                  {connectionsError || catalogError ? (
+                    <div className="dashboard-dialog-error" role="alert">
+                      <AlertTriangle size={13} />
+                      {connectionsError ?? catalogError}
+                    </div>
+                  ) : null}
+                </>
+              )}
             </>
           ) : (
             <div className="dashboard-delete-warning">
@@ -846,8 +1203,7 @@ function DashboardDialogSurface({
             disabled={
               isSaving ||
               ((dialog.kind === 'create' || dialog.kind === 'rename') && !dialog.name.trim()) ||
-              (dialog.kind === 'add-tile' &&
-                (repositories.length === 0 || Boolean(branchFilterError)))
+              addTileUnavailable
             }
           >
             {isSaving ? <Loader2 size={13} className="animate-spin" /> : null}
@@ -988,5 +1344,14 @@ function formatAbsoluteTime(isoDate: string): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'An unexpected error occurred.';
+  return error instanceof Error
+    ? cleanIpcErrorMessage(error.message)
+    : 'An unexpected error occurred.';
+}
+
+function cleanIpcErrorMessage(message: string): string {
+  return message.replace(
+    /^Error invoking remote method '[^']+': Error: /,
+    ''
+  );
 }

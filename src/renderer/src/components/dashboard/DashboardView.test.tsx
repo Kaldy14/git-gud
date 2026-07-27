@@ -7,6 +7,11 @@ import {
   gitHubActionsRunsQueryKey,
   gitHubRepositoriesQueryKey
 } from '@renderer/queries/github';
+import {
+  portainerConnectionsQueryKey,
+  portainerStackImagesQueryKey,
+  portainerStackRuntimeQueryKey
+} from '@renderer/queries/portainer';
 import type { Dashboard, GitHubWorkflowRun, GitProfile } from '@shared/types';
 
 import { DashboardView, WorkflowBranchFilterField } from './DashboardView';
@@ -172,6 +177,83 @@ describe('DashboardView', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('renders a saved Portainer Swarm stack tile from cached runtime and image data', () => {
+    const queryClient = new QueryClient();
+    const tile = {
+      id: 'tile:portainer',
+      kind: 'portainer-swarm-stack' as const,
+      connectionId: 'portainer:production',
+      endpointId: 3,
+      stackId: 12,
+      stackName: 'storefront',
+      environmentName: 'Production Swarm'
+    };
+    const input = {
+      connectionId: tile.connectionId,
+      endpointId: tile.endpointId,
+      stackId: tile.stackId,
+      stackName: tile.stackName
+    };
+    const dashboard = {
+      ...createDashboard('dashboard:infrastructure', 'Infrastructure'),
+      tiles: [tile]
+    };
+
+    queryClient.setQueryData(dashboardsQueryKey(profile.id), {
+      profileId: profile.id,
+      dashboards: [dashboard],
+      selectedDashboardId: dashboard.id
+    });
+    queryClient.setQueryData(gitHubRepositoriesQueryKey(profile.id), []);
+    queryClient.setQueryData(portainerConnectionsQueryKey, []);
+    queryClient.setQueryData(portainerStackRuntimeQueryKey(input), {
+      ...input,
+      health: 'healthy',
+      desiredTasks: 3,
+      runningTasks: 3,
+      completedTasks: 0,
+      services: [
+        {
+          id: 'service:web',
+          name: 'web',
+          image: 'registry.example.com/storefront:web',
+          desiredTasks: 3,
+          runningTasks: 3,
+          completedTasks: 0,
+          health: 'healthy',
+          runningSince: '2026-07-27T10:00:00.000Z'
+        }
+      ],
+      portainerUrl: 'https://portainer.example.com/#!/3/docker/stacks/12',
+      loadedAt: new Date().toISOString()
+    });
+    queryClient.setQueryData(portainerStackImagesQueryKey(input), {
+      connectionId: input.connectionId,
+      endpointId: input.endpointId,
+      stackId: input.stackId,
+      services: [{ serviceId: 'service:web', freshness: 'up-to-date' }],
+      loadedAt: new Date().toISOString()
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <DashboardView
+          profile={profile}
+          requestedDashboardId={dashboard.id}
+          onSelectDashboard={vi.fn()}
+          onOpenProfileSettings={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(markup).toContain('Production Swarm/');
+    expect(markup).toContain('storefront');
+    expect(markup).toContain('registry.example.com/storefront:web');
+    expect(markup).toContain('Up to date');
+    expect(markup).toContain('Open in Portainer');
   });
 });
 

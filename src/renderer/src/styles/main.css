@@ -4250,6 +4250,213 @@ button.ref-chip:active {
   opacity: 1;
 }
 
+.portainer-tile-identity {
+  gap: 7px;
+}
+
+.portainer-tile-identity > span:last-child {
+  display: grid;
+  gap: 1px;
+}
+
+.portainer-tile-identity small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portainer-tile-icon {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  place-items: center;
+  border: 1px solid rgb(95 214 195 / 0.34);
+  border-radius: 6px;
+  background: rgb(38 184 162 / 0.08);
+  color: var(--accent-2);
+}
+
+.portainer-stack-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 0.012);
+}
+
+.portainer-summary-cell {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  border-right: 1px solid var(--border);
+  padding: 7px 9px;
+}
+
+.portainer-summary-cell:last-child {
+  border-right: 0;
+}
+
+.portainer-summary-cell > small {
+  color: var(--text-3);
+  font-size: 8px;
+}
+
+.portainer-summary-cell > strong {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.portainer-summary-cell > strong[data-tone='success'] {
+  color: var(--success-text);
+}
+
+.portainer-summary-cell > strong[data-tone='running'] {
+  color: var(--warning-text);
+}
+
+.portainer-summary-cell > strong[data-tone='danger'] {
+  color: var(--danger-text);
+}
+
+.portainer-summary-cell > strong > span:last-child:not(.portainer-status-dot) {
+  overflow: hidden;
+  color: var(--text-3);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portainer-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.portainer-service-list {
+  display: grid;
+}
+
+.portainer-service-row {
+  display: grid;
+  min-width: 0;
+  min-height: 43px;
+  grid-template-columns: 18px minmax(135px, 1fr) 44px minmax(88px, auto) 66px;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid rgb(59 65 76 / 0.72);
+  padding: 3px 8px;
+  transition: background 100ms ease;
+}
+
+.portainer-service-row:hover {
+  background: var(--bg-hover);
+}
+
+.portainer-service-status {
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.portainer-service-status[data-tone='success'],
+.portainer-image-status[data-tone='success'] {
+  color: var(--success-text);
+}
+
+.portainer-service-status[data-tone='running'],
+.portainer-image-status[data-tone='running'] {
+  color: var(--warning-text);
+}
+
+.portainer-service-status[data-tone='danger'],
+.portainer-image-status[data-tone='danger'] {
+  color: var(--danger-text);
+}
+
+.portainer-service-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.portainer-service-copy > strong,
+.portainer-service-copy > code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portainer-service-copy > strong {
+  color: var(--text-1);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.portainer-service-copy > code {
+  color: var(--text-3);
+  font-size: 7.5px;
+}
+
+.portainer-service-replicas,
+.portainer-service-age {
+  color: var(--text-3);
+  font-size: 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.portainer-service-replicas {
+  color: var(--text-2);
+  font-weight: 700;
+}
+
+.portainer-image-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  color: var(--text-3);
+  font-size: 7.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.portainer-tile-footer {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-graph-header);
+  padding: 4px 8px;
+  color: var(--text-3);
+  font-size: 7.5px;
+}
+
+.portainer-tile-footer > a {
+  display: inline-flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.portainer-tile-footer > a:hover,
+.portainer-tile-footer > a:focus-visible {
+  color: var(--accent-2);
+}
+
 .actions-tile-loading,
 .actions-tile-empty {
   display: flex;
@@ -4317,6 +4524,16 @@ button.ref-chip:active {
   display: grid;
   gap: 12px;
   padding: 16px 14px;
+}
+
+.portainer-connection-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.portainer-connection-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 9px;
 }
 
 .dashboard-field {
@@ -4445,6 +4662,53 @@ button.ref-chip:active {
   color: var(--accent-2);
 }
 
+.dashboard-note-action {
+  margin-left: auto;
+  color: var(--accent-2);
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.dashboard-field-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 7px;
+}
+
+.dashboard-field-with-action > .btn-subtle {
+  height: 34px;
+}
+
+.portainer-tls-field {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.portainer-tls-field input {
+  accent-color: var(--accent);
+}
+
+.portainer-connection-success {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--success-border);
+  border-radius: 5px;
+  background: var(--success-bg);
+  padding: 8px 9px;
+  color: var(--success-text);
+  font-size: 9px;
+  line-height: 14px;
+}
+
 .dashboard-dialog-error,
 .dashboard-delete-warning {
   display: flex;
@@ -4474,6 +4738,17 @@ button.ref-chip:active {
 .dashboard-dialog > form > footer .btn-danger {
   height: 32px;
   font-size: 11px;
+}
+
+.dashboard-dialog > form > footer.portainer-connection-footer {
+  justify-content: space-between;
+}
+
+.portainer-connection-footer > span,
+.portainer-connection-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn-danger {
@@ -4515,6 +4790,10 @@ button.ref-chip:active {
 
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portainer-service-row {
+    grid-template-columns: 18px minmax(160px, 1fr) 48px minmax(92px, auto) 66px;
   }
 
   .pr-row-state {
@@ -4597,6 +4876,19 @@ button.ref-chip:active {
 
   .dashboard-filter-options {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portainer-connection-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portainer-service-row {
+    grid-template-columns: 18px minmax(0, 1fr) 44px;
+  }
+
+  .portainer-image-status,
+  .portainer-service-age {
+    display: none;
   }
 }
 

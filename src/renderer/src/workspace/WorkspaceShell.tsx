@@ -82,6 +82,7 @@ import {
 } from '@renderer/workspace/autoFetch';
 import { indexPullRequestsByBranch } from '@renderer/workspace/pullRequestBranches';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
+import { dashboardProfileId } from '@shared/dashboard';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type {
   AppSettings,
@@ -305,6 +306,7 @@ export function WorkspaceShell(): ReactElement {
     activeGitHubProfile?.ghConfigDir && activeGitHubProfile.githubLogin
       ? activeGitHubProfile.id
       : undefined;
+  const activeDashboardProfileId = dashboardProfileId(activeGitHubProfile);
   const pullRequestInboxQuery = useGitHubPullRequestInbox(connectedGitHubProfileId);
   const pullRequestsByBranch = useMemo(
     () =>
@@ -323,7 +325,7 @@ export function WorkspaceShell(): ReactElement {
       repositoryQuery.data?.remotes
     ]
   );
-  const dashboardsQuery = useDashboards(connectedGitHubProfileId);
+  const dashboardsQuery = useDashboards(activeDashboardProfileId);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
@@ -720,12 +722,12 @@ export function WorkspaceShell(): ReactElement {
   function handleSelectDashboard(dashboardId: string | undefined): void {
     openDashboardSurface(dashboardId);
 
-    if (!connectedGitHubProfileId || !dashboardId) {
+    if (!dashboardId) {
       return;
     }
 
     queryClient.setQueryData(
-      dashboardsQueryKey(connectedGitHubProfileId),
+      dashboardsQueryKey(activeDashboardProfileId),
       (current: DashboardState | undefined) =>
         current
           ? {
@@ -735,11 +737,13 @@ export function WorkspaceShell(): ReactElement {
           : current
     );
     void window.api
-      .selectDashboard(connectedGitHubProfileId, dashboardId)
-      .then((state) => queryClient.setQueryData(dashboardsQueryKey(connectedGitHubProfileId), state))
+      .selectDashboard(activeDashboardProfileId, dashboardId)
+      .then((state) =>
+        queryClient.setQueryData(dashboardsQueryKey(activeDashboardProfileId), state)
+      )
       .catch(() => {
         void queryClient.invalidateQueries({
-          queryKey: dashboardsQueryKey(connectedGitHubProfileId)
+          queryKey: dashboardsQueryKey(activeDashboardProfileId)
         });
       });
   }

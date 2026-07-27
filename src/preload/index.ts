@@ -87,6 +87,16 @@ const api: RendererApi = {
   saveDashboard: (dashboard) => invoke('dashboards:save', dashboard),
   deleteDashboard: (profileId, dashboardId) => invoke('dashboards:delete', profileId, dashboardId),
   selectDashboard: (profileId, dashboardId) => invoke('dashboards:select', profileId, dashboardId),
+  listPortainerConnections: () => invoke('portainer:connections'),
+  savePortainerConnection: (connection) => invoke('portainer:connection-save', connection),
+  deletePortainerConnection: (connectionId) =>
+    invoke('portainer:connection-delete', connectionId),
+  testPortainerConnection: (connection) =>
+    invoke('portainer:connection-test', connection),
+  getPortainerStackCatalog: (connectionId) =>
+    invoke('portainer:stack-catalog', connectionId),
+  getPortainerStackRuntime: (input) => invoke('portainer:stack-runtime', input),
+  getPortainerStackImages: (input) => invoke('portainer:stack-images', input),
   getGitHubRepositories: (profileId) => invoke('github:repositories', profileId),
   getGitHubActionsRuns: (input) => invoke('github:actions-runs', input),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),

@@ -54,7 +54,7 @@ describe('workspace persistence', () => {
     expect(stored).toContain('src/index.ts');
   });
 
-  it('persists profile-scoped dashboards and their GitHub Actions tiles', () => {
+  it('persists profile-scoped dashboards with GitHub and Portainer tiles', () => {
     const profileId = `profile:dashboard-store-test:${randomUUID()}`;
     const saved = saveDashboard({
       profileId,
@@ -70,6 +70,14 @@ describe('workspace persistence', () => {
             includeTags: true,
             includeMyPullRequests: false
           }
+        },
+        {
+          kind: 'portainer-swarm-stack',
+          connectionId: 'portainer:production',
+          endpointId: 3,
+          stackId: 12,
+          stackName: 'storefront',
+          environmentName: 'Production Swarm'
         }
       ]
     });
@@ -91,6 +99,14 @@ describe('workspace persistence', () => {
             includeTags: true,
             includeMyPullRequests: false
           }
+        },
+        {
+          kind: 'portainer-swarm-stack',
+          connectionId: 'portainer:production',
+          endpointId: 3,
+          stackId: 12,
+          stackName: 'storefront',
+          environmentName: 'Production Swarm'
         }
       ]
     });
@@ -149,7 +165,9 @@ describe('workspace persistence', () => {
     ];
     await writeFile(storePath, JSON.stringify(stored), 'utf8');
 
-    expect(getDashboards(profileId).dashboards[0]?.tiles[0]?.filters).toEqual({
+    const restoredTile = getDashboards(profileId).dashboards[0]?.tiles[0];
+    expect(restoredTile?.kind).toBe('github-actions');
+    expect(restoredTile?.kind === 'github-actions' ? restoredTile.filters : undefined).toEqual({
       branches: [],
       includeTags: false,
       includeMyPullRequests: false

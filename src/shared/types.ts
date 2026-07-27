@@ -888,11 +888,75 @@ export type GitHubActionsDashboardTileInput = Omit<GitHubActionsDashboardTile, '
   id?: string;
 };
 
+export type PortainerConnection = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  tlsVerify: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PortainerConnectionInput = {
+  id?: string;
+  name: string;
+  baseUrl: string;
+  accessToken?: string;
+  tlsVerify: boolean;
+};
+
+export type PortainerConnectionTestResult = {
+  version?: string;
+  edition?: string;
+  environmentCount: number;
+  swarmEnvironmentCount: number;
+};
+
+export type PortainerStackSummary = {
+  id: number;
+  name: string;
+  endpointId: number;
+  status: 'active' | 'inactive';
+};
+
+export type PortainerEnvironmentCatalog = {
+  id: number;
+  name: string;
+  status: 'up' | 'down' | 'unknown';
+  imageNotificationsEnabled: boolean;
+  stacks: PortainerStackSummary[];
+};
+
+export type PortainerStackCatalog = {
+  connectionId: string;
+  environments: PortainerEnvironmentCatalog[];
+  loadedAt: string;
+};
+
+export type PortainerStackDashboardTile = {
+  id: string;
+  kind: 'portainer-swarm-stack';
+  connectionId: string;
+  endpointId: number;
+  stackId: number;
+  stackName: string;
+  environmentName: string;
+};
+
+export type PortainerStackDashboardTileInput = Omit<PortainerStackDashboardTile, 'id'> & {
+  id?: string;
+};
+
+export type DashboardTile = GitHubActionsDashboardTile | PortainerStackDashboardTile;
+export type DashboardTileInput =
+  | GitHubActionsDashboardTileInput
+  | PortainerStackDashboardTileInput;
+
 export type Dashboard = {
   id: string;
   profileId: string;
   name: string;
-  tiles: GitHubActionsDashboardTile[];
+  tiles: DashboardTile[];
   createdAt: string;
   updatedAt: string;
 };
@@ -901,13 +965,79 @@ export type DashboardInput = {
   id?: string;
   profileId: string;
   name: string;
-  tiles: GitHubActionsDashboardTileInput[];
+  tiles: DashboardTileInput[];
 };
 
 export type DashboardState = {
   profileId: string;
   dashboards: Dashboard[];
   selectedDashboardId?: string;
+};
+
+export type PortainerStackStatusInput = {
+  connectionId: string;
+  endpointId: number;
+  stackId: number;
+  stackName: string;
+};
+
+export type PortainerStackImagesInput = PortainerStackStatusInput & {
+  refresh?: boolean;
+};
+
+export type PortainerStackHealth =
+  | 'healthy'
+  | 'updating'
+  | 'degraded'
+  | 'stopped'
+  | 'unavailable';
+
+export type PortainerServiceHealth = 'healthy' | 'updating' | 'degraded' | 'stopped';
+
+export type PortainerServiceRuntime = {
+  id: string;
+  name: string;
+  image: string;
+  desiredTasks: number;
+  runningTasks: number;
+  completedTasks: number;
+  health: PortainerServiceHealth;
+  runningSince?: string;
+  lastError?: string;
+};
+
+export type PortainerStackRuntime = {
+  connectionId: string;
+  endpointId: number;
+  stackId: number;
+  stackName: string;
+  health: PortainerStackHealth;
+  desiredTasks: number;
+  runningTasks: number;
+  completedTasks: number;
+  services: PortainerServiceRuntime[];
+  portainerUrl: string;
+  loadedAt: string;
+};
+
+export type PortainerImageFreshness =
+  | 'up-to-date'
+  | 'update-available'
+  | 'checking'
+  | 'unknown';
+
+export type PortainerServiceImageStatus = {
+  serviceId: string;
+  freshness: PortainerImageFreshness;
+  message?: string;
+};
+
+export type PortainerStackImages = {
+  connectionId: string;
+  endpointId: number;
+  stackId: number;
+  services: PortainerServiceImageStatus[];
+  loadedAt: string;
 };
 
 export type GitHubPullRequestCategory =

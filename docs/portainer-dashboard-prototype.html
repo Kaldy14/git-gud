@@ -1,0 +1,1514 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Git Gud — Portainer dashboard prototype</title>
+    <style>
+      @font-face {
+        font-family: 'Open Sans';
+        src: url('../src/renderer/src/assets/fonts/OpenSans-Variable.ttf')
+          format('truetype-variations');
+        font-style: normal;
+        font-weight: 300 800;
+        font-display: swap;
+      }
+
+      :root {
+        color-scheme: dark;
+        --font-ui: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --bg-app: #1f232b;
+        --bg-titlebar: #292d36;
+        --bg-toolbar: #333943;
+        --bg-graph: #1c1e23;
+        --bg-graph-header: #20252d;
+        --bg-panel: #282d36;
+        --bg-surface: #313741;
+        --bg-surface-2: #3a414d;
+        --bg-hover: #3e4652;
+        --bg-field: #20242c;
+        --bg-popover: #303641;
+        --border: #3b414c;
+        --border-strong: #56606e;
+        --text-1: #e3e5ea;
+        --text-2: #bcc2cc;
+        --text-3: #9ba3af;
+        --accent: #26b8a2;
+        --accent-2: #5fd6c3;
+        --select-bg: rgba(76, 141, 255, 0.13);
+        --select-border: rgba(96, 156, 255, 0.45);
+        --danger-bg: #2a1518;
+        --danger-border: #7a2e33;
+        --danger-text: #ff9f9a;
+        --success-bg: rgba(52, 151, 91, 0.14);
+        --success-text: #65d889;
+        --success-border: rgba(101, 216, 137, 0.74);
+        --warning-bg: rgba(202, 142, 25, 0.12);
+        --warning-text: #e8b34b;
+        --warning-border: rgba(232, 179, 75, 0.5);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-width: 320px;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        min-height: 100vh;
+        overflow: hidden;
+        background: var(--bg-app);
+        color: var(--text-1);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        font-weight: 400;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      input,
+      select {
+        border: 0;
+        color: inherit;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: default;
+      }
+
+      :where(button, input, select):focus-visible {
+        outline: 2px solid var(--accent-2);
+        outline-offset: 1px;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      code,
+      .mono {
+        font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      }
+
+      .icon {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.8;
+      }
+
+      .icon-lg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .app-shell {
+        display: grid;
+        min-height: 100vh;
+        grid-template-rows: 44px minmax(0, 1fr) 22px;
+        background: var(--bg-graph);
+      }
+
+      .titlebar {
+        display: flex;
+        min-width: 0;
+        align-items: stretch;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-titlebar);
+        user-select: none;
+      }
+
+      .titlebar-tabs,
+      .titlebar-profile {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+      }
+
+      .titlebar-tabs {
+        gap: 2px;
+        padding: 0 8px;
+      }
+
+      .app-mark {
+        display: grid;
+        width: 28px;
+        height: 28px;
+        margin-right: 4px;
+        place-items: center;
+        border-radius: 6px;
+        color: var(--accent-2);
+      }
+
+      .title-tab {
+        display: inline-flex;
+        min-width: 0;
+        height: 30px;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        background: transparent;
+        padding: 0 10px;
+        color: var(--text-3);
+        font-size: 11px;
+      }
+
+      .title-tab:hover {
+        background: var(--bg-hover);
+        color: var(--text-2);
+      }
+
+      .title-tab[data-active='true'] {
+        border-color: var(--border);
+        background: var(--bg-app);
+        color: var(--text-1);
+      }
+
+      .title-tab span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .titlebar-profile {
+        flex: 0 0 auto;
+        gap: 4px;
+        padding: 0 8px;
+      }
+
+      .profile-button {
+        display: inline-flex;
+        height: 30px;
+        align-items: center;
+        gap: 8px;
+        border-radius: 5px;
+        background: transparent;
+        padding: 0 8px;
+        color: var(--text-2);
+      }
+
+      .profile-button:hover {
+        background: var(--bg-hover);
+        color: var(--text-1);
+      }
+
+      .avatar {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border-radius: 50%;
+        background: #7663f4;
+        color: #f7f5ff;
+        font-size: 9px;
+        font-weight: 700;
+      }
+
+      .icon-button {
+        display: inline-grid;
+        width: 28px;
+        height: 28px;
+        place-items: center;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--text-3);
+      }
+
+      .icon-button:hover {
+        background: var(--bg-hover);
+        color: var(--text-1);
+      }
+
+      .workspace {
+        display: grid;
+        min-width: 0;
+        min-height: 0;
+        grid-template-rows: 42px minmax(0, 1fr);
+      }
+
+      .dashboard-header {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-graph);
+        padding: 0 8px;
+      }
+
+      .dashboard-navigation,
+      .dashboard-actions {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 3px;
+      }
+
+      .dashboard-navigation {
+        overflow: hidden;
+      }
+
+      .dashboard-tab {
+        display: inline-flex;
+        max-width: 210px;
+        height: 28px;
+        align-items: center;
+        border-radius: 4px;
+        background: transparent;
+        padding: 0 10px;
+        color: var(--text-3);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .dashboard-tab:hover {
+        background: var(--bg-hover);
+        color: var(--text-2);
+      }
+
+      .dashboard-tab[data-active='true'] {
+        color: var(--text-1);
+      }
+
+      .dashboard-tab span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .dashboard-actions {
+        flex: 0 0 auto;
+      }
+
+      .button-subtle,
+      .button-primary {
+        display: inline-flex;
+        height: 28px;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 0 10px;
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+
+      .button-subtle {
+        background: var(--bg-surface);
+        color: var(--text-2);
+      }
+
+      .button-subtle:hover {
+        background: var(--bg-hover);
+        color: var(--text-1);
+      }
+
+      .button-primary {
+        border-color: var(--accent);
+        background: rgba(38, 184, 162, 0.11);
+        color: var(--accent-2);
+      }
+
+      .button-primary:hover {
+        background: rgba(38, 184, 162, 0.18);
+        color: #7ce3d3;
+      }
+
+      .dashboard-content {
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+        background: var(--bg-graph);
+        padding: 8px;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(420px, 1fr));
+        align-items: start;
+        gap: 8px;
+      }
+
+      .dashboard-tile {
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-panel);
+        box-shadow: 0 5px 16px rgba(0, 0, 0, 0.14);
+      }
+
+      .tile-header {
+        display: flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-graph-header);
+        padding: 5px 6px 5px 8px;
+      }
+
+      .tile-identity,
+      .tile-header-actions,
+      .tile-icon,
+      .summary-state,
+      .image-state,
+      .footer-group,
+      .service-status,
+      .replica-state {
+        display: flex;
+        align-items: center;
+      }
+
+      .tile-identity {
+        min-width: 0;
+        gap: 8px;
+      }
+
+      .tile-icon {
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        justify-content: center;
+        border: 1px solid rgba(95, 214, 195, 0.38);
+        border-radius: 6px;
+        background: rgba(38, 184, 162, 0.08);
+        color: var(--accent-2);
+      }
+
+      .tile-copy {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+      }
+
+      .tile-title {
+        overflow: hidden;
+        color: var(--text-1);
+        font-size: 11px;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tile-title-muted,
+      .tile-subtitle {
+        color: var(--text-3);
+        font-weight: 500;
+      }
+
+      .tile-subtitle {
+        overflow: hidden;
+        font-size: 8.5px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tile-header-actions {
+        flex: 0 0 auto;
+        gap: 4px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        height: 20px;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid var(--success-border);
+        border-radius: 999px;
+        background: var(--success-bg);
+        padding: 0 7px;
+        color: var(--success-text);
+        font-size: 8.5px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .status-pill[data-tone='warning'] {
+        border-color: var(--warning-border);
+        background: var(--warning-bg);
+        color: var(--warning-text);
+      }
+
+      .status-pill[data-tone='danger'] {
+        border-color: var(--danger-border);
+        background: var(--danger-bg);
+        color: var(--danger-text);
+      }
+
+      .tile-close {
+        width: 22px;
+        height: 22px;
+      }
+
+      .stack-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.012);
+      }
+
+      .summary-cell {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+        border-right: 1px solid var(--border);
+        padding: 8px 10px;
+      }
+
+      .summary-cell:last-child {
+        border-right: 0;
+      }
+
+      .summary-label {
+        color: var(--text-3);
+        font-size: 8px;
+      }
+
+      .summary-state {
+        min-width: 0;
+        gap: 6px;
+        color: var(--text-1);
+        font-size: 10.5px;
+        font-weight: 650;
+      }
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        flex: 0 0 7px;
+        border-radius: 50%;
+        background: var(--success-text);
+        box-shadow: 0 0 0 3px rgba(101, 216, 137, 0.1);
+      }
+
+      .status-dot[data-tone='warning'] {
+        background: var(--warning-text);
+        box-shadow: 0 0 0 3px rgba(232, 179, 75, 0.1);
+      }
+
+      .status-dot[data-tone='danger'] {
+        background: var(--danger-text);
+        box-shadow: 0 0 0 3px rgba(255, 159, 154, 0.1);
+      }
+
+      .service-list,
+      .workflow-list {
+        display: grid;
+      }
+
+      .service-row {
+        display: grid;
+        min-width: 0;
+        min-height: 48px;
+        grid-template-columns: 18px minmax(150px, 1fr) 58px minmax(102px, auto) 58px;
+        align-items: center;
+        gap: 7px;
+        border-bottom: 1px solid rgba(59, 65, 76, 0.72);
+        padding: 4px 8px;
+      }
+
+      .service-row:hover,
+      .workflow-row:hover {
+        background: var(--bg-hover);
+      }
+
+      .service-status {
+        justify-content: center;
+        color: var(--success-text);
+      }
+
+      .service-status[data-tone='warning'] {
+        color: var(--warning-text);
+      }
+
+      .service-status[data-tone='danger'] {
+        color: var(--danger-text);
+      }
+
+      .service-copy {
+        display: grid;
+        min-width: 0;
+        gap: 3px;
+      }
+
+      .service-name {
+        overflow: hidden;
+        color: var(--text-1);
+        font-size: 10.5px;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .service-image {
+        overflow: hidden;
+        color: var(--text-3);
+        font-size: 8px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .replica-state {
+        justify-content: flex-end;
+        gap: 4px;
+        color: var(--text-2);
+        font-size: 8.5px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+
+      .image-state {
+        justify-content: flex-end;
+        gap: 4px;
+        color: var(--success-text);
+        font-size: 8px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+
+      .image-state[data-tone='warning'] {
+        color: var(--warning-text);
+      }
+
+      .service-age {
+        color: var(--text-3);
+        font-size: 8px;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .tile-footer {
+        display: flex;
+        min-height: 28px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: var(--bg-graph-header);
+        padding: 4px 8px;
+        color: var(--text-3);
+        font-size: 8px;
+      }
+
+      .footer-group {
+        min-width: 0;
+        gap: 7px;
+      }
+
+      .footer-group span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .footer-link {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 4px;
+        color: var(--text-2);
+        font-weight: 650;
+      }
+
+      .footer-link:hover {
+        color: var(--accent-2);
+      }
+
+      .workflow-row {
+        display: grid;
+        min-width: 0;
+        min-height: 44px;
+        grid-template-columns: 22px minmax(0, 1fr) auto 14px;
+        align-items: center;
+        gap: 6px;
+        border-bottom: 1px solid rgba(59, 65, 76, 0.72);
+        padding: 4px 8px;
+      }
+
+      .workflow-copy {
+        display: grid;
+        min-width: 0;
+        gap: 3px;
+      }
+
+      .workflow-copy strong {
+        overflow: hidden;
+        color: var(--text-1);
+        font-size: 10.5px;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .workflow-copy span,
+      .workflow-meta small {
+        color: var(--text-3);
+        font-size: 8.5px;
+      }
+
+      .workflow-meta {
+        display: grid;
+        justify-items: end;
+        gap: 2px;
+        color: var(--success-text);
+        font-size: 8.5px;
+        font-weight: 700;
+      }
+
+      .statusbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid var(--border);
+        background: var(--bg-titlebar);
+        padding: 0 8px;
+        color: var(--text-3);
+        font-size: 8px;
+        user-select: none;
+      }
+
+      .dialog-backdrop {
+        position: fixed;
+        z-index: 20;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(7, 9, 13, 0.66);
+        padding: 20px;
+      }
+
+      .dialog-backdrop[hidden] {
+        display: none;
+      }
+
+      .connection-dialog {
+        width: min(500px, calc(100vw - 32px));
+        overflow: hidden;
+        border: 1px solid var(--border-strong);
+        border-radius: 9px;
+        background: var(--bg-panel);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.56);
+      }
+
+      .dialog-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-graph-header);
+        padding: 12px 12px 11px 14px;
+      }
+
+      .dialog-title {
+        display: grid;
+        gap: 3px;
+      }
+
+      .dialog-title h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .dialog-title p {
+        margin: 0;
+        color: var(--text-3);
+        font-size: 9px;
+        line-height: 14px;
+      }
+
+      .dialog-body {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .field {
+        display: grid;
+        min-width: 0;
+        gap: 5px;
+      }
+
+      .field-wide {
+        grid-column: 1 / -1;
+      }
+
+      .field label,
+      .switch-label {
+        color: var(--text-2);
+        font-size: 9px;
+        font-weight: 650;
+      }
+
+      .field input,
+      .field select {
+        width: 100%;
+        height: 30px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--bg-field);
+        padding: 0 9px;
+        color: var(--text-1);
+        font-size: 10px;
+      }
+
+      .field input::placeholder {
+        color: #717986;
+      }
+
+      .field input:focus,
+      .field select:focus {
+        border-color: var(--accent);
+      }
+
+      .field-help {
+        color: var(--text-3);
+        font-size: 8px;
+        line-height: 13px;
+      }
+
+      .security-note,
+      .connection-result {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--bg-field);
+        padding: 8px 9px;
+        color: var(--text-3);
+        font-size: 8.5px;
+        line-height: 14px;
+      }
+
+      .security-note .icon {
+        margin-top: 1px;
+        color: var(--accent-2);
+      }
+
+      .connection-result {
+        display: none;
+        border-color: var(--success-border);
+        background: var(--success-bg);
+        color: var(--success-text);
+      }
+
+      .connection-result[data-visible='true'] {
+        display: flex;
+      }
+
+      .dialog-options {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .switch input {
+        accent-color: var(--accent);
+      }
+
+      .dialog-footer {
+        display: flex;
+        min-height: 48px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border-top: 1px solid var(--border);
+        background: var(--bg-graph-header);
+        padding: 8px 10px;
+      }
+
+      .dialog-footer-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .connection-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--text-3);
+        font-size: 8.5px;
+      }
+
+      .connection-indicator[data-connected='true'] {
+        color: var(--success-text);
+      }
+
+      .prototype-note {
+        position: fixed;
+        z-index: 5;
+        right: 10px;
+        bottom: 32px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--bg-popover);
+        padding: 5px 8px;
+        color: var(--text-3);
+        font-size: 8px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      }
+
+      @media (max-width: 980px) {
+        .dashboard-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      @media (max-width: 680px) {
+        .title-tab:not([data-active='true']),
+        .profile-name,
+        .dashboard-tab:not([data-active='true']),
+        .dashboard-actions .button-subtle span,
+        .prototype-note {
+          display: none;
+        }
+
+        .dashboard-actions .button-subtle {
+          width: 28px;
+          padding: 0;
+        }
+
+        .service-row {
+          grid-template-columns: 18px minmax(116px, 1fr) 52px minmax(84px, auto);
+        }
+
+        .service-age {
+          display: none;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .field-wide {
+          grid-column: auto;
+        }
+      }
+
+      @media (max-width: 460px) {
+        .dashboard-content {
+          padding: 5px;
+        }
+
+        .dashboard-grid {
+          gap: 5px;
+        }
+
+        .dashboard-actions .connection-button {
+          display: none;
+        }
+
+        .stack-summary {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .summary-cell:last-child {
+          display: none;
+        }
+
+        .service-row {
+          grid-template-columns: 16px minmax(0, 1fr) 46px;
+        }
+
+        .image-state {
+          display: none;
+        }
+
+        .tile-footer {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg aria-hidden="true" width="0" height="0" style="position: absolute">
+      <symbol id="icon-layout" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+        <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+        <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+        <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+      </symbol>
+      <symbol id="icon-git" viewBox="0 0 24 24">
+        <circle cx="6" cy="5" r="2"></circle>
+        <circle cx="18" cy="19" r="2"></circle>
+        <circle cx="6" cy="19" r="2"></circle>
+        <path d="M6 7v10"></path>
+        <path d="M8 5h3a7 7 0 0 1 7 7v5"></path>
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14"></path>
+      </symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.8 2.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1 1.7V21h-4v-.1a1.8 1.8 0 0 0-1-1.7 1.8 1.8 0 0 0-2 .4l-.1.1-2.8-2.8.1-.1a1.8 1.8 0 0 0 .4-2A1.8 1.8 0 0 0 3 14H3v-4h.1a1.8 1.8 0 0 0 1.7-1 1.8 1.8 0 0 0-.4-2l-.1-.1 2.8-2.8.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 10 3V3h4v.1a1.8 1.8 0 0 0 1 1.7 1.8 1.8 0 0 0 2-.4l.1-.1 2.8 2.8-.1.1a1.8 1.8 0 0 0-.4 2A1.8 1.8 0 0 0 21 10h.1v4H21a1.8 1.8 0 0 0-1.6 1z"></path>
+      </symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24">
+        <path d="m6 9 6 6 6-6"></path>
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 7v5h-5"></path>
+        <path d="M4 17v-5h5"></path>
+        <path d="M7.8 7.8a6 6 0 0 1 9.7 1.8L20 12M4 12l2.5 2.4a6 6 0 0 0 9.7 1.8"></path>
+      </symbol>
+      <symbol id="icon-plug" viewBox="0 0 24 24">
+        <path d="m12 22 4-4-3-3 4-4-4-4-4 4-3-3-4 4 10 10z"></path>
+        <path d="m19 5-2 2M15 1l-2 2"></path>
+      </symbol>
+      <symbol id="icon-layers" viewBox="0 0 24 24">
+        <path d="m12 2 9 5-9 5-9-5 9-5z"></path>
+        <path d="m3 12 9 5 9-5"></path>
+        <path d="m3 17 9 5 9-5"></path>
+      </symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24">
+        <path d="m6 6 12 12M18 6 6 18"></path>
+      </symbol>
+      <symbol id="icon-check-circle" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="m8 12 2.5 2.5L16 9"></path>
+      </symbol>
+      <symbol id="icon-alert-circle" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M12 8v5M12 16h.01"></path>
+      </symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M12 7v5l3 2"></path>
+      </symbol>
+      <symbol id="icon-external" viewBox="0 0 24 24">
+        <path d="M14 5h5v5"></path>
+        <path d="m19 5-9 9"></path>
+        <path d="M18 13v6H5V6h6"></path>
+      </symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        <path d="m9 12 2 2 4-4"></path>
+      </symbol>
+      <symbol id="icon-network" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="6" rx="1"></rect>
+        <rect x="14" y="15" width="7" height="6" rx="1"></rect>
+        <path d="M7 9v3h10v3M17 9V6h-7"></path>
+      </symbol>
+      <symbol id="icon-github" viewBox="0 0 24 24">
+        <path d="M15 22v-3.9c0-1 .1-1.5-.5-2.1 2.8-.3 5.7-1.4 5.7-6.2 0-1.4-.5-2.5-1.3-3.4.1-.3.6-1.7-.1-3.4 0 0-1.1-.3-3.5 1.3a12 12 0 0 0-6.4 0C6.5 2.7 5.4 3 5.4 3c-.7 1.7-.2 3.1-.1 3.4A4.8 4.8 0 0 0 4 9.8c0 4.8 2.9 5.9 5.7 6.2-.4.4-.7 1-.7 1.9V22"></path>
+        <path d="M9 19c-2.8.9-2.8-1.4-3.9-1.7"></path>
+      </symbol>
+    </svg>
+
+    <main class="app-shell">
+      <header class="titlebar">
+        <nav class="titlebar-tabs" aria-label="Workspace tabs">
+          <span class="app-mark" aria-hidden="true">
+            <svg class="icon icon-lg"><use href="#icon-git"></use></svg>
+          </span>
+          <button class="title-tab" type="button">
+            <svg class="icon"><use href="#icon-git"></use></svg>
+            <span>git-gud</span>
+          </button>
+          <button class="title-tab" type="button" data-active="true">
+            <svg class="icon"><use href="#icon-layout"></use></svg>
+            <span>Dashboards</span>
+          </button>
+          <button class="icon-button" type="button" aria-label="Open another repository">
+            <svg class="icon"><use href="#icon-plus"></use></svg>
+          </button>
+        </nav>
+        <div class="titlebar-profile">
+          <button class="icon-button" id="open-connection-settings" type="button" aria-label="Open settings">
+            <svg class="icon icon-lg"><use href="#icon-settings"></use></svg>
+          </button>
+          <button class="profile-button" type="button" aria-label="Git profile: Richie Developer">
+            <span class="avatar" aria-hidden="true">RD</span>
+            <span class="profile-name">Richie Developer</span>
+            <svg class="icon"><use href="#icon-chevron-down"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <header class="dashboard-header">
+          <nav class="dashboard-navigation" aria-label="Dashboards">
+            <button class="dashboard-tab" type="button" data-active="true">
+              <span>Delivery pulse</span>
+            </button>
+            <button class="dashboard-tab" type="button">
+              <span>Release trains</span>
+            </button>
+            <button class="icon-button" type="button" aria-label="Create dashboard">
+              <svg class="icon"><use href="#icon-plus"></use></svg>
+            </button>
+          </nav>
+          <div class="dashboard-actions">
+            <button
+              class="button-subtle connection-button"
+              id="open-portainer-connection"
+              type="button"
+              aria-label="Open Portainer connection settings"
+            >
+              <svg class="icon"><use href="#icon-plug"></use></svg>
+              <span>Portainer connection</span>
+            </button>
+            <button
+              class="button-subtle"
+              id="refresh-dashboard"
+              type="button"
+              aria-label="Refresh all dashboard tiles"
+            >
+              <svg class="icon"><use href="#icon-refresh"></use></svg>
+              <span>Refresh all</span>
+            </button>
+            <button class="button-primary" type="button">
+              <svg class="icon"><use href="#icon-plus"></use></svg>
+              Add tile
+            </button>
+          </div>
+        </header>
+
+        <div class="dashboard-content">
+          <div class="dashboard-grid">
+            <article class="dashboard-tile" aria-label="checkout Portainer Swarm stack">
+              <header class="tile-header">
+                <div class="tile-identity">
+                  <span class="tile-icon" aria-hidden="true">
+                    <svg class="icon icon-lg"><use href="#icon-layers"></use></svg>
+                  </span>
+                  <span class="tile-copy">
+                    <strong class="tile-title">
+                      <span class="tile-title-muted">production /</span> checkout
+                    </strong>
+                    <span class="tile-subtitle">Portainer · Swarm stack · 4 services</span>
+                  </span>
+                </div>
+                <div class="tile-header-actions">
+                  <span class="status-pill">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                    Healthy
+                  </span>
+                  <button class="icon-button tile-close" type="button" aria-label="Remove checkout tile">
+                    <svg class="icon"><use href="#icon-x"></use></svg>
+                  </button>
+                </div>
+              </header>
+
+              <div class="stack-summary">
+                <div class="summary-cell">
+                  <span class="summary-label">Services</span>
+                  <span class="summary-state">
+                    <span class="status-dot"></span>
+                    4 / 4 healthy
+                  </span>
+                </div>
+                <div class="summary-cell">
+                  <span class="summary-label">Tasks</span>
+                  <span class="summary-state">
+                    <span class="status-dot"></span>
+                    8 / 8 running
+                  </span>
+                </div>
+                <div class="summary-cell">
+                  <span class="summary-label">Images</span>
+                  <span class="summary-state">
+                    <span class="status-dot" data-tone="warning"></span>
+                    1 update
+                  </span>
+                </div>
+              </div>
+
+              <div class="service-list">
+                <div class="service-row">
+                  <span class="service-status" aria-label="Healthy">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="service-copy">
+                    <strong class="service-name">api</strong>
+                    <code class="service-image">registry.example.com/checkout-api:latest</code>
+                  </span>
+                  <span class="replica-state">
+                    <span class="status-dot"></span>
+                    3 / 3
+                  </span>
+                  <span class="image-state" data-tone="warning">
+                    <svg class="icon"><use href="#icon-alert-circle"></use></svg>
+                    Update available
+                  </span>
+                  <span class="service-age">12d 4h</span>
+                </div>
+                <div class="service-row">
+                  <span class="service-status" aria-label="Healthy">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="service-copy">
+                    <strong class="service-name">web</strong>
+                    <code class="service-image">registry.example.com/checkout-web:2.8.1</code>
+                  </span>
+                  <span class="replica-state">
+                    <span class="status-dot"></span>
+                    2 / 2
+                  </span>
+                  <span class="image-state">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                    Up to date
+                  </span>
+                  <span class="service-age">4d 7h</span>
+                </div>
+                <div class="service-row">
+                  <span class="service-status" aria-label="Healthy">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="service-copy">
+                    <strong class="service-name">worker</strong>
+                    <code class="service-image">registry.example.com/checkout-worker:2.8.1</code>
+                  </span>
+                  <span class="replica-state">
+                    <span class="status-dot"></span>
+                    2 / 2
+                  </span>
+                  <span class="image-state">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                    Up to date
+                  </span>
+                  <span class="service-age">4d 7h</span>
+                </div>
+                <div class="service-row">
+                  <span class="service-status" aria-label="Healthy">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="service-copy">
+                    <strong class="service-name">redis</strong>
+                    <code class="service-image">redis:7.4-alpine</code>
+                  </span>
+                  <span class="replica-state">
+                    <span class="status-dot"></span>
+                    1 / 1
+                  </span>
+                  <span class="image-state">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                    Up to date
+                  </span>
+                  <span class="service-age">31d 2h</span>
+                </div>
+              </div>
+
+              <footer class="tile-footer">
+                <span class="footer-group">
+                  <span>Updated just now</span>
+                  <span>Health · 20s</span>
+                  <span>Images · 5m</span>
+                </span>
+                <a class="footer-link" href="https://portainer.example.com" target="_blank" rel="noreferrer">
+                  Open in Portainer
+                  <svg class="icon"><use href="#icon-external"></use></svg>
+                </a>
+              </footer>
+            </article>
+
+            <article class="dashboard-tile" aria-label="git-gud GitHub Actions">
+              <header class="tile-header">
+                <div class="tile-identity">
+                  <span class="tile-icon" aria-hidden="true">
+                    <svg class="icon icon-lg"><use href="#icon-github"></use></svg>
+                  </span>
+                  <span class="tile-copy">
+                    <strong class="tile-title">
+                      <span class="tile-title-muted">Kaldy14 /</span> git-gud
+                    </strong>
+                    <span class="tile-subtitle">GitHub Actions · Latest 4 workflow runs</span>
+                  </span>
+                </div>
+                <div class="tile-header-actions">
+                  <span class="status-pill">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                    Healthy
+                  </span>
+                  <button class="icon-button tile-close" type="button" aria-label="Remove git-gud tile">
+                    <svg class="icon"><use href="#icon-x"></use></svg>
+                  </button>
+                </div>
+              </header>
+
+              <div class="workflow-list">
+                <a class="workflow-row" href="#">
+                  <span class="service-status">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="workflow-copy">
+                    <strong>Build and test dashboard tiles</strong>
+                    <span>CI · #612 · main</span>
+                  </span>
+                  <span class="workflow-meta">
+                    <span>Passed</span>
+                    <small>4m ago</small>
+                  </span>
+                  <svg class="icon"><use href="#icon-external"></use></svg>
+                </a>
+                <a class="workflow-row" href="#">
+                  <span class="service-status">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="workflow-copy">
+                    <strong>Harden dashboard persistence</strong>
+                    <span>CI · #611 · main</span>
+                  </span>
+                  <span class="workflow-meta">
+                    <span>Passed</span>
+                    <small>28m ago</small>
+                  </span>
+                  <svg class="icon"><use href="#icon-external"></use></svg>
+                </a>
+                <a class="workflow-row" href="#">
+                  <span class="service-status">
+                    <svg class="icon"><use href="#icon-check-circle"></use></svg>
+                  </span>
+                  <span class="workflow-copy">
+                    <strong>Package macOS release</strong>
+                    <span>Release · #610 · v0.4.11</span>
+                  </span>
+                  <span class="workflow-meta">
+                    <span>Passed</span>
+                    <small>2h ago</small>
+                  </span>
+                  <svg class="icon"><use href="#icon-external"></use></svg>
+                </a>
+              </div>
+
+              <footer class="tile-footer">
+                <span class="footer-group">
+                  <span>Updated just now</span>
+                  <span>Auto-refresh · 15s</span>
+                </span>
+                <a class="footer-link" href="#">
+                  Open in GitHub
+                  <svg class="icon"><use href="#icon-external"></use></svg>
+                </a>
+              </footer>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <footer class="statusbar">
+        <span>Dashboard prototype · Portainer monitoring</span>
+        <span>Git Gud 0.4.11</span>
+      </footer>
+    </main>
+
+    <span class="prototype-note">
+      <svg class="icon"><use href="#icon-plug"></use></svg>
+      Click “Portainer connection” to reopen setup
+    </span>
+
+    <div class="dialog-backdrop" id="connection-dialog" role="presentation">
+      <section
+        class="connection-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connection-dialog-title"
+        aria-describedby="connection-dialog-description"
+      >
+        <header class="dialog-header">
+          <span class="dialog-title">
+            <h1 id="connection-dialog-title">Portainer connection</h1>
+            <p id="connection-dialog-description">
+              Configure one reusable connection, then select its Swarm stacks when adding tiles.
+            </p>
+          </span>
+          <button class="icon-button" id="close-connection-dialog" type="button" aria-label="Close dialog">
+            <svg class="icon"><use href="#icon-x"></use></svg>
+          </button>
+        </header>
+
+        <form id="connection-form">
+          <div class="dialog-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="connection-name">Connection name</label>
+                <input id="connection-name" type="text" value="Production Portainer" />
+              </div>
+              <div class="field">
+                <label for="portainer-url">Portainer URL</label>
+                <input
+                  id="portainer-url"
+                  type="url"
+                  value="https://portainer.example.com"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="field field-wide">
+                <label for="portainer-token">Personal access token</label>
+                <input
+                  id="portainer-token"
+                  type="password"
+                  placeholder="Paste token from My account → Access tokens"
+                  autocomplete="off"
+                />
+                <span class="field-help">
+                  Sent as <code>X-API-Key</code>. Permissions match the Portainer user that created it.
+                </span>
+              </div>
+              <div class="field">
+                <label for="portainer-environment">Environment</label>
+                <select id="portainer-environment">
+                  <option>Production Swarm</option>
+                  <option>Staging Swarm</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="portainer-stack">Default stack</label>
+                <select id="portainer-stack">
+                  <option>checkout</option>
+                  <option>observability</option>
+                  <option>edge-services</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="dialog-options">
+              <label class="switch">
+                <input type="checkbox" checked />
+                <span class="switch-label">Verify TLS certificate</span>
+              </label>
+              <span class="connection-indicator" id="connection-indicator">
+                <span class="status-dot" data-tone="warning"></span>
+                Not tested
+              </span>
+            </div>
+
+            <div class="security-note">
+              <svg class="icon"><use href="#icon-shield"></use></svg>
+              <span>
+                The access token is stored through macOS secure storage. Dashboard configuration keeps
+                only the connection ID, environment ID, and stack ID.
+              </span>
+            </div>
+
+            <div class="connection-result" id="connection-result" role="status" aria-live="polite">
+              <svg class="icon"><use href="#icon-check-circle"></use></svg>
+              <span>
+                Connected to Portainer Business Edition 2.39. Two Swarm environments and seven stacks
+                are available.
+              </span>
+            </div>
+          </div>
+
+          <footer class="dialog-footer">
+            <button class="button-subtle" id="test-connection" type="button">
+              <svg class="icon"><use href="#icon-network"></use></svg>
+              Test connection
+            </button>
+            <span class="dialog-footer-actions">
+              <button class="button-subtle" id="cancel-connection" type="button">Cancel</button>
+              <button class="button-primary" type="submit">Save connection</button>
+            </span>
+          </footer>
+        </form>
+      </section>
+    </div>
+
+    <script>
+      const dialog = document.getElementById('connection-dialog');
+      const openButtons = [
+        document.getElementById('open-portainer-connection'),
+        document.getElementById('open-connection-settings')
+      ];
+      const closeButtons = [
+        document.getElementById('close-connection-dialog'),
+        document.getElementById('cancel-connection')
+      ];
+      const form = document.getElementById('connection-form');
+      const testButton = document.getElementById('test-connection');
+      const result = document.getElementById('connection-result');
+      const indicator = document.getElementById('connection-indicator');
+      const refreshButton = document.getElementById('refresh-dashboard');
+
+      function openDialog() {
+        dialog.hidden = false;
+        document.getElementById('connection-name').focus();
+      }
+
+      function closeDialog() {
+        dialog.hidden = true;
+      }
+
+      openButtons.forEach((button) => button.addEventListener('click', openDialog));
+      closeButtons.forEach((button) => button.addEventListener('click', closeDialog));
+
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) {
+          closeDialog();
+        }
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !dialog.hidden) {
+          closeDialog();
+        }
+      });
+
+      testButton.addEventListener('click', () => {
+        testButton.disabled = true;
+        testButton.textContent = 'Testing…';
+        window.setTimeout(() => {
+          result.dataset.visible = 'true';
+          indicator.dataset.connected = 'true';
+          indicator.innerHTML = '<span class="status-dot"></span>Connected';
+          testButton.disabled = false;
+          testButton.textContent = 'Test again';
+        }, 650);
+      });
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        closeDialog();
+      });
+
+      refreshButton.addEventListener('click', () => {
+        const original = refreshButton.innerHTML;
+        refreshButton.disabled = true;
+        refreshButton.textContent = 'Refreshing…';
+        window.setTimeout(() => {
+          refreshButton.disabled = false;
+          refreshButton.innerHTML = original;
+        }, 700);
+      });
+    </script>
+  </body>
+</html>

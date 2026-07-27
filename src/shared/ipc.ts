@@ -54,6 +54,14 @@ import type {
   GitTagDeleteInput,
   GitTagPushInput,
   GitWipDetail,
+  PortainerConnection,
+  PortainerConnectionInput,
+  PortainerConnectionTestResult,
+  PortainerStackCatalog,
+  PortainerStackImages,
+  PortainerStackImagesInput,
+  PortainerStackRuntime,
+  PortainerStackStatusInput,
   RepoChangedEvent,
   WorkspaceState
 } from './types';
@@ -371,6 +379,34 @@ export type IpcChannelMap = {
     args: [profileId: string, dashboardId: string];
     result: DashboardState;
   };
+  'portainer:connections': {
+    args: [];
+    result: PortainerConnection[];
+  };
+  'portainer:connection-save': {
+    args: [connection: PortainerConnectionInput];
+    result: PortainerConnection[];
+  };
+  'portainer:connection-delete': {
+    args: [connectionId: string];
+    result: PortainerConnection[];
+  };
+  'portainer:connection-test': {
+    args: [connection: PortainerConnectionInput];
+    result: PortainerConnectionTestResult;
+  };
+  'portainer:stack-catalog': {
+    args: [connectionId: string];
+    result: PortainerStackCatalog;
+  };
+  'portainer:stack-runtime': {
+    args: [input: PortainerStackStatusInput];
+    result: PortainerStackRuntime;
+  };
+  'portainer:stack-images': {
+    args: [input: PortainerStackImagesInput];
+    result: PortainerStackImages;
+  };
   'github:repositories': {
     args: [profileId: string];
     result: GitHubRepositorySummary[];
@@ -506,6 +542,21 @@ export type RendererApi = {
   saveDashboard: (dashboard: DashboardInput) => Promise<DashboardState>;
   deleteDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
   selectDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
+  listPortainerConnections: () => Promise<PortainerConnection[]>;
+  savePortainerConnection: (
+    connection: PortainerConnectionInput
+  ) => Promise<PortainerConnection[]>;
+  deletePortainerConnection: (connectionId: string) => Promise<PortainerConnection[]>;
+  testPortainerConnection: (
+    connection: PortainerConnectionInput
+  ) => Promise<PortainerConnectionTestResult>;
+  getPortainerStackCatalog: (connectionId: string) => Promise<PortainerStackCatalog>;
+  getPortainerStackRuntime: (
+    input: PortainerStackStatusInput
+  ) => Promise<PortainerStackRuntime>;
+  getPortainerStackImages: (
+    input: PortainerStackImagesInput
+  ) => Promise<PortainerStackImages>;
   getGitHubRepositories: (profileId: string) => Promise<GitHubRepositorySummary[]>;
   getGitHubActionsRuns: (input: GitHubActionsRunsInput) => Promise<GitHubActionsRuns>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;

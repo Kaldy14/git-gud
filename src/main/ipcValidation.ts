@@ -38,7 +38,10 @@ import type {
   GitStashRefInput,
   GitTagCreateInput,
   GitTagDeleteInput,
-  GitTagPushInput
+  GitTagPushInput,
+  PortainerConnectionInput,
+  PortainerStackImagesInput,
+  PortainerStackStatusInput
 } from '@shared/types';
 
 type IpcArgValidator<TChannel extends IpcChannelName> = (
@@ -146,6 +149,49 @@ const validators = {
     readStringPair(args, 'dashboards:delete', 'profileId', 'dashboardId'),
   'dashboards:select': (args) =>
     readNonEmptyStringPair(args, 'dashboards:select', 'profileId', 'dashboardId'),
+  'portainer:connections': (args) => noArgs('portainer:connections', args),
+  'portainer:connection-save': (args) =>
+    readOnlyArg(
+      args,
+      'portainer:connection-save',
+      'connection',
+      readPortainerConnectionInput
+    ),
+  'portainer:connection-delete': (args) =>
+    readOnlyArg(
+      args,
+      'portainer:connection-delete',
+      'connectionId',
+      readNonEmptyString
+    ),
+  'portainer:connection-test': (args) =>
+    readOnlyArg(
+      args,
+      'portainer:connection-test',
+      'connection',
+      readPortainerConnectionInput
+    ),
+  'portainer:stack-catalog': (args) =>
+    readOnlyArg(
+      args,
+      'portainer:stack-catalog',
+      'connectionId',
+      readNonEmptyString
+    ),
+  'portainer:stack-runtime': (args) =>
+    readOnlyArg(
+      args,
+      'portainer:stack-runtime',
+      'input',
+      readPortainerStackStatusInput
+    ),
+  'portainer:stack-images': (args) =>
+    readOnlyArg(
+      args,
+      'portainer:stack-images',
+      'input',
+      readPortainerStackImagesInput
+    ),
   'github:repositories': (args) =>
     readOnlyArg(args, 'github:repositories', 'profileId', readNonEmptyString),
   'github:actions-runs': (args) =>
@@ -477,27 +523,109 @@ function readDashboardInput(value: unknown): DashboardInput {
     name: readNonEmptyLimitedString(record.name, 'name', 80),
     tiles: tiles.map((value, index) => {
       const tile = readRecord(value, `tiles[${index}]`);
-      const limit = readPositiveInteger(tile.limit, `tiles[${index}].limit`);
+      const id =
+        tile.id === undefined
+          ? undefined
+          : readNonEmptyLimitedString(tile.id, `tiles[${index}].id`, 128);
+      const kind = readEnumProperty(tile, 'kind', [
+        'github-actions',
+        'portainer-swarm-stack'
+      ]);
 
-      if (limit > 20) {
-        throw new Error(`tiles[${index}].limit must be 20 or fewer.`);
+      if (kind === 'github-actions') {
+        const limit = readPositiveInteger(tile.limit, `tiles[${index}].limit`);
+
+        if (limit > 20) {
+          throw new Error(`tiles[${index}].limit must be 20 or fewer.`);
+        }
+
+        return {
+          id,
+          kind,
+          owner: readGitHubName(tile.owner, `tiles[${index}].owner`),
+          repository: readGitHubName(
+            tile.repository,
+            `tiles[${index}].repository`
+          ),
+          limit,
+          filters: readGitHubActionsRunFilters(
+            tile.filters,
+            `tiles[${index}].filters`
+          )
+        };
       }
 
       return {
-        id:
-          tile.id === undefined
-            ? undefined
-            : readNonEmptyLimitedString(tile.id, `tiles[${index}].id`, 128),
-        kind: readEnumProperty(tile, 'kind', ['github-actions']),
-        owner: readGitHubName(tile.owner, `tiles[${index}].owner`),
-        repository: readGitHubName(tile.repository, `tiles[${index}].repository`),
-        limit,
-        filters: readGitHubActionsRunFilters(
-          tile.filters,
-          `tiles[${index}].filters`
+        id,
+        kind,
+        connectionId: readNonEmptyLimitedString(
+          tile.connectionId,
+          `tiles[${index}].connectionId`,
+          128
+        ),
+        endpointId: readPositiveInteger(
+          tile.endpointId,
+          `tiles[${index}].endpointId`
+        ),
+        stackId: readPositiveInteger(tile.stackId, `tiles[${index}].stackId`),
+        stackName: readNonEmptyLimitedString(
+          tile.stackName,
+          `tiles[${index}].stackName`,
+          160
+        ),
+        environmentName: readNonEmptyLimitedString(
+          tile.environmentName,
+          `tiles[${index}].environmentName`,
+          160
         )
       };
     })
+  };
+}
+
+function readPortainerConnectionInput(value: unknown): PortainerConnectionInput {
+  const record = readRecord(value, 'Portainer connection');
+  const accessToken =
+    record.accessToken === undefined
+      ? undefined
+      : readLimitedString(record.accessToken, 'accessToken', 8_192);
+
+  return {
+    id:
+      record.id === undefined
+        ? undefined
+        : readNonEmptyLimitedString(record.id, 'id', 128),
+    name: readNonEmptyLimitedString(record.name, 'name', 80),
+    baseUrl: readNonEmptyLimitedString(record.baseUrl, 'baseUrl', 2_048),
+    accessToken,
+    tlsVerify: readBoolean(record.tlsVerify, 'tlsVerify')
+  };
+}
+
+function readPortainerStackStatusInput(value: unknown): PortainerStackStatusInput {
+  const record = readRecord(value, 'Portainer stack status input');
+
+  return {
+    connectionId: readNonEmptyLimitedString(
+      record.connectionId,
+      'connectionId',
+      128
+    ),
+    endpointId: readPositiveInteger(record.endpointId, 'endpointId'),
+    stackId: readPositiveInteger(record.stackId, 'stackId'),
+    stackName: readNonEmptyLimitedString(record.stackName, 'stackName', 160)
+  };
+}
+
+function readPortainerStackImagesInput(value: unknown): PortainerStackImagesInput {
+  const record = readRecord(value, 'Portainer stack images input');
+
+  return {
+    ...readPortainerStackStatusInput(record),
+    refresh:
+      record.refresh === undefined
+        ? undefined
+        : readBoolean(record.refresh, 'refresh')
   };
 }
 

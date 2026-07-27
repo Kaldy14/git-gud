@@ -85,7 +85,7 @@ export function useDashboards(profileId: string | undefined) {
     queryKey: profileId ? dashboardsQueryKey(profileId) : ['dashboards', 'none'],
     queryFn: async (): Promise<DashboardState> => {
       if (!profileId) {
-        throw new Error('A connected GitHub profile is required.');
+        throw new Error('A dashboard profile scope is required.');
       }
       return window.api.getDashboards(profileId);
     },

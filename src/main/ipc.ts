@@ -73,6 +73,17 @@ import type { RepoWatcherRegistry } from './git/watcher';
 import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { requestOperationCancellation } from './operationCancellation';
+import {
+  loadPortainerStackCatalog,
+  loadPortainerStackImages,
+  loadPortainerStackRuntime,
+  testPortainerConnection
+} from './portainer';
+import {
+  deletePortainerConnection,
+  listPortainerConnections,
+  savePortainerConnection
+} from './portainerConnections';
 import { assignProfileToRepository, listGitHubAccounts, listProfiles, saveProfile } from './profiles';
 import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
 import { reviewGuideManager } from './reviewGuide';
@@ -489,6 +500,25 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   );
   handle('dashboards:select', (_event, profileId, dashboardId) =>
     selectDashboard(profileId, dashboardId)
+  );
+  handle('portainer:connections', () => listPortainerConnections());
+  handle('portainer:connection-save', (_event, connection) =>
+    savePortainerConnection(connection)
+  );
+  handle('portainer:connection-delete', (_event, connectionId) =>
+    deletePortainerConnection(connectionId)
+  );
+  handle('portainer:connection-test', (_event, connection) =>
+    testPortainerConnection(connection)
+  );
+  handle('portainer:stack-catalog', (_event, connectionId) =>
+    loadPortainerStackCatalog(connectionId)
+  );
+  handle('portainer:stack-runtime', (_event, input) =>
+    loadPortainerStackRuntime(input)
+  );
+  handle('portainer:stack-images', (_event, input) =>
+    loadPortainerStackImages(input)
   );
   handle('github:repositories', (_event, profileId) => loadGitHubRepositories(profileId));
   handle('github:actions-runs', (_event, input) => loadGitHubActionsRuns(input));

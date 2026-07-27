@@ -10,6 +10,7 @@ import type {
   Dashboard,
   DashboardInput,
   DashboardState,
+  DashboardTile,
   GitProfile,
   GitHubActionsRunFilters,
   RepositorySummary,
@@ -185,14 +186,26 @@ export function saveDashboard(input: DashboardInput): DashboardState {
     id: existing?.id ?? randomUUID(),
     profileId: input.profileId,
     name: input.name.trim(),
-    tiles: input.tiles.map((tile) => ({
-      id: tile.id || randomUUID(),
-      kind: 'github-actions',
-      owner: tile.owner.trim(),
-      repository: tile.repository.trim(),
-      limit: tile.limit,
-      filters: normalizeGitHubActionsRunFilters(tile.filters)
-    })),
+    tiles: input.tiles.map((tile) =>
+      tile.kind === 'github-actions'
+        ? {
+            id: tile.id || randomUUID(),
+            kind: tile.kind,
+            owner: tile.owner.trim(),
+            repository: tile.repository.trim(),
+            limit: tile.limit,
+            filters: normalizeGitHubActionsRunFilters(tile.filters)
+          }
+        : {
+            id: tile.id || randomUUID(),
+            kind: tile.kind,
+            connectionId: tile.connectionId,
+            endpointId: tile.endpointId,
+            stackId: tile.stackId,
+            stackName: tile.stackName.trim(),
+            environmentName: tile.environmentName.trim()
+          }
+    ),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
   };
@@ -287,7 +300,7 @@ function normalizeDashboards(value: unknown): Dashboard[] {
     return [];
   }
 
-  return value.flatMap((dashboard) => {
+  return value.flatMap<Dashboard>((dashboard) => {
     if (!dashboard || typeof dashboard !== 'object') {
       return [];
     }
@@ -305,30 +318,62 @@ function normalizeDashboards(value: unknown): Dashboard[] {
       return [];
     }
 
-    const tiles = candidate.tiles.flatMap((tile) => {
-      if (
-        !tile ||
-        typeof tile !== 'object' ||
-        tile.kind !== 'github-actions' ||
-        typeof tile.id !== 'string' ||
-        typeof tile.owner !== 'string' ||
-        typeof tile.repository !== 'string' ||
-        typeof tile.limit !== 'number' ||
-        !Number.isInteger(tile.limit) ||
-        tile.limit < 1 ||
-        tile.limit > 20
-      ) {
+    const tiles = candidate.tiles.flatMap<DashboardTile>((tile) => {
+      if (!tile || typeof tile !== 'object') {
         return [];
       }
 
-      return [
-        {
-          ...tile,
-          filters: normalizeGitHubActionsRunFilters(
-            (tile as { filters?: unknown }).filters
-          )
-        }
-      ];
+      if (
+        tile.kind === 'github-actions' &&
+        typeof tile.id === 'string' &&
+        typeof tile.owner === 'string' &&
+        typeof tile.repository === 'string' &&
+        typeof tile.limit === 'number' &&
+        Number.isInteger(tile.limit) &&
+        tile.limit >= 1 &&
+        tile.limit <= 20
+      ) {
+        return [
+          {
+            id: tile.id,
+            kind: tile.kind,
+            owner: tile.owner,
+            repository: tile.repository,
+            limit: tile.limit,
+            filters: normalizeGitHubActionsRunFilters(
+              (tile as { filters?: unknown }).filters
+            )
+          }
+        ];
+      }
+
+      if (
+        tile.kind === 'portainer-swarm-stack' &&
+        typeof tile.id === 'string' &&
+        typeof tile.connectionId === 'string' &&
+        typeof tile.endpointId === 'number' &&
+        Number.isInteger(tile.endpointId) &&
+        tile.endpointId > 0 &&
+        typeof tile.stackId === 'number' &&
+        Number.isInteger(tile.stackId) &&
+        tile.stackId > 0 &&
+        typeof tile.stackName === 'string' &&
+        typeof tile.environmentName === 'string'
+      ) {
+        return [
+          {
+            id: tile.id,
+            kind: tile.kind,
+            connectionId: tile.connectionId,
+            endpointId: tile.endpointId,
+            stackId: tile.stackId,
+            stackName: tile.stackName,
+            environmentName: tile.environmentName
+          }
+        ];
+      }
+
+      return [];
     });
 
     return [
