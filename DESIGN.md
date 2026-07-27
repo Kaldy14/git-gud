@@ -12,9 +12,9 @@
 - Avoid: Decorative chrome, duplicated information, oversized panels, novelty controls, and inactive product surfaces.
 
 ## Product goals
-- Goals: Make local repository state legible; keep history, diff, staging, and review flows fast; preserve graph context while inspecting code; let a developer monitor live GitHub Actions state for several projects without leaving the app.
+- Goals: Make local repository state legible; keep history, diff, staging, and review flows fast; preserve graph context while inspecting code; let a developer monitor live GitHub Actions state for several projects without leaving the app; let each Actions tile focus on exact branches, current tags, and pull requests authored by the connected GitHub user.
 - Non-goals: General analytics, team administration, issue tracking, promotional surfaces, or reproducing another product's branding.
-- Success signals: Common Git inspection and mutation flows remain direct and understandable; configured dashboards survive restarts; workflow runs refresh automatically; and a run opens its canonical GitHub page in the system browser.
+- Success signals: Common Git inspection and mutation flows remain direct and understandable; configured dashboards and tile filters survive restarts; workflow runs refresh automatically; each tile only shows runs matching its configured union of branch, tag, and authored-PR filters; and a run opens its canonical GitHub page in the system browser.
 
 ## Personas and jobs
 - Primary personas: macOS developers and Git power users working in local repositories.
@@ -43,15 +43,15 @@
 
 ## Components
 - Existing components to reuse: Shared buttons, segmented controls, toolbar typography and hover states, theme variables, `@pierre/diffs` renderers, file status colors, and modal/menu primitives.
-- New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs followed immediately by the create-dashboard control, dashboard editor dialogs, GitHub Actions tile, and workflow-run row. Dashboard-wide actions remain right-aligned. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
-- Variants and states: Commit, multi-commit, WIP staged/unstaged, loading, empty, binary, too-large, error, unified/split diff layouts, dashboard with no tiles, tile loading/refresh/error, and queued/running/success/failure/cancelled workflow states.
+- New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs followed immediately by the create-dashboard control, dashboard editor dialogs, GitHub Actions tile, workflow-run filter controls, and workflow-run row. The add-tile dialog reuses native text and checkbox controls for comma-separated exact branch names, current tag runs, and pull requests authored by the connected GitHub user. The tile header summarizes active filters. Dashboard-wide actions remain right-aligned. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
+- Variants and states: Commit, multi-commit, WIP staged/unstaged, loading, empty, binary, too-large, error, unified/split diff layouts, dashboard with no tiles, tile loading/refresh/error, unfiltered tile, filtered tile with no matching runs, and queued/running/success/failure/cancelled workflow states.
 - Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
 
 ## Accessibility
 - Target standard: WCAG 2.2 AA.
 - Keyboard/focus behavior: Focused panels accept Escape to close and arrow keys where documented; all actions remain native buttons.
 - Contrast/readability: Use existing semantic text, border, selection, success, and danger tokens.
-- Screen-reader semantics: Icon-only actions and file-state icons require accessible labels; headings and regions use semantic elements where practical; workflow rows expose status, repository, branch, and run name as text.
+- Screen-reader semantics: Icon-only actions and file-state icons require accessible labels; headings and regions use semantic elements where practical; workflow filter checkboxes use native labels; workflow rows expose status, repository, branch, and run name as text.
 - Reduced motion and sensory considerations: Respect `prefers-reduced-motion`; do not rely on color alone for file state or selection.
 
 ## Responsive behavior
@@ -61,7 +61,7 @@
 
 ## Interaction states
 - Loading: Centered, concise progress message with activity icon. Dashboard tiles use local skeleton/run placeholders so other projects remain readable.
-- Empty: Explain what selection is required or why no content exists. An empty dashboard provides one direct “Add GitHub Actions tile” action.
+- Empty: Explain what selection is required or why no content exists. An empty dashboard provides one direct “Add GitHub Actions tile” action. A filtered tile distinguishes “no matching runs” from an unfiltered repository with no runs.
 - Error: Show the concrete operation or retrieval error in context. A failed tile keeps its last successful data visible when available and offers a retry.
 - Success: Refresh repository or GitHub truth and preserve the user's current spatial context where possible.
 - Disabled: Keep controls legible and explain unavailable actions through title or adjacent context.
@@ -69,15 +69,15 @@
 
 ## Content voice
 - Tone: Direct, compact, and technical without jargon for its own sake.
-- Terminology: Use Git terms such as commit, worktree, staged, diff, branch, conflict, workflow, and run consistently. Use “project” in setup copy and the canonical `owner/repository` name in monitoring views.
-- Microcopy rules: Prefer action labels and concrete state; remove labels that merely repeat the surrounding context.
+- Terminology: Use Git terms such as commit, worktree, staged, diff, branch, tag, pull request, conflict, workflow, and run consistently. Use “project” in setup copy and the canonical `owner/repository` name in monitoring views. “My pull requests” means pull requests authored by the connected GitHub user.
+- Microcopy rules: Prefer action labels and concrete state; remove labels that merely repeat the surrounding context. State that filters combine with OR semantics and that leaving all filter controls empty shows every run.
 
 ## Implementation constraints
 - Framework/styling system: Electron, React 19, TypeScript, Tailwind v4 utilities, and repository CSS variables.
 - Design-token constraints: Extend existing tokens and shared component classes before adding new styling layers. Dashboard header selection uses the existing active/inactive text hierarchy; it does not introduce per-tab borders, filled cells, or decorative accent underlines.
-- Performance constraints: Diff rendering must remain bounded for large files and change sets; binary and oversized content uses explicit fallbacks.
-- Compatibility constraints: macOS is the supported build target; Git and GitHub CLI are provided by the user's environment; dashboard access uses the GitHub CLI account connected to the selected Git profile.
-- Test/screenshot expectations: Run focused parser, persistence, IPC-validation, and renderer tests; run typecheck/lint/build; exercise dashboard creation, tile creation, live refresh, error/empty handling, and run opening; capture screenshots for UI changes.
+- Performance constraints: Diff rendering must remain bounded for large files and change sets; binary and oversized content uses explicit fallbacks. Filtered Actions tiles poll every 60 seconds, cache tag and pull-request metadata for 10 minutes, and disclose when matching stops after the latest 500 workflow runs.
+- Compatibility constraints: macOS is the supported build target; Git and GitHub CLI are provided by the user's environment; dashboard access uses the GitHub CLI account connected to the selected Git profile. GitHub's workflow-run payload does not expose the historical triggering ref type, so tag filtering matches runs against the repository's current tag names and commit SHAs.
+- Test/screenshot expectations: Run focused parser/filter, persistence, IPC-validation, and renderer tests; run typecheck/lint/build; exercise dashboard creation, filtered tile creation, live refresh, filtered empty/error handling, and run opening; capture screenshots for UI changes.
 
 ## Open questions
 - None for the first GitHub Actions-only dashboard slice. Additional tile types and freeform tile rearrangement remain intentionally out of scope.

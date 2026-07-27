@@ -845,8 +845,15 @@ export type GitHubWorkflowRun = {
   conclusion?: GitHubWorkflowRunConclusion;
   url: string;
   actor?: string;
+  pullRequestNumbers: number[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type GitHubActionsRunFilters = {
+  branches: string[];
+  includeTags: boolean;
+  includeMyPullRequests: boolean;
 };
 
 export type GitHubActionsRunsInput = {
@@ -854,6 +861,7 @@ export type GitHubActionsRunsInput = {
   owner: string;
   repository: string;
   limit: number;
+  filters: GitHubActionsRunFilters;
 };
 
 export type GitHubActionsRuns = {
@@ -861,6 +869,8 @@ export type GitHubActionsRuns = {
   owner: string;
   repository: string;
   runs: GitHubWorkflowRun[];
+  searchedRunCount: number;
+  searchLimitReached: boolean;
   loadedAt: string;
 };
 
@@ -870,6 +880,7 @@ export type GitHubActionsDashboardTile = {
   owner: string;
   repository: string;
   limit: number;
+  filters: GitHubActionsRunFilters;
 };
 
 export type GitHubActionsDashboardTileInput = Omit<GitHubActionsDashboardTile, 'id'> & {

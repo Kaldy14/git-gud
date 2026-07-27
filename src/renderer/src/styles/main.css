@@ -4064,6 +4064,18 @@ button.ref-chip:active {
   font-weight: 500;
 }
 
+.actions-tile-identity small {
+  display: block;
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--text-3);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .actions-tile-header-actions {
   display: flex;
   flex-shrink: 0;
@@ -4110,6 +4122,15 @@ button.ref-chip:active {
 
 .workflow-run-list {
   display: grid;
+}
+
+.actions-tile-search-note {
+  border-top: 1px solid var(--border);
+  padding: 5px 8px;
+  color: var(--text-3);
+  font-size: 8px;
+  line-height: 12px;
+  text-align: right;
 }
 
 .workflow-run-row {
@@ -4310,6 +4331,88 @@ button.ref-chip:active {
   border-color: var(--accent);
 }
 
+.dashboard-field > small {
+  color: var(--text-3);
+  font-size: 8.5px;
+  font-weight: 500;
+  line-height: 13px;
+}
+
+.dashboard-filter-field {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.015);
+  padding: 10px;
+}
+
+.dashboard-filter-field > legend {
+  padding: 0 4px;
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dashboard-filter-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.dashboard-filter-option {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-field);
+  padding: 8px;
+  cursor: pointer;
+}
+
+.dashboard-filter-option:has(input:focus-visible) {
+  border-color: var(--accent);
+}
+
+.dashboard-filter-option input {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.dashboard-filter-option > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dashboard-filter-option strong {
+  color: var(--text-1);
+  font-size: 9.5px;
+  line-height: 12px;
+}
+
+.dashboard-filter-option small,
+.dashboard-filter-help {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 12px;
+}
+
+.dashboard-field-error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--danger-text);
+  font-size: 8.5px;
+}
+
 .dashboard-dialog-note {
   display: flex;
   align-items: flex-start;
@@ -4476,6 +4579,10 @@ button.ref-chip:active {
 
   .file-focus-header {
     padding-inline: 6px;
+  }
+
+  .dashboard-filter-options {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

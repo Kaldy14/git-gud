@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -64,7 +64,12 @@ describe('workspace persistence', () => {
           kind: 'github-actions',
           owner: 'acme',
           repository: 'widgets',
-          limit: 10
+          limit: 10,
+          filters: {
+            branches: ['main'],
+            includeTags: true,
+            includeMyPullRequests: false
+          }
         }
       ]
     });
@@ -80,7 +85,12 @@ describe('workspace persistence', () => {
           kind: 'github-actions',
           owner: 'acme',
           repository: 'widgets',
-          limit: 10
+          limit: 10,
+          filters: {
+            branches: ['main'],
+            includeTags: true,
+            includeMyPullRequests: false
+          }
         }
       ]
     });
@@ -105,5 +115,44 @@ describe('workspace persistence', () => {
       firstDashboardId
     );
     expect(deleteDashboard(profileId, firstDashboardId).dashboards).toEqual([]);
+  });
+
+  it('normalizes missing filters in dashboards saved by older versions', async () => {
+    const profileId = `profile:legacy-dashboard-store-test:${randomUUID()}`;
+    const storePath = join(
+      tmpdir(),
+      'git-gud-vitest-store',
+      'workspace',
+      'git-gud-workspace.json'
+    );
+    const stored = JSON.parse(await readFile(storePath, 'utf8')) as {
+      dashboards?: unknown[];
+    };
+    stored.dashboards = [
+      ...(stored.dashboards ?? []),
+      {
+        id: randomUUID(),
+        profileId,
+        name: 'Legacy actions',
+        tiles: [
+          {
+            id: randomUUID(),
+            kind: 'github-actions',
+            owner: 'acme',
+            repository: 'widgets',
+            limit: 5
+          }
+        ],
+        createdAt: '2026-07-20T10:00:00.000Z',
+        updatedAt: '2026-07-20T10:00:00.000Z'
+      }
+    ];
+    await writeFile(storePath, JSON.stringify(stored), 'utf8');
+
+    expect(getDashboards(profileId).dashboards[0]?.tiles[0]?.filters).toEqual({
+      branches: [],
+      includeTags: false,
+      includeMyPullRequests: false
+    });
   });
 });

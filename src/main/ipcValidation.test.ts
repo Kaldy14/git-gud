@@ -129,7 +129,12 @@ describe('IPC argument validation', () => {
               kind: 'github-actions',
               owner: 'acme',
               repository: 'widgets',
-              limit: 10
+              limit: 10,
+              filters: {
+                branches: ['main', 'release/next'],
+                includeTags: true,
+                includeMyPullRequests: false
+              }
             }
           ]
         }
@@ -137,7 +142,16 @@ describe('IPC argument validation', () => {
     ).toMatchObject({
       profileId: 'profile:kaldy',
       name: 'Delivery',
-      tiles: [{ owner: 'acme', repository: 'widgets', limit: 10 }]
+      tiles: [{
+        owner: 'acme',
+        repository: 'widgets',
+        limit: 10,
+        filters: {
+          branches: ['main', 'release/next'],
+          includeTags: true,
+          includeMyPullRequests: false
+        }
+      }]
     });
     expect(
       validateIpcArgs('github:actions-runs', [
@@ -145,7 +159,12 @@ describe('IPC argument validation', () => {
           profileId: 'profile:kaldy',
           owner: 'acme',
           repository: 'widgets',
-          limit: 10
+          limit: 10,
+          filters: {
+            branches: ['main'],
+            includeTags: false,
+            includeMyPullRequests: true
+          }
         }
       ])
     ).toEqual([
@@ -153,7 +172,12 @@ describe('IPC argument validation', () => {
         profileId: 'profile:kaldy',
         owner: 'acme',
         repository: 'widgets',
-        limit: 10
+        limit: 10,
+        filters: {
+          branches: ['main'],
+          includeTags: false,
+          includeMyPullRequests: true
+        }
       }
     ]);
     expect(
@@ -403,6 +427,35 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('limit must be 20 or fewer.');
+    expect(() =>
+      validateIpcArgs('github:actions-runs', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          limit: 10,
+          filters: {
+            branches: ['main', ' main '],
+            includeTags: false,
+            includeMyPullRequests: false
+          }
+        }
+      ])
+    ).toThrow('filters.branches must not contain duplicate entries.');
+    expect(() =>
+      validateIpcArgs('github:actions-runs', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          limit: 10,
+          filters: {
+            branches: [],
+            includeTags: true
+          }
+        }
+      ])
+    ).toThrow('filters.includeMyPullRequests must be a boolean.');
     expect(() => validateIpcArgs('workspace:set-detail-panel-collapsed', ['yes'])).toThrow('collapsed must be a boolean.');
     expect(() => validateIpcArgs('dashboards:select', ['profile:kaldy', ''])).toThrow(
       'dashboardId must not be empty.'

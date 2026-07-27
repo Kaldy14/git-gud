@@ -17,6 +17,7 @@ import type {
   GitFileDiffRequest,
   GitHubPullRequestLocator,
   GitHubActionsRunsInput,
+  GitHubActionsRunFilters,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestReviewCommentUpdateInput,
@@ -490,7 +491,11 @@ function readDashboardInput(value: unknown): DashboardInput {
         kind: readEnumProperty(tile, 'kind', ['github-actions']),
         owner: readGitHubName(tile.owner, `tiles[${index}].owner`),
         repository: readGitHubName(tile.repository, `tiles[${index}].repository`),
-        limit
+        limit,
+        filters: readGitHubActionsRunFilters(
+          tile.filters,
+          `tiles[${index}].filters`
+        )
       };
     })
   };
@@ -508,7 +513,48 @@ function readGitHubActionsRunsInput(value: unknown): GitHubActionsRunsInput {
     profileId: readNonEmptyLimitedString(record.profileId, 'profileId', 128),
     owner: readGitHubName(record.owner, 'owner'),
     repository: readGitHubName(record.repository, 'repository'),
-    limit
+    limit,
+    filters: readGitHubActionsRunFilters(record.filters, 'filters')
+  };
+}
+
+function readGitHubActionsRunFilters(
+  value: unknown,
+  label: string
+): GitHubActionsRunFilters {
+  if (value === undefined) {
+    return {
+      branches: [],
+      includeTags: false,
+      includeMyPullRequests: false
+    };
+  }
+
+  const record = readRecord(value, label);
+
+  if (!Array.isArray(record.branches)) {
+    throw new Error(`${label}.branches must be an array.`);
+  }
+  if (record.branches.length > 20) {
+    throw new Error(`${label}.branches must contain no more than 20 entries.`);
+  }
+
+  const branches = record.branches.map((branch, index) =>
+    readNonEmptyLimitedString(branch, `${label}.branches[${index}]`, 255).trim()
+  );
+  const normalizedBranches = new Set(branches);
+
+  if (normalizedBranches.size !== branches.length) {
+    throw new Error(`${label}.branches must not contain duplicate entries.`);
+  }
+
+  return {
+    branches,
+    includeTags: readBoolean(record.includeTags, `${label}.includeTags`),
+    includeMyPullRequests: readBoolean(
+      record.includeMyPullRequests,
+      `${label}.includeMyPullRequests`
+    )
   };
 }
 

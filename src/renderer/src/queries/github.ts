@@ -2,6 +2,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import type {
   DashboardState,
+  GitHubActionsRunFilters,
   GitHubActionsRuns,
   GitHubActionsRunsInput,
   GitHubPullRequestDetail,
@@ -9,6 +10,9 @@ import type {
   GitHubPullRequestLocator,
   GitHubRepositorySummary
 } from '@shared/types';
+
+const GITHUB_ACTIONS_REFETCH_INTERVAL_MS = 15_000;
+const GITHUB_ACTIONS_FILTERED_REFETCH_INTERVAL_MS = 60_000;
 
 export const dashboardsQueryKey = (
   profileId: string
@@ -20,12 +24,24 @@ export const gitHubRepositoriesQueryKey = (
 
 export const gitHubActionsRunsQueryKey = (
   input: GitHubActionsRunsInput
-): readonly ['github-actions-runs', string, string, string, number] => [
+): readonly [
+  'github-actions-runs',
+  string,
+  string,
+  string,
+  number,
+  string,
+  boolean,
+  boolean
+] => [
   'github-actions-runs',
   input.profileId,
   input.owner,
   input.repository,
-  input.limit
+  input.limit,
+  input.filters.branches.join('\n'),
+  input.filters.includeTags,
+  input.filters.includeMyPullRequests
 ];
 
 export const gitHubPullRequestInboxQueryKey = (
@@ -98,7 +114,7 @@ export function useGitHubActionsRuns(input: GitHubActionsRunsInput | undefined) 
   return useQuery({
     queryKey: input
       ? gitHubActionsRunsQueryKey(input)
-      : ['github-actions-runs', 'none', 'none', 'none', 0],
+      : ['github-actions-runs', 'none', 'none', 'none', 0, '', false, false],
     queryFn: async (): Promise<GitHubActionsRuns> => {
       if (!input) {
         throw new Error('A GitHub Actions tile configuration is required.');
@@ -107,8 +123,20 @@ export function useGitHubActionsRuns(input: GitHubActionsRunsInput | undefined) 
     },
     enabled: Boolean(input),
     staleTime: 5_000,
-    refetchInterval: 15_000
+    refetchInterval: input
+      ? gitHubActionsRunsRefetchInterval(input.filters)
+      : GITHUB_ACTIONS_REFETCH_INTERVAL_MS
   });
+}
+
+export function gitHubActionsRunsRefetchInterval(
+  filters: GitHubActionsRunFilters
+): number {
+  return filters.branches.length > 0 ||
+    filters.includeTags ||
+    filters.includeMyPullRequests
+    ? GITHUB_ACTIONS_FILTERED_REFETCH_INTERVAL_MS
+    : GITHUB_ACTIONS_REFETCH_INTERVAL_MS;
 }
 
 export function useGitHubPullRequestInbox(profileId: string | undefined) {

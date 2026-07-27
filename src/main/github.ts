@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 
 import type {
   GitHubActionsRuns,
+  GitHubActionsRunFilters,
   GitHubActionsRunsInput,
   GitHubPullRequestActionResult,
   GitHubPullRequestCategory,
@@ -43,6 +44,30 @@ const GITHUB_API_MAX_BUFFER = 32 * 1024 * 1024;
 const GITHUB_REVIEW_CONTEXT_MAX_BYTES = 32 * 1024 * 1024;
 const GITHUB_REVIEW_CONTEXT_CONCURRENCY = 6;
 const GITHUB_REVIEW_CONTEXT_MAX_FILES = 24;
+const GITHUB_ACTIONS_FILTERED_PAGE_SIZE = 100;
+const GITHUB_ACTIONS_FILTERED_RUN_CAP = 500;
+const GITHUB_ACTIONS_PR_AUTHOR_BATCH_SIZE = 100;
+const GITHUB_ACTIONS_METADATA_CACHE_TTL_MS = 10 * 60_000;
+const GITHUB_ACTIONS_TAG_PAGE_CAP = 5;
+
+export type GitHubTag = {
+  name: string;
+  sha: string;
+};
+
+type PullRequestAuthorCacheEntry = {
+  login: string | undefined;
+  expiresAt: number;
+};
+
+const pullRequestAuthorCache = new Map<string, PullRequestAuthorCacheEntry>();
+
+type GitHubTagCacheEntry = {
+  tags: Promise<GitHubTag[]>;
+  expiresAt: number;
+};
+
+const gitHubTagCache = new Map<string, GitHubTagCacheEntry>();
 
 type GitHubReviewFileContext = Pick<
   GitReviewFileContext,
@@ -139,14 +164,59 @@ export async function loadGitHubRepositories(profileId: string): Promise<GitHubR
 
 export async function loadGitHubActionsRuns(input: GitHubActionsRunsInput): Promise<GitHubActionsRuns> {
   const context = await getGitHubContext(input.profileId);
-  const raw = await runGitHubJson(context, [
+  const filtersActive = hasGitHubActionsRunFilters(input.filters);
+
+  if (!filtersActive) {
+    const raw = await loadGitHubWorkflowRunsPage(context, input, input.limit, 1);
+    const runs = parseGitHubWorkflowRuns(raw).slice(0, input.limit);
+    return buildGitHubActionsRuns(input, runs, runs.length, false);
+  }
+
+  const tags = input.filters.includeTags
+    ? await loadCachedGitHubRepositoryTags(context, input.owner, input.repository)
+    : [];
+  const search = await searchGitHubActionsRunPages(
+    input.limit,
+    (page) =>
+      loadGitHubWorkflowRunsPage(
+        context,
+        input,
+        GITHUB_ACTIONS_FILTERED_PAGE_SIZE,
+        page
+      ).then(parseGitHubWorkflowRuns),
+    async (runs) => {
+      const authoredPullRequestNumbers = input.filters.includeMyPullRequests
+        ? await loadAuthoredPullRequestNumbers(context, input, runs)
+        : new Set<number>();
+      return filterGitHubActionsRuns(
+        runs,
+        input.filters,
+        tags,
+        authoredPullRequestNumbers
+      );
+    }
+  );
+
+  return buildGitHubActionsRuns(
+    input,
+    search.runs,
+    search.searchedRunCount,
+    search.searchLimitReached
+  );
+}
+
+function loadGitHubWorkflowRunsPage(
+  context: GitHubContext,
+  input: GitHubActionsRunsInput,
+  perPage: number,
+  page: number
+): Promise<unknown> {
+  return runGitHubJson(context, [
     'api',
     '--hostname',
     context.host,
-    `repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/actions/runs?per_page=${input.limit}`
+    `repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/actions/runs?per_page=${perPage}&page=${page}`
   ]);
-
-  return parseGitHubActionsRunsResponse(raw, input);
 }
 
 export async function loadGitHubPullRequestInbox(profileId: string): Promise<GitHubPullRequestInbox> {
@@ -194,6 +264,16 @@ export function parseGitHubActionsRunsResponse(
   raw: unknown,
   input: GitHubActionsRunsInput
 ): GitHubActionsRuns {
+  const runs = parseGitHubWorkflowRuns(raw).slice(0, input.limit);
+  return buildGitHubActionsRuns(
+    input,
+    runs,
+    runs.length,
+    false
+  );
+}
+
+function parseGitHubWorkflowRuns(raw: unknown): GitHubWorkflowRun[] {
   const response = readRecord(raw, 'workflow runs response');
   const workflowRuns = response.workflow_runs;
 
@@ -201,13 +281,100 @@ export function parseGitHubActionsRunsResponse(
     throw new Error('GitHub CLI returned an invalid workflow run list.');
   }
 
+  return workflowRuns.map(parseWorkflowRun);
+}
+
+function buildGitHubActionsRuns(
+  input: GitHubActionsRunsInput,
+  runs: GitHubWorkflowRun[],
+  searchedRunCount: number,
+  searchLimitReached: boolean
+): GitHubActionsRuns {
   return {
     profileId: input.profileId,
     owner: input.owner,
     repository: input.repository,
-    runs: workflowRuns.slice(0, input.limit).map(parseWorkflowRun),
+    runs,
+    searchedRunCount,
+    searchLimitReached,
     loadedAt: new Date().toISOString()
   };
+}
+
+export type GitHubActionsRunSearchResult = {
+  runs: GitHubWorkflowRun[];
+  searchedRunCount: number;
+  searchLimitReached: boolean;
+};
+
+export async function searchGitHubActionsRunPages(
+  limit: number,
+  loadPage: (page: number) => Promise<GitHubWorkflowRun[]>,
+  filterPage: (runs: GitHubWorkflowRun[]) => Promise<GitHubWorkflowRun[]>,
+  runCap = GITHUB_ACTIONS_FILTERED_RUN_CAP,
+  pageSize = GITHUB_ACTIONS_FILTERED_PAGE_SIZE
+): Promise<GitHubActionsRunSearchResult> {
+  const runs: GitHubWorkflowRun[] = [];
+  let searchedRunCount = 0;
+  const pageCount = Math.ceil(runCap / pageSize);
+
+  for (let page = 1; page <= pageCount; page += 1) {
+    const loadedRuns = await loadPage(page);
+    const runsWithinCap = loadedRuns.slice(0, runCap - searchedRunCount);
+    searchedRunCount += runsWithinCap.length;
+    const matches = await filterPage(runsWithinCap);
+    runs.push(...matches.slice(0, limit - runs.length));
+
+    if (runs.length >= limit || loadedRuns.length < pageSize) {
+      return {
+        runs,
+        searchedRunCount,
+        searchLimitReached: false
+      };
+    }
+  }
+
+  return {
+    runs,
+    searchedRunCount,
+    searchLimitReached: true
+  };
+}
+
+export function hasGitHubActionsRunFilters(filters: GitHubActionsRunFilters): boolean {
+  return (
+    filters.branches.length > 0 ||
+    filters.includeTags ||
+    filters.includeMyPullRequests
+  );
+}
+
+export function filterGitHubActionsRuns(
+  runs: GitHubWorkflowRun[],
+  filters: GitHubActionsRunFilters,
+  tags: GitHubTag[] = [],
+  authoredPullRequestNumbers: ReadonlySet<number> = new Set()
+): GitHubWorkflowRun[] {
+  if (!hasGitHubActionsRunFilters(filters)) {
+    return runs;
+  }
+
+  const branches = new Set(filters.branches);
+  const currentTags = new Set(tags.map((tag) => `${tag.name}\0${tag.sha}`));
+
+  return runs.filter((run) => {
+    const matchesBranch = run.branch !== undefined && branches.has(run.branch);
+    const matchesTag =
+      filters.includeTags &&
+      run.event === 'push' &&
+      run.branch !== undefined &&
+      currentTags.has(`${run.branch}\0${run.sha}`);
+    const matchesMyPullRequest =
+      filters.includeMyPullRequests &&
+      run.pullRequestNumbers.some((number) => authoredPullRequestNumbers.has(number));
+
+    return matchesBranch || matchesTag || matchesMyPullRequest;
+  });
 }
 
 function parseWorkflowRun(value: unknown): GitHubWorkflowRun {
@@ -226,9 +393,174 @@ function parseWorkflowRun(value: unknown): GitHubWorkflowRun {
     conclusion: normalizeWorkflowRunConclusion(readOptionalString(run.conclusion)),
     url: readString(run.html_url, 'workflow run URL'),
     actor: readNestedOptionalString(run, ['actor', 'login']),
+    pullRequestNumbers: parseWorkflowRunPullRequestNumbers(run.pull_requests),
     createdAt: readString(run.created_at, 'workflow run created time'),
     updatedAt: readString(run.updated_at, 'workflow run updated time')
   };
+}
+
+function parseWorkflowRunPullRequestNumbers(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((pullRequest) => {
+    if (!pullRequest || typeof pullRequest !== 'object') {
+      return [];
+    }
+
+    const number = readOptionalNumber((pullRequest as Record<string, unknown>).number);
+    return number === undefined ? [] : [number];
+  });
+}
+
+async function loadCachedGitHubRepositoryTags(
+  context: GitHubContext,
+  owner: string,
+  repository: string
+): Promise<GitHubTag[]> {
+  const cacheKey = `${context.profile.id}\0${context.host}\0${owner}\0${repository}`;
+  const cached = gitHubTagCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.tags;
+  }
+
+  const tags = loadGitHubRepositoryTags(context, owner, repository).catch((error) => {
+    gitHubTagCache.delete(cacheKey);
+    throw error;
+  });
+  gitHubTagCache.set(cacheKey, {
+    tags,
+    expiresAt: Date.now() + GITHUB_ACTIONS_METADATA_CACHE_TTL_MS
+  });
+  return tags;
+}
+
+async function loadGitHubRepositoryTags(
+  context: GitHubContext,
+  owner: string,
+  repository: string
+): Promise<GitHubTag[]> {
+  const raw = await runGitHubLimitedPaginatedArray(
+    context,
+    `repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/tags`,
+    GITHUB_ACTIONS_TAG_PAGE_CAP
+  );
+
+  return raw.map(parseGitHubTag);
+}
+
+function parseGitHubTag(value: unknown): GitHubTag {
+  const tag = readRecord(value, 'tag');
+  return {
+    name: readString(tag.name, 'tag name'),
+    sha: readNestedString(tag, ['commit', 'sha'], 'tag commit SHA')
+  };
+}
+
+async function loadAuthoredPullRequestNumbers(
+  context: GitHubContext,
+  input: GitHubActionsRunsInput,
+  runs: GitHubWorkflowRun[]
+): Promise<Set<number>> {
+  const now = Date.now();
+  for (const [key, entry] of pullRequestAuthorCache) {
+    if (entry.expiresAt <= now) {
+      pullRequestAuthorCache.delete(key);
+    }
+  }
+
+  const numbers = [
+    ...new Set(runs.flatMap((run) => run.pullRequestNumbers))
+  ];
+  const missingNumbers = numbers.filter((number) => {
+    const cached = pullRequestAuthorCache.get(
+      pullRequestAuthorCacheKey(context, input.owner, input.repository, number)
+    );
+    return !cached || cached.expiresAt <= now;
+  });
+
+  for (let index = 0; index < missingNumbers.length; index += GITHUB_ACTIONS_PR_AUTHOR_BATCH_SIZE) {
+    await loadPullRequestAuthorBatch(
+      context,
+      input.owner,
+      input.repository,
+      missingNumbers.slice(index, index + GITHUB_ACTIONS_PR_AUTHOR_BATCH_SIZE)
+    );
+  }
+
+  return new Set(
+    numbers.filter((number) => {
+      const cached = pullRequestAuthorCache.get(
+        pullRequestAuthorCacheKey(context, input.owner, input.repository, number)
+      );
+      return cached?.login?.toLowerCase() === context.profile.githubLogin?.toLowerCase();
+    })
+  );
+}
+
+async function loadPullRequestAuthorBatch(
+  context: GitHubContext,
+  owner: string,
+  repository: string,
+  numbers: number[]
+): Promise<void> {
+  if (numbers.length === 0) {
+    return;
+  }
+
+  const variables = numbers.map((_, index) => `$number${index}: Int!`).join(', ');
+  const selections = numbers
+    .map((_, index) => `pr${index}: pullRequest(number: $number${index}) { author { login } }`)
+    .join('\n');
+  const query = `
+query GitGudActionsPullRequestAuthors($owner: String!, $repository: String!, ${variables}) {
+  repository(owner: $owner, name: $repository) {
+    ${selections}
+  }
+}`.trim();
+  const raw = await runGitHubJson(context, [
+    'api',
+    'graphql',
+    '--hostname',
+    context.host,
+    '-f',
+    `query=${query}`,
+    '-F',
+    `owner=${owner}`,
+    '-F',
+    `repository=${repository}`,
+    ...numbers.flatMap((number, index) => ['-F', `number${index}=${number}`])
+  ]);
+  const repositoryResult = nestedValue(readRecord(raw, 'pull request authors response'), [
+    'data',
+    'repository'
+  ]);
+  const repositoryRecord =
+    repositoryResult && typeof repositoryResult === 'object'
+      ? repositoryResult as Record<string, unknown>
+      : {};
+  const expiresAt = Date.now() + GITHUB_ACTIONS_METADATA_CACHE_TTL_MS;
+
+  numbers.forEach((number, index) => {
+    pullRequestAuthorCache.set(
+      pullRequestAuthorCacheKey(context, owner, repository, number),
+      {
+        login: readNestedOptionalString(repositoryRecord, [`pr${index}`, 'author', 'login']),
+        expiresAt
+      }
+    );
+  });
+}
+
+function pullRequestAuthorCacheKey(
+  context: GitHubContext,
+  owner: string,
+  repository: string,
+  number: number
+): string {
+  return `${context.host}\0${owner}\0${repository}\0${number}`;
 }
 
 function normalizeWorkflowRunStatus(value: string | undefined): GitHubWorkflowRunStatus {
@@ -1351,6 +1683,34 @@ async function runGitHubPaginatedArray(context: GitHubContext, endpoint: string)
     }
     return page;
   });
+}
+
+async function runGitHubLimitedPaginatedArray(
+  context: GitHubContext,
+  endpoint: string,
+  maxPages: number
+): Promise<unknown[]> {
+  const values: unknown[] = [];
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const raw = await runGitHubJson(context, [
+      'api',
+      '--hostname',
+      context.host,
+      `${endpoint}?per_page=100&page=${page}`
+    ]);
+
+    if (!Array.isArray(raw)) {
+      throw new Error('GitHub CLI returned an invalid paginated response.');
+    }
+
+    values.push(...raw);
+    if (raw.length < 100) {
+      break;
+    }
+  }
+
+  return values;
 }
 
 function pullRequestEndpoint(locator: GitHubPullRequestLocator): string {

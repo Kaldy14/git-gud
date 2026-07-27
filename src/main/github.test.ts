@@ -7,12 +7,14 @@ import {
   buildGitHubPullRequestReviewPlan,
   categorizePullRequest,
   createGitHubFileReviewCommentPayload,
+  filterGitHubActionsRuns,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
   parseGitHubRepositoriesResponse,
   parseGitHubRepositoryMergeSettings,
   parseReviewComment,
   reviewCommentBelongsToPullRequest,
+  searchGitHubActionsRunPages,
   selectGitHubReviewContextFiles
 } from './github';
 
@@ -53,7 +55,12 @@ describe('GitHub Actions dashboards', () => {
         profileId: 'profile-1',
         owner: 'acme',
         repository: 'widgets',
-        limit: 2
+        limit: 2,
+        filters: {
+          branches: [],
+          includeTags: false,
+          includeMyPullRequests: false
+        }
       }
     );
 
@@ -64,7 +71,113 @@ describe('GitHub Actions dashboards', () => {
     expect(result).toMatchObject({
       profileId: 'profile-1',
       owner: 'acme',
-      repository: 'widgets'
+      repository: 'widgets',
+      searchedRunCount: 2,
+      searchLimitReached: false
+    });
+  });
+
+  it('combines exact branch, current tag, and authored pull request filters with OR semantics', () => {
+    const parsed = parseGitHubActionsRunsResponse(
+      {
+        workflow_runs: [
+          workflowRun({ id: 1, head_branch: 'main', head_sha: 'main-sha' }),
+          workflowRun({ id: 2, head_branch: 'v2.0.0', head_sha: 'tag-sha', event: 'push' }),
+          workflowRun({
+            id: 3,
+            head_branch: 'feature/mine',
+            head_sha: 'pr-sha',
+            event: 'pull_request',
+            pull_requests: [{ number: 42 }]
+          }),
+          workflowRun({ id: 4, head_branch: 'develop', head_sha: 'other-sha' }),
+          workflowRun({ id: 5, head_branch: 'v2.0.0', head_sha: 'old-tag-sha', event: 'push' }),
+          workflowRun({ id: 6, head_branch: 'v2.0.0', head_sha: 'tag-sha', event: 'workflow_dispatch' })
+        ]
+      },
+      {
+        profileId: 'profile-1',
+        owner: 'acme',
+        repository: 'widgets',
+        limit: 20,
+        filters: {
+          branches: [],
+          includeTags: false,
+          includeMyPullRequests: false
+        }
+      }
+    );
+
+    expect(
+      filterGitHubActionsRuns(
+        parsed.runs,
+        {
+          branches: ['main'],
+          includeTags: true,
+          includeMyPullRequests: true
+        },
+        [{ name: 'v2.0.0', sha: 'tag-sha' }],
+        new Set([42])
+      ).map((run) => run.id)
+    ).toEqual([1, 2, 3]);
+  });
+
+  it('searches later pages when the first 100 workflow runs do not match', async () => {
+    const firstPage = parsedWorkflowRuns(
+      Array.from({ length: 100 }, (_, index) =>
+        workflowRun({ id: 1_000 - index, head_branch: 'develop' })
+      )
+    );
+    const secondPage = parsedWorkflowRuns([
+      ...Array.from({ length: 20 }, (_, index) =>
+        workflowRun({ id: 900 - index, head_branch: 'develop' })
+      ),
+      workflowRun({ id: 42, head_branch: 'main' })
+    ]);
+    const loadedPages: number[] = [];
+    const result = await searchGitHubActionsRunPages(
+      1,
+      async (page) => {
+        loadedPages.push(page);
+        return page === 1 ? firstPage : secondPage;
+      },
+      async (runs) =>
+        filterGitHubActionsRuns(runs, {
+          branches: ['main'],
+          includeTags: false,
+          includeMyPullRequests: false
+        })
+    );
+
+    expect(loadedPages).toEqual([1, 2]);
+    expect(result).toMatchObject({
+      searchedRunCount: 121,
+      searchLimitReached: false
+    });
+    expect(result.runs.map((run) => run.id)).toEqual([42]);
+  });
+
+  it('reports when a filtered search reaches its 500-run boundary', async () => {
+    const page = parsedWorkflowRuns(
+      Array.from({ length: 100 }, (_, index) =>
+        workflowRun({ id: index + 1, head_branch: 'develop' })
+      )
+    );
+    const loadedPages: number[] = [];
+    const result = await searchGitHubActionsRunPages(
+      1,
+      async (pageNumber) => {
+        loadedPages.push(pageNumber);
+        return page;
+      },
+      async () => []
+    );
+
+    expect(loadedPages).toEqual([1, 2, 3, 4, 5]);
+    expect(result).toEqual({
+      runs: [],
+      searchedRunCount: 500,
+      searchLimitReached: true
     });
   });
 });
@@ -445,6 +558,23 @@ function workflowRun(overrides: Record<string, unknown>): Record<string, unknown
     updated_at: '2026-07-25T10:02:00Z',
     ...overrides
   };
+}
+
+function parsedWorkflowRuns(runs: Record<string, unknown>[]) {
+  return parseGitHubActionsRunsResponse(
+    { workflow_runs: runs },
+    {
+      profileId: 'profile-1',
+      owner: 'acme',
+      repository: 'widgets',
+      limit: runs.length,
+      filters: {
+        branches: [],
+        includeTags: false,
+        includeMyPullRequests: false
+      }
+    }
+  ).runs;
 }
 
 function pullRequestNode(overrides: Record<string, unknown>): Record<string, unknown> {

@@ -36,6 +36,7 @@ function workflowRun(overrides: Partial<GitHubWorkflowRun>): GitHubWorkflowRun {
     conclusion: 'success',
     url: 'https://github.com/acme/widgets/actions/runs/42',
     actor: 'developer',
+    pullRequestNumbers: [],
     createdAt: '2026-07-25T10:00:00Z',
     updatedAt: '2026-07-25T10:02:00Z',
     ...overrides

@@ -11,6 +11,7 @@ import type {
   DashboardInput,
   DashboardState,
   GitProfile,
+  GitHubActionsRunFilters,
   RepositorySummary,
   WorkspaceState
 } from '@shared/types';
@@ -189,7 +190,8 @@ export function saveDashboard(input: DashboardInput): DashboardState {
       kind: 'github-actions',
       owner: tile.owner.trim(),
       repository: tile.repository.trim(),
-      limit: tile.limit
+      limit: tile.limit,
+      filters: normalizeGitHubActionsRunFilters(tile.filters)
     })),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
@@ -319,7 +321,14 @@ function normalizeDashboards(value: unknown): Dashboard[] {
         return [];
       }
 
-      return [tile];
+      return [
+        {
+          ...tile,
+          filters: normalizeGitHubActionsRunFilters(
+            (tile as { filters?: unknown }).filters
+          )
+        }
+      ];
     });
 
     return [
@@ -333,6 +342,34 @@ function normalizeDashboards(value: unknown): Dashboard[] {
       }
     ];
   });
+}
+
+function normalizeGitHubActionsRunFilters(value: unknown): GitHubActionsRunFilters {
+  if (!value || typeof value !== 'object') {
+    return {
+      branches: [],
+      includeTags: false,
+      includeMyPullRequests: false
+    };
+  }
+
+  const candidate = value as Partial<GitHubActionsRunFilters>;
+  const branches = Array.isArray(candidate.branches)
+    ? candidate.branches.flatMap((branch) => {
+        if (typeof branch !== 'string') {
+          return [];
+        }
+
+        const normalized = branch.trim();
+        return normalized && normalized.length <= 255 ? [normalized] : [];
+      })
+    : [];
+
+  return {
+    branches: [...new Set(branches)].slice(0, 20),
+    includeTags: candidate.includeTags === true,
+    includeMyPullRequests: candidate.includeMyPullRequests === true
+  };
 }
 
 function saveWorkspace(workspace: WorkspaceState, deferPersistence = false): WorkspaceState {

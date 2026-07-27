@@ -35,6 +35,12 @@ import type {
 } from '@shared/types';
 
 import { resolveActiveDashboard } from './dashboardSelection';
+import {
+  hasWorkflowRunFilters,
+  parseWorkflowRunBranches,
+  workflowRunBranchFilterError,
+  workflowRunFilterSummary
+} from './workflowRunFilters';
 import { workflowRunPresentation } from './workflowRunPresentation';
 
 type DashboardViewProps = {
@@ -48,7 +54,14 @@ type DashboardViewProps = {
 type DashboardDialog =
   | { kind: 'create'; name: string }
   | { kind: 'rename'; name: string }
-  | { kind: 'add-tile'; repository: string; limit: number }
+  | {
+      kind: 'add-tile';
+      repository: string;
+      limit: number;
+      branches: string;
+      includeTags: boolean;
+      includeMyPullRequests: boolean;
+    }
   | { kind: 'delete' };
 
 export function DashboardView({
@@ -189,7 +202,12 @@ export function DashboardView({
               kind: 'github-actions',
               owner: repository.owner,
               repository: repository.name,
-              limit: dialog.limit
+              limit: dialog.limit,
+              filters: {
+                branches: parseWorkflowRunBranches(dialog.branches),
+                includeTags: dialog.includeTags,
+                includeMyPullRequests: dialog.includeMyPullRequests
+              }
             }
           ]
         });
@@ -228,7 +246,10 @@ export function DashboardView({
     setDialog({
       kind: 'add-tile',
       repository: availableRepositories[0]?.fullName ?? '',
-      limit: 10
+      limit: 10,
+      branches: '',
+      includeTags: false,
+      includeMyPullRequests: false
     });
   }
 
@@ -449,16 +470,24 @@ function GitHubActionsTile({
     profileId,
     owner: tile.owner,
     repository: tile.repository,
-    limit: tile.limit
+    limit: tile.limit,
+    filters: tile.filters
   });
   const runs = runsQuery.data?.runs ?? [];
+  const filterSummary = workflowRunFilterSummary(tile.filters);
+  const isFiltered = hasWorkflowRunFilters(tile.filters);
+  const searchLimitReached = runsQuery.data?.searchLimitReached === true;
+  const searchedRunCount = runsQuery.data?.searchedRunCount ?? 0;
   const runningCount = runs.filter((run) => run.status !== 'completed').length;
   const failedCount = runs.filter(
     (run) => workflowRunPresentation(run).tone === 'danger'
   ).length;
 
   return (
-    <article className="actions-tile" aria-label={`${tile.owner}/${tile.repository} workflow runs`}>
+    <article
+      className="actions-tile"
+      aria-label={`${tile.owner}/${tile.repository} workflow runs, ${filterSummary}`}
+    >
       <header className="actions-tile-header">
         <div className="actions-tile-identity">
           <span className="min-w-0">
@@ -466,6 +495,7 @@ function GitHubActionsTile({
               <span>{tile.owner}/</span>
               {tile.repository}
             </strong>
+            <small title={`Run filters: ${filterSummary}`}>{filterSummary}</small>
           </span>
         </div>
         <div className="actions-tile-header-actions">
@@ -513,15 +543,28 @@ function GitHubActionsTile({
           <span>Loading workflow runs…</span>
         </div>
       ) : runs.length > 0 ? (
-        <div className="workflow-run-list">
-          {runs.map((run) => (
-            <WorkflowRunRow key={run.id} run={run} />
-          ))}
-        </div>
+        <>
+          <div className="workflow-run-list">
+            {runs.map((run) => (
+              <WorkflowRunRow key={run.id} run={run} />
+            ))}
+          </div>
+          {searchLimitReached ? (
+            <div className="actions-tile-search-note">
+              Showing matches from the latest {searchedRunCount} runs.
+            </div>
+          ) : null}
+        </>
       ) : !runsQuery.error ? (
         <div className="actions-tile-empty">
           <CircleSlash2 size={17} />
-          <span>No workflow runs found.</span>
+          <span>
+            {searchLimitReached
+              ? `No matches in the latest ${searchedRunCount} workflow runs.`
+              : isFiltered
+                ? 'No workflow runs match these filters.'
+                : 'No workflow runs found.'}
+          </span>
         </div>
       ) : null}
     </article>
@@ -597,6 +640,17 @@ function DashboardDialogSurface({
   onClose,
   onSubmit
 }: DashboardDialogSurfaceProps): ReactElement {
+  const branchFilterError =
+    dialog.kind === 'add-tile'
+      ? workflowRunBranchFilterError(dialog.branches)
+      : undefined;
+  const selectedRepository =
+    dialog.kind === 'add-tile'
+      ? repositories.find(
+          (repository) =>
+            repository.fullName === (dialog.repository || repositories[0]?.fullName)
+        )
+      : undefined;
   const title =
     dialog.kind === 'create'
       ? 'Create dashboard'
@@ -607,7 +661,7 @@ function DashboardDialogSurface({
           : 'Delete dashboard';
   const description =
     dialog.kind === 'add-tile'
-      ? 'Choose a project and how many recent workflow runs to monitor.'
+      ? 'Choose a project, the runs that matter, and how many results to show.'
       : dialog.kind === 'delete'
         ? 'This removes the dashboard configuration and all of its tiles.'
         : 'Use a short name that describes the projects or delivery signal you monitor.';
@@ -684,6 +738,48 @@ function DashboardDialogSurface({
                   ))}
                 </select>
               </label>
+              <fieldset className="dashboard-filter-field">
+                <legend>Runs to include</legend>
+                <WorkflowBranchFilterField
+                  value={dialog.branches}
+                  placeholder={selectedRepository?.defaultBranch ?? 'main, release/next'}
+                  onChange={(branches) => onChange({ ...dialog, branches })}
+                />
+                <div className="dashboard-filter-options">
+                  <label className="dashboard-filter-option">
+                    <input
+                      type="checkbox"
+                      checked={dialog.includeTags}
+                      onChange={(event) =>
+                        onChange({ ...dialog, includeTags: event.target.checked })
+                      }
+                    />
+                    <span>
+                      <strong>Tags</strong>
+                      <small>Runs matching current repository tags.</small>
+                    </span>
+                  </label>
+                  <label className="dashboard-filter-option">
+                    <input
+                      type="checkbox"
+                      checked={dialog.includeMyPullRequests}
+                      onChange={(event) =>
+                        onChange({
+                          ...dialog,
+                          includeMyPullRequests: event.target.checked
+                        })
+                      }
+                    />
+                    <span>
+                      <strong>My pull requests</strong>
+                      <small>Runs linked to pull requests you authored.</small>
+                    </span>
+                  </label>
+                </div>
+                <p className="dashboard-filter-help">
+                  Matches any selected filter. Leave everything empty to show all runs.
+                </p>
+              </fieldset>
               <div className="dashboard-dialog-note">
                 <Lock size={13} />
                 <span>Uses the GitHub CLI credentials attached to the active Git profile.</span>
@@ -720,7 +816,8 @@ function DashboardDialogSurface({
             disabled={
               isSaving ||
               ((dialog.kind === 'create' || dialog.kind === 'rename') && !dialog.name.trim()) ||
-              (dialog.kind === 'add-tile' && repositories.length === 0)
+              (dialog.kind === 'add-tile' &&
+                (repositories.length === 0 || Boolean(branchFilterError)))
             }
           >
             {isSaving ? <Loader2 size={13} className="animate-spin" /> : null}
@@ -735,6 +832,52 @@ function DashboardDialogSurface({
         </footer>
       </form>
     </ModalSurface>
+  );
+}
+
+type WorkflowBranchFilterFieldProps = {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+};
+
+export function WorkflowBranchFilterField({
+  value,
+  placeholder,
+  onChange
+}: WorkflowBranchFilterFieldProps): ReactElement {
+  const error = workflowRunBranchFilterError(value);
+  const describedBy = error
+    ? 'dashboard-branch-filter-help dashboard-branch-filter-error'
+    : 'dashboard-branch-filter-help';
+
+  return (
+    <>
+      <label className="dashboard-field">
+        <span>Branches</span>
+        <input
+          value={value}
+          placeholder={placeholder}
+          aria-describedby={describedBy}
+          aria-invalid={Boolean(error)}
+          aria-errormessage={error ? 'dashboard-branch-filter-error' : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <small id="dashboard-branch-filter-help">
+          Exact branch names, separated by commas.
+        </small>
+      </label>
+      {error ? (
+        <div
+          id="dashboard-branch-filter-error"
+          className="dashboard-field-error"
+          role="alert"
+        >
+          <AlertTriangle size={12} />
+          {error}
+        </div>
+      ) : null}
+    </>
   );
 }
 
