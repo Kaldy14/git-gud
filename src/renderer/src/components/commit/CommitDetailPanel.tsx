@@ -1,7 +1,5 @@
 import type { MouseEvent, PointerEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileTree, useFileTree } from '@pierre/trees/react';
-import { prepareFileTreeInput, type GitStatusEntry } from '@pierre/trees';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -9,6 +7,7 @@ import {
   BookOpenCheck,
   Check,
   ChevronDown,
+  ChevronRight,
   Copy,
   ExternalLink,
   FilePen,
@@ -34,11 +33,14 @@ import {
   useWipDetail
 } from '@renderer/queries/repository';
 import {
+  buildChangedFileTree,
   countByStatus,
+  expandFileTreePathAncestors,
+  fileTreeAncestorPaths,
   findFile,
   graphFileStatus,
-  treeHeight,
-  treeStatus,
+  toggleFileTreePath,
+  type ChangedFileTreeNode,
   type FileStatusCounts,
   type FileViewMode
 } from '@renderer/components/commit/fileDetailUtils';
@@ -106,6 +108,7 @@ export function CommitDetailPanel({
   const queryClient = useQueryClient();
   const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(undefined);
   const [fileView, setFileView] = useState<FileViewMode>('path');
+  const [showAllFiles, setShowAllFiles] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -312,13 +315,12 @@ export function CommitDetailPanel({
           counts={counts}
           fileView={fileView}
           isWip={isWip}
-          isReviewOpen={isReviewOpen}
-          canReview={Boolean(row && !isCommitSelection && row.node.kind !== 'stash')}
+          showAllFiles={showAllFiles}
           onSetFileView={(view) => {
             setFileView(view);
             onSetReviewOpen(false);
           }}
-          onOpenReview={() => onSetReviewOpen(true)}
+          onSetShowAllFiles={setShowAllFiles}
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-1">
@@ -403,7 +405,10 @@ export function CommitDetailPanel({
         detail={detail}
         selectionCount={selectedShas.length}
         isMutating={activeMutation}
+        isReviewOpen={isReviewOpen}
+        canReview={Boolean(row && !isCommitSelection && row.node.kind !== 'stash')}
         onDiscardAllWip={onDiscardAllWip}
+        onOpenReview={() => onSetReviewOpen(true)}
         onToggleCollapsed={onToggleCollapsed}
       />
 
@@ -521,14 +526,20 @@ function PanelHeader({
   detail,
   selectionCount,
   isMutating,
+  isReviewOpen,
+  canReview,
   onDiscardAllWip,
+  onOpenReview,
   onToggleCollapsed
 }: {
   row: CommitGraphRow;
   detail?: GitRepositoryDetail;
   selectionCount: number;
   isMutating: boolean;
+  isReviewOpen: boolean;
+  canReview: boolean;
   onDiscardAllWip: () => void;
+  onOpenReview: () => void;
   onToggleCollapsed?: () => void;
 }): ReactElement {
   const isWip = row.node.kind === 'wip';
@@ -553,6 +564,27 @@ function PanelHeader({
       setCopyResult({ sha: row.sha, status: 'failed' });
     }
   }
+
+  const headerActions = (
+    <span className="flex shrink-0 items-center gap-1">
+      {canReview ? (
+        <button
+          className="icon-btn h-7 w-7"
+          type="button"
+          data-active={isReviewOpen}
+          onClick={onOpenReview}
+          aria-label="Open context review"
+          title="Context review"
+          style={{ background: isReviewOpen ? 'var(--control-active-bg)' : undefined }}
+        >
+          <BookOpenCheck size={14} />
+        </button>
+      ) : null}
+      <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
+        <PanelRightClose size={14} />
+      </button>
+    </span>
+  );
 
   if (isWip) {
     const hasConflicts = (wipDetail?.conflictedCount ?? 0) > 0;
@@ -585,9 +617,7 @@ function PanelHeader({
             <span className="font-semibold text-[var(--text-1)]">File changes</span>
           )}
         </div>
-        <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
-          <PanelRightClose size={14} />
-        </button>
+        {headerActions}
       </div>
     );
   }
@@ -601,9 +631,7 @@ function PanelHeader({
             {selectionCount} commits selected
           </span>
         </span>
-        <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
-          <PanelRightClose size={14} />
-        </button>
+        {headerActions}
       </div>
     );
   }
@@ -630,9 +658,7 @@ function PanelHeader({
           )}
         </button>
       </span>
-      <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
-        <PanelRightClose size={14} />
-      </button>
+      {headerActions}
     </div>
   );
 }
@@ -870,20 +896,18 @@ type FilesToolbarProps = {
   counts: FileStatusCounts;
   fileView: FileViewMode;
   isWip: boolean;
-  isReviewOpen: boolean;
-  canReview: boolean;
+  showAllFiles: boolean;
   onSetFileView: (view: FileViewMode) => void;
-  onOpenReview: () => void;
+  onSetShowAllFiles: (showAllFiles: boolean) => void;
 };
 
 function FilesToolbar({
   counts,
   fileView,
   isWip,
-  isReviewOpen,
-  canReview,
+  showAllFiles,
   onSetFileView,
-  onOpenReview
+  onSetShowAllFiles
 }: FilesToolbarProps): ReactElement {
   if (isWip) {
     return (
@@ -891,10 +915,9 @@ function FilesToolbar({
         <div className="flex items-center justify-between gap-3">
           <FileListControls
             fileView={fileView}
-            isReviewOpen={isReviewOpen}
-            canReview={canReview}
+            showAllFiles={showAllFiles}
             onSetFileView={onSetFileView}
-            onOpenReview={onOpenReview}
+            onSetShowAllFiles={onSetShowAllFiles}
           />
         </div>
       </div>
@@ -912,10 +935,9 @@ function FilesToolbar({
       </div>
       <FileListControls
         fileView={fileView}
-        isReviewOpen={isReviewOpen}
-        canReview={canReview}
+        showAllFiles={showAllFiles}
         onSetFileView={onSetFileView}
-        onOpenReview={onOpenReview}
+        onSetShowAllFiles={onSetShowAllFiles}
       />
     </div>
   );
@@ -923,59 +945,52 @@ function FilesToolbar({
 
 function FileListControls({
   fileView,
-  isReviewOpen,
-  canReview,
+  showAllFiles,
   onSetFileView,
-  onOpenReview
+  onSetShowAllFiles
 }: {
   fileView: FileViewMode;
-  isReviewOpen: boolean;
-  canReview: boolean;
+  showAllFiles: boolean;
   onSetFileView: (view: FileViewMode) => void;
-  onOpenReview: () => void;
+  onSetShowAllFiles: (showAllFiles: boolean) => void;
 }): ReactElement {
   return (
     <div className="flex w-full shrink-0 items-center justify-between gap-3">
       <span className="inline-flex h-7 items-center gap-1.5 text-[11px] font-semibold uppercase text-[var(--text-3)]" title="Sorted by path">
         <ArrowDownAZ size={14} />
       </span>
-      <FileViewToggle
-        fileView={fileView}
-        isReviewOpen={isReviewOpen}
-        canReview={canReview}
-        onSetFileView={onSetFileView}
-        onOpenReview={onOpenReview}
-      />
+      <div className="flex min-w-0 items-center gap-5">
+        <FileViewToggle fileView={fileView} onSetFileView={onSetFileView} />
+        <label className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-2)]">
+          <input
+            className="h-3 w-3 accent-[var(--accent-2)]"
+            type="checkbox"
+            checked={showAllFiles}
+            onChange={(event) => onSetShowAllFiles(event.target.checked)}
+          />
+          View all files
+        </label>
+      </div>
     </div>
   );
 }
 
 function FileViewToggle({
   fileView,
-  isReviewOpen,
-  canReview,
-  onSetFileView,
-  onOpenReview
+  onSetFileView
 }: {
   fileView: FileViewMode;
-  isReviewOpen: boolean;
-  canReview: boolean;
   onSetFileView: (view: FileViewMode) => void;
-  onOpenReview: () => void;
 }): ReactElement {
   return (
     <div className="segmented shrink-0">
-      <button type="button" data-active={!isReviewOpen && fileView === 'path'} onClick={() => onSetFileView('path')} title="Path list">
+      <button type="button" data-active={fileView === 'path'} onClick={() => onSetFileView('path')} title="Path list">
         <List size={12} />
         Path
       </button>
-      <button type="button" data-active={!isReviewOpen && fileView === 'tree'} onClick={() => onSetFileView('tree')} title="File tree">
+      <button type="button" data-active={fileView === 'tree'} onClick={() => onSetFileView('tree')} title="File tree">
         <FolderTree size={12} />
         Tree
-      </button>
-      <button type="button" data-active={isReviewOpen} disabled={!canReview} onClick={onOpenReview} title="Context review">
-        <BookOpenCheck size={12} />
-        Review
       </button>
     </div>
   );
@@ -1159,7 +1174,7 @@ function FileRow({
   onReveal
 }: FileRowProps): ReactElement {
   const separatorIndex = file.path.lastIndexOf('/');
-  const directory = separatorIndex === -1 ? '' : file.path.slice(0, separatorIndex + 1);
+  const directory = separatorIndex === -1 ? '' : file.path.slice(0, separatorIndex);
   const basename = separatorIndex === -1 ? file.path : file.path.slice(separatorIndex + 1);
   const canOpen = canOpenWorktreeFile(file);
   const canDiscard = canDiscardWipFile(file);
@@ -1188,15 +1203,22 @@ function FileRow({
       style={{ background: isSelected ? 'var(--select-bg)' : undefined }}
     >
       <button
-        className="flex h-full w-full min-w-0 items-center gap-2 overflow-hidden pr-1 text-left"
+        className="flex h-full w-full min-w-0 items-center gap-1.5 overflow-hidden pr-1 text-left"
         type="button"
         title={file.path}
         onPointerDown={handleSelectPointerDown}
         onClick={handleSelectClick}
       >
         <StatusIcon status={file.status} />
-        {directory ? <span className="min-w-0 truncate text-[var(--text-3)]">{directory}</span> : null}
-        <span className="min-w-0 truncate text-[var(--text-2)]">{basename}</span>
+        <span className="flex min-w-0 flex-1 items-center overflow-hidden">
+          {directory ? (
+            <>
+              <span className="min-w-0 truncate text-[var(--text-3)]">{directory}</span>
+              <span className="shrink-0 text-[var(--text-3)]">/</span>
+            </>
+          ) : null}
+          <span className="max-w-[72%] shrink-0 truncate text-[var(--text-2)]">{basename}</span>
+        </span>
         {file.conflicted ? <span className="badge-mini border-[var(--danger-border)] text-[var(--danger-text)]">conflict</span> : null}
         {!isWip && file.staged ? <span className="badge-mini">staged</span> : null}
         {!isWip && file.unstaged ? <span className="badge-mini">worktree</span> : null}
@@ -1296,74 +1318,164 @@ type ChangedFilesTreeProps = {
 };
 
 function ChangedFilesTree({ files, selectedPath, onSelectPath }: ChangedFilesTreeProps): ReactElement {
-  const isSyncingSelectionRef = useRef(false);
-  const paths = useMemo(() => files.map((file) => file.path), [files]);
-  const pathSet = useMemo(() => new Set(paths), [paths]);
-  const preparedInput = useMemo(() => prepareFileTreeInput(paths, { flattenEmptyDirectories: true }), [paths]);
-  const gitStatus = useMemo<GitStatusEntry[]>(
-    () =>
-      files.map((file) => ({
-        path: file.path,
-        status: treeStatus(file.status)
-      })),
-    [files]
+  const nodes = useMemo(() => buildChangedFileTree(files), [files]);
+  const allDirectoryPaths = useMemo(() => collectDirectoryPaths(nodes), [nodes]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
+    () => new Set(selectedPath ? fileTreeAncestorPaths(selectedPath) : [])
   );
-  const { model } = useFileTree({
-    preparedInput,
-    gitStatus,
-    initialExpansion: 'open',
-    initialSelectedPaths: selectedPath ? [selectedPath] : [],
-    onSelectionChange(selectedPaths) {
-      if (isSyncingSelectionRef.current) {
-        return;
-      }
-
-      onSelectPath(selectedPaths.find((path) => pathSet.has(path)));
-    },
-    search: files.length > 8,
-    unsafeCSS: `
-      :host {
-        --trees-selected-bg-override: var(--select-bg);
-        --trees-border-color-override: var(--border);
-        --trees-fg-override: var(--text-2);
-        --trees-muted-fg-override: var(--text-3);
-        --trees-bg-override: transparent;
-        --trees-hover-bg-override: var(--bg-hover);
-        font-size: 12px;
-      }
-    `
-  });
 
   useEffect(() => {
-    const selectedPaths = model.getSelectedPaths();
-    const currentSelectedPath = selectedPaths.find((path) => pathSet.has(path));
-
-    if (currentSelectedPath === selectedPath && selectedPaths.length <= (selectedPath ? 1 : 0)) {
+    if (!selectedPath) {
       return;
     }
 
-    isSyncingSelectionRef.current = true;
+    // Keep manual expansion/focus state while revealing files selected outside this tree.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExpandedPaths((current) => expandFileTreePathAncestors(current, selectedPath));
+  }, [selectedPath]);
 
-    try {
-      for (const path of selectedPaths) {
-        if (path !== selectedPath) {
-          model.getItem(path)?.deselect();
-        }
-      }
+  function toggleDirectory(path: string): void {
+    setExpandedPaths((current) => toggleFileTreePath(current, path));
+  }
 
-      if (selectedPath && pathSet.has(selectedPath)) {
-        const selectedItem = model.getItem(selectedPath);
+  return (
+    <div className="pb-2">
+      <button
+        className="mb-1 flex h-8 items-center rounded px-2 text-left text-[12px] text-[var(--text-2)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+        type="button"
+        onClick={() => setExpandedPaths(new Set(allDirectoryPaths))}
+      >
+        Expand All
+      </button>
+      <ul aria-label="Changed files">
+        {nodes.map((node) => (
+          <ChangedFileTreeRow
+            key={`${node.kind}:${node.path}`}
+            node={node}
+            depth={0}
+            expandedPaths={expandedPaths}
+            selectedPath={selectedPath}
+            onToggleDirectory={toggleDirectory}
+            onSelectPath={onSelectPath}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
 
-        if (!selectedItem?.isSelected()) {
-          selectedItem?.select();
-        }
-      }
-    } finally {
-      isSyncingSelectionRef.current = false;
+function ChangedFileTreeRow({
+  node,
+  depth,
+  expandedPaths,
+  selectedPath,
+  onToggleDirectory,
+  onSelectPath
+}: {
+  node: ChangedFileTreeNode;
+  depth: number;
+  expandedPaths: ReadonlySet<string>;
+  selectedPath?: string;
+  onToggleDirectory: (path: string) => void;
+  onSelectPath: (path: string | undefined) => void;
+}): ReactElement {
+  const paddingLeft = depth * 15 + 2;
+
+  if (node.kind === 'file') {
+    const isSelected = selectedPath === node.path;
+
+    return (
+      <li>
+        <button
+          className="flex h-8 w-full min-w-0 items-center gap-2 rounded pr-2 text-left text-[12px] transition hover:bg-[var(--bg-hover)]"
+          style={{ paddingLeft, background: isSelected ? 'var(--select-bg)' : undefined }}
+          type="button"
+          aria-current={isSelected ? 'true' : undefined}
+          title={node.path}
+          onClick={() => onSelectPath(node.path)}
+        >
+          <span className="w-3 shrink-0" aria-hidden="true" />
+          <StatusIcon status={node.file.status} />
+          <span className="min-w-0 truncate text-[var(--text-2)]">{node.name}</span>
+        </button>
+      </li>
+    );
+  }
+
+  const isExpanded = expandedPaths.has(node.path);
+
+  return (
+    <li>
+      <button
+        className="flex h-8 w-full min-w-0 items-center gap-1 rounded pr-2 text-left text-[12px] text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]"
+        style={{ paddingLeft }}
+        type="button"
+        aria-expanded={isExpanded}
+        title={node.path}
+        onClick={() => onToggleDirectory(node.path)}
+      >
+        {isExpanded ? <ChevronDown size={13} className="shrink-0" /> : <ChevronRight size={13} className="shrink-0" />}
+        <span className="min-w-0 truncate">{node.name}</span>
+        {!isExpanded ? <DirectoryStatusCounts counts={node.counts} /> : null}
+      </button>
+      {isExpanded ? (
+        <ul>
+          {node.children.map((child) => (
+            <ChangedFileTreeRow
+              key={`${child.kind}:${child.path}`}
+              node={child}
+              depth={depth + 1}
+              expandedPaths={expandedPaths}
+              selectedPath={selectedPath}
+              onToggleDirectory={onToggleDirectory}
+              onSelectPath={onSelectPath}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+function DirectoryStatusCounts({ counts }: { counts: FileStatusCounts }): ReactElement {
+  const modifiedCount = counts.modified + counts.renamed + counts.conflicted;
+
+  return (
+    <span className="ml-2 flex shrink-0 items-center gap-2 text-[11px]">
+      {modifiedCount > 0 ? (
+        <span className="flex items-center gap-1" style={{ color: FILE_STATUS_COLORS.modified }}>
+          <Pencil size={11} />
+          {modifiedCount}
+        </span>
+      ) : null}
+      {counts.added > 0 ? (
+        <span className="flex items-center gap-1" style={{ color: FILE_STATUS_COLORS.added }}>
+          <Plus size={12} />
+          {counts.added}
+        </span>
+      ) : null}
+      {counts.deleted > 0 ? (
+        <span className="flex items-center gap-1" style={{ color: FILE_STATUS_COLORS.deleted }}>
+          <Minus size={12} />
+          {counts.deleted}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function collectDirectoryPaths(nodes: ChangedFileTreeNode[]): string[] {
+  const paths: string[] = [];
+
+  for (const node of nodes) {
+    if (node.kind !== 'directory') {
+      continue;
     }
-  }, [model, pathSet, selectedPath]);
 
-  return <FileTree className="gg-file-tree" model={model} style={{ height: treeHeight(files.length) }} />;
+    paths.push(node.path, ...collectDirectoryPaths(node.children));
+  }
+
+  return paths;
 }
 
 function PanelMessage({ icon, label }: { icon: ReactElement; label: string }): ReactElement {
