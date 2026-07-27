@@ -19,6 +19,7 @@ import type {
   GitHubActionsRunsInput,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
+  GitHubPullRequestReviewCommentUpdateInput,
   GitInteractiveRebaseAction,
   GitInteractiveRebaseInput,
   GitMergeInput,
@@ -156,6 +157,13 @@ const validators = {
     readGitHubPullRequestReviewGuideArgs('github:start-pull-request-review-guide', args),
   'github:submit-pull-request-review': (args) =>
     readOnlyArg(args, 'github:submit-pull-request-review', 'input', readGitHubPullRequestReviewInput),
+  'github:update-pull-request-review-comment': (args) =>
+    readOnlyArg(
+      args,
+      'github:update-pull-request-review-comment',
+      'input',
+      readGitHubPullRequestReviewCommentUpdateInput
+    ),
   'github:merge-pull-request': (args) =>
     readOnlyArg(args, 'github:merge-pull-request', 'input', readGitHubPullRequestMergeInput),
   'profiles:save': (args) => readOnlyArg(args, 'profiles:save', 'profile', readProfile),
@@ -495,15 +503,17 @@ function readGitHubPullRequestReviewInput(value: unknown): GitHubPullRequestRevi
   const event = readEnumProperty(record, 'event', ['comment', 'approve', 'request-changes']);
   const body = readLimitedString(record.body, 'body', 65_536);
   const comments = readGitHubDraftLineComments(record.comments);
+  const fileComments = readGitHubDraftFileComments(record.fileComments);
   const replies = readGitHubDraftReplies(record.replies);
 
   if (
     event === 'comment' &&
     body.trim().length === 0 &&
     comments.length === 0 &&
+    fileComments.length === 0 &&
     replies.length === 0
   ) {
-    throw new Error('A comment review must include a summary, line comment, or reply.');
+    throw new Error('A comment review must include a summary, review comment, or reply.');
   }
 
   if (event === 'request-changes' && body.trim().length === 0) {
@@ -516,8 +526,26 @@ function readGitHubPullRequestReviewInput(value: unknown): GitHubPullRequestRevi
     body,
     commitId: readNonEmptyLimitedString(record.commitId, 'commitId', 128),
     comments,
+    fileComments,
     replies
   };
+}
+
+function readGitHubDraftFileComments(
+  value: unknown
+): GitHubPullRequestReviewInput['fileComments'] {
+  if (!Array.isArray(value) || value.length > 100) {
+    throw new Error('fileComments must be an array with at most 100 items.');
+  }
+
+  return value.map((item, index) => {
+    const record = readRecord(item, `fileComments[${index}]`);
+    return {
+      id: readNonEmptyLimitedString(record.id, `fileComments[${index}].id`, 128),
+      body: readNonEmptyLimitedString(record.body, `fileComments[${index}].body`, 65_536),
+      path: readNonEmptyLimitedString(record.path, `fileComments[${index}].path`, 4_096)
+    };
+  });
 }
 
 function readGitHubDraftLineComments(
@@ -582,6 +610,17 @@ function readGitHubPullRequestMergeInput(value: unknown): GitHubPullRequestMerge
   return {
     ...readGitHubPullRequestLocator(record),
     method: readEnumProperty(record, 'method', ['merge', 'squash', 'rebase'])
+  };
+}
+
+function readGitHubPullRequestReviewCommentUpdateInput(
+  value: unknown
+): GitHubPullRequestReviewCommentUpdateInput {
+  const record = readRecord(value, 'pull request review comment update input');
+  return {
+    ...readGitHubPullRequestLocator(record),
+    commentId: readPositiveInteger(record.commentId, 'commentId'),
+    body: readNonEmptyLimitedString(record.body, 'body', 65_536)
   };
 }
 

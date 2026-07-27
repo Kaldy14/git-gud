@@ -14,6 +14,7 @@ import type {
   GitHubPullRequestMergeInput,
   GitHubPullRequestReview,
   GitHubPullRequestReviewComment,
+  GitHubPullRequestReviewCommentUpdateInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestSummary,
   GitHubRepositorySummary,
@@ -634,8 +635,33 @@ export async function submitGitHubPullRequestReview(
   }
 
   const failedDraftIds: string[] = [];
+  let submittedFileComments = 0;
   let submittedReplies = 0;
-  let firstReplyError: Error | undefined;
+  let firstStandaloneCommentError: Error | undefined;
+
+  for (const comment of input.fileComments) {
+    try {
+      await runGitHubJson(
+        context,
+        [
+          'api',
+          '--hostname',
+          context.host,
+          '--method',
+          'POST',
+          '--input',
+          '-',
+          `${endpoint}/comments`
+        ],
+        createGitHubFileReviewCommentPayload(comment, input.commitId)
+      );
+      submittedFileComments += 1;
+    } catch (error) {
+      failedDraftIds.push(comment.id);
+      firstStandaloneCommentError ??=
+        error instanceof Error ? error : new Error('Could not submit a file review comment.');
+    }
+  }
 
   for (const reply of input.replies) {
     try {
@@ -656,15 +682,21 @@ export async function submitGitHubPullRequestReview(
       submittedReplies += 1;
     } catch (error) {
       failedDraftIds.push(reply.id);
-      firstReplyError ??= error instanceof Error ? error : new Error('Could not submit a review reply.');
+      firstStandaloneCommentError ??=
+        error instanceof Error ? error : new Error('Could not submit a review reply.');
     }
   }
 
-  if (!reviewSubmitted && submittedReplies === 0 && firstReplyError) {
-    throw firstReplyError;
+  if (
+    !reviewSubmitted &&
+    submittedFileComments === 0 &&
+    submittedReplies === 0 &&
+    firstStandaloneCommentError
+  ) {
+    throw firstStandaloneCommentError;
   }
 
-  const submittedDraftCount = input.comments.length + submittedReplies;
+  const submittedDraftCount = input.comments.length + submittedFileComments + submittedReplies;
   const actionMessage =
     input.event === 'approve'
       ? 'Pull request approved'
@@ -675,14 +707,72 @@ export async function submitGitHubPullRequestReview(
           : `${submittedDraftCount} review ${submittedDraftCount === 1 ? 'comment' : 'comments'} submitted`;
   const failureMessage =
     failedDraftIds.length > 0
-      ? ` ${failedDraftIds.length} draft ${failedDraftIds.length === 1 ? 'reply was' : 'replies were'} not sent and ${failedDraftIds.length === 1 ? 'remains' : 'remain'} in Git Gud.`
+      ? ` ${failedDraftIds.length} draft ${failedDraftIds.length === 1 ? 'comment was' : 'comments were'} not sent and ${failedDraftIds.length === 1 ? 'remains' : 'remain'} in Git Gud.`
       : '.';
 
   return {
     message: `${actionMessage}${failureMessage}`,
-    submitted: reviewSubmitted || submittedReplies > 0,
+    submitted: reviewSubmitted || submittedFileComments > 0 || submittedReplies > 0,
     failedDraftIds
   };
+}
+
+export function createGitHubFileReviewCommentPayload(
+  comment: GitHubPullRequestReviewInput['fileComments'][number],
+  commitId: string
+): Record<string, string> {
+  return {
+    body: comment.body,
+    commit_id: commitId,
+    path: comment.path,
+    subject_type: 'file'
+  };
+}
+
+export async function updateGitHubPullRequestReviewComment(
+  input: GitHubPullRequestReviewCommentUpdateInput
+): Promise<GitHubPullRequestActionResult> {
+  const context = await getGitHubContext(input.profileId);
+  const commentEndpoint = `${repositoryEndpoint(input)}/pulls/comments/${input.commentId}`;
+  const existingComment = readRecord(
+    await runGitHubJson(context, ['api', '--hostname', context.host, commentEndpoint]),
+    'review comment'
+  );
+  const pullRequestUrl = readString(
+    existingComment.pull_request_url,
+    'review comment pull request URL'
+  );
+  if (!reviewCommentBelongsToPullRequest(pullRequestUrl, input)) {
+    throw new Error('The review comment no longer belongs to this pull request. Refresh and try again.');
+  }
+  await runGitHubJson(
+    context,
+    [
+      'api',
+      '--hostname',
+      context.host,
+      '--method',
+      'PATCH',
+      '--input',
+      '-',
+      commentEndpoint
+    ],
+    { body: input.body }
+  );
+  return { message: 'Review comment updated.' };
+}
+
+export function reviewCommentBelongsToPullRequest(
+  pullRequestUrl: string,
+  locator: GitHubPullRequestLocator
+): boolean {
+  try {
+    const path = decodeURIComponent(new URL(pullRequestUrl).pathname).replace(/\/$/u, '');
+    const expectedPath = `/repos/${locator.owner}/${locator.repository}/pulls/${locator.number}`;
+    return path === expectedPath || path === `/api/v3${expectedPath}`;
+  } catch {
+    return false;
+  }
 }
 
 export async function mergeGitHubPullRequest(
@@ -1008,7 +1098,7 @@ function formatDiffPath(path: string): string {
   return /[\s"\\]/u.test(path) ? JSON.stringify(path) : path;
 }
 
-function parseReviewComment(value: unknown): GitHubPullRequestReviewComment {
+export function parseReviewComment(value: unknown): GitHubPullRequestReviewComment {
   const comment = readRecord(value, 'review comment');
   const line = readOptionalNumber(comment.line) ?? readOptionalNumber(comment.original_line);
   const side = normalizeSide(readOptionalString(comment.side) ?? readOptionalString(comment.original_side));
@@ -1023,6 +1113,7 @@ function parseReviewComment(value: unknown): GitHubPullRequestReviewComment {
     path: readString(comment.path, 'review comment path'),
     createdAt: readString(comment.created_at, 'review comment created time'),
     updatedAt: readString(comment.updated_at, 'review comment updated time'),
+    subjectType: readOptionalString(comment.subject_type)?.toLowerCase() === 'file' ? 'file' : 'line',
     line,
     side,
     startLine,

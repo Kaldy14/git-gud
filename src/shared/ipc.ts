@@ -35,6 +35,7 @@ import type {
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
+  GitHubPullRequestReviewCommentUpdateInput,
   GitHubRepositorySummary,
   GitProfile,
   GitPushInput,
@@ -394,6 +395,10 @@ export type IpcChannelMap = {
     args: [input: GitHubPullRequestReviewInput];
     result: GitHubPullRequestActionResult;
   };
+  'github:update-pull-request-review-comment': {
+    args: [input: GitHubPullRequestReviewCommentUpdateInput];
+    result: GitHubPullRequestActionResult;
+  };
   'github:merge-pull-request': {
     args: [input: GitHubPullRequestMergeInput];
     result: GitHubPullRequestActionResult;
@@ -509,6 +514,7 @@ export type RendererApi = {
     sourceFingerprint: string
   ) => Promise<GitReviewGuideState>;
   submitGitHubPullRequestReview: (input: GitHubPullRequestReviewInput) => Promise<GitHubPullRequestActionResult>;
+  updateGitHubPullRequestReviewComment: (input: GitHubPullRequestReviewCommentUpdateInput) => Promise<GitHubPullRequestActionResult>;
   mergeGitHubPullRequest: (input: GitHubPullRequestMergeInput) => Promise<GitHubPullRequestActionResult>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
   activateProfile: (profileId: string | undefined) => Promise<WorkspaceState>;

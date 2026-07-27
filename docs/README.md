@@ -30,6 +30,7 @@ src/renderer/src/
     sidebar/Sidebar.tsx               PR destination, expandable dashboard list, refs sections, collapse rail
     dashboard/DashboardView.tsx       GitHub Actions tiles, live run rows, dashboard and tile dialogs
     github/PullRequestInboxView.tsx   profile-scoped GitHub pull-request inbox
+    github/PullRequestReviewView.tsx  focused PR review, local line/file drafts, comment editing, submission
     graph/GraphView.tsx               virtualized commit graph: ref chips, per-row SVG rails, nodes, date markers,
                                       arrow-key row navigation, viewport-clamped context menus, WIP status counts
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer/actions
@@ -49,6 +50,12 @@ src/renderer/src/
 ## Theme
 
 Dark slate palette defined as CSS variables in `styles/main.css` (`--bg-*`, `--text-1..3`, `--border*`, `--accent`). Branch lane colors (`LANE_COLORS`) and file status colors (`FILE_STATUS_COLORS`) live in `src/shared/graph.ts`. Components use Tailwind v4 utilities referencing the variables; repeated patterns (toolbar actions, chips, menus, segmented controls) are shared classes in `main.css`.
+
+## Pull request comments
+
+PR reviews support local line comments, whole-file comments, and replies. Hovering the left diff gutter reveals an accessibly labelled `+` comment action; selecting it, clicking a line number, or dragging in either direction across lines opens the composer directly beneath the normalized range. Review-unit and filter navigation remain disabled until the active composer is added or cancelled, preventing typed text from becoming hidden. File headers provide a persistent **Comment on file** action. Drafts remain local until **Finish your review** submits them. Published line comments, file comments, and replies authored by the active GitHub viewer can be edited inline. File comments use GitHub's standalone review-comment endpoint with `subject_type: file`, while edits use the repository-level pull review comment endpoint.
+
+Review controls use three shared densities: 32px contained actions in headers and dialogs, 28px contained actions in inline forms, and 24px tertiary actions for comment, edit, reply, and draft removal. This keeps action hierarchy, icons, focus states, and disabled states consistent across the review flow.
 
 ## Graph rendering model
 

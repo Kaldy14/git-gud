@@ -50,7 +50,7 @@ export function ReviewPatternsDialog({
               These patterns apply only to this repository. Matching files are omitted when the Skip patterns checkbox is enabled.
             </p>
           </div>
-          <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} aria-label="Close skip pattern settings">
+          <button className="icon-btn icon-btn-compact shrink-0" type="button" onClick={onClose} aria-label="Close skip pattern settings">
             <X size={14} />
           </button>
         </header>
@@ -85,8 +85,8 @@ export function ReviewPatternsDialog({
         <footer className="flex min-h-14 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-5 py-3">
           <p className="text-[10.5px] text-[var(--text-3)]">Saving an empty list disables pattern skipping.</p>
           <div className="flex shrink-0 items-center gap-2">
-            <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>Cancel</button>
-            <button className="btn-primary h-8 text-xs" type="submit">Save patterns</button>
+            <button className="btn-subtle btn-regular" type="button" onClick={onClose}>Cancel</button>
+            <button className="btn-primary btn-regular" type="submit">Save patterns</button>
           </div>
         </footer>
       </form>

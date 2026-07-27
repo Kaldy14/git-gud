@@ -161,14 +161,19 @@ describe('IPC argument validation', () => {
           event: 'comment',
           body: '',
           commitId: 'abc123',
-          comments: [{
+           comments: [{
             id: 'draft-line-1',
             body: 'Please cover this edge case.',
             path: 'src/widget.ts',
             line: 18,
-            side: 'right'
-          }],
-          replies: [{
+             side: 'right'
+           }],
+           fileComments: [{
+             id: 'draft-file-1',
+             body: 'This file needs a module-level test.',
+             path: 'src/widget.ts'
+           }],
+           replies: [{
             id: 'draft-reply-1',
             body: 'Agreed — I added this to the review.',
             inReplyToId: 123
@@ -179,8 +184,26 @@ describe('IPC argument validation', () => {
       event: 'comment',
       commitId: 'abc123',
       comments: [{ line: 18, side: 'right', path: 'src/widget.ts' }],
+      fileComments: [{ path: 'src/widget.ts' }],
       replies: [{ inReplyToId: 123 }]
     });
+    expect(
+      validateIpcArgs('github:update-pull-request-review-comment', [{
+        profileId: 'profile:kaldy',
+        owner: 'acme',
+        repository: 'widgets',
+        number: 42,
+        commentId: 123,
+        body: 'Updated review comment'
+      }])
+    ).toEqual([{
+      profileId: 'profile:kaldy',
+      owner: 'acme',
+      repository: 'widgets',
+      number: 42,
+      commentId: 123,
+      body: 'Updated review comment'
+    }]);
     expect(validateIpcArgs('repo:file-history', ['/repo', 'src/app.ts', 50])).toEqual(['/repo', 'src/app.ts', 50]);
     expect(validateIpcArgs('repo:file-blame', ['/repo', 'src/app.ts'])).toEqual(['/repo', 'src/app.ts', undefined]);
     expect(validateIpcArgs('repo:compare', ['/repo', 'main', 'feature/test'])).toEqual(['/repo', 'main', 'feature/test']);
@@ -377,12 +400,23 @@ describe('IPC argument validation', () => {
           number: 42,
           event: 'request-changes',
           body: '',
-          commitId: 'abc123',
-          comments: [],
-          replies: []
+           commitId: 'abc123',
+           comments: [],
+           fileComments: [],
+           replies: []
         }
       ])
     ).toThrow('body must not be empty');
+    expect(() =>
+      validateIpcArgs('github:update-pull-request-review-comment', [{
+        profileId: 'profile:kaldy',
+        owner: 'acme',
+        repository: 'widgets',
+        number: 42,
+        commentId: 0,
+        body: ''
+      }])
+    ).toThrow('commentId must be a positive integer');
     expect(() => validateIpcArgs('repo:compare', ['/repo', 'main'])).toThrow('repo:compare expected 3 arguments');
     expect(() => validateIpcArgs('repo:cherry-pick', ['/repo', 'not-an-array'])).toThrow(
       'shas must be an array of strings.'

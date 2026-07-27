@@ -11,6 +11,7 @@ import {
   Clock3,
   CornerDownRight,
   ExternalLink,
+  FileText,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -29,6 +30,7 @@ import type { DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import {
   ReviewView,
+  type ReviewFileCommentInput,
   type ReviewLineComment,
   type ReviewLineCommentInput,
   type ReviewLineReplyInput
@@ -42,6 +44,7 @@ import {
 import type {
   DiffSyntaxTheme,
   GitHubPullRequestDetail,
+  GitHubPullRequestDraftFileComment,
   GitHubPullRequestDraftLineComment,
   GitHubPullRequestDraftReply,
   GitHubPullRequestMergeMethod,
@@ -53,6 +56,7 @@ import {
   buildPullRequestDiscussion,
   type PullRequestDiscussionEntry
 } from './pullRequestDiscussion';
+import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
 
 type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
@@ -69,6 +73,10 @@ type ReviewEvent = GitHubPullRequestReviewInput['event'];
 type PullRequestReviewDraft =
   | (GitHubPullRequestDraftLineComment & {
       kind: 'line';
+      createdAt: string;
+    })
+  | (GitHubPullRequestDraftFileComment & {
+      kind: 'file';
       createdAt: string;
     })
   | (GitHubPullRequestDraftReply & {
@@ -202,7 +210,8 @@ function PullRequestReviewContent({
   const displayedLineComments = useMemo<ReviewLineComment[]>(() => {
     const publishedComments: ReviewLineComment[] = detail.reviewComments.map((comment) => ({
       ...comment,
-      authorAvatarUrl: comment.authorAvatarUrl
+      authorAvatarUrl: comment.authorAvatarUrl,
+      canEdit: comment.author === detail.viewerLogin
     }));
     const commentById = new Map(
       detail.reviewComments.map((comment) => [comment.id, comment])
@@ -215,8 +224,21 @@ function PullRequestReviewContent({
           author: detail.viewerLogin,
           createdAt: draft.createdAt,
           path: draft.path,
+          subjectType: 'line',
           line: draft.line,
           side: draft.side,
+          isDraft: true
+        }];
+      }
+
+      if (draft.kind === 'file') {
+        return [{
+          id: draft.id,
+          body: draft.body,
+          author: detail.viewerLogin,
+          createdAt: draft.createdAt,
+          path: draft.path,
+          subjectType: 'file',
           isDraft: true
         }];
       }
@@ -230,7 +252,8 @@ function PullRequestReviewContent({
         body: draft.body,
         author: detail.viewerLogin,
         createdAt: draft.createdAt,
-        path: parent.path,
+          path: parent.path,
+          subjectType: parent.subjectType,
         line: parent.line,
         side: parent.side,
         inReplyToId: draft.inReplyToId,
@@ -258,12 +281,15 @@ function PullRequestReviewContent({
     ]);
   };
   const reviewMutation = useMutation({
-    mutationFn: (input: GitHubPullRequestReviewInput) =>
-      window.api.submitGitHubPullRequestReview(input),
-    onSuccess: async (result) => {
+    mutationFn: ({ input }: {
+      input: GitHubPullRequestReviewInput;
+      submittedDraftIds: string[];
+    }) => window.api.submitGitHubPullRequestReview(input),
+    onSuccess: async (result, { submittedDraftIds }) => {
       const failedDraftIds = new Set(result.failedDraftIds ?? []);
+      const submittedDraftIdSet = new Set(submittedDraftIds);
       updateReviewDrafts((current) =>
-        current.filter((draft) => failedDraftIds.has(draft.id))
+        retainUnsubmittedOrFailedDrafts(current, submittedDraftIdSet, failedDraftIds)
       );
       setNotice({
         tone: failedDraftIds.size > 0 ? 'danger' : 'success',
@@ -277,6 +303,14 @@ function PullRequestReviewContent({
         tone: 'danger',
         message: error instanceof Error ? error.message : 'Could not submit the review.'
       });
+    }
+  });
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ commentId, body }: { commentId: number; body: string }) =>
+      window.api.updateGitHubPullRequestReviewComment({ ...locator, commentId, body }),
+    onSuccess: async (result) => {
+      setNotice({ tone: 'success', message: result.message });
+      await queryClient.invalidateQueries({ queryKey: gitHubPullRequestDetailQueryKey(locator) });
     }
   });
   const mergeMutation = useMutation({
@@ -312,6 +346,26 @@ function PullRequestReviewContent({
     });
   }
 
+  async function addDraftFileComment(input: ReviewFileCommentInput): Promise<void> {
+    updateReviewDrafts((current) => [
+      ...current,
+      {
+        id: window.crypto.randomUUID(),
+        kind: 'file',
+        createdAt: new Date().toISOString(),
+        ...input
+      }
+    ]);
+    setNotice({
+      tone: 'success',
+      message: 'File comment added to your local review draft.'
+    });
+  }
+
+  async function updateComment(commentId: number, body: string): Promise<void> {
+    await updateCommentMutation.mutateAsync({ commentId, body });
+  }
+
   async function addDraftReply(input: ReviewLineReplyInput): Promise<void> {
     const parent = detail.reviewComments.find(
       (comment) => comment.id === input.inReplyToId && comment.inReplyToId === undefined
@@ -341,32 +395,44 @@ function PullRequestReviewContent({
 
   function submitReview(event: ReviewEvent, body: string): void {
     reviewMutation.mutate({
-      ...locator,
-      event,
-      body,
-      commitId: detail.headSha,
-      comments: reviewDrafts
-        .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'line' }> =>
-          draft.kind === 'line'
-        )
-        .map((draft) => ({
-          id: draft.id,
-          body: draft.body,
-          path: draft.path,
-          line: draft.line,
-          side: draft.side,
-          startLine: draft.startLine,
-          startSide: draft.startSide
-        })),
-      replies: reviewDrafts
-        .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'reply' }> =>
-          draft.kind === 'reply'
-        )
-        .map((draft) => ({
-          id: draft.id,
-          body: draft.body,
-          inReplyToId: draft.inReplyToId
-        }))
+      submittedDraftIds: reviewDrafts.map((draft) => draft.id),
+      input: {
+        ...locator,
+        event,
+        body,
+        commitId: detail.headSha,
+        comments: reviewDrafts
+          .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'line' }> =>
+            draft.kind === 'line'
+          )
+          .map((draft) => ({
+            id: draft.id,
+            body: draft.body,
+            path: draft.path,
+            line: draft.line,
+            side: draft.side,
+            startLine: draft.startLine,
+            startSide: draft.startSide
+          })),
+        fileComments: reviewDrafts
+          .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'file' }> =>
+            draft.kind === 'file'
+          )
+          .map((draft) => ({
+            id: draft.id,
+            body: draft.body,
+            path: draft.path
+          })),
+        replies: reviewDrafts
+          .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'reply' }> =>
+            draft.kind === 'reply'
+          )
+          .map((draft) => ({
+            id: draft.id,
+            body: draft.body,
+            inReplyToId: draft.inReplyToId
+          }))
+      }
     });
   }
 
@@ -374,7 +440,7 @@ function PullRequestReviewContent({
     <section className="pr-review-view" aria-label={`Review ${detail.title}`}>
       <header className="pr-review-header">
         <button
-          className="icon-btn h-8 w-8 shrink-0"
+          className="icon-btn icon-btn-regular shrink-0"
           type="button"
           onClick={onBackToInbox}
           aria-label="Back to pull requests"
@@ -402,18 +468,18 @@ function PullRequestReviewContent({
           </div>
         </div>
         <div className="pr-review-header-actions">
-          <a className="btn-subtle h-8 text-xs" href={detail.url} target="_blank" rel="noreferrer">
+          <a className="btn-subtle btn-regular" href={detail.url} target="_blank" rel="noreferrer">
             <ExternalLink size={12} />
             GitHub
           </a>
-          <button className="btn-subtle h-8 text-xs" type="button" onClick={() => setIsReviewDialogOpen(true)}>
+          <button className="btn-subtle btn-regular" type="button" onClick={() => setIsReviewDialogOpen(true)}>
             <ShieldCheck size={13} />
             {reviewDrafts.length > 0
-              ? `Submit review · ${reviewDrafts.length}`
+              ? `Finish review · ${reviewDrafts.length}`
               : 'Finish review'}
           </button>
           <button
-            className="btn-primary h-8 text-xs"
+            className="btn-primary btn-regular"
             type="button"
             disabled={!detail.canMerge || detail.isDraft || mergeMutation.isPending}
             title={
@@ -429,7 +495,7 @@ function PullRequestReviewContent({
             {mergeMethodLabel(detail.mergeSettings.defaultMethod)}
           </button>
           <button
-            className="icon-btn h-8 w-8 shrink-0"
+            className="icon-btn icon-btn-regular shrink-0"
             type="button"
             onClick={onClose}
             aria-label="Close pull request review and return to commit graph"
@@ -520,7 +586,7 @@ function PullRequestReviewContent({
             <small>Saved locally · nothing has been posted to GitHub</small>
           </span>
           <span className="pr-review-draft-action">
-            Review and submit
+            Finish review
             <CornerDownRight size={12} />
           </span>
         </button>
@@ -535,7 +601,9 @@ function PullRequestReviewContent({
           reviewProgressKey={detail.reviewPlan.targetKey}
           lineComments={displayedLineComments}
           onAddDraftLineComment={addDraftLineComment}
+          onAddDraftFileComment={addDraftFileComment}
           onAddDraftReply={addDraftReply}
+          onUpdateComment={updateComment}
           onRemoveDraftComment={removeDraft}
           diffStyle={diffStyle}
           diffSyntaxTheme={diffSyntaxTheme}
@@ -639,13 +707,13 @@ function ReviewSubmissionDialog({
     <ModalSurface
       labelledBy={titleId}
       className="pr-action-dialog"
-      onClose={onClose}
+      onClose={isSubmitting ? () => undefined : onClose}
     >
       <form onSubmit={handleSubmit}>
         <header>
           <ShieldCheck size={17} />
-          <h2 id={titleId}>Finish your review</h2>
-          <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close review dialog">
+          <h2 id={titleId}>Finish review</h2>
+          <button className="icon-btn icon-btn-compact" type="button" disabled={isSubmitting} onClick={onClose} aria-label="Close review dialog">
             <X size={14} />
           </button>
         </header>
@@ -661,7 +729,9 @@ function ReviewSubmissionDialog({
                 <button
                   key={value}
                   type="button"
+                  disabled={isSubmitting}
                   data-active={event === value}
+                  aria-pressed={event === value}
                   onClick={() => setEvent(value)}
                 >
                   <Icon size={13} />
@@ -685,18 +755,24 @@ function ReviewSubmissionDialog({
                     <span className="pr-review-draft-type">
                       {draft.kind === 'line'
                         ? <MessageSquare size={11} />
-                        : <CornerDownRight size={11} />}
+                        : draft.kind === 'file'
+                          ? <FileText size={11} />
+                          : <CornerDownRight size={11} />}
                     </span>
                     <span>
                       <strong>
                         {draft.kind === 'line'
                           ? `${draft.path}:${draft.startLine ? `${draft.startLine}–` : ''}${draft.line}`
-                          : 'Reply in existing thread'}
+                          : draft.kind === 'file'
+                            ? draft.path
+                            : 'Reply in existing thread'}
                       </strong>
                       <small>{draft.body}</small>
                     </span>
                     <button
+                      className="review-comment-action review-comment-icon-action review-comment-action--danger"
                       type="button"
+                      disabled={isSubmitting}
                       onClick={() => onRemoveDraft(draft.id)}
                       aria-label="Remove draft comment"
                     >
@@ -723,6 +799,7 @@ function ReviewSubmissionDialog({
                     ? 'Explain what should change before merging…'
                     : 'Leave a general review comment…'
               }
+              disabled={isSubmitting}
               onChange={(changeEvent) => setBody(changeEvent.target.value)}
             />
           </label>
@@ -734,8 +811,8 @@ function ReviewSubmissionDialog({
               ? 'One action sends the review.'
               : `One action sends the review and ${drafts.length} draft comment${drafts.length === 1 ? '' : 's'}.`}
           </span>
-          <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>Cancel</button>
-          <button className="btn-primary h-8 text-xs" type="submit" disabled={isSubmitting || (requiresBody && !body.trim())}>
+          <button className="btn-subtle btn-regular" type="button" disabled={isSubmitting} onClick={onClose}>Cancel</button>
+          <button className="btn-primary btn-regular" type="submit" disabled={isSubmitting || (requiresBody && !body.trim())}>
             {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             {reviewSubmitLabel(event, drafts.length)}
           </button>
@@ -773,7 +850,7 @@ function MergePullRequestDialog({
         <header>
           <GitMerge size={17} />
           <h2 id={titleId}>Merge pull request #{pullRequest.number}</h2>
-          <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close merge dialog">
+          <button className="icon-btn icon-btn-compact" type="button" onClick={onClose} aria-label="Close merge dialog">
             <X size={14} />
           </button>
         </header>
@@ -803,8 +880,8 @@ function MergePullRequestDialog({
           )}
         </div>
         <footer>
-          <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>Cancel</button>
-          <button className="btn-primary h-8 text-xs" type="submit" disabled={isMerging}>
+          <button className="btn-subtle btn-regular" type="button" onClick={onClose}>Cancel</button>
+          <button className="btn-primary btn-regular" type="submit" disabled={isMerging}>
             {isMerging ? <Loader2 size={13} className="animate-spin" /> : <GitMerge size={13} />}
             {mergeMethodLabel(method)}
           </button>
@@ -869,7 +946,7 @@ function ReviewMessage({
         <span className="mt-3 flex items-center gap-2">
           {actionLabel && onAction ? (
             <button
-              className="icon-btn h-8 w-8"
+              className="icon-btn icon-btn-regular"
               type="button"
               onClick={onAction}
               aria-label={actionLabel}
@@ -880,7 +957,7 @@ function ReviewMessage({
           ) : null}
           {closeLabel && onClose ? (
             <button
-              className="icon-btn h-8 w-8"
+              className="icon-btn icon-btn-regular"
               type="button"
               onClick={onClose}
               aria-label={closeLabel}
@@ -964,6 +1041,9 @@ function isPullRequestReviewDraft(value: unknown): value is PullRequestReviewDra
   }
   if (value.kind === 'reply') {
     return typeof value.inReplyToId === 'number' && value.inReplyToId > 0;
+  }
+  if (value.kind === 'file') {
+    return typeof value.path === 'string' && value.path.length > 0;
   }
   return (
     value.kind === 'line' &&

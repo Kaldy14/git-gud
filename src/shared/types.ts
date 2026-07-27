@@ -973,6 +973,7 @@ export type GitHubPullRequestReviewComment = {
   path: string;
   createdAt: string;
   updatedAt: string;
+  subjectType: 'line' | 'file';
   line?: number;
   side?: 'left' | 'right';
   startLine?: number;
@@ -1032,6 +1033,12 @@ export type GitHubPullRequestDraftLineComment = {
   startSide?: 'left' | 'right';
 };
 
+export type GitHubPullRequestDraftFileComment = {
+  id: string;
+  body: string;
+  path: string;
+};
+
 export type GitHubPullRequestDraftReply = {
   id: string;
   body: string;
@@ -1043,7 +1050,13 @@ export type GitHubPullRequestReviewInput = GitHubPullRequestLocator & {
   body: string;
   commitId: string;
   comments: GitHubPullRequestDraftLineComment[];
+  fileComments: GitHubPullRequestDraftFileComment[];
   replies: GitHubPullRequestDraftReply[];
+};
+
+export type GitHubPullRequestReviewCommentUpdateInput = GitHubPullRequestLocator & {
+  commentId: number;
+  body: string;
 };
 
 export type GitHubPullRequestMergeInput = GitHubPullRequestLocator & {

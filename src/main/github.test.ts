@@ -6,10 +6,13 @@ import {
   buildCompleteFilePatch,
   buildGitHubPullRequestReviewPlan,
   categorizePullRequest,
+  createGitHubFileReviewCommentPayload,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
   parseGitHubRepositoriesResponse,
   parseGitHubRepositoryMergeSettings,
+  parseReviewComment,
+  reviewCommentBelongsToPullRequest,
   selectGitHubReviewContextFiles
 } from './github';
 
@@ -67,6 +70,62 @@ describe('GitHub Actions dashboards', () => {
 });
 
 describe('GitHub pull request inbox', () => {
+  it('parses and builds file-level review comments', () => {
+    expect(parseReviewComment({
+      id: 123,
+      body: 'Consider splitting this module.',
+      user: { login: 'octocat', avatar_url: 'https://avatars.example/octocat' },
+      html_url: 'https://github.com/acme/widgets/pull/42#discussion_r123',
+      path: 'src/widget.ts',
+      subject_type: 'file',
+      created_at: '2026-07-27T10:00:00Z',
+      updated_at: '2026-07-27T10:00:00Z'
+    })).toMatchObject({
+      id: 123,
+      path: 'src/widget.ts',
+      subjectType: 'file',
+      line: undefined,
+      side: undefined
+    });
+    expect(createGitHubFileReviewCommentPayload({
+      id: 'draft-file-1',
+      body: 'Consider splitting this module.',
+      path: 'src/widget.ts'
+    }, 'head-sha')).toEqual({
+      body: 'Consider splitting this module.',
+      commit_id: 'head-sha',
+      path: 'src/widget.ts',
+      subject_type: 'file'
+    });
+  });
+
+  it('scopes review comment edits to the requested pull request', () => {
+    const locator = {
+      profileId: 'profile-1',
+      owner: 'acme',
+      repository: 'widgets',
+      number: 42
+    };
+    expect(
+      reviewCommentBelongsToPullRequest(
+        'https://api.github.com/repos/acme/widgets/pulls/42',
+        locator
+      )
+    ).toBe(true);
+    expect(
+      reviewCommentBelongsToPullRequest(
+        'https://github.acme.test/api/v3/repos/acme/widgets/pulls/42',
+        locator
+      )
+    ).toBe(true);
+    expect(
+      reviewCommentBelongsToPullRequest(
+        'https://api.github.com/repos/acme/widgets/pulls/41',
+        locator
+      )
+    ).toBe(false);
+  });
+
   it('groups direct review requests, team requests, and authored work by next action', () => {
     const response = parseGitHubInboxResponse(
       {

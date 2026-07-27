@@ -63,7 +63,8 @@ import {
   loadGitHubPullRequestInbox,
   loadGitHubRepositories,
   mergeGitHubPullRequest,
-  submitGitHubPullRequestReview
+  submitGitHubPullRequestReview,
+  updateGitHubPullRequestReviewComment
 } from './github';
 import { githubPullRequestReviewPlans } from './githubReviewPlans';
 import { validateRepository } from './git/repoInspector';
@@ -498,6 +499,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     return reviewGuideManager.start(plan);
   });
   handle('github:submit-pull-request-review', (_event, input) => submitGitHubPullRequestReview(input));
+  handle('github:update-pull-request-review-comment', (_event, input) =>
+    updateGitHubPullRequestReviewComment(input)
+  );
   handle('github:merge-pull-request', (_event, input) => mergeGitHubPullRequest(input));
   handle('profiles:save', (_event, profile) => saveProfile(profile));
   handle('profiles:activate', (_event, profileId) => {

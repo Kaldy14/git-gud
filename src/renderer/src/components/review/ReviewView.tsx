@@ -5,7 +5,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactElement
 } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { prepareFileTreeInput } from '@pierre/trees';
@@ -28,6 +28,8 @@ import {
   PackageOpen,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
+  Plus,
   Rows3,
   Reply,
   Send,
@@ -86,6 +88,7 @@ import {
   saveReviewFileTreeWidth
 } from './reviewFileTree';
 import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
+import { normalizeReviewLineSelection } from './reviewLineSelection';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import { createReviewContexts } from './reviewSections';
 
@@ -100,7 +103,9 @@ type ReviewViewProps = {
   reviewProgressKey?: string;
   lineComments?: ReviewLineComment[];
   onAddDraftLineComment?: (input: ReviewLineCommentInput) => Promise<void>;
+  onAddDraftFileComment?: (input: ReviewFileCommentInput) => Promise<void>;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
+  onUpdateComment?: (commentId: number, body: string) => Promise<void>;
   onRemoveDraftComment?: (id: string) => void;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
@@ -117,10 +122,12 @@ export type ReviewLineComment = {
   authorAvatarUrl?: string;
   createdAt: string;
   path: string;
+  subjectType: 'line' | 'file';
   line?: number;
   side?: 'left' | 'right';
   inReplyToId?: string | number;
   isDraft?: boolean;
+  canEdit?: boolean;
 };
 
 export type ReviewLineCommentInput = {
@@ -137,23 +144,39 @@ export type ReviewLineReplyInput = {
   inReplyToId: number;
 };
 
-type ReviewLineCommentThread = ReviewLineComment & {
+export type ReviewFileCommentInput = {
+  body: string;
+  path: string;
+};
+
+type ReviewCommentThread = ReviewLineComment & {
   replies: ReviewLineComment[];
 };
 
+type ReviewDiffAnnotation =
+  | { kind: 'thread'; thread: ReviewCommentThread }
+  | { kind: 'composer' };
+
+type ReviewCommentTarget =
+  | { kind: 'line'; chunkId: string; path: string; range: SelectedLineRange }
+  | { kind: 'file'; chunkId: string; path: string };
+
 type ReviewLineCollaboration = {
-  threads: ReviewLineCommentThread[];
+  threads: ReviewCommentThread[];
   selectedChunkId?: string;
   selectedPath?: string;
+  selectedSubject?: 'line' | 'file';
   selectedLines: SelectedLineRange | null;
   body: string;
   isSubmitting: boolean;
   errorMessage?: string;
   onSelectLines: (chunkId: string, path: string, range: SelectedLineRange | null) => void;
+  onSelectFile: (chunkId: string, path: string) => void;
   onBodyChange: (body: string) => void;
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
+  onUpdateComment?: (commentId: number, body: string) => Promise<void>;
   onRemoveDraftComment?: (id: string) => void;
 };
 
@@ -165,7 +188,9 @@ export function ReviewView({
   reviewProgressKey,
   lineComments = [],
   onAddDraftLineComment,
+  onAddDraftFileComment,
   onAddDraftReply,
+  onUpdateComment,
   onRemoveDraftComment,
   diffStyle,
   diffSyntaxTheme,
@@ -190,11 +215,7 @@ export function ReviewView({
       ? loadEmbeddedReviewProgress(window.localStorage, reviewProgressKey, embeddedPlan)
       : []
   );
-  const [selectedCommentLines, setSelectedCommentLines] = useState<{
-    chunkId: string;
-    path: string;
-    range: SelectedLineRange;
-  }>();
+  const [selectedCommentTarget, setSelectedCommentTarget] = useState<ReviewCommentTarget>();
   const [lineCommentBody, setLineCommentBody] = useState('');
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
   const reviewQuery = useReviewPlan(
@@ -278,9 +299,9 @@ export function ReviewView({
     () => createReviewCommentThreads(lineComments),
     [lineComments]
   );
-  const diffOptions = useMemo<FileDiffOptions<ReviewLineCommentThread>>(
+  const diffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
     () => ({
-      ...createDiffOptionsBase<ReviewLineCommentThread>(diffSyntaxTheme),
+      ...createDiffOptionsBase<ReviewDiffAnnotation>(diffSyntaxTheme),
       diffStyle,
       disableFileHeader: true
     }),
@@ -319,15 +340,26 @@ export function ReviewView({
       );
     }
   });
-  const lineCommentMutation = useMutation({
-    mutationFn: async (input: ReviewLineCommentInput) => {
-      if (!onAddDraftLineComment) {
-        throw new Error('Line comments are unavailable for this review.');
+  const commentMutation = useMutation({
+    mutationFn: async (
+      input:
+        | { kind: 'line'; comment: ReviewLineCommentInput }
+        | { kind: 'file'; comment: ReviewFileCommentInput }
+    ) => {
+      if (input.kind === 'line') {
+        if (!onAddDraftLineComment) {
+          throw new Error('Line comments are unavailable for this review.');
+        }
+        await onAddDraftLineComment(input.comment);
+        return;
       }
-      await onAddDraftLineComment(input);
+      if (!onAddDraftFileComment) {
+        throw new Error('File comments are unavailable for this review.');
+      }
+      await onAddDraftFileComment(input.comment);
     },
     onSuccess: () => {
-      setSelectedCommentLines(undefined);
+      setSelectedCommentTarget(undefined);
       setLineCommentBody('');
     }
   });
@@ -452,6 +484,9 @@ export function ReviewView({
   ]);
 
   function updatePreferences(next: ReviewPreferences): void {
+    if (selectedCommentTarget) {
+      return;
+    }
     setPreferences(next);
     saveReviewPreferences(window.localStorage, repoPath, next);
   }
@@ -459,6 +494,23 @@ export function ReviewView({
   function setFileTreeOpen(isOpen: boolean): void {
     setIsFileTreeOpen(isOpen);
     saveReviewFileTreeOpen(window.localStorage, repoPath, isOpen);
+  }
+
+  function cancelCommentComposer(): void {
+    setSelectedCommentTarget(undefined);
+    setLineCommentBody('');
+    commentMutation.reset();
+  }
+
+  function selectReviewUnit(unitId: string): void {
+    if (
+      unitId === selectedUnit?.unit.id ||
+      selectedCommentTarget !== undefined ||
+      commentMutation.isPending
+    ) {
+      return;
+    }
+    setSelectedUnitId(unitId);
   }
 
   async function startReviewGuide(): Promise<void> {
@@ -498,7 +550,7 @@ export function ReviewView({
     const nextUnitId = viewed ? findNextPendingUnitId(presentation?.units ?? [], selectedUnit.unit.id) : undefined;
     progressMutation.mutate(
       { chunkIds: selectedUnit.visibleChunks.map((chunk) => chunk.id), viewed },
-      { onSuccess: () => nextUnitId && setSelectedUnitId(nextUnitId) }
+      { onSuccess: () => nextUnitId && selectReviewUnit(nextUnitId) }
     );
   }
 
@@ -509,7 +561,7 @@ export function ReviewView({
     const nextUnit = units[nextIndex];
 
     if (nextUnit) {
-      setSelectedUnitId(nextUnit.unit.id);
+      selectReviewUnit(nextUnit.unit.id);
     }
   }
 
@@ -546,60 +598,77 @@ export function ReviewView({
     range: SelectedLineRange | null
   ): void {
     if (!range) {
-      setSelectedCommentLines((current) =>
-        current?.chunkId === chunkId ? undefined : current
-      );
+      if (selectedCommentTarget?.kind === 'line' && selectedCommentTarget.chunkId === chunkId) {
+        cancelCommentComposer();
+      }
       return;
     }
 
-    setSelectedCommentLines({ chunkId, path, range });
-    setLineCommentBody('');
+    setSelectedCommentTarget({ kind: 'line', chunkId, path, range });
+    commentMutation.reset();
   }
 
-  function handleSubmitLineComment(event: FormEvent<HTMLFormElement>): void {
+  function handleSelectCommentFile(chunkId: string, path: string): void {
+    setSelectedCommentTarget({ kind: 'file', chunkId, path });
+    commentMutation.reset();
+  }
+
+  function handleSubmitComment(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    const selection = normalizeReviewLineSelection(selectedCommentLines?.range ?? null);
+    if (!selectedCommentTarget || !lineCommentBody.trim()) {
+      return;
+    }
+    if (selectedCommentTarget.kind === 'file') {
+      commentMutation.mutate({
+        kind: 'file',
+        comment: { body: lineCommentBody.trim(), path: selectedCommentTarget.path }
+      });
+      return;
+    }
+    const selection = normalizeReviewLineSelection(selectedCommentTarget.range);
 
     if (
-      !selectedCommentLines ||
       !selection ||
-      selection.side !== selection.startSide ||
-      !lineCommentBody.trim()
+      selection.side !== selection.startSide
     ) {
       return;
     }
 
-    lineCommentMutation.mutate({
-      body: lineCommentBody.trim(),
-      path: selectedCommentLines.path,
-      line: selection.line,
-      side: selection.side,
-      startLine: selection.startLine,
-      startSide: selection.startLine ? selection.startSide : undefined
+    commentMutation.mutate({
+      kind: 'line',
+      comment: {
+        body: lineCommentBody.trim(),
+        path: selectedCommentTarget.path,
+        line: selection.line,
+        side: selection.side,
+        startLine: selection.startLine,
+        startSide: selection.startLine ? selection.startSide : undefined
+      }
     });
   }
 
-  const lineCollaboration: ReviewLineCollaboration | undefined = onAddDraftLineComment
+  const lineCollaboration: ReviewLineCollaboration | undefined =
+    onAddDraftLineComment && onAddDraftFileComment
     ? {
         threads: commentThreads,
-        selectedChunkId: selectedCommentLines?.chunkId,
-        selectedPath: selectedCommentLines?.path,
-        selectedLines: selectedCommentLines?.range ?? null,
+        selectedChunkId: selectedCommentTarget?.chunkId,
+        selectedPath: selectedCommentTarget?.path,
+        selectedSubject: selectedCommentTarget?.kind,
+        selectedLines:
+          selectedCommentTarget?.kind === 'line' ? selectedCommentTarget.range : null,
         body: lineCommentBody,
-        isSubmitting: lineCommentMutation.isPending,
+        isSubmitting: commentMutation.isPending,
         errorMessage:
-          lineCommentMutation.error instanceof Error
-            ? lineCommentMutation.error.message
+          commentMutation.error instanceof Error
+            ? commentMutation.error.message
             : undefined,
         onSelectLines: handleSelectCommentLines,
+        onSelectFile: handleSelectCommentFile,
         onBodyChange: setLineCommentBody,
-        onCancel: () => {
-          setSelectedCommentLines(undefined);
-          setLineCommentBody('');
-          lineCommentMutation.reset();
-        },
-        onSubmit: handleSubmitLineComment,
+        onCancel: cancelCommentComposer,
+        onSubmit: handleSubmitComment,
         onAddDraftReply,
+        onUpdateComment,
         onRemoveDraftComment
       }
     : undefined;
@@ -620,6 +689,7 @@ export function ReviewView({
           <ReviewFilterMenu
             preferences={preferences}
             activeCount={activeFilterCount}
+            disabled={selectedCommentTarget !== undefined}
             onChange={updatePreferences}
             onConfigurePatterns={() => setIsPatternEditorOpen(true)}
           />
@@ -639,7 +709,7 @@ export function ReviewView({
             </button>
           </div>
           <button
-            className="icon-btn h-7 w-7 shrink-0"
+            className="icon-btn icon-btn-compact shrink-0"
             type="button"
             data-active={isFileTreeOpen}
             onClick={() => setFileTreeOpen(!isFileTreeOpen)}
@@ -651,7 +721,7 @@ export function ReviewView({
           </button>
           {showCloseButton ? (
             <button
-              className="icon-btn h-7 w-7 shrink-0"
+              className="icon-btn icon-btn-compact shrink-0"
               type="button"
               onClick={onClose}
               aria-label={closeLabel}
@@ -690,7 +760,7 @@ export function ReviewView({
         lineCollaboration={lineCollaboration}
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
-        onSelectUnit={setSelectedUnitId}
+        onSelectUnit={selectReviewUnit}
         onHideFileTree={() => setFileTreeOpen(false)}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
@@ -732,7 +802,7 @@ function ReviewGuideControl({
 
   if (state?.status === 'ready') {
     return (
-      <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={onStart}>
+      <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
         <Check size={12} />
         Rebuild AI guide
       </button>
@@ -742,7 +812,7 @@ function ReviewGuideControl({
   if (state?.status === 'failed') {
     return (
       <button
-        className="btn-subtle h-7 px-2 text-[11px] text-[var(--danger-text)]"
+        className="btn-subtle btn-compact text-[var(--danger-text)]"
         type="button"
         title={state.errorMessage}
         onClick={onStart}
@@ -754,7 +824,7 @@ function ReviewGuideControl({
   }
 
   return (
-    <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={onStart}>
+    <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
       Build AI guide
     </button>
   );
@@ -763,18 +833,20 @@ function ReviewGuideControl({
 function ReviewFilterMenu({
   preferences,
   activeCount,
+  disabled,
   onChange,
   onConfigurePatterns
 }: {
   preferences: ReviewPreferences;
   activeCount: number;
+  disabled: boolean;
   onChange: (preferences: ReviewPreferences) => void;
   onConfigurePatterns: () => void;
 }): ReactElement {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="btn-subtle h-7 px-2 text-[11px]" type="button">
+        <button className="btn-subtle btn-compact" type="button" disabled={disabled}>
           <Settings2 size={12} />
           Filters
           {activeCount > 0 ? <span className="badge-mini">{activeCount}</span> : null}
@@ -982,7 +1054,7 @@ function ReviewBody({
   units: VisibleReviewUnit[];
   selectedUnit?: VisibleReviewUnit;
   preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
-  diffOptions: FileDiffOptions<ReviewLineCommentThread>;
+  diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   isMutating: boolean;
   mutationError?: string;
   lineCollaboration?: ReviewLineCollaboration;
@@ -1002,6 +1074,12 @@ function ReviewBody({
     selectedUnit?.visibleChunks.some((chunk) => chunk.path === requestedFilePath)
       ? requestedFilePath
       : selectedUnit?.visibleChunks[0]?.path;
+  const firstChunkIdByPath = new Map<string, string>();
+  for (const chunk of selectedUnit?.visibleChunks ?? []) {
+    if (!firstChunkIdByPath.has(chunk.path)) {
+      firstChunkIdByPath.set(chunk.path, chunk.id);
+    }
+  }
 
   useEffect(() => {
     reviewChunksRef.current?.scrollTo({ top: 0 });
@@ -1082,6 +1160,10 @@ function ReviewBody({
             className="review-unit-row"
             type="button"
             data-active={candidate.unit.id === selectedUnit?.unit.id}
+            disabled={
+              lineCollaboration?.selectedChunkId !== undefined &&
+              candidate.unit.id !== selectedUnit?.unit.id
+            }
             onClick={() => onSelectUnit(candidate.unit.id)}
           >
             <span className="review-unit-status" data-viewed={candidate.isViewed}>
@@ -1101,7 +1183,7 @@ function ReviewBody({
         ))}
       </nav>
 
-      <main className="review-content">
+      <div className="review-content">
         {selectedUnit ? (
           <>
             <header className="review-unit-header">
@@ -1116,7 +1198,7 @@ function ReviewBody({
                   {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}
                 </p>
               </div>
-              <button className={selectedUnit.isViewed ? 'btn-subtle h-8 text-xs' : 'btn-primary h-8 text-xs'} type="button" disabled={isMutating} onClick={onToggleViewed}>
+              <button className={selectedUnit.isViewed ? 'btn-subtle btn-regular' : 'btn-primary btn-regular'} type="button" disabled={isMutating} onClick={onToggleViewed}>
                 {isMutating ? <Loader2 size={13} className="animate-spin" /> : selectedUnit.isViewed ? <X size={13} /> : <CheckCheck size={13} />}
                 {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed'}
               </button>
@@ -1125,8 +1207,11 @@ function ReviewBody({
             {reviewGuideUnits.get(selectedUnit.unit.id) ? (
               <ReviewGuideUnitDetails guideUnit={reviewGuideUnits.get(selectedUnit.unit.id)!} />
             ) : null}
-            {lineCollaboration?.selectedLines && lineCollaboration.selectedPath ? (
-              <ReviewInlineComposer collaboration={lineCollaboration} />
+            {lineCollaboration ? (
+              <div className="review-commenting-hint">
+                <MessageSquare size={12} />
+                <span>Select or drag across diff lines to comment. Use <strong>Comment on file</strong> for a whole-file note.</span>
+              </div>
             ) : null}
             <div ref={reviewChunksRef} className="review-chunks">
               {createReviewContexts(selectedUnit.visibleChunks).map((contextGroup, _contextIndex, contexts) => (
@@ -1152,6 +1237,7 @@ function ReviewBody({
                           preparedDiff={preparedDiffs.get(chunk.id)}
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
+                          showFileComments={firstChunkIdByPath.get(chunk.path) === chunk.id}
                           isCollapsed={collapsedChunkIds.has(chunk.id)}
                           onToggleCollapsed={() => toggleChunk(chunk.id)}
                         />
@@ -1163,7 +1249,7 @@ function ReviewBody({
             </div>
           </>
         ) : null}
-      </main>
+      </div>
 
       {isFileTreeOpen ? (
         <ReviewFileTree
@@ -1359,7 +1445,7 @@ function ReviewFileTree({
         </span>
         <span className="badge-mini">{entries.length}</span>
         <button
-          className="icon-btn h-6 w-6"
+          className="icon-btn icon-btn-tertiary"
           type="button"
           onClick={onHide}
           aria-label="Hide review file tree"
@@ -1431,49 +1517,94 @@ function ReviewChunk({
   preparedDiff,
   diffOptions,
   lineCollaboration,
+  showFileComments,
   isCollapsed,
   onToggleCollapsed
 }: {
   chunk: GitReviewChunk;
   preparedDiff?: PreparedReviewDiff;
-  diffOptions: FileDiffOptions<ReviewLineCommentThread>;
+  diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
+  showFileComments: boolean;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
 }): ReactElement {
+  const fileComposerId = useId();
   const expandableDiff = preparedDiff?.expandable;
-  const contextualDiffOptions = useMemo<FileDiffOptions<ReviewLineCommentThread>>(
+  const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
     () => expandableDiff
       ? createReviewContextOptions(diffOptions, expandableDiff, chunk.path)
       : diffOptions,
     [chunk.path, diffOptions, expandableDiff]
   );
   const selectedLines =
-    lineCollaboration?.selectedChunkId === chunk.id
+    lineCollaboration?.selectedChunkId === chunk.id &&
+    lineCollaboration.selectedSubject === 'line'
       ? lineCollaboration.selectedLines
       : null;
-  const lineAnnotations = useMemo<DiffLineAnnotation<ReviewLineCommentThread>[]>(
-    () =>
-      lineCollaboration?.threads.flatMap((thread) =>
+  const normalizedSelection = normalizeReviewLineSelection(selectedLines);
+  const lineAnnotations = useMemo<DiffLineAnnotation<ReviewDiffAnnotation>[]>(
+    () => [
+      ...(lineCollaboration?.threads.flatMap((thread) =>
+        thread.subjectType === 'line' &&
         thread.path === chunk.path &&
         thread.line &&
         thread.side &&
         patchContainsLine(chunk.patch, thread.line, thread.side)
           ? [{
               lineNumber: thread.line,
-              side: thread.side === 'right' ? 'additions' : 'deletions',
-              metadata: thread
+              side: thread.side === 'right' ? 'additions' as const : 'deletions' as const,
+              metadata: { kind: 'thread' as const, thread }
             }]
           : []
-      ) ?? [],
-    [chunk.patch, chunk.path, lineCollaboration?.threads]
+      ) ?? []),
+      ...(normalizedSelection
+        ? [{
+            lineNumber: normalizedSelection.line,
+            side: normalizedSelection.side === 'right' ? 'additions' as const : 'deletions' as const,
+            metadata: { kind: 'composer' as const }
+          }]
+        : [])
+    ],
+    [chunk.patch, chunk.path, lineCollaboration?.threads, normalizedSelection]
   );
-  const interactiveDiffOptions: FileDiffOptions<ReviewLineCommentThread> = lineCollaboration
+  const fileThreads = showFileComments
+    ? lineCollaboration?.threads.filter(
+        (thread) => thread.subjectType === 'file' && thread.path === chunk.path
+      ) ?? []
+    : [];
+  const isFileComposerOpen =
+    lineCollaboration?.selectedChunkId === chunk.id &&
+    lineCollaboration.selectedSubject === 'file';
+  const renderGutterUtility = lineCollaboration?.selectedChunkId === undefined
+    ? (getHoveredLine: () => { lineNumber: number; side: 'additions' | 'deletions' } | undefined) => (
+        <button
+          type="button"
+          aria-label="Add review comment on this line"
+          title="Add review comment"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => {
+            const hoveredLine = getHoveredLine();
+            if (hoveredLine) {
+              lineCollaboration?.onSelectLines(chunk.id, chunk.path, {
+                start: hoveredLine.lineNumber,
+                end: hoveredLine.lineNumber,
+                side: hoveredLine.side
+              });
+            }
+          }}
+        >
+          <Plus size={12} aria-hidden="true" />
+        </button>
+      )
+    : undefined;
+  const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? {
         ...contextualDiffOptions,
         enableLineSelection: true,
         controlledSelection: true,
         lineHoverHighlight: 'both',
+        enableGutterUtility: lineCollaboration.selectedChunkId === undefined,
         onLineSelected: (range) =>
           lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
       }
@@ -1485,25 +1616,67 @@ function ReviewChunk({
       data-collapsed={isCollapsed}
       data-review-path={chunk.path}
     >
-      <button
-        className="review-chunk-header"
-        type="button"
-        aria-expanded={!isCollapsed}
-        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${chunk.path}`}
-        onClick={onToggleCollapsed}
-      >
-        {isCollapsed ? (
-          <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
-        ) : (
-          <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-        )}
-        <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
-        <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{chunk.path}</span>
-        <span className="badge-mini" title={chunk.relationship}>{chunk.role}</span>
-        {chunk.source !== 'commit' ? <span className="badge-mini">{chunk.source}</span> : null}
-        <span className="text-[var(--success-text)]">+{chunk.additions}</span>
-        <span className="text-[var(--danger-text)]">-{chunk.deletions}</span>
-      </button>
+      <div className="review-chunk-header">
+        <button
+          className="review-chunk-toggle"
+          type="button"
+          aria-expanded={!isCollapsed}
+          aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${chunk.path}`}
+          onClick={onToggleCollapsed}
+        >
+          {isCollapsed ? (
+            <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
+          ) : (
+            <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
+          )}
+          <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{chunk.path}</span>
+          <span className="badge-mini" title={chunk.relationship}>{chunk.role}</span>
+          {chunk.source !== 'commit' ? <span className="badge-mini">{chunk.source}</span> : null}
+          <span className="text-[var(--success-text)]">+{chunk.additions}</span>
+          <span className="text-[var(--danger-text)]">-{chunk.deletions}</span>
+        </button>
+        {lineCollaboration && showFileComments ? (
+          <button
+            className="review-comment-action review-file-comment-action"
+            type="button"
+            data-active={isFileComposerOpen}
+            aria-controls={fileComposerId}
+            aria-expanded={isFileComposerOpen}
+            onClick={() => {
+              if (isFileComposerOpen) {
+                lineCollaboration.onCancel();
+                return;
+              }
+              if (isCollapsed) {
+                onToggleCollapsed();
+              }
+              lineCollaboration.onSelectFile(chunk.id, chunk.path);
+            }}
+          >
+            <MessageSquare size={11} />
+            Comment on file
+          </button>
+        ) : null}
+      </div>
+      {!isCollapsed && showFileComments && (fileThreads.length > 0 || isFileComposerOpen) ? (
+        <div className="review-file-comments">
+          {fileThreads.map((thread) => (
+            <ReviewCommentAnnotation
+              key={thread.id}
+              thread={thread}
+              onAddDraftReply={lineCollaboration?.onAddDraftReply}
+              onUpdateComment={lineCollaboration?.onUpdateComment}
+              onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
+            />
+          ))}
+          {isFileComposerOpen && lineCollaboration ? (
+            <div id={fileComposerId}>
+              <ReviewInlineComposer collaboration={lineCollaboration} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {!isCollapsed && chunk.omittedReason ? (
         <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
           {chunk.omittedReason === 'binary'
@@ -1514,33 +1687,45 @@ function ReviewChunk({
         </div>
       ) : !isCollapsed ? (
         preparedDiff ? (
-          <FileDiff<ReviewLineCommentThread>
+          <FileDiff<ReviewDiffAnnotation>
             className="gg-diff"
             fileDiff={preparedDiff.fileDiff}
             options={interactiveDiffOptions}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
+            renderGutterUtility={renderGutterUtility}
             renderAnnotation={(annotation) => (
-              <ReviewLineCommentAnnotation
-                thread={annotation.metadata}
-                onAddDraftReply={lineCollaboration?.onAddDraftReply}
-                onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
-              />
+              annotation.metadata.kind === 'composer' && lineCollaboration
+                ? <ReviewInlineComposer collaboration={lineCollaboration} />
+                : annotation.metadata.kind === 'thread'
+                  ? <ReviewCommentAnnotation
+                      thread={annotation.metadata.thread}
+                      onAddDraftReply={lineCollaboration?.onAddDraftReply}
+                      onUpdateComment={lineCollaboration?.onUpdateComment}
+                      onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
+                    />
+                  : null
             )}
           />
         ) : (
-          <PatchDiff<ReviewLineCommentThread>
+          <PatchDiff<ReviewDiffAnnotation>
             className="gg-diff"
             patch={chunk.patch}
             options={interactiveDiffOptions}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
+            renderGutterUtility={renderGutterUtility}
             renderAnnotation={(annotation) => (
-              <ReviewLineCommentAnnotation
-                thread={annotation.metadata}
-                onAddDraftReply={lineCollaboration?.onAddDraftReply}
-                onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
-              />
+              annotation.metadata.kind === 'composer' && lineCollaboration
+                ? <ReviewInlineComposer collaboration={lineCollaboration} />
+                : annotation.metadata.kind === 'thread'
+                  ? <ReviewCommentAnnotation
+                      thread={annotation.metadata.thread}
+                      onAddDraftReply={lineCollaboration?.onAddDraftReply}
+                      onUpdateComment={lineCollaboration?.onUpdateComment}
+                      onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
+                    />
+                  : null
             )}
           />
         )
@@ -1556,24 +1741,34 @@ function ReviewInlineComposer({
 }): ReactElement {
   const normalizedSelection = normalizeReviewLineSelection(collaboration.selectedLines);
   const canSubmitLineComment = Boolean(
-    normalizedSelection &&
-      normalizedSelection.side === normalizedSelection.startSide &&
-      collaboration.body.trim()
+    collaboration.body.trim() &&
+      (collaboration.selectedSubject === 'file' ||
+        (normalizedSelection && normalizedSelection.side === normalizedSelection.startSide))
   );
 
   return (
-    <form className="review-inline-composer" onSubmit={collaboration.onSubmit}>
+    <form
+      className="review-inline-composer"
+      data-subject-type={collaboration.selectedSubject}
+      onSubmit={collaboration.onSubmit}
+    >
       <div className="review-inline-composer-label">
         <MessageSquare size={13} />
-        {normalizedSelection
+        {collaboration.selectedSubject === 'file'
+          ? `Draft comment on file ${collaboration.selectedPath}`
+          : normalizedSelection
           ? `Draft comment on ${collaboration.selectedPath}:${formatReviewLineSelection(normalizedSelection)}`
           : 'Select lines from only one side of the diff to comment.'}
       </div>
       <textarea
         rows={3}
         value={collaboration.body}
-        placeholder="Leave an inline review comment…"
-        aria-label="Inline review comment"
+        placeholder={collaboration.selectedSubject === 'file'
+          ? 'Leave a whole-file review comment…'
+          : 'Leave an inline review comment…'}
+        aria-label={collaboration.selectedSubject === 'file'
+          ? 'File review comment'
+          : 'Inline review comment'}
         onChange={(event) => collaboration.onBodyChange(event.target.value)}
       />
       <p className="review-inline-composer-hint">
@@ -1584,14 +1779,15 @@ function ReviewInlineComposer({
       ) : null}
       <div className="flex items-center justify-end gap-2">
         <button
-          className="btn-subtle h-7 text-[11px]"
+          className="btn-subtle btn-compact"
           type="button"
+          disabled={collaboration.isSubmitting}
           onClick={collaboration.onCancel}
         >
           Cancel
         </button>
         <button
-          className="btn-primary h-7 text-[11px]"
+          className="btn-primary btn-compact"
           type="submit"
           disabled={!canSubmitLineComment || collaboration.isSubmitting}
         >
@@ -1605,17 +1801,23 @@ function ReviewInlineComposer({
   );
 }
 
-function ReviewLineCommentAnnotation({
+function ReviewCommentAnnotation({
   thread,
   onAddDraftReply,
+  onUpdateComment,
   onRemoveDraftComment
 }: {
-  thread: ReviewLineCommentThread;
+  thread: ReviewCommentThread;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
+  onUpdateComment?: (commentId: number, body: string) => Promise<void>;
   onRemoveDraftComment?: (id: string) => void;
 }): ReactElement {
+  const articleRef = useRef<HTMLElement>(null);
   const [isReplying, setIsReplying] = useState(false);
   const [replyBody, setReplyBody] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<number>();
+  const [editBody, setEditBody] = useState('');
+  const [restoreFocusId, setRestoreFocusId] = useState<number>();
   const replyMutation = useMutation({
     mutationFn: async () => {
       if (
@@ -1639,9 +1841,69 @@ function ReviewLineCommentAnnotation({
     !thread.isDraft &&
     typeof thread.id === 'number' &&
     Boolean(onAddDraftReply);
+  const editMutation = useMutation({
+    mutationFn: async ({ commentId, body }: { commentId: number; body: string }) => {
+      if (!body.trim() || !onUpdateComment) {
+        throw new Error('Editing is unavailable for this comment.');
+      }
+      await onUpdateComment(commentId, body.trim());
+    },
+    onSuccess: (_result, { commentId }) => {
+      setRestoreFocusId(commentId);
+      setEditingCommentId(undefined);
+      setEditBody('');
+    }
+  });
+
+  useEffect(() => {
+    if (editingCommentId !== undefined || restoreFocusId === undefined) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      articleRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-edit-comment-id="${restoreFocusId}"]`)
+        ?.focus();
+      setRestoreFocusId(undefined);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingCommentId, restoreFocusId]);
+
+  function startEditing(comment: ReviewLineComment): void {
+    if (
+      typeof comment.id !== 'number' ||
+      editMutation.isPending ||
+      replyMutation.isPending
+    ) {
+      return;
+    }
+    setIsReplying(false);
+    setReplyBody('');
+    replyMutation.reset();
+    setEditingCommentId(comment.id);
+    setEditBody(comment.body);
+    editMutation.reset();
+  }
+
+  function submitEditing(): void {
+    if (editingCommentId !== undefined) {
+      editMutation.mutate({ commentId: editingCommentId, body: editBody });
+    }
+  }
+
+  function cancelEditing(): void {
+    setRestoreFocusId(editingCommentId);
+    setEditingCommentId(undefined);
+    setEditBody('');
+    editMutation.reset();
+  }
 
   return (
-    <article className="review-line-comment" data-draft={thread.isDraft}>
+    <article
+      ref={articleRef}
+      className="review-line-comment"
+      data-draft={thread.isDraft}
+      data-subject-type={thread.subjectType}
+    >
       <header>
         <ReviewCommentAvatar comment={thread} />
         <strong>{thread.author}</strong>
@@ -1653,7 +1915,19 @@ function ReviewLineCommentAnnotation({
         ) : null}
         <time dateTime={thread.createdAt}>{formatReviewCommentDate(thread.createdAt)}</time>
       </header>
-      <ReviewCommentBody body={thread.body} />
+      {editingCommentId === thread.id ? (
+        <ReviewCommentEditForm
+          author={thread.author}
+          body={editBody}
+          errorMessage={editMutation.error instanceof Error ? editMutation.error.message : undefined}
+          isSaving={editMutation.isPending}
+          onBodyChange={setEditBody}
+          onCancel={cancelEditing}
+          onSubmit={submitEditing}
+        />
+      ) : (
+        <ReviewCommentBody body={thread.body} />
+      )}
       {thread.replies.length > 0 ? (
         <div className="review-line-comment-replies">
           {thread.replies.map((reply) => (
@@ -1671,6 +1945,7 @@ function ReviewLineCommentAnnotation({
                 )}
                 {reply.isDraft && onRemoveDraftComment ? (
                   <button
+                    className="review-comment-action review-comment-icon-action review-comment-action--danger"
                     type="button"
                     onClick={() => onRemoveDraftComment(String(reply.id))}
                     aria-label="Remove draft reply"
@@ -1678,8 +1953,33 @@ function ReviewLineCommentAnnotation({
                     <Trash2 size={11} />
                   </button>
                 ) : null}
+                {reply.canEdit && onUpdateComment && editingCommentId !== reply.id ? (
+                  <button
+                    className="review-comment-action"
+                    type="button"
+                    data-edit-comment-id={reply.id}
+                    disabled={editingCommentId !== undefined || isReplying || editMutation.isPending}
+                    onClick={() => startEditing(reply)}
+                  >
+                    <Pencil size={11} />
+                    Edit
+                  </button>
+                ) : null}
               </div>
-              <ReviewCommentBody body={reply.body} compact />
+              {editingCommentId === reply.id ? (
+                <ReviewCommentEditForm
+                  author={reply.author}
+                  body={editBody}
+                  errorMessage={editMutation.error instanceof Error ? editMutation.error.message : undefined}
+                  isSaving={editMutation.isPending}
+                  onBodyChange={setEditBody}
+                  onCancel={cancelEditing}
+                  onSubmit={submitEditing}
+                  compact
+                />
+              ) : (
+                <ReviewCommentBody body={reply.body} compact />
+              )}
             </div>
           ))}
         </div>
@@ -1687,6 +1987,7 @@ function ReviewLineCommentAnnotation({
       <footer className="review-line-comment-actions">
         {thread.isDraft && onRemoveDraftComment ? (
           <button
+            className="review-comment-action review-comment-action--danger"
             type="button"
             onClick={() => onRemoveDraftComment(String(thread.id))}
           >
@@ -1694,8 +1995,26 @@ function ReviewLineCommentAnnotation({
             Remove draft
           </button>
         ) : null}
+        {thread.canEdit && onUpdateComment && editingCommentId !== thread.id ? (
+          <button
+            className="review-comment-action"
+            type="button"
+            data-edit-comment-id={thread.id}
+            disabled={editingCommentId !== undefined || isReplying || editMutation.isPending}
+            onClick={() => startEditing(thread)}
+          >
+            <Pencil size={11} />
+            Edit
+          </button>
+        ) : null}
         {canReply ? (
-          <button type="button" onClick={() => setIsReplying((current) => !current)}>
+          <button
+            className="review-comment-action"
+            type="button"
+            disabled={replyMutation.isPending || editMutation.isPending || editingCommentId !== undefined}
+            aria-expanded={isReplying}
+            onClick={() => setIsReplying((current) => !current)}
+          >
             <Reply size={11} />
             Reply
           </button>
@@ -1714,6 +2033,7 @@ function ReviewLineCommentAnnotation({
             value={replyBody}
             placeholder={`Reply to ${thread.author}…`}
             aria-label={`Reply to ${thread.author}`}
+            disabled={replyMutation.isPending}
             onChange={(event) => setReplyBody(event.target.value)}
           />
           <p>Saved as a draft until you submit the review.</p>
@@ -1722,8 +2042,9 @@ function ReviewLineCommentAnnotation({
           ) : null}
           <div>
             <button
-              className="btn-subtle h-7 text-[11px]"
+              className="btn-subtle btn-compact"
               type="button"
+              disabled={replyMutation.isPending}
               onClick={() => {
                 setIsReplying(false);
                 setReplyBody('');
@@ -1733,19 +2054,69 @@ function ReviewLineCommentAnnotation({
               Cancel
             </button>
             <button
-              className="btn-primary h-7 text-[11px]"
+              className="btn-primary btn-compact"
               type="submit"
               disabled={!replyBody.trim() || replyMutation.isPending}
             >
               {replyMutation.isPending
                 ? <Loader2 size={11} className="animate-spin" />
                 : <Reply size={11} />}
-              Add reply to review
+              Add reply
             </button>
           </div>
         </form>
       ) : null}
     </article>
+  );
+}
+
+function ReviewCommentEditForm({
+  author,
+  body,
+  errorMessage,
+  isSaving,
+  onBodyChange,
+  onCancel,
+  onSubmit,
+  compact = false
+}: {
+  author: string;
+  body: string;
+  errorMessage?: string;
+  isSaving: boolean;
+  onBodyChange: (body: string) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+  compact?: boolean;
+}): ReactElement {
+  return (
+    <form
+      className="review-comment-edit-form"
+      data-compact={compact}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <textarea
+        autoFocus
+        rows={3}
+        value={body}
+        aria-label={`Edit ${author}'s review comment`}
+        disabled={isSaving}
+        onChange={(event) => onBodyChange(event.target.value)}
+      />
+      {errorMessage ? <span>{errorMessage}</span> : null}
+      <div>
+        <button className="btn-subtle btn-compact" type="button" disabled={isSaving} onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn-primary btn-compact" type="submit" disabled={!body.trim() || isSaving}>
+          {isSaving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+          Save comment
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1872,24 +2243,6 @@ function saveEmbeddedReviewProgress(
   }
 }
 
-function normalizeReviewLineSelection(range: SelectedLineRange | null): {
-  startLine?: number;
-  startSide: 'left' | 'right';
-  line: number;
-  side: 'left' | 'right';
-} | undefined {
-  if (!range?.side) {
-    return undefined;
-  }
-
-  return {
-    startLine: range.start === range.end ? undefined : range.start,
-    startSide: range.side === 'additions' ? 'right' : 'left',
-    line: range.end,
-    side: (range.endSide ?? range.side) === 'additions' ? 'right' : 'left'
-  };
-}
-
 function formatReviewLineSelection(
   selection: ReturnType<typeof normalizeReviewLineSelection>
 ): string {
@@ -1903,7 +2256,7 @@ function formatReviewLineSelection(
 
 function createReviewCommentThreads(
   comments: ReviewLineComment[]
-): ReviewLineCommentThread[] {
+): ReviewCommentThread[] {
   const repliesByParent = new Map<string, ReviewLineComment[]>();
 
   for (const comment of comments) {
