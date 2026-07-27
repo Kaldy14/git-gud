@@ -2128,7 +2128,6 @@ function GraphCommitNode({
   const clipId = `graph-avatar-${nodeId.replace(/[^\dA-Za-z_-]/g, '') || 'node'}`;
   const outerRadius = 11;
   const ringStrokeWidth = 2;
-  const matRadius = 9;
   const imageRadius = 8;
   const imageSize = imageRadius * 2;
 
@@ -2139,11 +2138,10 @@ function GraphCommitNode({
         cx={cx}
         cy={cy}
         r={outerRadius - ringStrokeWidth / 2}
-        fill="var(--avatar-card-bg)"
+        fill={color}
         stroke={color}
         strokeWidth={ringStrokeWidth}
       />
-      <circle cx={cx} cy={cy} r={matRadius} fill="var(--avatar-card-bg)" />
       {imageSource ? (
         <>
           <clipPath id={clipId}>
