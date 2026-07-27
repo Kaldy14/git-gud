@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
+import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
@@ -1016,21 +1017,14 @@ function SidebarContextMenu({
     >
       {state.kind === 'local' ? (
         <>
-          {!state.branch.current ? (
-            <button
-              className="menu-row"
-              type="button"
-              role="menuitem"
-              disabled={isOperationBusy}
-              onClick={() => {
-                onCheckoutBranch(state.branch.name);
-                onClose();
-              }}
-            >
-              <Check size={14} />
-              <span>Checkout {state.branch.name}</span>
-            </button>
-          ) : null}
+          <BranchContextMenuPrimaryActions
+            branchName={state.branch.name}
+            isCurrentBranch={state.branch.current}
+            isOperationBusy={isOperationBusy}
+            onCheckoutBranch={onCheckoutBranch}
+            onPushBranch={onPushBranch}
+            onClose={onClose}
+          />
           {state.branch.current && state.branch.upstream ? (
             <button
               className="menu-row"
@@ -1061,19 +1055,6 @@ function SidebarContextMenu({
               <span>Set upstream…</span>
             </button>
           ) : null}
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onPushBranch(state.branch.name);
-              onClose();
-            }}
-          >
-            <Cloud size={14} />
-            <span>Push branch to remote</span>
-          </button>
           {pullRequest ? (
             <>
               <ContextMenuSeparator />

@@ -38,6 +38,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
 import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
+import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
 import {
@@ -2466,19 +2467,14 @@ function GraphBranchContextMenu({
       onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       onClick={(event) => event.stopPropagation()}
     >
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onCheckoutBranch || isCurrentBranch || isOperationBusy}
-        onClick={() => {
-          void onCheckoutBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <Check size={14} />
-        <span>Checkout {state.branchName}</span>
-      </button>
+      <BranchContextMenuPrimaryActions
+        branchName={state.branchName}
+        isCurrentBranch={isCurrentBranch}
+        isOperationBusy={isOperationBusy}
+        onCheckoutBranch={onCheckoutBranch}
+        onPushBranch={onPushBranch}
+        onClose={onClose}
+      />
       {isCurrentBranch && state.upstream ? (
         <button
           className="menu-row"
@@ -2521,19 +2517,6 @@ function GraphBranchContextMenu({
       >
         <BookOpenCheck size={14} />
         <span>Review entire branch</span>
-      </button>
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onPushBranch || isOperationBusy}
-        onClick={() => {
-          void onPushBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <Cloud size={14} />
-        <span>Push branch to remote</span>
       </button>
       {pullRequest ? (
         <>
