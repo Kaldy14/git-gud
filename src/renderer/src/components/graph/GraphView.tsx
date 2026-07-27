@@ -75,6 +75,7 @@ import type {
 const ROW_HEIGHT = 28;
 const LANE_X0 = 45;
 const LANE_GAP = 22;
+const GRAPH_RAIL_STROKE_WIDTH = 2;
 const GRAPH_NODE_EDGE_INSET = 12;
 const GRAPH_CONTENT_RIGHT_PADDING = 23;
 const DEFAULT_REF_CELL_WIDTH = 133;
@@ -1149,10 +1150,10 @@ function GraphRowView({
       {hasRefConnector ? (
         <span
           className="graph-ref-connector"
-          data-current={hasCurrentBranch ? 'true' : undefined}
           style={{
             left: 12,
             width: Math.max(0, refCellWidth + graphLaneX - 12),
+            height: hasCurrentBranch ? GRAPH_RAIL_STROKE_WIDTH : undefined,
             background: hasCurrentBranch ? nodeColor : refColor
           }}
           aria-hidden="true"
@@ -2061,7 +2062,7 @@ function RailSegmentPath({
       fill="none"
       stroke={segment.color ?? fallbackColor}
       strokeLinecap="round"
-      strokeWidth={2}
+      strokeWidth={GRAPH_RAIL_STROKE_WIDTH}
       strokeDasharray={segment.dashed ? '1 4' : undefined}
       strokeOpacity={1}
     />
@@ -2155,8 +2156,8 @@ function GraphCommitNode({
   const { imageSource, handleImageError } = useAvatarImageSource(avatarUrl, fallbackAvatarUrl);
   const clipId = `graph-avatar-${nodeId.replace(/[^\dA-Za-z_-]/g, '') || 'node'}`;
   const outerRadius = 11;
-  const ringStrokeWidth = 2;
-  const imageRadius = 8;
+  const ringStrokeWidth = GRAPH_RAIL_STROKE_WIDTH;
+  const imageRadius = outerRadius - ringStrokeWidth;
   const imageSize = imageRadius * 2;
 
   return (

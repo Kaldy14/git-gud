@@ -1022,10 +1022,6 @@ select {
   pointer-events: none;
 }
 
-.graph-ref-connector[data-current='true'] {
-  height: 3px;
-}
-
 .graph-date-separator {
   position: absolute;
   top: 0;
