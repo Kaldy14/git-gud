@@ -62,6 +62,73 @@ describe('review context diffs', () => {
     expect(createExpandableReviewDiff(chunk, context)).toBeUndefined();
   });
 
+  it('keeps both file boundaries available for expansion', () => {
+    const oldContents = numberedLines(20);
+    const newContents = oldContents.replace('line 10\n', 'line ten\n');
+    const chunk = reviewChunk(
+      '@@ -9,3 +9,3 @@\n line 9\n-line 10\n+line ten\n line 11\n'
+    );
+    const context: GitReviewFileContext = {
+      id: 'context-boundaries',
+      path: chunk.path,
+      source: 'commit',
+      oldContents,
+      newContents
+    };
+
+    const result = createExpandableReviewDiff(chunk, context);
+
+    expect(result?.leadingContextLines).toHaveLength(6);
+    expect(result?.leadingContextLines[0]).toBe('line 1\n');
+    expect(result?.trailingContextLines).toHaveLength(7);
+    expect(result?.trailingContextLines.at(-1)).toBe('line 20\n');
+    expect(result?.fileDiff.hunks[0]).toMatchObject({
+      additionStart: 7,
+      deletionStart: 7,
+      additionCount: 7,
+      deletionCount: 7
+    });
+  });
+
+  it('matches equivalent insertion hunks when blank lines align differently', () => {
+    const oldContents = 'a\nb\nc\n\nd\ne\nf\n';
+    const newContents = 'a\nb\nc\nfirst\nsecond\n\ntype Added = string;\n\nd\ne\nf\n';
+    const chunk = reviewChunk(
+      '@@ -1,6 +1,10 @@\n a\n b\n c\n+first\n+second\n+\n+type Added = string;\n \n d\n e\n'
+    );
+    const context: GitReviewFileContext = {
+      id: 'context-blank-alignment',
+      path: chunk.path,
+      source: 'commit',
+      oldContents,
+      newContents
+    };
+
+    expect(createExpandableReviewDiff(chunk, context)?.fileDiff.isPartial).toBe(false);
+  });
+
+  it('selects the correct hunk when identical edits occur more than once', () => {
+    const oldContents = numberedLines(30)
+      .replace('line 5\n', 'repeat\n')
+      .replace('line 20\n', 'repeat\n');
+    const newContents = oldContents.replaceAll('repeat\n', 'updated\n');
+    const chunk = reviewChunk(
+      '@@ -17,7 +17,7 @@\n line 17\n line 18\n line 19\n-repeat\n+updated\n line 21\n line 22\n line 23\n'
+    );
+    const context: GitReviewFileContext = {
+      id: 'context-duplicate-change',
+      path: chunk.path,
+      source: 'commit',
+      oldContents,
+      newContents
+    };
+
+    expect(createExpandableReviewDiff(chunk, context)?.fileDiff.hunks[0]).toMatchObject({
+      additionStart: 17,
+      deletionStart: 17
+    });
+  });
+
   it('prepares stable worker-cache entries for contextual and patch-only diffs', () => {
     const chunk = reviewChunk(
       '@@ -1,4 +1,4 @@\n line 1\n-line 2\n+line two\n line 3\n line 4\n'

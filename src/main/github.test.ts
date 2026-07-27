@@ -9,7 +9,8 @@ import {
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
   parseGitHubRepositoriesResponse,
-  parseGitHubRepositoryMergeSettings
+  parseGitHubRepositoryMergeSettings,
+  selectGitHubReviewContextFiles
 } from './github';
 
 describe('GitHub Actions dashboards', () => {
@@ -230,24 +231,38 @@ describe('GitHub pull request inbox', () => {
       baseRefName: 'main',
       checks: { state: 'success', total: 1, passed: 1, failed: 0, pending: 0 }
     };
-    const reviewPlan = buildGitHubPullRequestReviewPlan('github.com', pullRequest, 'head-sha', [
-      {
-        sha: 'blob-sha',
-        path: 'src/auth/session.ts',
-        status: 'modified',
-        additions: 1,
-        deletions: 1,
-        changes: 2,
-        patch: [
-          'diff --git a/src/auth/session.ts b/src/auth/session.ts',
-          '--- a/src/auth/session.ts',
-          '+++ b/src/auth/session.ts',
-          '@@ -1 +1 @@',
-          '-export const timeout = 10',
-          '+export const timeout = 20'
-        ].join('\n')
-      }
-    ]);
+    const oldContents = Array.from({ length: 12 }, (_, index) => `line ${index + 1}\n`).join('');
+    const newContents = oldContents.replace('line 6\n', 'export const timeout = 20\n');
+    const reviewPlan = buildGitHubPullRequestReviewPlan(
+      'github.com',
+      pullRequest,
+      'head-sha',
+      [
+        {
+          sha: 'blob-sha',
+          path: 'src/auth/session.ts',
+          status: 'modified',
+          additions: 1,
+          deletions: 1,
+          changes: 2,
+          patch: [
+            'diff --git a/src/auth/session.ts b/src/auth/session.ts',
+            '--- a/src/auth/session.ts',
+            '+++ b/src/auth/session.ts',
+            '@@ -3,7 +3,7 @@',
+            ' line 3',
+            ' line 4',
+            ' line 5',
+            '-line 6',
+            '+export const timeout = 20',
+            ' line 7',
+            ' line 8',
+            ' line 9'
+          ].join('\n')
+        }
+      ],
+      [{ path: 'src/auth/session.ts', oldContents, newContents }]
+    );
 
     expect(reviewPlan.repoPath).toBe('github://github.com/acme/widgets');
     expect(reviewPlan.target).toEqual({
@@ -257,6 +272,30 @@ describe('GitHub pull request inbox', () => {
     });
     expect(reviewPlan.targetKey).toContain('github-pr:profile-1:acme/widgets#42:head-sha');
     expect(reviewPlan.units.flatMap((unit) => unit.chunks)).toHaveLength(1);
+    expect(reviewPlan.fileContexts).toEqual([
+      expect.objectContaining({
+        path: 'src/auth/session.ts',
+        oldContents,
+        newContents
+      })
+    ]);
+    expect(reviewPlan.units[0]?.chunks[0]?.fileContextId).toBe(reviewPlan.fileContexts[0]?.id);
+  });
+
+  it('bounds remote file-context requests in focused review order', () => {
+    const pullRequest = pullRequestSummary();
+    const files = [
+      pullRequestFile('src/first.ts'),
+      pullRequestFile('src/second.ts'),
+      pullRequestFile('src/third.ts'),
+      { ...pullRequestFile('src/added.ts'), status: 'added' as const }
+    ];
+    const reviewPlan = buildGitHubPullRequestReviewPlan('github.com', pullRequest, 'head-sha', files);
+
+    expect(selectGitHubReviewContextFiles(reviewPlan, files, 2).map((file) => file.path)).toEqual([
+      'src/first.ts',
+      'src/second.ts'
+    ]);
   });
 
   it('uses only merge methods enabled by the GitHub repository', () => {
@@ -283,6 +322,52 @@ describe('GitHub pull request inbox', () => {
     });
   });
 });
+
+function pullRequestSummary(): GitHubPullRequestSummary {
+  return {
+    profileId: 'profile-1',
+    id: 'pr-42',
+    owner: 'acme',
+    repository: 'widgets',
+    number: 42,
+    title: 'Focus the review',
+    url: 'https://github.com/acme/widgets/pull/42',
+    author: 'developer',
+    updatedAt: '2026-07-23T10:00:00Z',
+    category: 'needs-your-review',
+    isDraft: false,
+    reviewDecision: 'review-required',
+    mergeState: 'blocked',
+    mergeable: 'mergeable',
+    canMerge: true,
+    comments: 0,
+    changedFiles: 1,
+    additions: 1,
+    deletions: 1,
+    headRefName: 'feature/focused-review',
+    baseRefName: 'main',
+    checks: { state: 'success', total: 1, passed: 1, failed: 0, pending: 0 }
+  };
+}
+
+function pullRequestFile(path: string) {
+  return {
+    sha: `blob-${path}`,
+    path,
+    status: 'modified' as const,
+    additions: 1,
+    deletions: 1,
+    changes: 2,
+    patch: [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      '@@ -1 +1 @@',
+      '-old',
+      '+new'
+    ].join('\n')
+  };
+}
 
 function workflowRun(overrides: Record<string, unknown>): Record<string, unknown> {
   return {

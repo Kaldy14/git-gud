@@ -70,7 +70,9 @@ export function createExpandableReviewDiff(
       { context: 3 },
       true
     );
-    const hunkIndex = fullDiff.hunks.findIndex((candidate) => hunksMatch(candidate, expectedHunk));
+    const hunkIndex = fullDiff.hunks.findIndex((candidate) =>
+      hunksMatch(fullDiff, candidate, patchDiff, expectedHunk)
+    );
     const hunk = fullDiff.hunks[hunkIndex];
 
     if (!hunk) {
@@ -123,11 +125,53 @@ export function createExpandableReviewDiff(
   }
 }
 
-function hunksMatch(candidate: Hunk, expected: Hunk): boolean {
-  return candidate.additionStart === expected.additionStart &&
+function hunksMatch(
+  candidateDiff: FileDiffMetadata,
+  candidate: Hunk,
+  expectedDiff: FileDiffMetadata,
+  expected: Hunk
+): boolean {
+  if (candidate.additionStart === expected.additionStart &&
     candidate.additionCount === expected.additionCount &&
     candidate.deletionStart === expected.deletionStart &&
-    candidate.deletionCount === expected.deletionCount;
+    candidate.deletionCount === expected.deletionCount) {
+    return true;
+  }
+
+  if (candidate.additionStart === expected.additionStart &&
+    candidate.deletionStart === expected.deletionStart &&
+    candidate.additionLines === expected.additionLines &&
+    candidate.deletionLines === expected.deletionLines) {
+    return true;
+  }
+
+  const candidateChanges = changedLines(candidateDiff, candidate);
+  const expectedChanges = changedLines(expectedDiff, expected);
+
+  if (candidateChanges.length !== expectedChanges.length) {
+    return false;
+  }
+
+  return candidateChanges.every((line, index) => line === expectedChanges[index]);
+}
+
+function changedLines(diff: FileDiffMetadata, hunk: Hunk): string[] {
+  return hunk.hunkContent.flatMap((content) => {
+    if (content.type !== 'change') {
+      return [];
+    }
+
+    const deletionStart = hunk.deletionStart + content.deletionLineIndex - hunk.deletionLineIndex;
+    const additionStart = hunk.additionStart + content.additionLineIndex - hunk.additionLineIndex;
+    const deletions = diff.deletionLines
+      .slice(content.deletionLineIndex, content.deletionLineIndex + content.deletions)
+      .map((line, index) => `-${deletionStart + index}:${line}`);
+    const additions = diff.additionLines
+      .slice(content.additionLineIndex, content.additionLineIndex + content.additions)
+      .map((line, index) => `+${additionStart + index}:${line}`);
+
+    return [...deletions, ...additions];
+  });
 }
 
 function trailingContextLineCount(diff: FileDiffMetadata, hunk: Hunk): number {

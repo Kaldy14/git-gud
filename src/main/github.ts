@@ -22,6 +22,7 @@ import type {
   GitHubWorkflowRunConclusion,
   GitHubWorkflowRunStatus,
   GitProfile,
+  GitReviewFileContext,
   GitReviewPlan,
   GitStatusCode
 } from '@shared/types';
@@ -38,6 +39,14 @@ type GitHubContext = {
 
 const GITHUB_API_TIMEOUT_MS = 30_000;
 const GITHUB_API_MAX_BUFFER = 32 * 1024 * 1024;
+const GITHUB_REVIEW_CONTEXT_MAX_BYTES = 32 * 1024 * 1024;
+const GITHUB_REVIEW_CONTEXT_CONCURRENCY = 6;
+const GITHUB_REVIEW_CONTEXT_MAX_FILES = 24;
+
+type GitHubReviewFileContext = Pick<
+  GitReviewFileContext,
+  'path' | 'originalPath' | 'oldContents' | 'newContents'
+>;
 
 const INBOX_QUERY = `
 query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
@@ -296,14 +305,32 @@ export async function loadGitHubPullRequestDetail(
   const pull = readRecord(pullRaw, 'pull request');
   const files = filesRaw.map(parsePullRequestFile);
   const headSha = readNestedString(pull, ['head', 'sha'], 'pull request head SHA');
-  const reviewPlan = buildGitHubPullRequestReviewPlan(context.host, summary, headSha, files);
+  const baseSha = readNestedString(pull, ['base', 'sha'], 'pull request base SHA');
+  const mergeBaseSha = await loadGitHubMergeBaseSha(context, locator, baseSha, headSha);
+  const patchOnlyReviewPlan = buildGitHubPullRequestReviewPlan(context.host, summary, headSha, files);
+  const fileContexts = mergeBaseSha
+    ? await loadGitHubPullRequestFileContexts(
+        context,
+        locator,
+        mergeBaseSha,
+        headSha,
+        selectGitHubReviewContextFiles(patchOnlyReviewPlan, files)
+      )
+    : [];
+  const reviewPlan = buildGitHubPullRequestReviewPlan(
+    context.host,
+    summary,
+    headSha,
+    files,
+    fileContexts
+  );
   githubPullRequestReviewPlans.remember(locator, reviewPlan);
 
   return {
     ...summary,
     body: readOptionalString(pull.body) ?? '',
     headSha,
-    baseSha: readNestedString(pull, ['base', 'sha'], 'pull request base SHA'),
+    baseSha,
     commits: readNumber(pull.commits, 'pull request commits'),
     files,
     reviewPlan,
@@ -316,11 +343,61 @@ export async function loadGitHubPullRequestDetail(
   };
 }
 
+export function selectGitHubReviewContextFiles(
+  reviewPlan: GitReviewPlan,
+  files: GitHubPullRequestFile[],
+  limit = GITHUB_REVIEW_CONTEXT_MAX_FILES
+): GitHubPullRequestFile[] {
+  const fileByPath = new Map(files.map((file) => [file.path, file]));
+  const selectedPaths = new Set<string>();
+  const selectedFiles: GitHubPullRequestFile[] = [];
+
+  for (const chunk of reviewPlan.units.flatMap((unit) => unit.chunks)) {
+    if (selectedFiles.length >= limit || selectedPaths.has(chunk.path)) {
+      continue;
+    }
+
+    const file = fileByPath.get(chunk.path);
+
+    if (!file || file.omittedReason || !file.patch || file.status === 'added' || file.status === 'removed') {
+      continue;
+    }
+
+    selectedPaths.add(chunk.path);
+    selectedFiles.push(file);
+  }
+
+  return selectedFiles;
+}
+
+async function loadGitHubMergeBaseSha(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator,
+  baseSha: string,
+  headSha: string
+): Promise<string | undefined> {
+  const endpoint = `${repositoryEndpoint(locator)}/compare/${encodeURIComponent(baseSha)}...${encodeURIComponent(headSha)}`;
+
+  try {
+    return await runGitHubText(context, [
+      'api',
+      '--hostname',
+      context.host,
+      '--jq',
+      '.merge_base_commit.sha',
+      endpoint
+    ]) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildGitHubPullRequestReviewPlan(
   host: string,
   pullRequest: GitHubPullRequestSummary,
   headSha: string,
-  files: GitHubPullRequestFile[]
+  files: GitHubPullRequestFile[],
+  fileContexts: GitHubReviewFileContext[] = []
 ): GitReviewPlan {
   const repoPath = `github://${host}/${pullRequest.owner}/${pullRequest.repository}`;
   const target = {
@@ -328,28 +405,134 @@ export function buildGitHubPullRequestReviewPlan(
     name: pullRequest.headRefName,
     sha: headSha
   };
-  const patches: ReviewPatchInput[] = files.map((file) => ({
-    path: file.path,
-    originalPath: file.previousPath,
-    status: gitHubFileStatusToGitStatus(file.status),
-    source: 'commit',
-    diff: {
-      repoPath,
+  const contextByPath = new Map(fileContexts.map((context) => [context.path, context]));
+  const patches: ReviewPatchInput[] = files.map((file) => {
+    const fileContext = contextByPath.get(file.path);
+
+    return {
       path: file.path,
       originalPath: file.previousPath,
-      mode: 'selection',
-      patch: file.patch ?? '',
-      isBinary: file.omittedReason === 'binary',
-      omittedReason: file.omittedReason,
-      loadedAt: new Date().toISOString()
-    }
-  }));
+      status: gitHubFileStatusToGitStatus(file.status),
+      source: 'commit',
+      diff: {
+        repoPath,
+        path: file.path,
+        originalPath: file.previousPath,
+        mode: 'selection',
+        patch: file.patch ?? '',
+        isBinary: file.omittedReason === 'binary',
+        omittedReason: file.omittedReason,
+        loadedAt: new Date().toISOString()
+      },
+      fileContext: fileContext
+        ? {
+            oldContents: fileContext.oldContents,
+            newContents: fileContext.newContents
+          }
+        : undefined
+    };
+  });
   const plan = buildReviewPlan(repoPath, target, patches);
 
   return {
     ...plan,
     targetKey: `github-pr:${pullRequest.profileId}:${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}:${headSha}`
   };
+}
+
+async function loadGitHubPullRequestFileContexts(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator,
+  baseSha: string,
+  headSha: string,
+  files: GitHubPullRequestFile[]
+): Promise<GitHubReviewFileContext[]> {
+  const fileContexts: GitHubReviewFileContext[] = [];
+  let loadedBytes = 0;
+
+  for (let index = 0; index < files.length; index += GITHUB_REVIEW_CONTEXT_CONCURRENCY) {
+    const batch = files.slice(index, index + GITHUB_REVIEW_CONTEXT_CONCURRENCY);
+    const loadedBatch = await Promise.all(
+      batch.map((file) => loadGitHubPullRequestFileContext(context, locator, baseSha, headSha, file))
+    );
+
+    for (const fileContext of loadedBatch) {
+      if (!fileContext) {
+        continue;
+      }
+
+      const contextBytes = Buffer.byteLength(fileContext.oldContents) +
+        Buffer.byteLength(fileContext.newContents);
+
+      if (loadedBytes + contextBytes > GITHUB_REVIEW_CONTEXT_MAX_BYTES) {
+        continue;
+      }
+
+      loadedBytes += contextBytes;
+      fileContexts.push(fileContext);
+    }
+
+    if (loadedBytes >= GITHUB_REVIEW_CONTEXT_MAX_BYTES) {
+      break;
+    }
+  }
+
+  return fileContexts;
+}
+
+async function loadGitHubPullRequestFileContext(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator,
+  baseSha: string,
+  headSha: string,
+  file: GitHubPullRequestFile
+): Promise<GitHubReviewFileContext | undefined> {
+  if (file.omittedReason || !file.patch || file.status === 'added' || file.status === 'removed') {
+    return undefined;
+  }
+
+  const [oldContents, newContents] = await Promise.all([
+    loadGitHubFileText(context, locator, file.previousPath ?? file.path, baseSha),
+    loadGitHubFileText(context, locator, file.path, headSha)
+  ]);
+
+  if (oldContents === undefined || newContents === undefined) {
+    return undefined;
+  }
+
+  return {
+    path: file.path,
+    originalPath: file.previousPath,
+    oldContents,
+    newContents
+  };
+}
+
+async function loadGitHubFileText(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator,
+  path: string,
+  ref: string
+): Promise<string | undefined> {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  const endpoint = `${repositoryEndpoint(locator)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`;
+
+  try {
+    const raw = readRecord(
+      await runGitHubJson(context, ['api', '--hostname', context.host, endpoint]),
+      'GitHub file contents'
+    );
+
+    if (raw.type !== 'file' || raw.encoding !== 'base64' || typeof raw.content !== 'string') {
+      return undefined;
+    }
+
+    const contents = Buffer.from(raw.content.replaceAll('\n', ''), 'base64');
+    const text = contents.toString('utf8');
+    return Buffer.from(text, 'utf8').equals(contents) ? text : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseGitHubRepositoryMergeSettings(
@@ -959,11 +1142,29 @@ async function getGitHubContext(profileId: string): Promise<GitHubContext> {
   };
 }
 
-function runGitHubJson(
+async function runGitHubJson(
   context: GitHubContext,
   args: string[],
   inputBody?: Record<string, unknown>
 ): Promise<unknown> {
+  const output = await runGitHubText(context, args, inputBody);
+
+  if (!output) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(output) as unknown;
+  } catch {
+    throw new Error('GitHub CLI returned an invalid JSON response.');
+  }
+}
+
+function runGitHubText(
+  context: GitHubContext,
+  args: string[],
+  inputBody?: Record<string, unknown>
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       context.executable,
@@ -984,18 +1185,7 @@ function runGitHubJson(
           return;
         }
 
-        const output = stdout.trim();
-
-        if (!output) {
-          resolve({});
-          return;
-        }
-
-        try {
-          resolve(JSON.parse(output) as unknown);
-        } catch {
-          reject(new Error('GitHub CLI returned an invalid JSON response.'));
-        }
+        resolve(stdout.trim());
       }
     );
 
