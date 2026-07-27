@@ -1,3 +1,7 @@
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GitReviewGuide, GitReviewPlan } from '@shared/types';
@@ -6,6 +10,7 @@ import { buildReviewPlan, type ReviewPatchInput } from './git/reviewPlan';
 import {
   buildReviewGuidePrompt,
   parseReviewGuideOutput,
+  PiReviewGuideEngine,
   ReviewGuideManager,
   type ReviewGuideEngine
 } from './reviewGuide';
@@ -177,6 +182,29 @@ describe('AI review guides', () => {
         errorMessage: 'Engine unavailable.'
       });
     });
+  });
+
+  it('reports an early engine exit without leaking a broken-pipe error', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-review-guide-'));
+    const executable = join(directory, 'early-exit');
+    await writeFile(executable, [
+      '#!/usr/bin/env node',
+      "process.stderr.write('Engine startup failed.\\n');",
+      'process.exit(1);'
+    ].join('\n'));
+    await chmod(executable, 0o755);
+    vi.stubEnv('PI_EXECUTABLE_PATH', executable);
+
+    const plan = reviewPlan();
+    plan.repoPath = directory;
+    plan.units[0]!.chunks[0]!.patch = `+${'x'.repeat(400_000)}`;
+
+    try {
+      await expect(new PiReviewGuideEngine().generate(plan)).rejects.toThrow('Engine startup failed.');
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 

@@ -347,6 +347,11 @@ function collectProcessOutput(
     child.stderr.on('data', (chunk: string) => {
       stderr = `${stderr}${chunk}`.slice(-4_000);
     });
+    child.stdin.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EPIPE') {
+        finish(error);
+      }
+    });
     child.on('error', (error) => finish(error));
     child.on('close', (code) => {
       if (code === 0) {
