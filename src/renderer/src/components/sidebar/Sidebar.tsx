@@ -1002,7 +1002,7 @@ function SidebarContextMenu({
       left: Math.max(8, Math.min(state.x, window.innerWidth - rect.width - 8)),
       top: Math.max(8, Math.min(state.y, window.innerHeight - rect.height - 8))
     });
-    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    menu.focus({ preventScroll: true });
   }, [state]);
 
   return (

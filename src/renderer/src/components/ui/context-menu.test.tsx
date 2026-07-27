@@ -16,6 +16,7 @@ describe('ContextMenuSurface', () => {
 
     expect(markup).toContain('data-slot="context-menu-content"');
     expect(markup).toContain('class="context-menu-surface custom-menu"');
+    expect(markup).toContain('tabindex="-1"');
     expect(markup).toContain('role="menu"');
     expect(markup).toContain('role="menuitem"');
     expect(markup).toContain('data-slot="context-menu-separator"');

@@ -33,12 +33,12 @@
   --bg-hover: #3e4652;
   --bg-field: #20242c;
   --bg-popover: #303641;
-  --context-menu-bg: rgb(25 27 32 / 0.92);
-  --context-menu-border: rgb(190 195 205 / 0.42);
-  --context-menu-divider: rgb(195 200 210 / 0.2);
-  --context-menu-hover: #2767c9;
-  --context-menu-hover-text: #f7f8fa;
-  --context-menu-text: rgb(238 239 242 / 0.95);
+  --context-menu-bg: rgb(25 27 31 / 0.94);
+  --context-menu-border: rgb(190 195 205 / 0.45);
+  --context-menu-divider: rgb(195 200 210 / 0.16);
+  --context-menu-hover: #1555b9;
+  --context-menu-hover-text: #fff;
+  --context-menu-text: #ddddde;
   --context-menu-text-muted: rgb(174 179 188 / 0.72);
   --worktree-banner-bg: #405b93;
   --collapsed-sidebar-bg: #272a32;
@@ -884,18 +884,18 @@ select {
 .context-menu-surface {
   z-index: 50;
   width: max-content;
-  min-width: min(460px, calc(100vw - 16px));
+  min-width: min(370px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow-x: hidden;
   overflow-y: auto;
   border: 1px solid var(--context-menu-border);
-  border-radius: 12px;
+  border-radius: 13px;
   background: var(--context-menu-bg);
   padding: 6px 0;
   box-shadow:
-    0 12px 30px rgb(0 0 0 / 0.42),
-    0 2px 6px rgb(0 0 0 / 0.3),
+    0 10px 26px rgb(0 0 0 / 0.36),
+    0 2px 6px rgb(0 0 0 / 0.28),
     inset 0 1px 0 rgb(255 255 255 / 0.035);
   color: var(--context-menu-text);
   outline: none;
@@ -924,6 +924,7 @@ select {
   font-size: 13.5px;
   font-weight: 500;
   line-height: 20px;
+  outline: none;
   white-space: nowrap;
 }
 

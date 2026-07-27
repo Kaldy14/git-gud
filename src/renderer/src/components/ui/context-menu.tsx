@@ -9,6 +9,7 @@ export const ContextMenuSurface = forwardRef<HTMLDivElement, ComponentPropsWitho
         ref={ref}
         data-slot="context-menu-content"
         className={cn('context-menu-surface', className)}
+        tabIndex={-1}
         {...props}
       />
     );
