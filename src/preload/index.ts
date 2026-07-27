@@ -18,7 +18,6 @@ const api: RendererApi = {
   openRepositoryAtPath: (repoPath) => invoke('repo:open-path', repoPath),
   replaceRepositoryAtPath: (tabId, repoPath) => invoke('repo:replace-path', tabId, repoPath),
   activateTab: (tabId) => invoke('tabs:activate', tabId),
-  reorderTab: (tabId, targetIndex) => invoke('tabs:reorder', tabId, targetIndex),
   closeTab: (tabId) => invoke('tabs:close', tabId),
   selectCommit: (tabId, selectedCommit) => invoke('tabs:select-commit', tabId, selectedCommit),
   selectFile: (tabId, selectedFile) => invoke('tabs:select-file', tabId, selectedFile),

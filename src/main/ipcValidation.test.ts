@@ -108,10 +108,6 @@ describe('IPC argument validation', () => {
       'repo:/project',
       '/project-worktree'
     ]);
-    expect(validateIpcArgs('tabs:reorder', ['repo:/project', 0])).toEqual([
-      'repo:/project',
-      0
-    ]);
     expect(validateIpcArgs('profiles:activate', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
@@ -485,9 +481,6 @@ describe('IPC argument validation', () => {
       ])
     ).toThrow('staged must be a boolean.');
     expect(() => validateIpcArgs('workspace:set-sidebar-width', [420.5])).toThrow('width must be a positive integer.');
-    expect(() => validateIpcArgs('tabs:reorder', ['repo:/project', -1])).toThrow(
-      'targetIndex must be a non-negative integer.'
-    );
     expect(() =>
       validateIpcArgs('github:actions-runs', [
         {
