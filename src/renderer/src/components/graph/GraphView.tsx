@@ -217,6 +217,11 @@ type TagContextMenuState = {
 
 type ContextMenuState = CommitContextMenuState | BranchContextMenuState | TagContextMenuState;
 
+type TagCreationState = {
+  targetSha: string;
+  suggestedTagName?: string;
+};
+
 export function GraphView({
   rows,
   linkedWorktreeBranches,
@@ -282,7 +287,7 @@ export function GraphView({
   const selectionAnchorShaRef = useRef<string | undefined>(selectedSha);
   const resizeStateRef = useRef<ColumnResizeState | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
-  const [tagCreationTargetSha, setTagCreationTargetSha] = useState<string>();
+  const [tagCreation, setTagCreation] = useState<TagCreationState>();
   const [columnWidths, setColumnWidths] = useState<GraphColumnWidths>(loadStoredGraphColumnWidths);
   const [graphContainerWidth, setGraphContainerWidth] = useState<number>();
   const [resizingColumn, setResizingColumn] = useState<ResizableGraphColumn>();
@@ -377,10 +382,10 @@ export function GraphView({
   }, [bulkSelectedShas.length, selectedSha]);
 
   useEffect(() => {
-    if (tagCreationTargetSha && !rows.some((row) => row.sha === tagCreationTargetSha)) {
-      setTagCreationTargetSha(undefined);
+    if (tagCreation && !rows.some((row) => row.sha === tagCreation.targetSha)) {
+      setTagCreation(undefined);
     }
-  }, [rows, tagCreationTargetSha]);
+  }, [rows, tagCreation]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -498,7 +503,7 @@ export function GraphView({
 
   function handleContextMenu(event: MouseEvent<HTMLDivElement>, row: CommitGraphRow): void {
     event.preventDefault();
-    setTagCreationTargetSha(undefined);
+    setTagCreation(undefined);
     selectionAnchorShaRef.current = row.sha;
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
@@ -558,7 +563,7 @@ export function GraphView({
 
     event.preventDefault();
     event.stopPropagation();
-    setTagCreationTargetSha(undefined);
+    setTagCreation(undefined);
     selectionAnchorShaRef.current = row.sha;
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
@@ -576,7 +581,7 @@ export function GraphView({
   function handleTagContextMenu(event: MouseEvent<HTMLElement>, row: CommitGraphRow, tagName: string): void {
     event.preventDefault();
     event.stopPropagation();
-    setTagCreationTargetSha(undefined);
+    setTagCreation(undefined);
     selectionAnchorShaRef.current = row.sha;
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
@@ -589,11 +594,14 @@ export function GraphView({
   }
 
   function handleStartTagCreation(sha: string): void {
-    setTagCreationTargetSha(sha);
+    setTagCreation({
+      targetSha: sha,
+      suggestedTagName
+    });
   }
 
   function handleCancelTagCreation(restoreGraphFocus = false): void {
-    setTagCreationTargetSha(undefined);
+    setTagCreation(undefined);
 
     if (restoreGraphFocus) {
       window.requestAnimationFrame(() => scrollRef.current?.focus({ preventScroll: true }));
@@ -825,7 +833,7 @@ export function GraphView({
                     style={{
                       height: virtualRow.size,
                       transform: `translateY(${virtualRow.start}px)`,
-                      zIndex: row.sha === tagCreationTargetSha ? 40 : undefined
+                      zIndex: row.sha === tagCreation?.targetSha ? 40 : undefined
                     }}
                   >
                     <GraphRowView
@@ -844,7 +852,7 @@ export function GraphView({
                       isBulkSelected={bulkSelection.has(row.sha)}
                       isSearchMatch={searchMatchShas.has(row.sha)}
                       isSearchFiltering={isSearchFiltering}
-                      isCreatingTag={row.sha === tagCreationTargetSha}
+                      isCreatingTag={row.sha === tagCreation?.targetSha}
                       onSelect={(event) => handleRowClick(event, row)}
                       onContextMenu={(event) => handleContextMenu(event, row)}
                       onRefClick={(ref) => handleRefClick(row, ref)}
@@ -855,7 +863,7 @@ export function GraphView({
                           ? (name) => onCreateTagAtCommit(row.sha, name)
                           : undefined
                       }
-                      suggestedTagName={suggestedTagName}
+                      suggestedTagName={tagCreation?.suggestedTagName}
                       onCancelTagCreation={handleCancelTagCreation}
                     />
                   </div>
