@@ -2340,6 +2340,40 @@ button.ref-chip:active {
   min-height: 100%;
 }
 
+.review-line-comment-trigger {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  margin: -2px -12px 0 0;
+  border: 1px solid
+    color-mix(in srgb, var(--accent-2, #5fd6c3) 62%, var(--border, #3b414c));
+  border-radius: 5px;
+  background: var(--accent, #26b8a2);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.34);
+  color: var(--bg-app, #1f232b);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.review-line-comment-trigger:hover {
+  border-color: var(--accent-2, #5fd6c3);
+  background: var(--accent-2, #5fd6c3);
+  box-shadow: 0 2px 7px rgb(0 0 0 / 0.42);
+}
+
+.review-line-comment-trigger:active {
+  background: var(--accent, #26b8a2);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+.review-line-comment-trigger:focus-visible {
+  outline-offset: 1px;
+}
+
 /* --- GitHub pull request inbox -------------------------------------- */
 
 .sidebar-pr-destination {

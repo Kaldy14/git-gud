@@ -25,11 +25,11 @@ import {
   GitBranch,
   Loader2,
   MessageSquare,
+  MessageSquarePlus,
   PackageOpen,
   PanelRightClose,
   PanelRightOpen,
   Pencil,
-  Plus,
   Rows3,
   Reply,
   Send,
@@ -1579,6 +1579,7 @@ function ReviewChunk({
   const renderGutterUtility = lineCollaboration?.selectedChunkId === undefined
     ? (getHoveredLine: () => { lineNumber: number; side: 'additions' | 'deletions' } | undefined) => (
         <button
+          className="review-line-comment-trigger"
           type="button"
           aria-label="Add review comment on this line"
           title="Add review comment"
@@ -1594,7 +1595,7 @@ function ReviewChunk({
             }
           }}
         >
-          <Plus size={12} aria-hidden="true" />
+          <MessageSquarePlus size={13} strokeWidth={2.2} aria-hidden="true" />
         </button>
       )
     : undefined;
