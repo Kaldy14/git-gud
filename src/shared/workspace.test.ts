@@ -9,6 +9,7 @@ import {
   normalizeWorkspaceState,
   partitionWorkspaceByProfile,
   profileWorkspaceKey,
+  reorderRepositoryTab,
   replaceRepositoryTab,
   selectRepositoryCommit,
   setDetailPanelCollapsed,
@@ -55,6 +56,27 @@ describe('workspace state', () => {
     expect(closed.tabs.map((tab) => tab.path)).toEqual([betaRepo.path]);
     expect(closed.activeTabId).toBe(createRepoTabId(betaRepo.path));
     expect(closed.recentRepos.map((repo) => repo.path)).toEqual([betaRepo.path, alphaRepo.path]);
+  });
+
+  it('reorders tabs without changing the active repository', () => {
+    const withAlpha = upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z');
+    const withBeta = upsertRepositoryTab(withAlpha, betaRepo, '2026-07-02T10:01:00.000Z');
+    const activated = activateRepositoryTab(withBeta, createRepoTabId(alphaRepo.path));
+    const reordered = reorderRepositoryTab(activated, createRepoTabId(alphaRepo.path), 1);
+
+    expect(reordered.tabs.map((tab) => tab.path)).toEqual([betaRepo.path, alphaRepo.path]);
+    expect(reordered.activeTabId).toBe(createRepoTabId(alphaRepo.path));
+    expect(activated.tabs.map((tab) => tab.path)).toEqual([alphaRepo.path, betaRepo.path]);
+  });
+
+  it('bounds reordered tabs to the available positions', () => {
+    const withAlpha = upsertRepositoryTab(createDefaultWorkspaceState(), alphaRepo, '2026-07-02T10:00:00.000Z');
+    const withBeta = upsertRepositoryTab(withAlpha, betaRepo, '2026-07-02T10:01:00.000Z');
+
+    expect(
+      reorderRepositoryTab(withBeta, createRepoTabId(alphaRepo.path), 99).tabs.map((tab) => tab.path)
+    ).toEqual([betaRepo.path, alphaRepo.path]);
+    expect(reorderRepositoryTab(withBeta, 'missing', 0)).toBe(withBeta);
   });
 
   it('replaces the current repository in place when opening a linked worktree', () => {

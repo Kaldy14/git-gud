@@ -63,6 +63,8 @@ const validators = {
   'repo:open-path': (args) => readOnlyArg(args, 'repo:open-path', 'repoPath', readString),
   'repo:replace-path': (args) => readStringPair(args, 'repo:replace-path', 'tabId', 'repoPath'),
   'tabs:activate': (args) => readOnlyArg(args, 'tabs:activate', 'tabId', readString),
+  'tabs:reorder': (args) =>
+    readStringAndNonNegativeInteger(args, 'tabs:reorder', 'tabId', 'targetIndex'),
   'tabs:close': (args) => readOnlyArg(args, 'tabs:close', 'tabId', readString),
   'tabs:select-commit': (args) => readStringWithOptionalString(args, 'tabs:select-commit', 'tabId', 'selectedCommit'),
   'tabs:select-file': (args) => readStringWithOptionalString(args, 'tabs:select-file', 'tabId', 'selectedFile'),
@@ -274,6 +276,19 @@ function readStringPair(
 ): [string, string] {
   assertArgCount(channel, args, 2);
   return [readString(args[0], firstLabel), readString(args[1], secondLabel)];
+}
+
+function readStringAndNonNegativeInteger(
+  args: readonly unknown[],
+  channel: string,
+  stringLabel: string,
+  integerLabel: string
+): [string, number] {
+  assertArgCount(channel, args, 2);
+  return [
+    readString(args[0], stringLabel),
+    readNonNegativeInteger(args[1], integerLabel)
+  ];
 }
 
 function readNonEmptyStringPair(
@@ -1263,6 +1278,14 @@ function readOptionalPositiveInteger(value: unknown, label: string): number | un
 function readPositiveInteger(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive integer.`);
+  }
+
+  return value;
+}
+
+function readNonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer.`);
   }
 
   return value;

@@ -111,6 +111,10 @@ export type IpcChannelMap = {
     args: [tabId: string];
     result: WorkspaceState;
   };
+  'tabs:reorder': {
+    args: [tabId: string, targetIndex: number];
+    result: WorkspaceState;
+  };
   'tabs:close': {
     args: [tabId: string];
     result: WorkspaceState;
@@ -464,6 +468,7 @@ export type RendererApi = {
   openRepositoryAtPath: (repoPath: string) => Promise<WorkspaceState>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState>;
   activateTab: (tabId: string) => Promise<WorkspaceState>;
+  reorderTab: (tabId: string, targetIndex: number) => Promise<WorkspaceState>;
   closeTab: (tabId: string) => Promise<WorkspaceState>;
   selectCommit: (tabId: string, selectedCommit: string | undefined) => Promise<WorkspaceState>;
   selectFile: (tabId: string, selectedFile: string | undefined) => Promise<WorkspaceState>;

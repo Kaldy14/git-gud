@@ -191,6 +191,7 @@ export function WorkspaceShell(): ReactElement {
     cloneRepository,
     replaceRepositoryAtPath,
     activateTab,
+    reorderTab,
     closeTab,
     selectCommit,
     selectFile,
@@ -2349,6 +2350,7 @@ export function WorkspaceShell(): ReactElement {
         profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}
+        onReorderTab={(tabId, targetIndex) => void reorderTab(tabId, targetIndex)}
         onCloseTab={handleCloseTab}
         onOpenStartTab={handleOpenStartTab}
         onActivateStartTab={handleActivateStartTab}

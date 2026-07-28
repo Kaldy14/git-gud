@@ -97,6 +97,7 @@ import {
   getRepositoryLastFetchedAt,
   getWorkspace,
   openWorkspaceRepository,
+  reorderWorkspaceTab,
   replaceWorkspaceRepository,
   recordRepositoryFetch,
   selectWorkspaceCommit,
@@ -291,6 +292,9 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   });
 
   handle('tabs:activate', (_event, tabId) => activateWorkspaceTab(tabId));
+  handle('tabs:reorder', (_event, tabId, targetIndex) =>
+    reorderWorkspaceTab(tabId, targetIndex)
+  );
   handle('tabs:close', (_event, tabId) => {
     const repoPath = getWorkspace().tabs.find((tab) => tab.id === tabId)?.path;
     const workspace = syncWorkspaceWatchers(closeWorkspaceTab(tabId), repoWatchers);

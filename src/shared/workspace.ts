@@ -233,6 +233,41 @@ export function activateRepositoryTab(state: WorkspaceState, tabId: string): Wor
   };
 }
 
+export function reorderRepositoryTab(
+  state: WorkspaceState,
+  tabId: string,
+  targetIndex: number
+): WorkspaceState {
+  const sourceIndex = state.tabs.findIndex((tab) => tab.id === tabId);
+
+  if (sourceIndex === -1 || state.tabs.length < 2 || !Number.isFinite(targetIndex)) {
+    return state;
+  }
+
+  const boundedTargetIndex = Math.max(
+    0,
+    Math.min(state.tabs.length - 1, Math.trunc(targetIndex))
+  );
+
+  if (sourceIndex === boundedTargetIndex) {
+    return state;
+  }
+
+  const tabs = [...state.tabs];
+  const [tab] = tabs.splice(sourceIndex, 1);
+
+  if (!tab) {
+    return state;
+  }
+
+  tabs.splice(boundedTargetIndex, 0, tab);
+
+  return {
+    ...state,
+    tabs
+  };
+}
+
 export function closeRepositoryTab(state: WorkspaceState, tabId: string): WorkspaceState {
   const tabIndex = state.tabs.findIndex((tab) => tab.id === tabId);
 
