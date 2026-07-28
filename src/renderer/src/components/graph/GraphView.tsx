@@ -38,6 +38,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
 import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
+import {
+  roundedRailCurveInPath,
+  roundedRailCurveOutPath
+} from '@renderer/components/graph/graphGeometry';
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
 import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
@@ -2037,14 +2041,14 @@ function RailSegmentPath({
     case 'curveIn': {
       const xf = visibleLaneX(segment.from, viewport);
       const xt = visibleLaneX(segment.to, viewport);
-      d = `M ${xf} 0 C ${xf} ${mid / 2} ${xt} ${mid / 2} ${xt} ${mid}`;
+      d = roundedRailCurveInPath(xf, xt, height);
       fallbackColor = laneColor(segment.from);
       break;
     }
     case 'curveOut': {
       const xf = visibleLaneX(segment.from, viewport);
       const xt = visibleLaneX(segment.to, viewport);
-      d = `M ${xf} ${mid} C ${xf} ${mid + mid / 2} ${xt} ${mid + mid / 2} ${xt} ${height}`;
+      d = roundedRailCurveOutPath(xf, xt, height);
       fallbackColor = laneColor(segment.to);
       break;
     }
@@ -2119,10 +2123,18 @@ function GraphNode({
     );
   }
 
+  if (kind === 'merge') {
+    return (
+      <g>
+        <title>{title}</title>
+        <circle cx={cx} cy={cy} r={6} fill={color} />
+      </g>
+    );
+  }
+
   return (
     <GraphCommitNode
       nodeId={nodeId}
-      kind={kind}
       cx={cx}
       cy={cy}
       color={color}
@@ -2135,9 +2147,10 @@ function GraphNode({
   );
 }
 
+type GraphCommitNodeProps = Omit<GraphNodeProps, 'kind'>;
+
 function GraphCommitNode({
   nodeId,
-  kind,
   cx,
   cy,
   color,
@@ -2146,7 +2159,7 @@ function GraphCommitNode({
   avatarUrl,
   fallbackAvatarUrl,
   title
-}: GraphNodeProps): ReactElement {
+}: GraphCommitNodeProps): ReactElement {
   const { imageSource, handleImageError } = useAvatarImageSource(avatarUrl, fallbackAvatarUrl);
   const clipId = `graph-avatar-${nodeId.replace(/[^\dA-Za-z_-]/g, '') || 'node'}`;
   const outerRadius = 11;
@@ -2190,9 +2203,6 @@ function GraphCommitNode({
         </>
       )}
       <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="rgba(4, 7, 10, 0.58)" strokeWidth={0.35} />
-      {kind === 'merge' ? (
-        <circle cx={cx + 6.8} cy={cy + 6.6} r={2.3} fill="var(--bg-graph)" stroke={color} strokeWidth={1.2} />
-      ) : null}
     </g>
   );
 }
