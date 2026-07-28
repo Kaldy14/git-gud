@@ -1716,11 +1716,7 @@ function RefChipStack({
   const hasOverflowRefs = overflowRefs.length > 0;
 
   return (
-    <div
-      className="ref-stack"
-      data-expandable={hasOverflowRefs}
-      data-has-overflow={hasOverflowRefs}
-    >
+    <div className="ref-stack" data-has-overflow={hasOverflowRefs}>
       <div className="ref-stack-summary">
         <RefChipView
           chip={primaryRef}
@@ -1744,25 +1740,23 @@ function RefChipStack({
           </span>
         ) : null}
       </div>
-      {hasOverflowRefs ? (
-        <div className="ref-stack-expanded">
-          {displayRefs.map((chip) => (
-            <RefChipView
-              key={`${chip.kind}:${chip.label}`}
-              chip={chip}
-              linkedWorktreeBranches={linkedWorktreeBranches}
-              color={color}
-              currentColor={currentColor}
-              remoteAvatarUrl={remoteAvatarUrl}
-              remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
-              pendingBranchName={pendingBranchName}
-              onRefClick={onRefClick}
-              onBranchContextMenu={onBranchContextMenu}
-              onTagContextMenu={onTagContextMenu}
-            />
-          ))}
-        </div>
-      ) : null}
+      <div className="ref-stack-expanded">
+        {displayRefs.map((chip) => (
+          <RefChipView
+            key={`${chip.kind}:${chip.label}`}
+            chip={chip}
+            linkedWorktreeBranches={linkedWorktreeBranches}
+            color={color}
+            currentColor={currentColor}
+            remoteAvatarUrl={remoteAvatarUrl}
+            remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
+            pendingBranchName={pendingBranchName}
+            onRefClick={onRefClick}
+            onBranchContextMenu={onBranchContextMenu}
+            onTagContextMenu={onTagContextMenu}
+          />
+        ))}
+      </div>
     </div>
   );
 }
