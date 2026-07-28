@@ -7,7 +7,10 @@ import type {
   GitRemoteBranchRef
 } from '@shared/types';
 
-import { indexPullRequestsByBranch } from './pullRequestBranches';
+import {
+  indexPullRequestsByBranch,
+  repositoryMatchesPullRequest
+} from './pullRequestBranches';
 
 describe('pull request branch matching', () => {
   it('matches a local branch only within the repository identified by its remotes', () => {
@@ -140,6 +143,21 @@ describe('pull request branch matching', () => {
 
     expect(matches.remote.get('upstream/main')?.number).toBe(42);
     expect(matches.remote.has('origin/main')).toBe(false);
+  });
+
+  it('matches a pull request to its local repository without requiring the head branch', () => {
+    expect(
+      repositoryMatchesPullRequest(
+        pullRequest('acme', 'widgets', 'feature/remote-only', 42),
+        [{ name: 'origin', pushUrl: 'git@github.com:acme/widgets.git' }]
+      )
+    ).toBe(true);
+    expect(
+      repositoryMatchesPullRequest(
+        pullRequest('other', 'project', 'feature/remote-only', 7),
+        [{ name: 'origin', fetchUrl: 'https://github.com/acme/widgets.git' }]
+      )
+    ).toBe(false);
   });
 });
 

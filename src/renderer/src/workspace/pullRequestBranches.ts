@@ -88,6 +88,27 @@ export function indexPullRequestsByBranch(
   return { local, remote };
 }
 
+export function repositoryMatchesPullRequest(
+  pullRequest: GitHubPullRequestSummary,
+  remotes: readonly GitRemote[]
+): boolean {
+  const pullRequestKey = pullRequestRepositoryKey(
+    pullRequest,
+    pullRequest.owner,
+    pullRequest.repository
+  );
+
+  if (!pullRequestKey) {
+    return false;
+  }
+
+  return remotes.some((remote) =>
+    [remote.fetchUrl, remote.pushUrl]
+      .map(parseRepositoryKey)
+      .includes(pullRequestKey)
+  );
+}
+
 function upstreamMatchesRepository(
   upstream: string | undefined,
   headRepositoryKey: string,

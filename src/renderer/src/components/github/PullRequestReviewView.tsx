@@ -21,6 +21,7 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Sparkles,
   Trash2,
   X
 } from 'lucide-react';
@@ -56,10 +57,12 @@ import {
   buildPullRequestDiscussion,
   type PullRequestDiscussionEntry
 } from './pullRequestDiscussion';
+import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
 
 type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
+  codexRepoPath?: string;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
@@ -86,6 +89,7 @@ type PullRequestReviewDraft =
 
 export function PullRequestReviewView({
   pullRequest,
+  codexRepoPath,
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
@@ -147,6 +151,7 @@ export function PullRequestReviewView({
     <PullRequestReviewContent
       key={detail.reviewPlan.targetKey}
       detail={detail}
+      codexRepoPath={codexRepoPath}
       diffStyle={diffStyle}
       diffSyntaxTheme={diffSyntaxTheme}
       onSetDiffStyle={onSetDiffStyle}
@@ -159,6 +164,7 @@ export function PullRequestReviewView({
 
 function PullRequestReviewContent({
   detail,
+  codexRepoPath,
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
@@ -167,6 +173,7 @@ function PullRequestReviewContent({
   onMerged
 }: {
   detail: GitHubPullRequestDetail;
+  codexRepoPath?: string;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
@@ -311,6 +318,25 @@ function PullRequestReviewContent({
     onSuccess: async (result) => {
       setNotice({ tone: 'success', message: result.message });
       await queryClient.invalidateQueries({ queryKey: gitHubPullRequestDetailQueryKey(locator) });
+    }
+  });
+  const codexMutation = useMutation({
+    mutationFn: async (summary: string) => {
+      if (!codexRepoPath) {
+        throw new Error('Open the pull request repository locally before handing this review to Codex.');
+      }
+
+      await window.api.openCodexTask(
+        codexRepoPath,
+        buildPullRequestCodexPrompt(detail, reviewDrafts, summary)
+      );
+    },
+    onSuccess: () => {
+      setNotice({
+        tone: 'success',
+        message: 'Opened a Codex task. Your draft comments are still local and were not posted to GitHub.'
+      });
+      setIsReviewDialogOpen(false);
     }
   });
   const mergeMutation = useMutation({
@@ -617,9 +643,22 @@ function PullRequestReviewContent({
         <ReviewSubmissionDialog
           drafts={reviewDrafts}
           isSubmitting={reviewMutation.isPending}
-          errorMessage={reviewMutation.error instanceof Error ? reviewMutation.error.message : undefined}
+          isOpeningCodex={codexMutation.isPending}
+          codexUnavailableMessage={
+            codexRepoPath
+              ? undefined
+              : `Open ${detail.owner}/${detail.repository} locally to hand this review to Codex.`
+          }
+          errorMessage={
+            codexMutation.error instanceof Error
+              ? codexMutation.error.message
+              : reviewMutation.error instanceof Error
+                ? reviewMutation.error.message
+                : undefined
+          }
           onRemoveDraft={removeDraft}
           onClose={() => setIsReviewDialogOpen(false)}
+          onOpenCodex={(summary) => codexMutation.mutate(summary)}
           onSubmit={submitReview}
         />
       ) : null}
@@ -676,16 +715,22 @@ function GeneralDiscussionComment({
 function ReviewSubmissionDialog({
   drafts,
   isSubmitting,
+  isOpeningCodex,
+  codexUnavailableMessage,
   errorMessage,
   onRemoveDraft,
   onClose,
+  onOpenCodex,
   onSubmit
 }: {
   drafts: PullRequestReviewDraft[];
   isSubmitting: boolean;
+  isOpeningCodex: boolean;
+  codexUnavailableMessage?: string;
   errorMessage?: string;
   onRemoveDraft: (id: string) => void;
   onClose: () => void;
+  onOpenCodex: (body: string) => void;
   onSubmit: (event: ReviewEvent, body: string) => void;
 }): ReactElement {
   const titleId = useId();
@@ -694,6 +739,8 @@ function ReviewSubmissionDialog({
   const requiresBody =
     event === 'request-changes' ||
     (event === 'comment' && drafts.length === 0);
+  const hasCodexContext = drafts.length > 0 || body.trim().length > 0;
+  const isBusy = isSubmitting || isOpeningCodex;
 
   function handleSubmit(submitEvent: FormEvent<HTMLFormElement>): void {
     submitEvent.preventDefault();
@@ -707,20 +754,20 @@ function ReviewSubmissionDialog({
     <ModalSurface
       labelledBy={titleId}
       className="pr-action-dialog"
-      onClose={isSubmitting ? () => undefined : onClose}
+      onClose={isBusy ? () => undefined : onClose}
     >
       <form onSubmit={handleSubmit}>
         <header>
           <ShieldCheck size={17} />
           <h2 id={titleId}>Finish review</h2>
-          <button className="icon-btn icon-btn-compact" type="button" disabled={isSubmitting} onClick={onClose} aria-label="Close review dialog">
+          <button className="icon-btn icon-btn-compact" type="button" disabled={isBusy} onClick={onClose} aria-label="Close review dialog">
             <X size={14} />
           </button>
         </header>
         <div className="pr-action-dialog-body">
           <div>
-            <span className="pr-action-field-label">Review decision</span>
-            <div className="pr-review-decision-options" role="group" aria-label="Review decision">
+            <span className="pr-action-field-label">GitHub review decision</span>
+            <div className="pr-review-decision-options" role="group" aria-label="GitHub review decision">
               {([
                 ['comment', 'Send comments', MessageSquare],
                 ['approve', 'Approve', CheckCircle2],
@@ -729,7 +776,7 @@ function ReviewSubmissionDialog({
                 <button
                   key={value}
                   type="button"
-                  disabled={isSubmitting}
+                  disabled={isBusy}
                   data-active={event === value}
                   aria-pressed={event === value}
                   onClick={() => setEvent(value)}
@@ -772,7 +819,7 @@ function ReviewSubmissionDialog({
                     <button
                       className="review-comment-action review-comment-icon-action review-comment-action--danger"
                       type="button"
-                      disabled={isSubmitting}
+                      disabled={isBusy}
                       onClick={() => onRemoveDraft(draft.id)}
                       aria-label="Remove draft comment"
                     >
@@ -799,7 +846,7 @@ function ReviewSubmissionDialog({
                     ? 'Explain what should change before merging…'
                     : 'Leave a general review comment…'
               }
-              disabled={isSubmitting}
+              disabled={isBusy}
               onChange={(changeEvent) => setBody(changeEvent.target.value)}
             />
           </label>
@@ -807,12 +854,25 @@ function ReviewSubmissionDialog({
         </div>
         <footer>
           <span className="pr-review-submit-note">
-            {drafts.length === 0
-              ? 'One action sends the review.'
-              : `One action sends the review and ${drafts.length} draft comment${drafts.length === 1 ? '' : 's'}.`}
+            Codex keeps drafts local. GitHub publishes them.
           </span>
-          <button className="btn-subtle btn-regular" type="button" disabled={isSubmitting} onClick={onClose}>Cancel</button>
-          <button className="btn-primary btn-regular" type="submit" disabled={isSubmitting || (requiresBody && !body.trim())}>
+          <button className="btn-subtle btn-regular" type="button" disabled={isBusy} onClick={onClose}>Cancel</button>
+          <button
+            className="btn-subtle btn-regular"
+            type="button"
+            disabled={isBusy || !hasCodexContext || Boolean(codexUnavailableMessage)}
+            title={
+              codexUnavailableMessage ??
+              (hasCodexContext
+                ? 'Open a new Codex task with these local review comments'
+                : 'Add a draft comment or review summary first')
+            }
+            onClick={() => onOpenCodex(body.trim())}
+          >
+            {isOpeningCodex ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            Open in Codex
+          </button>
+          <button className="btn-primary btn-regular" type="submit" disabled={isBusy || (requiresBody && !body.trim())}>
             {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             {reviewSubmitLabel(event, drafts.length)}
           </button>

@@ -87,7 +87,10 @@ import {
   autoFetchRepositoryOnTabActivation,
   createRepositoryAutoFetchCoordinator
 } from '@renderer/workspace/autoFetch';
-import { indexPullRequestsByBranch } from '@renderer/workspace/pullRequestBranches';
+import {
+  indexPullRequestsByBranch,
+  repositoryMatchesPullRequest
+} from '@renderer/workspace/pullRequestBranches';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import { dashboardProfileId } from '@shared/dashboard';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
@@ -103,6 +106,7 @@ import type {
   GitOperationResult,
   GitHubPullRequestSummary,
   GitProfile,
+  GitRepositoryOverview,
   GitRemoteBranchRef,
   GitReviewTarget,
   RepoTab,
@@ -333,6 +337,30 @@ export function WorkspaceShell(): ReactElement {
       repositoryQuery.data?.remotes
     ]
   );
+  const pullRequestCodexRepoPath = useMemo(() => {
+    if (gitHubWorkspaceView?.kind !== 'review') {
+      return undefined;
+    }
+
+    return workspace.tabs.find((tab) => {
+      const overview =
+        tab.path === activeTab?.path
+          ? repositoryQuery.data
+          : queryClient.getQueryData<GitRepositoryOverview>(
+              repositoryOverviewQueryKey(tab.path)
+            );
+      return repositoryMatchesPullRequest(
+        gitHubWorkspaceView.pullRequest,
+        overview?.remotes ?? []
+      );
+    })?.path;
+  }, [
+    activeTab?.path,
+    gitHubWorkspaceView,
+    queryClient,
+    repositoryQuery.data,
+    workspace.tabs
+  ]);
   const dashboardsQuery = useDashboards(activeDashboardProfileId);
   const dashboardActionAlertsQuery = useDashboardActionAlerts(
     activeDashboardProfileId
@@ -2493,6 +2521,7 @@ export function WorkspaceShell(): ReactElement {
               <PullRequestReviewView
                 key={`${gitHubWorkspaceView.pullRequest.profileId}:${gitHubWorkspaceView.pullRequest.id}`}
                 pullRequest={gitHubWorkspaceView.pullRequest}
+                codexRepoPath={pullRequestCodexRepoPath}
                 diffStyle={activeDiffStyle}
                 diffSyntaxTheme={settings.diffSyntaxTheme}
                 onSetDiffStyle={handleSetDiffStyle}
