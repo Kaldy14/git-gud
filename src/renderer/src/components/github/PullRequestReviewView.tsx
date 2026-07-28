@@ -1,4 +1,4 @@
-import type { FormEvent, ReactElement } from 'react';
+import type { CSSProperties, FormEvent, ReactElement } from 'react';
 import { useId, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,6 +12,7 @@ import {
   CornerDownRight,
   ExternalLink,
   FileText,
+  FolderTree,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -36,6 +37,10 @@ import {
   type ReviewLineCommentInput,
   type ReviewLineReplyInput
 } from '@renderer/components/review/ReviewView';
+import {
+  loadReviewFileTreeOpen,
+  loadReviewFileTreeWidth
+} from '@renderer/components/review/reviewFileTree';
 import {
   gitHubPullRequestDetailQueryKey,
   gitHubPullRequestInboxQueryKey,
@@ -168,13 +173,20 @@ function PullRequestReviewLoading({
   onAction: () => void;
   onClose: () => void;
 }): ReactElement {
+  const reviewRepoPath = `github://${new URL(pullRequest.url).host}/${pullRequest.owner}/${pullRequest.repository}`;
+  const isFileTreeOpen = loadReviewFileTreeOpen(window.localStorage, reviewRepoPath);
+  const fileTreeWidth = loadReviewFileTreeWidth(window.localStorage, reviewRepoPath);
+  const fileTreeStyle: CSSProperties & Record<'--review-file-tree-width', string> = {
+    '--review-file-tree-width': `${fileTreeWidth}px`
+  };
+
   return (
     <section
       className="pr-review-view pr-review-loading"
       aria-label={`Loading review for ${pullRequest.title}`}
       aria-busy="true"
     >
-      <header className="pr-review-header">
+      <header className="pr-review-header pr-review-header--compact">
         <button
           className="icon-btn icon-btn-regular shrink-0"
           type="button"
@@ -184,32 +196,21 @@ function PullRequestReviewLoading({
         >
           <ArrowLeft size={15} />
         </button>
-        <div className="min-w-0 flex-1">
+        <div className="pr-review-title">
+          <GitPullRequest size={13} />
           <h1 title={pullRequest.title}>{pullRequest.title}</h1>
-          <div className="pr-review-loading-context">
-            <span className="pr-review-loading-repository">
-              <GitPullRequest size={11} />
-              {pullRequest.owner}/{pullRequest.repository}#{pullRequest.number}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span className="pr-review-loading-author">{pullRequest.author}</span>
-            <span aria-hidden="true">·</span>
-            <span
-              className="pr-review-loading-branch-path"
-              title={`${pullRequest.headRefName} → ${pullRequest.baseRefName}`}
-            >
-              <span>{pullRequest.headRefName}</span>
-              <span>→</span>
-              <span>{pullRequest.baseRefName}</span>
-            </span>
-            <span aria-hidden="true">·</span>
-            <FileText size={11} />
-            <span>
-              {pullRequest.changedFiles} {pullRequest.changedFiles === 1 ? 'file' : 'files'}
-            </span>
-          </div>
+          <span className="pr-review-number">
+            {pullRequest.owner}/{pullRequest.repository}#{pullRequest.number}
+          </span>
+        </div>
+        <div className="pr-review-header-status">
+          <ReviewStatus detail={pullRequest} />
         </div>
         <div className="pr-review-header-actions">
+          <span className="pr-review-loading-progress" role="status" aria-live="polite">
+            <Loader2 size={12} className="animate-spin" />
+            Preparing review
+          </span>
           <a
             className="btn-subtle btn-regular"
             href={pullRequest.url}
@@ -231,37 +232,18 @@ function PullRequestReviewLoading({
         </div>
       </header>
 
-      <div className="pr-review-loading-overview">
-        <span className="pr-review-loading-overview-status">
-          <ReviewStatus detail={pullRequest} />
-          <span className="pr-review-change-stat">
-            <Plus size={11} /> {pullRequest.additions.toLocaleString()}
-          </span>
-          <span className="pr-review-change-stat">
-            <Minus size={11} /> {pullRequest.deletions.toLocaleString()}
-          </span>
-          <span className="pr-review-comment-stat">
-            <MessageSquare size={11} /> {pullRequest.comments} comments
-          </span>
-        </span>
-        <span className="pr-review-loading-progress" role="status" aria-live="polite">
-          <Loader2 size={12} className="animate-spin" />
-          Preparing review
-        </span>
-      </div>
-
-      <div className="pr-review-loading-workspace" aria-hidden="true">
-        <div className="pr-review-loading-toolbar">
+      <div className="review-view pr-review-loading-workspace" aria-hidden="true">
+        <div className="review-toolbar pr-review-loading-toolbar">
           <span className="pr-review-skeleton pr-review-skeleton-branch" />
           <span className="pr-review-skeleton pr-review-skeleton-control" />
           <span className="pr-review-skeleton pr-review-skeleton-progress" />
           <span className="pr-review-skeleton pr-review-skeleton-actions" />
         </div>
-        <div className="pr-review-loading-layout">
-          <div className="pr-review-loading-queue">
+        <div className="review-layout pr-review-loading-layout">
+          <div className="review-queue pr-review-loading-queue">
             {Array.from({ length: 6 }, (_, index) => (
               <span
-                className="pr-review-loading-queue-row"
+                className="review-unit-row pr-review-loading-queue-row"
                 data-active={index === 0}
                 key={index}
               >
@@ -273,15 +255,15 @@ function PullRequestReviewLoading({
               </span>
             ))}
           </div>
-          <div className="pr-review-loading-diff">
-            <div className="pr-review-loading-diff-heading">
+          <div className="review-content pr-review-loading-diff">
+            <div className="review-unit-header pr-review-loading-diff-heading">
               <span>
                 <b className="pr-review-skeleton" />
                 <small className="pr-review-skeleton" />
               </span>
               <i className="pr-review-skeleton" />
             </div>
-            <div className="pr-review-loading-file-heading">
+            <div className="review-chunk-header pr-review-loading-file-heading">
               <span className="pr-review-skeleton" />
               <span className="pr-review-skeleton" />
             </div>
@@ -294,6 +276,29 @@ function PullRequestReviewLoading({
               ))}
             </div>
           </div>
+          {isFileTreeOpen ? (
+            <aside
+              className="review-file-tree-panel pr-review-loading-file-tree"
+              style={fileTreeStyle}
+            >
+              <header>
+                <span>
+                  <FolderTree size={13} />
+                  Files
+                </span>
+                <span className="pr-review-skeleton pr-review-skeleton-file-count" />
+              </header>
+              <div className="review-file-tree-body pr-review-loading-file-tree-body">
+                {Array.from({ length: 9 }, (_, index) => (
+                  <span
+                    className="pr-review-skeleton"
+                    data-depth={index % 4}
+                    key={index}
+                  />
+                ))}
+              </div>
+            </aside>
+          ) : null}
         </div>
       </div>
     </section>

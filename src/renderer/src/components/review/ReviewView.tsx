@@ -586,6 +586,12 @@ export function ReviewView({
     } else if (event.key === 'k' || event.key === 'ArrowUp') {
       event.preventDefault();
       navigateUnits(-1);
+    } else if (
+      event.key === 'Enter' &&
+      (event.target === event.currentTarget || isReviewUnitRowTarget(event.target))
+    ) {
+      event.preventDefault();
+      markSelectedUnit(!(selectedUnit?.isViewed ?? false));
     } else if (event.key === 'v') {
       event.preventDefault();
       markSelectedUnit(!(selectedUnit?.isViewed ?? false));
@@ -2338,4 +2344,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 function isReviewFileTreeTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('.review-file-tree-panel') !== null;
+}
+
+function isReviewUnitRowTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('.review-unit-row') !== null;
 }
