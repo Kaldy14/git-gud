@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AppSettingsInput,
   CommitGraphPage,
+  DashboardActionAlertState,
   DashboardInput,
   DashboardState,
   GitCommitDetail,
@@ -379,6 +380,14 @@ export type IpcChannelMap = {
     args: [profileId: string, dashboardId: string];
     result: DashboardState;
   };
+  'dashboards:alerts': {
+    args: [profileId: string];
+    result: DashboardActionAlertState;
+  };
+  'dashboards:alerts-mark-read': {
+    args: [profileId: string, alertIds: string[]];
+    result: DashboardActionAlertState;
+  };
   'portainer:connections': {
     args: [];
     result: PortainerConnection[];
@@ -542,6 +551,11 @@ export type RendererApi = {
   saveDashboard: (dashboard: DashboardInput) => Promise<DashboardState>;
   deleteDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
   selectDashboard: (profileId: string, dashboardId: string) => Promise<DashboardState>;
+  getDashboardActionAlerts: (profileId: string) => Promise<DashboardActionAlertState>;
+  markDashboardActionAlertsRead: (
+    profileId: string,
+    alertIds: string[]
+  ) => Promise<DashboardActionAlertState>;
   listPortainerConnections: () => Promise<PortainerConnection[]>;
   savePortainerConnection: (
     connection: PortainerConnectionInput
@@ -577,4 +591,7 @@ export type RendererApi = {
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;
   onRepositoryChanged: (listener: (event: RepoChangedEvent) => void) => () => void;
   onOperationProgress: (listener: (event: GitOperationProgressEvent) => void) => () => void;
+  onDashboardActionAlertsChanged: (
+    listener: (state: DashboardActionAlertState) => void
+  ) => () => void;
 };

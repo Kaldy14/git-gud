@@ -111,7 +111,13 @@ export function useGitHubRepositories(profileId: string | undefined) {
 }
 
 export function useGitHubActionsRuns(input: GitHubActionsRunsInput | undefined) {
-  return useQuery({
+  return useQuery(gitHubActionsRunsQueryOptions(input));
+}
+
+export function gitHubActionsRunsQueryOptions(
+  input: GitHubActionsRunsInput | undefined
+) {
+  return {
     queryKey: input
       ? gitHubActionsRunsQueryKey(input)
       : ['github-actions-runs', 'none', 'none', 'none', 0, '', false, false],
@@ -123,10 +129,11 @@ export function useGitHubActionsRuns(input: GitHubActionsRunsInput | undefined) 
     },
     enabled: Boolean(input),
     staleTime: 5_000,
+    refetchIntervalInBackground: true,
     refetchInterval: input
       ? gitHubActionsRunsRefetchInterval(input.filters)
       : GITHUB_ACTIONS_REFETCH_INTERVAL_MS
-  });
+  };
 }
 
 export function gitHubActionsRunsRefetchInterval(

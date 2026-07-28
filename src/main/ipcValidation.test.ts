@@ -119,6 +119,15 @@ describe('IPC argument validation', () => {
       'profile:kaldy',
       'dashboard:actions'
     ]);
+    expect(validateIpcArgs('dashboards:alerts', ['profile:kaldy'])).toEqual([
+      'profile:kaldy'
+    ]);
+    expect(
+      validateIpcArgs('dashboards:alerts-mark-read', [
+        'profile:kaldy',
+        ['alert:one', 'alert:two']
+      ])
+    ).toEqual(['profile:kaldy', ['alert:one', 'alert:two']]);
     expect(
       validateIpcArgs('dashboards:save', [
         {
@@ -531,6 +540,12 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('dashboards:select', ['profile:kaldy', ''])).toThrow(
       'dashboardId must not be empty.'
     );
+    expect(() =>
+      validateIpcArgs('dashboards:alerts-mark-read', [
+        'profile:kaldy',
+        ['']
+      ])
+    ).toThrow('alertIds[0] must not be empty.');
     expect(() =>
       validateIpcArgs('portainer:connection-save', [
         {

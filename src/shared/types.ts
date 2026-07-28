@@ -975,6 +975,29 @@ export type DashboardState = {
   selectedDashboardId?: string;
 };
 
+export type DashboardActionFailureAlert = {
+  id: string;
+  profileId: string;
+  owner: string;
+  repository: string;
+  runId: number;
+  runNumber: number;
+  workflowName: string;
+  displayTitle: string;
+  branch?: string;
+  conclusion: GitHubWorkflowRunConclusion;
+  url: string;
+  failedAt: string;
+  detectedAt: string;
+  readAt?: string;
+};
+
+export type DashboardActionAlertState = {
+  profileId: string;
+  alerts: DashboardActionFailureAlert[];
+  unreadCount: number;
+};
+
 export type PortainerStackStatusInput = {
   connectionId: string;
   endpointId: number;

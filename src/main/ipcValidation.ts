@@ -149,6 +149,15 @@ const validators = {
     readStringPair(args, 'dashboards:delete', 'profileId', 'dashboardId'),
   'dashboards:select': (args) =>
     readNonEmptyStringPair(args, 'dashboards:select', 'profileId', 'dashboardId'),
+  'dashboards:alerts': (args) =>
+    readOnlyArg(args, 'dashboards:alerts', 'profileId', readNonEmptyString),
+  'dashboards:alerts-mark-read': (args) =>
+    readNonEmptyStringAndStringArray(
+      args,
+      'dashboards:alerts-mark-read',
+      'profileId',
+      'alertIds'
+    ),
   'portainer:connections': (args) => noArgs('portainer:connections', args),
   'portainer:connection-save': (args) =>
     readOnlyArg(
@@ -250,6 +259,26 @@ function readStringAndStringArray(
 ): [string, string[]] {
   assertArgCount(channel, args, 2);
   return [readString(args[0], stringLabel), readStringArray(args[1], arrayLabel)];
+}
+
+function readNonEmptyStringAndStringArray(
+  args: readonly unknown[],
+  channel: string,
+  stringLabel: string,
+  arrayLabel: string
+): [string, string[]] {
+  assertArgCount(channel, args, 2);
+
+  if (!Array.isArray(args[1])) {
+    throw new Error(`${arrayLabel} must be an array.`);
+  }
+
+  return [
+    readNonEmptyString(args[0], stringLabel),
+    args[1].map((value, index) =>
+      readNonEmptyString(value, `${arrayLabel}[${index}]`)
+    )
+  ];
 }
 
 function readStringAndLimitedStringArray(

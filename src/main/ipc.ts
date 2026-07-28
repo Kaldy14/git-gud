@@ -5,12 +5,18 @@ import {
   dialog,
   ipcMain,
   Notification,
+  shell,
   type IpcMainInvokeEvent,
   type OpenDialogOptions
 } from 'electron';
 
 import type { IpcChannelMap, IpcChannelName } from '@shared/ipc';
-import type { GitOperationProgressEvent, WorkspaceState } from '@shared/types';
+import type {
+  DashboardActionAlertState,
+  DashboardActionFailureAlert,
+  GitOperationProgressEvent,
+  WorkspaceState
+} from '@shared/types';
 
 import { loadCommitGraph } from './git/commitGraph';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
@@ -93,6 +99,7 @@ import {
   closeWorkspaceTab,
   deleteDashboard,
   getAppSettings,
+  getDashboardActionAlerts,
   getDashboards,
   getRepositoryLastFetchedAt,
   getWorkspace,
@@ -100,10 +107,12 @@ import {
   reorderWorkspaceTab,
   replaceWorkspaceRepository,
   recordRepositoryFetch,
+  recordDashboardActionRuns,
   selectWorkspaceCommit,
   selectWorkspaceFile,
   selectDashboard,
   saveDashboard,
+  markDashboardActionAlertsRead,
   updateAppSettings,
   updateDetailPanelCollapsed,
   updateDetailPanelWidth,
@@ -164,6 +173,45 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
 };
 
 export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
+  function broadcastDashboardActionAlerts(state: DashboardActionAlertState): void {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('dashboards:alerts-changed', state);
+    }
+  }
+
+  function showDashboardActionFailureNotification(
+    alerts: DashboardActionFailureAlert[]
+  ): void {
+    const firstAlert = alerts[0];
+
+    if (!firstAlert || !Notification.isSupported()) {
+      return;
+    }
+
+    const notification =
+      alerts.length === 1
+        ? new Notification({
+            title: `${firstAlert.owner}/${firstAlert.repository} workflow failed`,
+            body: `${firstAlert.displayTitle} · ${firstAlert.workflowName} #${firstAlert.runNumber}`
+          })
+        : new Notification({
+            title: `${alerts.length} GitHub Actions runs failed`,
+            body: `${firstAlert.owner}/${firstAlert.repository} and ${alerts.length - 1} more`
+          });
+
+    notification.on('click', () => {
+      const state = markDashboardActionAlertsRead(
+        firstAlert.profileId,
+        alerts.map((alert) => alert.id)
+      );
+      broadcastDashboardActionAlerts(state);
+      if (isSafeExternalUrl(firstAlert.url)) {
+        void shell.openExternal(firstAlert.url);
+      }
+    });
+    notification.show();
+  }
+
   reviewGuideManager.setOnReady(async ({ repoPath, plan, guide }) => {
     try {
       const isCurrent = repoPath.startsWith('github://')
@@ -501,6 +549,14 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
   handle('dashboards:select', (_event, profileId, dashboardId) =>
     selectDashboard(profileId, dashboardId)
   );
+  handle('dashboards:alerts', (_event, profileId) =>
+    getDashboardActionAlerts(profileId)
+  );
+  handle('dashboards:alerts-mark-read', (_event, profileId, alertIds) => {
+    const state = markDashboardActionAlertsRead(profileId, alertIds);
+    broadcastDashboardActionAlerts(state);
+    return state;
+  });
   handle('portainer:connections', () => listPortainerConnections());
   handle('portainer:connection-save', (_event, connection) =>
     savePortainerConnection(connection)
@@ -521,7 +577,19 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     loadPortainerStackImages(input)
   );
   handle('github:repositories', (_event, profileId) => loadGitHubRepositories(profileId));
-  handle('github:actions-runs', (_event, input) => loadGitHubActionsRuns(input));
+  handle('github:actions-runs', async (_event, input) => {
+    const runs = await loadGitHubActionsRuns(input);
+    const observation = recordDashboardActionRuns(input, runs);
+
+    if (observation.newAlerts.length > 0) {
+      broadcastDashboardActionAlerts(observation.state);
+    }
+    if (observation.notify) {
+      showDashboardActionFailureNotification(observation.newAlerts);
+    }
+
+    return runs;
+  });
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
   handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {
@@ -551,6 +619,15 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
       assignProfileToRepository(repoPath, profileId, tab.assignedProfileId)
     );
   });
+}
+
+function isSafeExternalUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 function handle<TChannel extends IpcChannelName>(channel: TChannel, handler: IpcHandler<TChannel>): void {

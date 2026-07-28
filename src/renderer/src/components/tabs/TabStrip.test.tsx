@@ -54,6 +54,34 @@ describe('TabStrip', () => {
     expect(markup).not.toContain('Close Dashboards');
   });
 
+  it('shows an accessible unread failure dot on the dashboards tab', () => {
+    const markup = renderToStaticMarkup(
+      <TabStrip
+        tabs={[repositoryTab]}
+        activeTabId={repositoryTab.id}
+        isStartTabOpen={false}
+        isStartTabActive={false}
+        isDashboardsTabActive={false}
+        dashboardUnreadCount={2}
+        onActivateTab={vi.fn()}
+        onReorderTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onOpenStartTab={vi.fn()}
+        onActivateStartTab={vi.fn()}
+        onCloseStartTab={vi.fn()}
+        onActivateDashboardsTab={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onActivateProfile={vi.fn(async () => {})}
+        onSaveAndActivateProfile={vi.fn(async () => {})}
+      />
+    );
+
+    expect(markup).toContain(
+      'aria-label="Dashboards, 2 unread workflow failures"'
+    );
+    expect(markup).toContain('class="dashboard-unread-dot"');
+  });
+
   it('marks repository tabs as reorderable when their order can change', () => {
     const markup = renderToStaticMarkup(
       <TabStrip

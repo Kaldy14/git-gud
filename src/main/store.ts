@@ -7,12 +7,18 @@ import Store from 'electron-store';
 import type {
   AppSettings,
   AppSettingsInput,
+  DashboardActionAlertState,
+  DashboardActionFailureAlert,
   Dashboard,
   DashboardInput,
   DashboardState,
   DashboardTile,
   GitProfile,
+  GitHubActionsRuns,
+  GitHubActionsRunsInput,
   GitHubActionsRunFilters,
+  GitHubWorkflowRun,
+  GitHubWorkflowRunConclusion,
   RepositorySummary,
   WorkspaceState
 } from '@shared/types';
@@ -45,7 +51,29 @@ type StoreShape = {
   settings: AppSettings;
   dashboards: Dashboard[];
   selectedDashboardIds: Record<string, string>;
+  dashboardActionAlerts: StoredDashboardActionAlerts;
   repositoryFetchTimestamps: Record<string, string>;
+};
+
+type StoredDashboardActionRun = {
+  failed: boolean;
+  updatedAt: string;
+};
+
+type StoredDashboardActionSource = {
+  lastObservedAt: string;
+  runs: Record<string, StoredDashboardActionRun>;
+};
+
+type StoredDashboardActionAlerts = {
+  alerts: DashboardActionFailureAlert[];
+  sources: Record<string, StoredDashboardActionSource>;
+};
+
+export type DashboardActionRunsRecordResult = {
+  state: DashboardActionAlertState;
+  newAlerts: DashboardActionFailureAlert[];
+  notify: boolean;
 };
 
 const store = new Store<StoreShape>({
@@ -58,13 +86,19 @@ const store = new Store<StoreShape>({
     settings: createDefaultAppSettings(),
     dashboards: [],
     selectedDashboardIds: {},
+    dashboardActionAlerts: {
+      alerts: [],
+      sources: {}
+    },
     repositoryFetchTimestamps: {}
   }
 });
 
 const SELECTION_PERSIST_DELAY_MS = 150;
+const DASHBOARD_ACTION_ALERT_LIMIT = 250;
 const pendingWorkspaceWrites = new Map<string, WorkspaceState>();
 const pendingWorkspaceWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const observedDashboardActionSourcesThisSession = new Set<string>();
 
 export function getWorkspace(): WorkspaceState {
   const workspacesByProfile = getProfileWorkspaces();
@@ -277,6 +311,113 @@ export function selectDashboard(profileId: string, dashboardId: string): Dashboa
   };
 }
 
+export function getDashboardActionAlerts(profileId: string): DashboardActionAlertState {
+  const stored = normalizeDashboardActionAlerts(store.get('dashboardActionAlerts'));
+  const alerts = stored.alerts
+    .filter((alert) => alert.profileId === profileId)
+    .sort((left, right) => right.detectedAt.localeCompare(left.detectedAt));
+
+  return {
+    profileId,
+    alerts,
+    unreadCount: alerts.filter((alert) => !alert.readAt).length
+  };
+}
+
+export function recordDashboardActionRuns(
+  input: GitHubActionsRunsInput,
+  result: GitHubActionsRuns
+): DashboardActionRunsRecordResult {
+  const stored = normalizeDashboardActionAlerts(store.get('dashboardActionAlerts'));
+  const sourceKey = dashboardActionSourceKey(input);
+  const previousSource = stored.sources[sourceKey];
+  const observedThisSession = observedDashboardActionSourcesThisSession.has(sourceKey);
+  const existingAlertIds = new Set(stored.alerts.map((alert) => alert.id));
+  const detectedAt = result.loadedAt;
+  const newAlerts = previousSource
+    ? result.runs.flatMap<DashboardActionFailureAlert>((run) => {
+        const previousRun = previousSource.runs[String(run.id)];
+        const newlyFailed =
+          isFailedDashboardActionRun(run) &&
+          ((previousRun && !previousRun.failed) ||
+            (!previousRun && isAfter(run.updatedAt, previousSource.lastObservedAt)));
+        const alertId = dashboardActionAlertId(input, run.id);
+
+        if (!newlyFailed || existingAlertIds.has(alertId) || !run.conclusion) {
+          return [];
+        }
+
+        existingAlertIds.add(alertId);
+        return [
+          {
+            id: alertId,
+            profileId: input.profileId,
+            owner: input.owner,
+            repository: input.repository,
+            runId: run.id,
+            runNumber: run.runNumber,
+            workflowName: run.name,
+            displayTitle: run.displayTitle,
+            ...(run.branch ? { branch: run.branch } : {}),
+            conclusion: run.conclusion,
+            url: run.url,
+            failedAt: run.updatedAt,
+            detectedAt
+          }
+        ];
+      })
+    : [];
+  const alerts = retainDashboardActionAlerts([...newAlerts, ...stored.alerts]);
+  const sources = {
+    ...stored.sources,
+    [sourceKey]: {
+      lastObservedAt: result.loadedAt,
+      runs: Object.fromEntries(
+        result.runs.map((run) => [
+          String(run.id),
+          {
+            failed: isFailedDashboardActionRun(run),
+            updatedAt: run.updatedAt
+          }
+        ])
+      )
+    }
+  };
+
+  store.set('dashboardActionAlerts', { alerts, sources });
+  observedDashboardActionSourcesThisSession.add(sourceKey);
+
+  return {
+    state: getDashboardActionAlerts(input.profileId),
+    newAlerts,
+    notify: observedThisSession && newAlerts.length > 0
+  };
+}
+
+export function markDashboardActionAlertsRead(
+  profileId: string,
+  alertIds: string[],
+  readAt = new Date().toISOString()
+): DashboardActionAlertState {
+  const stored = normalizeDashboardActionAlerts(store.get('dashboardActionAlerts'));
+  const requestedIds = new Set(alertIds);
+  const markAll = requestedIds.size === 0;
+  const alerts = stored.alerts.map((alert) =>
+    alert.profileId === profileId &&
+    !alert.readAt &&
+    (markAll || requestedIds.has(alert.id))
+      ? { ...alert, readAt }
+      : alert
+  );
+
+  store.set('dashboardActionAlerts', {
+    ...stored,
+    alerts
+  });
+
+  return getDashboardActionAlerts(profileId);
+}
+
 export function flushPendingWorkspaceWrites(): void {
   if (pendingWorkspaceWrites.size === 0) {
     return;
@@ -415,6 +556,149 @@ function normalizeGitHubActionsRunFilters(value: unknown): GitHubActionsRunFilte
     includeTags: candidate.includeTags === true,
     includeMyPullRequests: candidate.includeMyPullRequests === true
   };
+}
+
+function normalizeDashboardActionAlerts(value: unknown): StoredDashboardActionAlerts {
+  if (!isRecord(value)) {
+    return {
+      alerts: [],
+      sources: {}
+    };
+  }
+
+  const alerts = Array.isArray(value.alerts)
+    ? value.alerts.flatMap<DashboardActionFailureAlert>((alert) => {
+        if (!isRecord(alert)) {
+          return [];
+        }
+
+        const conclusion = normalizeFailureConclusion(alert.conclusion);
+
+        if (
+          typeof alert.id !== 'string' ||
+          typeof alert.profileId !== 'string' ||
+          typeof alert.owner !== 'string' ||
+          typeof alert.repository !== 'string' ||
+          typeof alert.runId !== 'number' ||
+          !Number.isInteger(alert.runId) ||
+          typeof alert.runNumber !== 'number' ||
+          !Number.isInteger(alert.runNumber) ||
+          typeof alert.workflowName !== 'string' ||
+          typeof alert.displayTitle !== 'string' ||
+          typeof alert.url !== 'string' ||
+          typeof alert.failedAt !== 'string' ||
+          typeof alert.detectedAt !== 'string' ||
+          !conclusion
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            id: alert.id,
+            profileId: alert.profileId,
+            owner: alert.owner,
+            repository: alert.repository,
+            runId: alert.runId,
+            runNumber: alert.runNumber,
+            workflowName: alert.workflowName,
+            displayTitle: alert.displayTitle,
+            ...(typeof alert.branch === 'string' ? { branch: alert.branch } : {}),
+            conclusion,
+            url: alert.url,
+            failedAt: alert.failedAt,
+            detectedAt: alert.detectedAt,
+            ...(typeof alert.readAt === 'string' ? { readAt: alert.readAt } : {})
+          }
+        ];
+      })
+    : [];
+  const sources = isRecord(value.sources)
+    ? Object.fromEntries(
+        Object.entries(value.sources).flatMap(([sourceKey, source]) => {
+          if (!isRecord(source) || typeof source.lastObservedAt !== 'string') {
+            return [];
+          }
+
+          const runs = isRecord(source.runs)
+            ? Object.fromEntries(
+                Object.entries(source.runs).flatMap(([runId, run]) =>
+                  isRecord(run) &&
+                  typeof run.failed === 'boolean' &&
+                  typeof run.updatedAt === 'string'
+                    ? [[runId, { failed: run.failed, updatedAt: run.updatedAt }]]
+                    : []
+                )
+              )
+            : {};
+
+          return [[sourceKey, { lastObservedAt: source.lastObservedAt, runs }]];
+        })
+      )
+    : {};
+
+  return {
+    alerts: retainDashboardActionAlerts(alerts),
+    sources
+  };
+}
+
+function dashboardActionSourceKey(input: GitHubActionsRunsInput): string {
+  return JSON.stringify([
+    input.profileId,
+    input.owner,
+    input.repository,
+    input.limit,
+    [...input.filters.branches].sort(),
+    input.filters.includeTags,
+    input.filters.includeMyPullRequests
+  ]);
+}
+
+function dashboardActionAlertId(input: GitHubActionsRunsInput, runId: number): string {
+  return JSON.stringify([
+    input.profileId,
+    input.owner,
+    input.repository,
+    runId
+  ]);
+}
+
+function isFailedDashboardActionRun(run: GitHubWorkflowRun): boolean {
+  return run.status === 'completed' && Boolean(normalizeFailureConclusion(run.conclusion));
+}
+
+function normalizeFailureConclusion(
+  value: unknown
+): GitHubWorkflowRunConclusion | undefined {
+  return value === 'failure' ||
+    value === 'timed-out' ||
+    value === 'action-required' ||
+    value === 'stale' ||
+    value === 'startup-failure'
+    ? value
+    : undefined;
+}
+
+function isAfter(candidate: string, baseline: string): boolean {
+  const candidateTime = Date.parse(candidate);
+  const baselineTime = Date.parse(baseline);
+
+  return !Number.isNaN(candidateTime) &&
+    !Number.isNaN(baselineTime) &&
+    candidateTime > baselineTime;
+}
+
+function retainDashboardActionAlerts(
+  alerts: DashboardActionFailureAlert[]
+): DashboardActionFailureAlert[] {
+  const sorted = [...alerts].sort((left, right) =>
+    right.detectedAt.localeCompare(left.detectedAt)
+  );
+  const unread = sorted.filter((alert) => !alert.readAt);
+  const read = sorted.filter((alert) => alert.readAt);
+
+  return [...unread, ...read].slice(0, Math.max(DASHBOARD_ACTION_ALERT_LIMIT, unread.length));
 }
 
 function saveWorkspace(workspace: WorkspaceState, deferPersistence = false): WorkspaceState {

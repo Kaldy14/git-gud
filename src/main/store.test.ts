@@ -5,12 +5,21 @@ import { tmpdir } from 'node:os';
 
 import { describe, expect, it } from 'vitest';
 
+import type {
+  GitHubActionsRuns,
+  GitHubActionsRunsInput,
+  GitHubWorkflowRun
+} from '@shared/types';
+
 import {
   deleteDashboard,
   flushPendingWorkspaceWrites,
+  getDashboardActionAlerts,
   getDashboards,
   getRepositoryLastFetchedAt,
   openWorkspaceRepository,
+  markDashboardActionAlertsRead,
+  recordDashboardActionRuns,
   recordRepositoryFetch,
   saveDashboard,
   selectDashboard,
@@ -167,6 +176,123 @@ describe('workspace persistence', () => {
     expect(deleteDashboard(profileId, firstDashboardId).dashboards).toEqual([]);
   });
 
+  it('records new workflow failures once and keeps them unread until acknowledged', () => {
+    const profileId = `profile:dashboard-alert-test:${randomUUID()}`;
+    const input: GitHubActionsRunsInput = {
+      profileId,
+      owner: 'acme',
+      repository: 'widgets',
+      limit: 10,
+      filters: {
+        branches: [],
+        includeTags: false,
+        includeMyPullRequests: false
+      }
+    };
+    const running = dashboardWorkflowRun({
+      status: 'in-progress',
+      conclusion: undefined,
+      updatedAt: '2026-07-28T10:05:00.000Z'
+    });
+    const baseline = recordDashboardActionRuns(
+      input,
+      dashboardActionRunsResult(input, [running], '2026-07-28T10:06:00.000Z')
+    );
+
+    expect(baseline.newAlerts).toEqual([]);
+    expect(baseline.notify).toBe(false);
+
+    const failed = dashboardWorkflowRun({
+      status: 'completed',
+      conclusion: 'failure',
+      updatedAt: '2026-07-28T10:10:00.000Z'
+    });
+    const failure = recordDashboardActionRuns(
+      input,
+      dashboardActionRunsResult(input, [failed], '2026-07-28T10:11:00.000Z')
+    );
+
+    expect(failure.notify).toBe(true);
+    expect(failure.newAlerts).toHaveLength(1);
+    expect(failure.state).toMatchObject({
+      profileId,
+      unreadCount: 1,
+      alerts: [
+        {
+          owner: 'acme',
+          repository: 'widgets',
+          runId: 101,
+          runNumber: 101,
+          conclusion: 'failure'
+        }
+      ]
+    });
+
+    const duplicate = recordDashboardActionRuns(
+      input,
+      dashboardActionRunsResult(input, [failed], '2026-07-28T10:12:00.000Z')
+    );
+    expect(duplicate.newAlerts).toEqual([]);
+    expect(duplicate.state.unreadCount).toBe(1);
+
+    const alertId = failure.newAlerts[0]?.id;
+
+    if (!alertId) {
+      throw new Error('Expected a persisted workflow failure alert.');
+    }
+
+    const read = markDashboardActionAlertsRead(
+      profileId,
+      [alertId],
+      '2026-07-28T10:13:00.000Z'
+    );
+    expect(read.unreadCount).toBe(0);
+    expect(read.alerts[0]?.readAt).toBe('2026-07-28T10:13:00.000Z');
+    expect(getDashboardActionAlerts(profileId)).toEqual(read);
+  });
+
+  it('detects a failed run that completed between background polls', () => {
+    const profileId = `profile:dashboard-missed-alert-test:${randomUUID()}`;
+    const input: GitHubActionsRunsInput = {
+      profileId,
+      owner: 'acme',
+      repository: 'api',
+      limit: 5,
+      filters: {
+        branches: ['main'],
+        includeTags: false,
+        includeMyPullRequests: false
+      }
+    };
+
+    recordDashboardActionRuns(
+      input,
+      dashboardActionRunsResult(input, [], '2026-07-28T11:00:00.000Z')
+    );
+    const missedFailure = recordDashboardActionRuns(
+      input,
+      dashboardActionRunsResult(
+        input,
+        [
+          dashboardWorkflowRun({
+            id: 102,
+            runNumber: 102,
+            status: 'completed',
+            conclusion: 'timed-out',
+            updatedAt: '2026-07-28T11:00:30.000Z'
+          })
+        ],
+        '2026-07-28T11:01:00.000Z'
+      )
+    );
+
+    expect(missedFailure.notify).toBe(true);
+    expect(missedFailure.newAlerts[0]).toMatchObject({
+      runId: 102,
+      conclusion: 'timed-out'
+    });
+  });
+
   it('normalizes missing filters in dashboards saved by older versions', async () => {
     const profileId = `profile:legacy-dashboard-store-test:${randomUUID()}`;
     const storePath = join(
@@ -208,3 +334,41 @@ describe('workspace persistence', () => {
     });
   });
 });
+
+function dashboardActionRunsResult(
+  input: GitHubActionsRunsInput,
+  runs: GitHubWorkflowRun[],
+  loadedAt: string
+): GitHubActionsRuns {
+  return {
+    profileId: input.profileId,
+    owner: input.owner,
+    repository: input.repository,
+    runs,
+    searchedRunCount: runs.length,
+    searchLimitReached: false,
+    loadedAt
+  };
+}
+
+function dashboardWorkflowRun(
+  overrides: Partial<GitHubWorkflowRun>
+): GitHubWorkflowRun {
+  return {
+    id: 101,
+    name: 'CI',
+    displayTitle: 'Verify dashboard notifications',
+    runNumber: 101,
+    event: 'push',
+    branch: 'main',
+    sha: 'abcdef1234567890',
+    status: 'in-progress',
+    url: 'https://github.com/acme/widgets/actions/runs/101',
+    actor: 'developer',
+    pullRequestNumbers: [],
+    createdAt: '2026-07-28T10:00:00.000Z',
+    startedAt: '2026-07-28T10:01:00.000Z',
+    updatedAt: '2026-07-28T10:05:00.000Z',
+    ...overrides
+  };
+}

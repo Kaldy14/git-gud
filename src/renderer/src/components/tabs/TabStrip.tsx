@@ -29,6 +29,7 @@ type TabStripProps = {
   isStartTabOpen: boolean;
   isStartTabActive: boolean;
   isDashboardsTabActive: boolean;
+  dashboardUnreadCount?: number;
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
@@ -49,6 +50,7 @@ export function TabStrip({
   isStartTabOpen,
   isStartTabActive,
   isDashboardsTabActive,
+  dashboardUnreadCount = 0,
   profileState,
   activeRepoDirty = false,
   onActivateTab,
@@ -305,14 +307,26 @@ export function TabStrip({
         <div
           className="no-drag repo-tab repo-tab--icon"
           data-active={isDashboardsTabActive}
-          title="Dashboards"
+          title={
+            dashboardUnreadCount > 0
+              ? `Dashboards · ${dashboardUnreadCount} unread workflow ${
+                  dashboardUnreadCount === 1 ? 'failure' : 'failures'
+                }`
+              : 'Dashboards'
+          }
         >
           <button
             id={tabDomId(DASHBOARDS_TAB_ID)}
             className="repo-tab-main"
             type="button"
             role="tab"
-            aria-label="Dashboards"
+            aria-label={
+              dashboardUnreadCount > 0
+                ? `Dashboards, ${dashboardUnreadCount} unread workflow ${
+                    dashboardUnreadCount === 1 ? 'failure' : 'failures'
+                  }`
+                : 'Dashboards'
+            }
             aria-selected={isDashboardsTabActive}
             tabIndex={isDashboardsTabActive ? 0 : -1}
             onClick={onActivateDashboardsTab}
@@ -329,6 +343,9 @@ export function TabStrip({
               size={15}
               className={isDashboardsTabActive ? 'text-[var(--accent-2)]' : undefined}
             />
+            {dashboardUnreadCount > 0 ? (
+              <span className="dashboard-unread-dot" aria-hidden="true" />
+            ) : null}
           </button>
         </div>
       </div>

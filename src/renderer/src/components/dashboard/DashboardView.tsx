@@ -7,6 +7,7 @@ import type {
 import { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  BellRing,
   CheckCircle2,
   CircleSlash2,
   ExternalLink,
@@ -42,6 +43,7 @@ import {
 import { dashboardProfileId } from '@shared/dashboard';
 import type {
   Dashboard,
+  DashboardActionFailureAlert,
   DashboardTile,
   GitHubActionsDashboardTile,
   GitHubRepositorySummary,
@@ -71,6 +73,8 @@ import { workflowRunPresentation } from './workflowRunPresentation';
 type DashboardViewProps = {
   profile?: GitProfile;
   requestedDashboardId?: string;
+  actionAlerts?: DashboardActionFailureAlert[];
+  onMarkActionAlertsRead?: (alertIds: string[]) => void;
   onSelectDashboard: (dashboardId: string | undefined) => void;
   onOpenProfileSettings: () => void;
   onClose: () => void;
@@ -120,6 +124,8 @@ function isTileDialog(
 export function DashboardView({
   profile,
   requestedDashboardId,
+  actionAlerts = [],
+  onMarkActionAlertsRead,
   onSelectDashboard,
   onOpenProfileSettings,
   onClose
@@ -209,6 +215,7 @@ export function DashboardView({
   });
   const dashboardFetchCount =
     gitHubFetchCount + portainerFetchCount + portainerImageFetchCount;
+  const unreadActionAlerts = actionAlerts.filter((alert) => !alert.readAt);
 
   if (dashboardsQuery.isLoading && !dashboardsQuery.data) {
     return (
@@ -736,6 +743,12 @@ export function DashboardView({
                 <span>{mutationError}</span>
               </div>
             ) : null}
+            {unreadActionAlerts.length > 0 ? (
+              <DashboardFailureAlerts
+                alerts={unreadActionAlerts}
+                onMarkRead={(alertIds) => onMarkActionAlertsRead?.(alertIds)}
+              />
+            ) : null}
             <p className="sr-only" aria-live="polite">
               {tileOrderAnnouncement}
             </p>
@@ -895,6 +908,69 @@ export function DashboardView({
             });
           }}
         />
+      ) : null}
+    </section>
+  );
+}
+
+function DashboardFailureAlerts({
+  alerts,
+  onMarkRead
+}: {
+  alerts: DashboardActionFailureAlert[];
+  onMarkRead: (alertIds: string[]) => void;
+}): ReactElement {
+  const visibleAlerts = alerts.slice(0, 5);
+
+  return (
+    <section
+      className="dashboard-failure-alerts"
+      aria-label="Unread workflow failures"
+    >
+      <header>
+        <span>
+          <BellRing size={13} />
+          <strong>
+            {alerts.length} unread workflow {alerts.length === 1 ? 'failure' : 'failures'}
+          </strong>
+        </span>
+        <button
+          className="btn-subtle"
+          type="button"
+          onClick={() => onMarkRead(alerts.map((alert) => alert.id))}
+        >
+          Mark all read
+        </button>
+      </header>
+      <div>
+        {visibleAlerts.map((alert) => (
+          <a
+            key={alert.id}
+            href={alert.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => onMarkRead([alert.id])}
+          >
+            <XCircle size={13} />
+            <span>
+              <strong>{alert.displayTitle}</strong>
+              <small>
+                {alert.owner}/{alert.repository} · {alert.workflowName} #{alert.runNumber}
+                {alert.branch ? ` · ${alert.branch}` : ''}
+              </small>
+            </span>
+            <time
+              dateTime={alert.failedAt}
+              title={formatAbsoluteTime(alert.failedAt)}
+            >
+              Failed {formatRelativeTime(alert.failedAt)}
+            </time>
+            <ExternalLink size={11} />
+          </a>
+        ))}
+      </div>
+      {alerts.length > visibleAlerts.length ? (
+        <p>{alerts.length - visibleAlerts.length} more unread failures</p>
       ) : null}
     </section>
   );

@@ -66,6 +66,11 @@ import {
   useDashboards,
   useGitHubPullRequestInbox
 } from '@renderer/queries/github';
+import {
+  markDashboardActionAlertsRead,
+  useDashboardActionAlerts,
+  useDashboardActionsMonitor
+} from '@renderer/queries/dashboardAlerts';
 import { useWorkspaceStore } from '@renderer/state/workspace';
 import { remoteBranchDeleteTarget, resolveRemoteBranchForLocalBranch } from '@renderer/workspace/branchDeletion';
 import {
@@ -329,6 +334,13 @@ export function WorkspaceShell(): ReactElement {
     ]
   );
   const dashboardsQuery = useDashboards(activeDashboardProfileId);
+  const dashboardActionAlertsQuery = useDashboardActionAlerts(
+    activeDashboardProfileId
+  );
+  useDashboardActionsMonitor(
+    connectedGitHubProfileId,
+    dashboardsQuery.data?.dashboards ?? []
+  );
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
@@ -760,6 +772,14 @@ export function WorkspaceShell(): ReactElement {
           queryKey: dashboardsQueryKey(activeDashboardProfileId)
         });
       });
+  }
+
+  function handleMarkDashboardActionAlertsRead(alertIds: string[]): void {
+    void markDashboardActionAlertsRead(
+      queryClient,
+      activeDashboardProfileId,
+      alertIds
+    );
   }
 
   function handleOpenGitProfileMenu(): void {
@@ -2361,6 +2381,7 @@ export function WorkspaceShell(): ReactElement {
         isStartTabOpen={isStartTabOpen}
         isStartTabActive={isStartTabActive}
         isDashboardsTabActive={gitHubWorkspaceView?.kind === 'dashboard'}
+        dashboardUnreadCount={dashboardActionAlertsQuery.data?.unreadCount ?? 0}
         profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}
@@ -2420,6 +2441,8 @@ export function WorkspaceShell(): ReactElement {
           <DashboardView
             profile={activeGitHubProfile}
             requestedDashboardId={gitHubWorkspaceView.dashboardId}
+            actionAlerts={dashboardActionAlertsQuery.data?.alerts ?? []}
+            onMarkActionAlertsRead={handleMarkDashboardActionAlertsRead}
             onSelectDashboard={handleSelectDashboard}
             onOpenProfileSettings={handleOpenGitProfileMenu}
             onClose={handleClosePullRequestWorkspace}

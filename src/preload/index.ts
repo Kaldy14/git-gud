@@ -87,6 +87,9 @@ const api: RendererApi = {
   saveDashboard: (dashboard) => invoke('dashboards:save', dashboard),
   deleteDashboard: (profileId, dashboardId) => invoke('dashboards:delete', profileId, dashboardId),
   selectDashboard: (profileId, dashboardId) => invoke('dashboards:select', profileId, dashboardId),
+  getDashboardActionAlerts: (profileId) => invoke('dashboards:alerts', profileId),
+  markDashboardActionAlertsRead: (profileId, alertIds) =>
+    invoke('dashboards:alerts-mark-read', profileId, alertIds),
   listPortainerConnections: () => invoke('portainer:connections'),
   savePortainerConnection: (connection) => invoke('portainer:connection-save', connection),
   deletePortainerConnection: (connectionId) =>
@@ -125,6 +128,15 @@ const api: RendererApi = {
     const channel = 'repo:operation-progress';
     const wrappedListener = (_event: Electron.IpcRendererEvent, event: Parameters<typeof listener>[0]): void => {
       listener(event);
+    };
+
+    ipcRenderer.on(channel, wrappedListener);
+    return () => ipcRenderer.removeListener(channel, wrappedListener);
+  },
+  onDashboardActionAlertsChanged: (listener) => {
+    const channel = 'dashboards:alerts-changed';
+    const wrappedListener = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]): void => {
+      listener(state);
     };
 
     ipcRenderer.on(channel, wrappedListener);

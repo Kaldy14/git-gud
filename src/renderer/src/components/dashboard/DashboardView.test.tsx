@@ -12,7 +12,12 @@ import {
   portainerStackImagesQueryKey,
   portainerStackRuntimeQueryKey
 } from '@renderer/queries/portainer';
-import type { Dashboard, GitHubWorkflowRun, GitProfile } from '@shared/types';
+import type {
+  Dashboard,
+  DashboardActionFailureAlert,
+  GitHubWorkflowRun,
+  GitProfile
+} from '@shared/types';
 
 import {
   DashboardDialogSurface,
@@ -64,6 +69,51 @@ describe('DashboardView', () => {
     expect(lastDashboardIndex).toBeGreaterThan(-1);
     expect(createDashboardIndex).toBeGreaterThan(lastDashboardIndex);
     expect(dashboardActionsIndex).toBeGreaterThan(createDashboardIndex);
+  });
+
+  it('shows unread workflow failures with explicit read controls', () => {
+    const queryClient = new QueryClient();
+    const alert: DashboardActionFailureAlert = {
+      id: 'alert:101',
+      profileId: profile.id,
+      owner: 'acme',
+      repository: 'widgets',
+      runId: 101,
+      runNumber: 101,
+      workflowName: 'CI',
+      displayTitle: 'Verify dashboard notifications',
+      branch: 'main',
+      conclusion: 'failure',
+      url: 'https://github.com/acme/widgets/actions/runs/101',
+      failedAt: '2026-07-28T10:10:00.000Z',
+      detectedAt: '2026-07-28T10:11:00.000Z'
+    };
+    queryClient.setQueryData(dashboardsQueryKey(profile.id), {
+      profileId: profile.id,
+      dashboards: [dashboards[0]],
+      selectedDashboardId: dashboards[0]?.id
+    });
+    queryClient.setQueryData(gitHubRepositoriesQueryKey(profile.id), []);
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <DashboardView
+          profile={profile}
+          requestedDashboardId={dashboards[0]?.id}
+          actionAlerts={[alert]}
+          onMarkActionAlertsRead={vi.fn()}
+          onSelectDashboard={vi.fn()}
+          onOpenProfileSettings={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(markup).toContain('aria-label="Unread workflow failures"');
+    expect(markup).toContain('1 unread workflow failure');
+    expect(markup).toContain('Verify dashboard notifications');
+    expect(markup).toContain('acme/widgets · CI #101 · main');
+    expect(markup).toContain('Mark all read');
   });
 
   it('shows configured filters and a filtered empty state on an Actions tile', () => {
