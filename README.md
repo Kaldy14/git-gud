@@ -7,6 +7,7 @@
 
   <p>
     <img src="https://img.shields.io/badge/platform-macOS-111827?logo=apple&logoColor=white" alt="macOS">
+    <a href="https://github.com/Kaldy14/git-gud/releases/latest"><img src="https://img.shields.io/github/v/release/Kaldy14/git-gud?display_name=tag&label=release" alt="Latest Git Gud release"></a>
     <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
     <img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" alt="React 19">
     <img src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white" alt="TypeScript 6">
@@ -18,27 +19,41 @@
 Git Gud is a focused desktop Git client inspired by the strongest parts of GitKraken's local workflow. It uses your installed Git, existing SSH agent, credential helpers, and repository configuration. No hosted account is required.
 
 > [!IMPORTANT]
-> macOS is currently the only supported release platform, not a fundamental limitation of the Electron application. The current source version is `0.4.11`; Windows and Linux builds have not yet been adapted or release-tested.
+> macOS is currently the only supported release platform, not a fundamental limitation of the Electron application. Download the latest signed and notarized build from [GitHub Releases](https://github.com/Kaldy14/git-gud/releases/latest). Windows and Linux builds have not yet been adapted or release-tested.
 
 ## Highlights
 
 - **Readable history:** a virtualized commit graph with branches, remotes, tags, worktrees, stashes, and working-directory state.
 - **Focused review:** commit metadata, changed-file path/tree views, file history, blame, ref comparison, unified or split diffs, and aggregate inspection across a selected commit range.
-- **Codex handoff:** select code in a diff, right-click, add a follow-up question, and open a prefilled task in Codex for the same local repository.
+- **Pull-request workflow:** a prioritized GitHub inbox, review overview and discussion, local draft line/file comments and replies, review submission, repository-aware merge controls, and an optional asynchronous AI walkthrough.
+- **Codex handoff:** send selected diff context or a complete local pull-request review draft to a prefilled Codex task for the same repository without publishing comments.
 - **Precise staging:** stage or unstage files, hunks, and line groups; discard changes with confirmation; commit and amend in place.
 - **Everyday Git operations:** fetch, pull, push, branch, checkout, merge, tag, stash, cherry-pick, revert, and reset.
 - **Rebase workflows:** standard and interactive rebase with reorder, reword, squash, fixup, drop, and conflict recovery.
 - **Safer mutations:** serialized operations, progress reporting, explicit destructive-action confirmation, and operation-aware local undo.
 - **Workspace flow:** multiple repository tabs, restored sessions, per-repository Git profiles, resizable panels, keyboard navigation, and a command palette.
-- **Live dashboards:** persistent, profile-scoped dashboards with GitHub Actions tiles for multiple projects, automatic refresh, running-state visibility, and direct links to workflow runs.
+- **Live dashboards:** editable and reorderable GitHub Actions and Portainer stack tiles with filters, automatic refresh, workflow-failure alerts, health and image visibility, and direct links to the source service.
+- **Built-in updates:** automatic background downloads, restart-to-install prompts, and a manual update action in packaged macOS builds.
 
 ## Screenshots
 
+### Pull-request review
+
+Work through review requests in a focused inbox, inspect checks and discussion beside the diff, draft line or file comments locally, and submit the finished review only when it is ready.
+
+![Git Gud pull-request review with discussion, inline comments, and file navigation](docs/images/pr-commenting-overview.png)
+
 ### Live GitHub Actions dashboards
 
-Create persistent dashboards for several projects, see queued and running workflows update automatically, and open any run in GitHub.
+Create persistent dashboards for several projects, filter the runs shown by each tile, see queued, running, and failed workflows update automatically, and open any run in GitHub.
 
 ![Git Gud live GitHub Actions dashboard](docs/images/git-gud-dashboard.png)
+
+### Portainer stack monitoring
+
+Monitor Swarm and Compose stacks alongside delivery workflows, including service health, replicas or containers, image freshness, and links back to Portainer.
+
+![Git Gud Portainer stack dashboard showing service health and image status](docs/images/portainer-dashboard-e2e.png)
 
 ### Syntax-highlighted diffs
 
@@ -58,7 +73,9 @@ Press <kbd>⌘</kbd> <kbd>P</kbd> to search actions, commits, branches, reposito
 - [Git](https://git-scm.com/) available on `PATH`
 - Node.js `^20.19.0` or `>=22.12.0`
 - pnpm `11.9.0` (Corepack recommended)
-- [Codex](https://openai.com/codex/) desktop app (optional, for the diff handoff)
+- [GitHub CLI](https://cli.github.com/) with a connected account (optional, for pull requests and GitHub Actions dashboards)
+- [Codex](https://openai.com/codex/) desktop app (optional, for diff and pull-request review handoffs)
+- Portainer Business Edition API access (optional, for Swarm and Compose stack monitoring)
 
 ## Run from source
 
@@ -74,7 +91,7 @@ The app reads Git identity, authentication, and signing settings from the same p
 
 ## Releases
 
-Every pushed version tag matching `v*` runs the [release workflow](.github/workflows/release.yml). The workflow requires the tag to match the version in `package.json`, runs the full verification suite, and then publishes a [GitHub Release](https://github.com/Kaldy14/git-gud/releases) containing:
+Every pushed version tag matching `v*` runs the [release workflow](.github/workflows/release.yml). The workflow derives the packaged application version from the tag, runs the full verification suite, and then publishes a [GitHub Release](https://github.com/Kaldy14/git-gud/releases) containing:
 
 - An Apple Silicon (`arm64`) macOS application archive
 - An Intel (`x64`) macOS application archive
@@ -92,24 +109,27 @@ The release workflow requires these GitHub Actions secrets:
 
 The `.p12` performs code signing. The App Store Connect `.p8` key is separate and is used only to authenticate notarization. Configure these values under **Repository settings → Secrets and variables → Actions** before pushing a release tag.
 
-To prepare a release, update `package.json` and [CHANGELOG.md](CHANGELOG.md), commit the changes, and push a matching tag:
+To prepare a release, update [CHANGELOG.md](CHANGELOG.md), make sure the release commit is on `main`, and push the next version tag:
 
 ```bash
-git tag v0.4.2
-git push origin v0.4.2
+release_tag=vX.Y.Z
+git tag "$release_tag"
+git push origin "$release_tag"
 ```
 
 ## Build the macOS app locally
 
 ```bash
-pnpm dist
+GIT_GUD_VERSION="$(git describe --tags --abbrev=0)" pnpm dist
 open "dist/mac/Git Gud.app"
 ```
 
-`pnpm dist` runs the full production build, assembles `dist/mac/Git Gud.app`, and applies an ad-hoc signature for local use. To make a local Developer ID build, install the certificate in a keychain and set its identity before running the command:
+`pnpm dist` runs the full production build, assembles `dist/mac/Git Gud.app`, and applies an ad-hoc signature for local use. `GIT_GUD_VERSION` controls the version embedded in the application; without it, local builds use `0.0.0`. To make a local Developer ID build, install the certificate in a keychain and set its identity before running the command:
 
 ```bash
-MACOS_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" pnpm dist
+GIT_GUD_VERSION="$(git describe --tags --abbrev=0)" \
+  MACOS_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  pnpm dist
 ```
 
 Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-default keychain. Tag-driven builds import the certificate into an ephemeral CI keychain, sign with the hardened runtime enabled, notarize and staple the app, verify it with `codesign`, `stapler`, and Gatekeeper, then package and publish it.
@@ -149,8 +169,9 @@ Electron preload (context bridge)
 Electron main process
   ├─ repository inspection and filesystem watchers
   ├─ per-repository mutation queue and progress events
-  ├─ profile, workspace, dashboard, settings, and undo persistence
+  ├─ profile, workspace, dashboard, connection, settings, and undo persistence
   ├─ GitHub CLI-backed pull requests and Actions monitoring
+  ├─ Portainer API-backed Swarm and Compose monitoring
   └─ system Git processes using the user's environment
 ```
 
@@ -160,7 +181,11 @@ See [docs/README.md](docs/README.md) for the renderer map and graph model, [PROD
 
 ## Project scope
 
-Git Gud deliberately prioritizes local repository work, with focused GitHub pull-request and Actions monitoring through an already-connected GitHub CLI profile. General analytics, issue tracking, teams, cloud patches, embedded AI generation, and App Store distribution are not current goals. The Codex integration is an explicit handoff to the separately installed desktop app: Git Gud prepares repository and code context, but does not submit the prompt or run an AI model itself. Windows and Linux support is possible, but requires platform-specific system integration, packaging, and CI coverage before those builds can be supported.
+Git Gud deliberately prioritizes local repository work, with focused GitHub pull-request and Actions monitoring through an already-connected GitHub CLI profile and optional Portainer stack health monitoring. General analytics, issue tracking, team management, cloud patches, embedded AI generation, and App Store distribution are not current goals. The Codex integration is an explicit handoff to the separately installed desktop app: Git Gud prepares repository, diff, and local review-draft context, but does not submit the prompt or run an AI model itself. Windows and Linux support is possible, but requires platform-specific system integration, packaging, and CI coverage before those builds can be supported.
+
+## Acknowledgements
+
+Thank you to the [GitKraken](https://www.gitkraken.com/) team for inspiring Git Gud's approach to visual history and everyday Git workflows. Git Gud is an independent project and is not affiliated with or endorsed by GitKraken.
 
 ## Contributing
 
