@@ -380,14 +380,15 @@ export function filterGitHubActionsRuns(
 function parseWorkflowRun(value: unknown): GitHubWorkflowRun {
   const run = readRecord(value, 'workflow run');
   const name = readOptionalString(run.name) ?? 'Workflow';
+  const event = readOptionalString(run.event) ?? 'workflow_dispatch';
 
   return {
     id: readNumber(run.id, 'workflow run id'),
     name,
     displayTitle: readOptionalString(run.display_title) ?? name,
     runNumber: readNumber(run.run_number, 'workflow run number'),
-    event: readOptionalString(run.event) ?? 'workflow_dispatch',
-    branch: readOptionalString(run.head_branch),
+    event,
+    branch: event === 'issue_comment' ? undefined : readOptionalString(run.head_branch),
     sha: readString(run.head_sha, 'workflow run SHA'),
     status: normalizeWorkflowRunStatus(readOptionalString(run.status)),
     conclusion: normalizeWorkflowRunConclusion(readOptionalString(run.conclusion)),

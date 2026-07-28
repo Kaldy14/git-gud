@@ -88,6 +88,33 @@ describe('GitHub Actions dashboards', () => {
     });
   });
 
+  it('does not treat an issue comment execution ref as a branch', () => {
+    const [run] = parsedWorkflowRuns([
+      workflowRun({
+        event: 'issue_comment',
+        head_branch: 'main',
+        display_title: 'PR title',
+        pull_requests: []
+      })
+    ]);
+
+    expect(run).toMatchObject({
+      event: 'issue_comment',
+      branch: undefined,
+      displayTitle: 'PR title'
+    });
+    expect(
+      filterGitHubActionsRuns(
+        [run],
+        {
+          branches: ['main'],
+          includeTags: false,
+          includeMyPullRequests: false
+        }
+      )
+    ).toEqual([]);
+  });
+
   it('combines exact branch, current tag, and authored pull request filters with OR semantics', () => {
     const parsed = parseGitHubActionsRunsResponse(
       {
