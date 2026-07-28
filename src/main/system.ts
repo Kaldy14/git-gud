@@ -8,6 +8,7 @@ import { createCodexTaskDeepLink } from '@shared/codex';
 import type { GitOperationResult, RepoTab } from '@shared/types';
 
 type FileTab = Pick<RepoTab, 'path'>;
+type CodexTab = Pick<RepoTab, 'path' | 'gitDir' | 'commonDir'>;
 
 export async function openRepositoryFileInEditor(tab: FileTab, relativePath: string): Promise<GitOperationResult> {
   const targetPath = resolveRepositoryChildPath(tab.path, relativePath);
@@ -25,13 +26,43 @@ export async function revealRepositoryFileInFinder(tab: FileTab, relativePath: s
   return createSystemOperationResult(tab.path);
 }
 
-export async function openCodexTaskForRepository(tab: FileTab, prompt: string): Promise<void> {
+export async function openCodexTaskForRepository(tab: CodexTab, prompt: string): Promise<void> {
   if (!path.isAbsolute(tab.path)) {
     throw new Error('Codex workspace path must be absolute.');
   }
 
-  await access(tab.path);
-  await shell.openExternal(createCodexTaskDeepLink(tab.path, prompt));
+  const projectPath = resolveCodexProjectPath(tab);
+  const taskPrompt = addCodexWorktreeContext(prompt, tab.path, projectPath);
+
+  await Promise.all([access(tab.path), access(projectPath)]);
+  await shell.openExternal(createCodexTaskDeepLink(projectPath, taskPrompt));
+}
+
+export function resolveCodexProjectPath(tab: CodexTab): string {
+  const repositoryPath = path.resolve(tab.path);
+  const gitDir = path.resolve(tab.gitDir);
+  const commonDir = path.resolve(tab.commonDir);
+
+  if (gitDir === commonDir || path.basename(commonDir) !== '.git') {
+    return repositoryPath;
+  }
+
+  return path.dirname(commonDir);
+}
+
+export function addCodexWorktreeContext(prompt: string, worktreePath: string, projectPath: string): string {
+  const normalizedWorktreePath = path.resolve(worktreePath);
+
+  if (normalizedWorktreePath === path.resolve(projectPath)) {
+    return prompt;
+  }
+
+  return [
+    'Use the existing Git worktree below as the working directory for this task.',
+    `Worktree: ${JSON.stringify(normalizedWorktreePath)}`,
+    'Run all repository reads, edits, Git commands, and validation there. Do not create a new worktree or modify the primary checkout.',
+    prompt
+  ].join('\n\n');
 }
 
 function openMacTarget(args: string[], errorMessage = 'Unable to open file.'): Promise<void> {

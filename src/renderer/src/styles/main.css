@@ -4235,9 +4235,16 @@ button.ref-chip:active {
 }
 
 .pr-review-submit-note {
+  min-width: 0;
+  flex: 1;
   margin-right: auto;
   color: var(--text-3);
   font-size: 9px;
+}
+
+.pr-action-dialog > form > footer > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .pr-action-error,
