@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getHighlighterOptions } from '@pierre/diffs';
 
-import { getDiffThemeName } from './diffTheme';
+import { applyDiffSyntaxTheme, getDiffThemeName } from './diffTheme';
 
 describe('diff theme', () => {
   it('keeps Git Gud Dark as the default-compatible bundled theme', () => {
@@ -16,5 +16,13 @@ describe('diff theme', () => {
       langs: ['typescript'],
       themes: ['tokyo-night']
     });
+  });
+
+  it('applies the selected theme to a shared diff worker pool', async () => {
+    const setRenderOptions = vi.fn().mockResolvedValue(undefined);
+
+    await applyDiffSyntaxTheme({ setRenderOptions }, 'tokyo-night-storm');
+
+    expect(setRenderOptions).toHaveBeenCalledWith({ theme: 'tokyo-night' });
   });
 });

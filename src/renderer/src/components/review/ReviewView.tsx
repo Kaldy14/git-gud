@@ -1207,12 +1207,6 @@ function ReviewBody({
             {reviewGuideUnits.get(selectedUnit.unit.id) ? (
               <ReviewGuideUnitDetails guideUnit={reviewGuideUnits.get(selectedUnit.unit.id)!} />
             ) : null}
-            {lineCollaboration ? (
-              <div className="review-commenting-hint">
-                <MessageSquare size={12} />
-                <span>Select or drag across diff lines to comment. Use <strong>Comment on file</strong> for a whole-file note.</span>
-              </div>
-            ) : null}
             <div ref={reviewChunksRef} className="review-chunks">
               {createReviewContexts(selectedUnit.visibleChunks).map((contextGroup, _contextIndex, contexts) => (
                 <section className="review-context-group" key={contextGroup.key}>

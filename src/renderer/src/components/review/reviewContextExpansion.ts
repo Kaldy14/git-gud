@@ -20,13 +20,13 @@ const REVIEW_CONTEXT_SEPARATOR_CSS = `
 
   [data-separator="line-info"] [data-separator-content],
   [data-separator="line-info"] [data-expand-button] {
-    background: #282828;
+    background: var(--diffs-bg-separator);
     border-radius: 0;
   }
 
   [data-separator="line-info"] [data-unmodified-lines]::after {
     content: " · Expand nearby block";
-    color: #53d6c7;
+    color: var(--diffs-modified-base);
     font-size: 10px;
     font-weight: 600;
   }

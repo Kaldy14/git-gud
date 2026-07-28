@@ -20,11 +20,13 @@ import {
   Workflow,
   X
 } from 'lucide-react';
+import { useWorkerPool } from '@pierre/diffs/react';
 import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
 import { DashboardView } from '@renderer/components/dashboard/DashboardView';
+import { applyDiffSyntaxTheme } from '@renderer/components/diff/diffTheme';
 import { GraphView } from '@renderer/components/graph/GraphView';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import { suggestNextTagName } from '@renderer/lib/tagSuggestion';
@@ -202,6 +204,7 @@ export function WorkspaceShell(): ReactElement {
     activateProfile,
     clearError
   } = useWorkspaceStore();
+  const diffWorkerPool = useWorkerPool();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
   const [bulkSelectionByTab, setBulkSelectionByTab] = useState<Record<string, string[]>>({});
   const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
@@ -461,6 +464,17 @@ export function WorkspaceShell(): ReactElement {
       setGitHubWorkspaceView({ kind: 'inbox' });
     }
   }, [connectedGitHubProfileId, gitHubWorkspaceView]);
+
+  useEffect(() => {
+    if (!diffWorkerPool) {
+      return;
+    }
+
+    void applyDiffSyntaxTheme(diffWorkerPool, settings.diffSyntaxTheme)
+      .catch((error: unknown) => {
+        console.error('Unable to apply the selected diff syntax theme.', error);
+      });
+  }, [diffWorkerPool, settings.diffSyntaxTheme]);
 
   useEffect(() => {
     window.api

@@ -2039,24 +2039,6 @@ button.ref-chip:active {
   color: var(--accent-2);
 }
 
-.review-commenting-hint {
-  display: flex;
-  min-height: 30px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 7px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg-panel));
-  padding: 0 12px;
-  color: var(--text-3);
-  font-size: 10px;
-}
-
-.review-commenting-hint svg,
-.review-commenting-hint strong {
-  color: var(--accent-2);
-}
-
 .review-file-comments {
   display: grid;
   gap: 7px;
@@ -2364,10 +2346,10 @@ button.ref-chip:active {
   --diffs-bg-deletion-number-override: #1c1e23;
   --diffs-addition-color-override: #3e9f50;
   --diffs-deletion-color-override: #ad2c3c;
-  --diffs-bg-addition-override: #294636;
-  --diffs-bg-deletion-override: #482f34;
-  --diffs-bg-addition-emphasis-override: rgba(62, 159, 80, 0.24);
-  --diffs-bg-deletion-emphasis-override: rgba(173, 44, 60, 0.26);
+  --diffs-bg-addition-override: #243b2d;
+  --diffs-bg-deletion-override: #3d282d;
+  --diffs-bg-addition-emphasis-override: transparent;
+  --diffs-bg-deletion-emphasis-override: transparent;
   --diffs-modified-color-override: var(--accent-2);
   --diffs-font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   --diffs-header-font-family: var(--font-ui);

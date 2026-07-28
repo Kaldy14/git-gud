@@ -6,6 +6,17 @@ const DIFF_THEME_NAMES = {
   'tokyo-night-storm': 'tokyo-night'
 } as const satisfies Record<DiffSyntaxTheme, DiffsThemeNames>;
 
+type DiffThemeTarget = {
+  setRenderOptions: (options: { theme: DiffsThemeNames }) => Promise<void>;
+};
+
 export function getDiffThemeName(theme: DiffSyntaxTheme): DiffsThemeNames {
   return DIFF_THEME_NAMES[theme];
+}
+
+export function applyDiffSyntaxTheme(
+  target: DiffThemeTarget,
+  theme: DiffSyntaxTheme
+): Promise<void> {
+  return target.setRenderOptions({ theme: getDiffThemeName(theme) });
 }

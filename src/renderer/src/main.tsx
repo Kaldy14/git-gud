@@ -6,6 +6,9 @@ import {
   type WorkerPoolOptions
 } from '@pierre/diffs/react';
 
+import { getDiffThemeName } from '@renderer/components/diff/diffTheme';
+import { createDefaultAppSettings } from '@shared/settings';
+
 import { AppRouter } from './router';
 import './styles/main.css';
 
@@ -14,7 +17,9 @@ const diffWorkerPoolOptions: WorkerPoolOptions = {
   poolSize: Math.min(Math.max(Math.floor((navigator.hardwareConcurrency ?? 4) / 2), 1), 2),
   totalASTLRUCacheSize: 32
 };
-const diffHighlighterOptions: WorkerInitializationRenderOptions = {};
+const diffHighlighterOptions: WorkerInitializationRenderOptions = {
+  theme: getDiffThemeName(createDefaultAppSettings().diffSyntaxTheme)
+};
 
 const rootElement = document.getElementById('root');
 
