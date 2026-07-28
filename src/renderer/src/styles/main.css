@@ -1150,7 +1150,6 @@ select {
   align-items: center;
   justify-content: flex-start;
   gap: 5px;
-  transition: opacity 100ms ease;
 }
 
 .ref-stack[data-has-overflow='true'] .ref-stack-summary .ref-chip {
@@ -1164,40 +1163,30 @@ select {
   z-index: 30;
   display: flex;
   width: max-content;
+  max-width: 100%;
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
   overflow: hidden;
   border-radius: 2px;
   background: transparent;
-  opacity: 0;
   pointer-events: none;
-  transform: translateY(1px) scale(0.98);
-  transform-origin: top left;
   visibility: hidden;
-  transition:
-    opacity 140ms ease,
-    transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0s linear 160ms;
+  transition: max-width 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ref-stack[data-has-overflow='true'] .ref-stack-expanded {
   top: 1px;
 }
 
-.group:hover .ref-stack .ref-stack-summary,
-.group:has(.ref-chip:focus-visible) .ref-stack .ref-stack-summary {
-  opacity: 0;
+.ref-stack:has(.ref-chip:hover, .ref-overflow:hover, .ref-chip:focus-visible) .ref-stack-summary {
   visibility: hidden;
 }
 
-.group:hover .ref-stack .ref-stack-expanded,
-.group:has(.ref-chip:focus-visible) .ref-stack .ref-stack-expanded {
-  opacity: 1;
+.ref-stack:has(.ref-chip:hover, .ref-overflow:hover, .ref-chip:focus-visible) .ref-stack-expanded {
+  max-width: calc(100vw - 24px);
   pointer-events: auto;
-  transform: translateY(0) scale(1);
   visibility: visible;
-  transition-delay: 0s;
 }
 
 .ref-chip {
@@ -1216,22 +1205,11 @@ select {
   overflow: hidden;
   white-space: nowrap;
   line-height: 1;
-  transition:
-    filter 120ms ease,
-    transform 80ms ease;
 }
 
 button.ref-chip {
   cursor: pointer;
   text-align: left;
-}
-
-button.ref-chip:hover {
-  filter: brightness(1.14);
-}
-
-button.ref-chip:active {
-  transform: translateY(1px);
 }
 
 .ref-chip[data-pending='true'] .ref-chip-extra-icon {
@@ -1267,7 +1245,6 @@ button.ref-chip:active {
   width: auto;
   max-width: none;
   flex: none;
-  border-radius: 0;
 }
 
 .ref-overflow {
@@ -1389,7 +1366,6 @@ button.ref-chip:active {
     transition: none;
   }
 
-  .ref-stack-expanded,
   .ref-stack-expanded .ref-chip {
     transform: none;
   }
