@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.22] - 2026-07-28
+
+### Changed
+
+- Consolidated pull-request identity, status, overview, and actions into a compact header so the file review remains taller.
+- Reduced review loading and selected-unit chrome while preserving responsive access to pull-request context and discussion.
+
 ### Added
 
 - Added persistent, profile-scoped dashboards with configurable GitHub Actions tiles for multiple projects.

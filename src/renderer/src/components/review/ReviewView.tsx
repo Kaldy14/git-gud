@@ -1187,18 +1187,19 @@ function ReviewBody({
         {selectedUnit ? (
           <>
             <header className="review-unit-header">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">{selectedUnit.unit.title}</h2>
-                  <span className="badge-mini shrink-0" title="Grouping confidence">{selectedUnit.unit.confidence}</span>
-                </div>
-                <p className="mt-0.5 text-xs text-[var(--text-3)]">
+              <div className="review-unit-heading">
+                <h2 title={selectedUnit.unit.title}>{selectedUnit.unit.title}</h2>
+                <span className="badge-mini shrink-0" title="Grouping confidence">{selectedUnit.unit.confidence}</span>
+                <span
+                  className="review-unit-summary"
+                  title={`${selectedUnit.unit.reason} · ${selectedUnit.unit.explanation}${selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}`}
+                >
                   {selectedUnit.unit.reason}
                   {` · ${selectedUnit.unit.explanation}`}
                   {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}
-                </p>
+                </span>
               </div>
-              <button className={selectedUnit.isViewed ? 'btn-subtle btn-regular' : 'btn-primary btn-regular'} type="button" disabled={isMutating} onClick={onToggleViewed}>
+              <button className={selectedUnit.isViewed ? 'btn-subtle btn-compact' : 'btn-primary btn-compact'} type="button" disabled={isMutating} onClick={onToggleViewed}>
                 {isMutating ? <Loader2 size={13} className="animate-spin" /> : selectedUnit.isViewed ? <X size={13} /> : <CheckCheck size={13} />}
                 {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed'}
               </button>

@@ -244,17 +244,9 @@ function PullRequestReviewLoading({
             <MessageSquare size={11} /> {pullRequest.comments} comments
           </span>
         </span>
-      </div>
-
-      <div className="pr-review-loading-stage" role="status" aria-live="polite">
-        <span className="pr-review-loading-stage-icon">
-          <Loader2 size={15} className="animate-spin" />
-        </span>
-        <span>
-          <strong>Preparing contextual review</strong>
-          <small>
-            Loading changed files, discussion, and surrounding code…
-          </small>
+        <span className="pr-review-loading-progress" role="status" aria-live="polite">
+          <Loader2 size={12} className="animate-spin" />
+          Preparing review
         </span>
       </div>
 
@@ -353,6 +345,7 @@ function PullRequestReviewContent({
   const [reviewDrafts, setReviewDrafts] = useState<PullRequestReviewDraft[]>(() =>
     loadPullRequestReviewDrafts(window.localStorage, draftStorageKey)
   );
+  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; message: string }>();
@@ -610,7 +603,7 @@ function PullRequestReviewContent({
 
   return (
     <section className="pr-review-view" aria-label={`Review ${detail.title}`}>
-      <header className="pr-review-header">
+      <header className="pr-review-header pr-review-header--compact">
         <button
           className="icon-btn icon-btn-regular shrink-0"
           type="button"
@@ -620,26 +613,27 @@ function PullRequestReviewContent({
         >
           <ArrowLeft size={15} />
         </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2 text-[11px] text-[var(--text-3)]">
-            <GitPullRequest size={12} className="text-[var(--success-text)]" />
-            <span className="truncate">
-              {detail.owner}/{detail.repository}#{detail.number}
-            </span>
-            <span>·</span>
-            <span className="truncate">{detail.author}</span>
-          </div>
+        <div className="pr-review-title">
+          <GitPullRequest size={13} />
           <h1 title={detail.title}>{detail.title}</h1>
-          <div className="pr-review-branch-line">
-            <span>{detail.headRefName}</span>
-            <span>→</span>
-            <span>{detail.baseRefName}</span>
-            <span>·</span>
-            <GitCommitHorizontal size={11} />
-            <span>{detail.commits} {detail.commits === 1 ? 'commit' : 'commits'}</span>
-          </div>
+          <span className="pr-review-number">
+            {detail.owner}/{detail.repository}#{detail.number}
+          </span>
+        </div>
+        <div className="pr-review-header-status">
+          <ReviewStatus detail={detail} />
         </div>
         <div className="pr-review-header-actions">
+          <button
+            className="btn-subtle btn-regular pr-review-overview-button"
+            type="button"
+            aria-controls="pr-review-overview-panel"
+            aria-expanded={isOverviewOpen}
+            onClick={() => setIsOverviewOpen((isOpen) => !isOpen)}
+          >
+            <ChevronDown size={13} />
+            Overview
+          </button>
           <a className="btn-subtle btn-regular" href={detail.url} target="_blank" rel="noreferrer">
             <ExternalLink size={12} />
             GitHub
@@ -678,19 +672,6 @@ function PullRequestReviewContent({
         </div>
       </header>
 
-      <div className="pr-review-status-strip">
-        <ReviewStatus detail={detail} />
-        <span>
-          <Plus size={11} /> {detail.additions.toLocaleString()}
-        </span>
-        <span>
-          <Minus size={11} /> {detail.deletions.toLocaleString()}
-        </span>
-        <span>
-          <MessageSquare size={11} /> {generalDiscussion.length + detail.reviewComments.length} comments
-        </span>
-      </div>
-
       {notice ? (
         <div className="pr-review-notice" data-tone={notice.tone} role="status">
           {notice.tone === 'success' ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
@@ -701,46 +682,76 @@ function PullRequestReviewContent({
         </div>
       ) : null}
 
-      <details className="pr-review-overview">
-        <summary>
-          <ChevronDown size={13} />
-          Overview &amp; discussion
-          <span>
-            {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'} · {generalDiscussion.length} general {generalDiscussion.length === 1 ? 'comment' : 'comments'}
-          </span>
-        </summary>
-        <div className="pr-review-overview-body">
-          <div className="pr-review-overview-main">
-            <section className="pr-review-description" aria-labelledby="pr-review-description-heading">
-              <h2 id="pr-review-description-heading">Description</h2>
-              <ReviewCommentBody body={detail.body || 'No pull request description was provided.'} />
-            </section>
-            {generalDiscussion.length > 0 ? (
-              <section className="pr-general-discussion" aria-labelledby="pr-general-discussion-heading">
-                <h2 id="pr-general-discussion-heading">
-                  General discussion
-                  <span>{generalDiscussion.length}</span>
-                </h2>
-                <div>
-                  {generalDiscussion.map((entry) => (
-                    <GeneralDiscussionComment entry={entry} key={entry.key} />
-                  ))}
-                </div>
+      {isOverviewOpen ? (
+        <section
+          className="pr-review-overview"
+          id="pr-review-overview-panel"
+          aria-label="Pull request overview and discussion"
+        >
+          <div className="pr-review-overview-meta">
+            <span className="pr-review-repository">
+              <GitPullRequest size={11} />
+              {detail.owner}/{detail.repository}#{detail.number}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span className="pr-review-author">{detail.author}</span>
+            <span aria-hidden="true">·</span>
+            <span className="pr-review-branch-path" title={`${detail.headRefName} → ${detail.baseRefName}`}>
+              <span>{detail.headRefName}</span>
+              <span>→</span>
+              <span>{detail.baseRefName}</span>
+            </span>
+            <span aria-hidden="true">·</span>
+            <GitCommitHorizontal size={11} />
+            <span>{detail.commits} {detail.commits === 1 ? 'commit' : 'commits'}</span>
+            <span className="pr-review-overview-stats">
+              <span className="pr-review-change-stat">
+                <Plus size={11} /> {detail.additions.toLocaleString()}
+              </span>
+              <span className="pr-review-change-stat">
+                <Minus size={11} /> {detail.deletions.toLocaleString()}
+              </span>
+              <span className="pr-review-comment-stat">
+                <MessageSquare size={11} /> {generalDiscussion.length + detail.reviewComments.length} comments
+              </span>
+              <span>
+                {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'}
+              </span>
+            </span>
+          </div>
+          <div className="pr-review-overview-body">
+            <div className="pr-review-overview-main">
+              <section className="pr-review-description" aria-labelledby="pr-review-description-heading">
+                <h2 id="pr-review-description-heading">Description</h2>
+                <ReviewCommentBody body={detail.body || 'No pull request description was provided.'} />
               </section>
+              {generalDiscussion.length > 0 ? (
+                <section className="pr-general-discussion" aria-labelledby="pr-general-discussion-heading">
+                  <h2 id="pr-general-discussion-heading">
+                    General discussion
+                    <span>{generalDiscussion.length}</span>
+                  </h2>
+                  <div>
+                    {generalDiscussion.map((entry) => (
+                      <GeneralDiscussionComment entry={entry} key={entry.key} />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+            {detail.reviews.length > 0 ? (
+              <div className="pr-review-reviewers">
+                {detail.reviews.slice(-8).map((review) => (
+                  <span key={review.id} data-state={review.state}>
+                    {review.state === 'approved' ? <Check size={11} /> : <MessageSquare size={11} />}
+                    {review.author} · {formatReviewState(review.state)}
+                  </span>
+                ))}
+              </div>
             ) : null}
           </div>
-          {detail.reviews.length > 0 ? (
-            <div className="pr-review-reviewers">
-              {detail.reviews.slice(-8).map((review) => (
-                <span key={review.id} data-state={review.state}>
-                  {review.state === 'approved' ? <Check size={11} /> : <MessageSquare size={11} />}
-                  {review.author} · {formatReviewState(review.state)}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </details>
+        </section>
+      ) : null}
 
       {reviewDrafts.length > 0 ? (
         <button
