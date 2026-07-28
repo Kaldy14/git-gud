@@ -49,6 +49,7 @@ const GITHUB_ACTIONS_FILTERED_RUN_CAP = 500;
 const GITHUB_ACTIONS_PR_AUTHOR_BATCH_SIZE = 100;
 const GITHUB_ACTIONS_METADATA_CACHE_TTL_MS = 10 * 60_000;
 const GITHUB_ACTIONS_TAG_PAGE_CAP = 5;
+const GITHUB_PULL_REQUEST_INBOX_CACHE_TTL_MS = 30_000;
 
 export type GitHubTag = {
   name: string;
@@ -68,6 +69,7 @@ type GitHubTagCacheEntry = {
 };
 
 const gitHubTagCache = new Map<string, GitHubTagCacheEntry>();
+const gitHubPullRequestInboxCache = new Map<string, GitHubPullRequestInbox>();
 
 type GitHubReviewFileContext = Pick<
   GitReviewFileContext,
@@ -221,6 +223,13 @@ function loadGitHubWorkflowRunsPage(
 
 export async function loadGitHubPullRequestInbox(profileId: string): Promise<GitHubPullRequestInbox> {
   const context = await getGitHubContext(profileId);
+  return loadGitHubPullRequestInboxForContext(context, profileId);
+}
+
+async function loadGitHubPullRequestInboxForContext(
+  context: GitHubContext,
+  profileId: string
+): Promise<GitHubPullRequestInbox> {
   const raw = await runGitHubJson(context, [
     'api',
     'graphql',
@@ -233,8 +242,10 @@ export async function loadGitHubPullRequestInbox(profileId: string): Promise<Git
     '-F',
     'authoredQuery=is:open is:pr archived:false author:@me sort:updated-desc'
   ]);
+  const inbox = parseGitHubInboxResponse(raw, profileId, context.host);
 
-  return parseGitHubInboxResponse(raw, profileId, context.host);
+  gitHubPullRequestInboxCache.set(profileId, inbox);
+  return inbox;
 }
 
 export function parseGitHubRepositoriesResponse(raw: unknown): GitHubRepositorySummary[] {
@@ -613,6 +624,10 @@ export async function loadGitHubPullRequestDetail(
 ): Promise<GitHubPullRequestDetail> {
   const context = await getGitHubContext(locator.profileId);
   const endpoint = pullRequestEndpoint(locator);
+  const cachedInbox = gitHubPullRequestInboxCache.get(locator.profileId);
+  const inboxRequest = cachedInbox && canReuseGitHubPullRequestInbox(cachedInbox)
+    ? Promise.resolve(cachedInbox)
+    : loadGitHubPullRequestInboxForContext(context, locator.profileId);
   const [
     inbox,
     pullRaw,
@@ -622,7 +637,7 @@ export async function loadGitHubPullRequestDetail(
     conversationCommentsRaw,
     reviewsRaw
   ] = await Promise.all([
-    loadGitHubPullRequestInbox(locator.profileId),
+    inboxRequest,
     runGitHubJson(context, ['api', '--hostname', context.host, endpoint]),
     runGitHubJson(context, ['api', '--hostname', context.host, repositoryEndpoint(locator)]),
     runGitHubPaginatedArray(context, `${endpoint}/files?per_page=100`),
@@ -678,6 +693,16 @@ export async function loadGitHubPullRequestDetail(
     reviews: reviewsRaw.map(parseReview),
     loadedAt: new Date().toISOString()
   };
+}
+
+export function canReuseGitHubPullRequestInbox(
+  inbox: GitHubPullRequestInbox,
+  now = Date.now()
+): boolean {
+  const loadedAt = Date.parse(inbox.loadedAt);
+  return Number.isFinite(loadedAt) &&
+    now - loadedAt >= 0 &&
+    now - loadedAt < GITHUB_PULL_REQUEST_INBOX_CACHE_TTL_MS;
 }
 
 export function selectGitHubReviewContextFiles(

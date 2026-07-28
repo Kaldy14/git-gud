@@ -108,12 +108,9 @@ export function PullRequestReviewView({
 
   if (detailQuery.isLoading && !detail) {
     return (
-      <ReviewMessage
-        icon={<Loader2 size={18} className="animate-spin" />}
-        text="Loading the pull request review…"
-        actionLabel="Back to pull requests"
+      <PullRequestReviewLoading
+        pullRequest={pullRequest}
         onAction={onBackToInbox}
-        closeLabel="Return to commit graph"
         onClose={onClose}
       />
     );
@@ -159,6 +156,155 @@ export function PullRequestReviewView({
       onClose={onClose}
       onMerged={onMerged}
     />
+  );
+}
+
+function PullRequestReviewLoading({
+  pullRequest,
+  onAction,
+  onClose
+}: {
+  pullRequest: GitHubPullRequestSummary;
+  onAction: () => void;
+  onClose: () => void;
+}): ReactElement {
+  return (
+    <section
+      className="pr-review-view pr-review-loading"
+      aria-label={`Loading review for ${pullRequest.title}`}
+      aria-busy="true"
+    >
+      <header className="pr-review-header">
+        <button
+          className="icon-btn icon-btn-regular shrink-0"
+          type="button"
+          onClick={onAction}
+          aria-label="Back to pull requests"
+          title="Back to pull requests"
+        >
+          <ArrowLeft size={15} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 title={pullRequest.title}>{pullRequest.title}</h1>
+          <div className="pr-review-loading-context">
+            <span className="pr-review-loading-repository">
+              <GitPullRequest size={11} />
+              {pullRequest.owner}/{pullRequest.repository}#{pullRequest.number}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span className="pr-review-loading-author">{pullRequest.author}</span>
+            <span aria-hidden="true">·</span>
+            <span
+              className="pr-review-loading-branch-path"
+              title={`${pullRequest.headRefName} → ${pullRequest.baseRefName}`}
+            >
+              <span>{pullRequest.headRefName}</span>
+              <span>→</span>
+              <span>{pullRequest.baseRefName}</span>
+            </span>
+            <span aria-hidden="true">·</span>
+            <FileText size={11} />
+            <span>
+              {pullRequest.changedFiles} {pullRequest.changedFiles === 1 ? 'file' : 'files'}
+            </span>
+          </div>
+        </div>
+        <div className="pr-review-header-actions">
+          <a
+            className="btn-subtle btn-regular"
+            href={pullRequest.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink size={12} />
+            GitHub
+          </a>
+          <button
+            className="icon-btn icon-btn-regular shrink-0"
+            type="button"
+            onClick={onClose}
+            aria-label="Close pull request review and return to commit graph"
+            title="Return to commit graph"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </header>
+
+      <div className="pr-review-loading-overview">
+        <span className="pr-review-loading-overview-status">
+          <ReviewStatus detail={pullRequest} />
+          <span className="pr-review-change-stat">
+            <Plus size={11} /> {pullRequest.additions.toLocaleString()}
+          </span>
+          <span className="pr-review-change-stat">
+            <Minus size={11} /> {pullRequest.deletions.toLocaleString()}
+          </span>
+          <span className="pr-review-comment-stat">
+            <MessageSquare size={11} /> {pullRequest.comments} comments
+          </span>
+        </span>
+      </div>
+
+      <div className="pr-review-loading-stage" role="status" aria-live="polite">
+        <span className="pr-review-loading-stage-icon">
+          <Loader2 size={15} className="animate-spin" />
+        </span>
+        <span>
+          <strong>Preparing contextual review</strong>
+          <small>
+            Loading changed files, discussion, and surrounding code…
+          </small>
+        </span>
+      </div>
+
+      <div className="pr-review-loading-workspace" aria-hidden="true">
+        <div className="pr-review-loading-toolbar">
+          <span className="pr-review-skeleton pr-review-skeleton-branch" />
+          <span className="pr-review-skeleton pr-review-skeleton-control" />
+          <span className="pr-review-skeleton pr-review-skeleton-progress" />
+          <span className="pr-review-skeleton pr-review-skeleton-actions" />
+        </div>
+        <div className="pr-review-loading-layout">
+          <div className="pr-review-loading-queue">
+            {Array.from({ length: 6 }, (_, index) => (
+              <span
+                className="pr-review-loading-queue-row"
+                data-active={index === 0}
+                key={index}
+              >
+                <i />
+                <span>
+                  <b className="pr-review-skeleton" />
+                  <small className="pr-review-skeleton" />
+                </span>
+              </span>
+            ))}
+          </div>
+          <div className="pr-review-loading-diff">
+            <div className="pr-review-loading-diff-heading">
+              <span>
+                <b className="pr-review-skeleton" />
+                <small className="pr-review-skeleton" />
+              </span>
+              <i className="pr-review-skeleton" />
+            </div>
+            <div className="pr-review-loading-file-heading">
+              <span className="pr-review-skeleton" />
+              <span className="pr-review-skeleton" />
+            </div>
+            <div className="pr-review-loading-code">
+              {Array.from({ length: 14 }, (_, index) => (
+                <span key={index}>
+                  <i />
+                  <b className="pr-review-skeleton" />
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

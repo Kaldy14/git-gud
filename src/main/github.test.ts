@@ -5,6 +5,7 @@ import type { GitHubPullRequestSummary } from '@shared/types';
 import {
   buildCompleteFilePatch,
   buildGitHubPullRequestReviewPlan,
+  canReuseGitHubPullRequestInbox,
   categorizePullRequest,
   createGitHubFileReviewCommentPayload,
   filterGitHubActionsRuns,
@@ -217,6 +218,33 @@ describe('GitHub Actions dashboards', () => {
       searchedRunCount: 500,
       searchLimitReached: true
     });
+  });
+});
+
+describe('GitHub pull request loading', () => {
+  it('reuses only a fresh inbox while opening pull request detail', () => {
+    const now = Date.parse('2026-07-28T10:00:00.000Z');
+    const inbox = {
+      profileId: 'profile-1',
+      viewerLogin: 'reviewer',
+      host: 'github.com',
+      pullRequests: [],
+      loadedAt: '2026-07-28T09:59:45.000Z'
+    };
+
+    expect(canReuseGitHubPullRequestInbox(inbox, now)).toBe(true);
+    expect(
+      canReuseGitHubPullRequestInbox(
+        { ...inbox, loadedAt: '2026-07-28T09:59:29.999Z' },
+        now
+      )
+    ).toBe(false);
+    expect(
+      canReuseGitHubPullRequestInbox(
+        { ...inbox, loadedAt: 'not-a-date' },
+        now
+      )
+    ).toBe(false);
   });
 });
 
