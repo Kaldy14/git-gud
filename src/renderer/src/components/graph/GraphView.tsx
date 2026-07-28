@@ -38,6 +38,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
 import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
+import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
 import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
@@ -1171,7 +1172,7 @@ function GraphRowView({
 
       <div className="ref-cell pl-3">
         {isWip && row.worktree ? (
-          <WorktreeChipView worktree={row.worktree} color={refColor} currentColor={currentRefColor} />
+          <WorktreeChipView worktree={row.worktree} color={refColor} />
         ) : (
           <RefChipStack
             refs={visibleRefs}
@@ -1533,9 +1534,7 @@ function graphRowDomId(sha: string): string {
 function graphRowAriaLabel(row: CommitGraphRow): string {
   if (row.node.kind === 'wip') {
     const worktree = row.worktree;
-    const identity = worktree
-      ? `${worktree.current ? 'current' : 'linked'} worktree ${worktree.branch ?? worktreeDisplayName(worktree)}`
-      : 'working directory';
+    const identity = worktree ? describeWipWorktree(worktree).identity : 'working directory';
     return `${identity}, ${row.files.length} changed files`;
   }
 
@@ -1545,39 +1544,31 @@ function graphRowAriaLabel(row: CommitGraphRow): string {
 
 function WorktreeChipView({
   worktree,
-  color,
-  currentColor
+  color
 }: {
   worktree: GraphWorktree;
   color: string;
-  currentColor: string;
-}): ReactElement {
-  const label = worktree.branch ?? worktreeDisplayName(worktree);
-  const location = worktree.current ? 'Current worktree' : 'Linked worktree';
+}): ReactElement | null {
+  const { chip } = describeWipWorktree(worktree);
+
+  if (!chip) {
+    return null;
+  }
 
   return (
     <span
       className="ref-chip"
       style={{
-        background: worktree.current ? currentColor : color,
-        color: worktree.current ? 'var(--graph-ref-current-text)' : 'var(--graph-ref-text)'
+        background: color,
+        color: 'var(--graph-ref-text)'
       }}
-      title={`${location}: ${worktree.path}`}
-      aria-label={`${label}, ${location.toLowerCase()}, has uncommitted changes`}
+      title={`${chip.location}: ${worktree.path}`}
+      aria-label={`${chip.label}, ${chip.location.toLowerCase()}, has uncommitted changes`}
     >
-      {worktree.current ? <Check size={12} /> : null}
-      <span className="ref-chip-label">{label}</span>
-      {worktree.current ? (
-        <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
-      ) : (
-        <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
-      )}
+      <span className="ref-chip-label">{chip.label}</span>
+      <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
     </span>
   );
-}
-
-function worktreeDisplayName(worktree: GraphWorktree): string {
-  return worktree.path.split(/[\\/]/).filter(Boolean).at(-1) ?? worktree.path;
 }
 
 function loadStoredGraphColumnWidths(): GraphColumnWidths {

@@ -61,6 +61,7 @@ type CommitDetailPanelProps = {
   parentSha?: string;
   selectedFile?: string;
   wipDirtyCount?: number;
+  showWorkingDirectoryBanner?: boolean;
   profileState?: RepoProfileState;
   commitFocusSignal: number;
   isOperationBusy: boolean;
@@ -87,6 +88,7 @@ export function CommitDetailPanel({
   parentSha,
   selectedFile,
   wipDirtyCount = 0,
+  showWorkingDirectoryBanner = false,
   profileState,
   commitFocusSignal,
   isOperationBusy,
@@ -395,11 +397,13 @@ export function CommitDetailPanel({
   return (
     <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
       <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
-      <WorkingDirectoryBanner
-        dirtyCount={wipDirtyCount}
-        isViewingWip={isWip}
-        onOpenWipChanges={onOpenWipChanges}
-      />
+      {showWorkingDirectoryBanner ? (
+        <WorkingDirectoryBanner
+          dirtyCount={wipDirtyCount}
+          isViewingWip={isWip}
+          onOpenWipChanges={onOpenWipChanges}
+        />
+      ) : null}
       <PanelHeader
         row={row}
         detail={detail}

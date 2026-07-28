@@ -2689,6 +2689,7 @@ export function WorkspaceShell(): ReactElement {
                   parentSha={parentSha}
                   selectedFile={activeTab.selectedFile}
                   wipDirtyCount={repositoryQuery.data?.status.dirtyCount}
+                  showWorkingDirectoryBanner={activeTab.gitDir !== activeTab.commonDir}
                   profileState={repositoryQuery.data?.profileState}
                   commitFocusSignal={commitComposerFocusByTab[activeTab.id] ?? 0}
                   isOperationBusy={isOperationBusy}
