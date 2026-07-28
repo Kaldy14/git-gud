@@ -1652,14 +1652,14 @@ button.ref-chip:active {
 
 .review-toolbar {
   display: flex;
-  min-height: 40px;
+  min-height: 34px;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-graph);
-  padding: 5px 12px;
+  padding: 3px 10px;
 }
 
 .review-toolbar-primary,
@@ -1722,30 +1722,6 @@ button.ref-chip:active {
   font-weight: 600;
 }
 
-.review-guide-banner {
-  display: flex;
-  min-height: 32px;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-panel);
-  padding: 6px 14px;
-  color: var(--text-2);
-  font-size: 11.5px;
-  line-height: 1.4;
-}
-
-.review-guide-banner[data-status='running'] {
-  color: var(--text-3);
-}
-
-.review-guide-banner[data-status='failed'] {
-  border-bottom-color: var(--danger-border);
-  background: var(--danger-bg);
-  color: var(--danger-text);
-}
-
 .review-guide-kicker {
   flex-shrink: 0;
   color: var(--text-3);
@@ -1753,6 +1729,94 @@ button.ref-chip:active {
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+
+.review-guide-popover {
+  z-index: 60;
+  width: min(460px, calc(100vw - 24px));
+  max-height: min(620px, var(--radix-popover-content-available-height));
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-popover);
+  color: var(--text-2);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.6);
+  font-size: 11px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.review-guide-popover > header {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px 4px 12px;
+}
+
+.review-guide-popover > header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.review-guide-popover > header strong {
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.review-guide-popover > section {
+  padding: 10px 12px;
+}
+
+.review-guide-popover > section + section {
+  border-top: 1px solid var(--border);
+}
+
+.review-guide-popover p {
+  margin-top: 3px;
+}
+
+.review-guide-popover-unit-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.review-guide-popover-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.review-guide-popover-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.review-guide-popover-issue strong {
+  font-size: 10.5px;
+}
+
+.review-guide-popover-issue code {
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.review-guide-popover > footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  padding: 6px;
 }
 
 .review-layout {
@@ -1930,14 +1994,14 @@ button.ref-chip:active {
 
 .review-unit-header {
   display: flex;
-  min-height: 36px;
+  min-height: 32px;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
-  padding: 3px 10px;
+  padding: 2px 8px;
 }
 
 .review-unit-heading {
@@ -1967,50 +2031,6 @@ button.ref-chip:active {
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.review-guide-unit-details {
-  display: grid;
-  flex-shrink: 0;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-panel);
-  padding: 8px 14px;
-}
-
-.review-guide-unit-priority {
-  padding-top: 1px;
-}
-
-.review-guide-unit-details p {
-  margin-top: 2px;
-  color: var(--text-2);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.review-guide-issue {
-  display: flex;
-  grid-column: 2 / -1;
-  align-items: flex-start;
-  gap: 7px;
-  border-top: 1px solid var(--danger-border);
-  padding-top: 7px;
-  color: var(--danger-text);
-}
-
-.review-guide-issue strong {
-  font-size: 10.5px;
-}
-
-.review-guide-issue code {
-  color: var(--text-3);
-  font-size: 10px;
-}
-
-.review-guide-issue p {
-  color: var(--danger-text);
 }
 
 .review-chunks {
