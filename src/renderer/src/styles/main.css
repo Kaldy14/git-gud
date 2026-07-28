@@ -2076,7 +2076,7 @@ button.ref-chip:active {
 }
 
 .review-chunk {
-  overflow: hidden;
+  overflow: clip;
   background: var(--bg-field);
 }
 
