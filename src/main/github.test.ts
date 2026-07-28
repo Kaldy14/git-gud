@@ -4,6 +4,7 @@ import type { GitHubPullRequestSummary } from '@shared/types';
 
 import {
   buildCompleteFilePatch,
+  buildGitHubActionsPullRequestGroups,
   buildGitHubPullRequestReviewPlan,
   canReuseGitHubPullRequestInbox,
   categorizePullRequest,
@@ -62,6 +63,7 @@ describe('GitHub Actions dashboards', () => {
         owner: 'acme',
         repository: 'widgets',
         limit: 2,
+        view: 'runs',
         filters: {
           branches: [],
           includeTags: false,
@@ -139,6 +141,7 @@ describe('GitHub Actions dashboards', () => {
         owner: 'acme',
         repository: 'widgets',
         limit: 20,
+        view: 'runs',
         filters: {
           branches: [],
           includeTags: false,
@@ -218,6 +221,58 @@ describe('GitHub Actions dashboards', () => {
       searchedRunCount: 500,
       searchLimitReached: true
     });
+  });
+
+  it('groups open authored pull requests by their latest workflow attempts', () => {
+    const pullRequest = pullRequestSummary();
+    const runs = parsedWorkflowRuns([
+      workflowRun({
+        id: 103,
+        name: 'Build',
+        created_at: '2026-07-25T12:00:00Z',
+        event: 'pull_request',
+        pull_requests: [{ number: 42 }]
+      }),
+      workflowRun({
+        id: 102,
+        name: 'Preview',
+        created_at: '2026-07-25T11:00:00Z',
+        event: 'pull_request',
+        pull_requests: [{ number: 42 }]
+      }),
+      workflowRun({
+        id: 101,
+        name: 'Build',
+        created_at: '2026-07-25T10:00:00Z',
+        event: 'pull_request',
+        pull_requests: [{ number: 42 }]
+      })
+    ]);
+
+    expect(
+      buildGitHubActionsPullRequestGroups(
+        [
+          pullRequest,
+          { ...pullRequest, id: 'pr-43', number: 43, author: 'someone-else' },
+          { ...pullRequest, id: 'pr-44', number: 44, repository: 'api' }
+        ],
+        runs,
+        'developer',
+        'acme',
+        'widgets',
+        5
+      )
+    ).toEqual([
+      {
+        number: 42,
+        title: 'Focus the review',
+        url: 'https://github.com/acme/widgets/pull/42',
+        headRefName: 'feature/focused-review',
+        baseRefName: 'main',
+        updatedAt: '2026-07-23T10:00:00Z',
+        runs: [expect.objectContaining({ id: 103 }), expect.objectContaining({ id: 102 })]
+      }
+    ]);
   });
 });
 
@@ -635,6 +690,7 @@ function parsedWorkflowRuns(runs: Record<string, unknown>[]) {
       owner: 'acme',
       repository: 'widgets',
       limit: runs.length,
+      view: 'runs',
       filters: {
         branches: [],
         includeTags: false,

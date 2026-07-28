@@ -21,6 +21,7 @@ describe('GitHub Actions run queries', () => {
         owner: 'owner',
         repository: 'repository',
         limit: 10,
+        view: 'pull-requests',
         filters: {
           branches: ['main', 'release/next'],
           includeTags: true,
@@ -33,6 +34,7 @@ describe('GitHub Actions run queries', () => {
       'owner',
       'repository',
       10,
+      'pull-requests',
       'main\nrelease/next',
       true,
       true

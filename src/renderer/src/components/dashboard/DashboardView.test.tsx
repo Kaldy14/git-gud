@@ -24,6 +24,7 @@ import {
   DashboardView,
   WorkflowBranchFilterField
 } from './DashboardView';
+import { dashboardRepositoryOptions } from './dashboardRepositoryOptions';
 
 const profile: GitProfile = {
   id: 'profile:dashboard-tabs',
@@ -41,6 +42,39 @@ const dashboards: Dashboard[] = [
 ];
 
 describe('DashboardView', () => {
+  it('keeps repositories available when another tile already uses the same project', () => {
+    const repository = {
+      owner: 'acme',
+      name: 'widgets',
+      fullName: 'acme/widgets',
+      url: 'https://github.com/acme/widgets',
+      isPrivate: true,
+      defaultBranch: 'main'
+    };
+    const dashboard: Dashboard = {
+      ...createDashboard('dashboard:duplicates', 'Focused workflows'),
+      tiles: [
+        {
+          id: 'tile:main-and-tags',
+          kind: 'github-actions',
+          owner: repository.owner,
+          repository: repository.name,
+          limit: 10,
+          view: 'runs',
+          filters: {
+            branches: ['main'],
+            includeTags: true,
+            includeMyPullRequests: false
+          }
+        }
+      ]
+    };
+
+    expect(dashboardRepositoryOptions([repository], dashboard, undefined)).toEqual([
+      repository
+    ]);
+  });
+
   it('places the create-dashboard control after the dashboard tabs and before dashboard actions', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(dashboardsQueryKey(profile.id), {
@@ -132,6 +166,7 @@ describe('DashboardView', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'runs',
           filters
         }
       ]
@@ -148,6 +183,7 @@ describe('DashboardView', () => {
         owner: 'acme',
         repository: 'widgets',
         limit: 10,
+        view: 'runs',
         filters
       }),
       {
@@ -155,6 +191,7 @@ describe('DashboardView', () => {
         owner: 'acme',
         repository: 'widgets',
         runs: [],
+        pullRequests: [],
         searchedRunCount: 10,
         searchLimitReached: false,
         loadedAt: '2026-07-27T10:00:00.000Z'
@@ -177,6 +214,100 @@ describe('DashboardView', () => {
     expect(markup).toContain('No workflow runs match these filters.');
   });
 
+  it('renders compact workflow rows grouped beneath open authored pull requests', () => {
+    const queryClient = new QueryClient();
+    const filters = {
+      branches: [],
+      includeTags: false,
+      includeMyPullRequests: true
+    };
+    const tile = {
+      id: 'tile:pull-requests',
+      kind: 'github-actions' as const,
+      owner: 'acme',
+      repository: 'widgets',
+      limit: 5,
+      view: 'pull-requests' as const,
+      filters
+    };
+    const dashboard: Dashboard = {
+      ...createDashboard('dashboard:pull-requests', 'My pull requests'),
+      tiles: [tile]
+    };
+    const buildRun = workflowRun({
+      id: 102,
+      name: 'Build',
+      status: 'completed',
+      conclusion: 'failure',
+      pullRequestNumbers: [42]
+    });
+    const previewRun = workflowRun({
+      id: 101,
+      name: 'PR Preview Environments',
+      status: 'completed',
+      conclusion: 'success',
+      pullRequestNumbers: [42]
+    });
+
+    queryClient.setQueryData(dashboardsQueryKey(profile.id), {
+      profileId: profile.id,
+      dashboards: [dashboard],
+      selectedDashboardId: dashboard.id
+    });
+    queryClient.setQueryData(gitHubRepositoriesQueryKey(profile.id), []);
+    queryClient.setQueryData(
+      gitHubActionsRunsQueryKey({
+        profileId: profile.id,
+        owner: tile.owner,
+        repository: tile.repository,
+        limit: tile.limit,
+        view: tile.view,
+        filters
+      }),
+      {
+        profileId: profile.id,
+        owner: tile.owner,
+        repository: tile.repository,
+        runs: [buildRun, previewRun],
+        pullRequests: [
+          {
+            number: 42,
+            title: 'Group dashboard workflows',
+            url: 'https://github.com/acme/widgets/pull/42',
+            headRefName: 'feature/group-workflows',
+            baseRefName: 'main',
+            updatedAt: '2026-07-27T10:07:00Z',
+            runs: [buildRun, previewRun]
+          }
+        ],
+        searchedRunCount: 120,
+        searchLimitReached: false,
+        loadedAt: '2026-07-27T10:09:00Z'
+      }
+    );
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <DashboardView
+          profile={profile}
+          requestedDashboardId={dashboard.id}
+          onSelectDashboard={vi.fn()}
+          onOpenProfileSettings={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(markup).toContain('my open PRs · 1 PR');
+    expect(markup).toContain('#42');
+    expect(markup).toContain('Group dashboard workflows');
+    expect(markup).toContain('feature/group-workflows');
+    expect(markup).toContain('class="pull-request-workflow-run"');
+    expect(markup).toContain('Build');
+    expect(markup).toContain('PR Preview Environments');
+    expect(markup).toContain('1 failed');
+  });
+
   it('exposes edit controls and accessible drag handles for saved tiles', () => {
     const queryClient = new QueryClient();
     const filters = {
@@ -193,6 +324,7 @@ describe('DashboardView', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'runs',
           filters
         },
         {
@@ -201,6 +333,7 @@ describe('DashboardView', () => {
           owner: 'acme',
           repository: 'api',
           limit: 5,
+          view: 'runs',
           filters
         }
       ]
@@ -223,6 +356,7 @@ describe('DashboardView', () => {
           owner: tile.owner,
           repository: tile.repository,
           limit: tile.limit,
+          view: tile.view,
           filters: tile.filters
         }),
         {
@@ -230,6 +364,7 @@ describe('DashboardView', () => {
           owner: tile.owner,
           repository: tile.repository,
           runs: [],
+          pullRequests: [],
           searchedRunCount: 0,
           searchLimitReached: false,
           loadedAt: '2026-07-27T10:00:00.000Z'
@@ -270,6 +405,7 @@ describe('DashboardView', () => {
           tileKind: 'github-actions',
           repository: 'acme/widgets',
           limit: 15,
+          view: 'runs',
           branches: 'main, release/next',
           includeTags: true,
           includeMyPullRequests: false,
@@ -476,6 +612,7 @@ function renderActionsDashboard(runs: GitHubWorkflowRun[]): string {
         owner: 'acme',
         repository: 'widgets',
         limit: 10,
+        view: 'runs',
         filters
       }
     ]
@@ -493,6 +630,7 @@ function renderActionsDashboard(runs: GitHubWorkflowRun[]): string {
       owner: 'acme',
       repository: 'widgets',
       limit: 10,
+      view: 'runs',
       filters
     }),
     {
@@ -500,6 +638,7 @@ function renderActionsDashboard(runs: GitHubWorkflowRun[]): string {
       owner: 'acme',
       repository: 'widgets',
       runs,
+      pullRequests: [],
       searchedRunCount: runs.length,
       searchLimitReached: false,
       loadedAt: '2026-07-27T10:09:00Z'

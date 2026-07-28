@@ -111,6 +111,7 @@ export function dashboardActionMonitoringInputs(
         owner: tile.owner,
         repository: tile.repository,
         limit: tile.limit,
+        view: tile.view,
         filters: tile.filters
       };
       inputs.set(JSON.stringify(gitHubActionsRunsQueryKey(input)), input);

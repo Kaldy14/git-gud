@@ -31,6 +31,7 @@ export const gitHubActionsRunsQueryKey = (
   string,
   number,
   string,
+  string,
   boolean,
   boolean
 ] => [
@@ -39,6 +40,7 @@ export const gitHubActionsRunsQueryKey = (
   input.owner,
   input.repository,
   input.limit,
+  input.view,
   input.filters.branches.join('\n'),
   input.filters.includeTags,
   input.filters.includeMyPullRequests
@@ -120,7 +122,7 @@ export function gitHubActionsRunsQueryOptions(
   return {
     queryKey: input
       ? gitHubActionsRunsQueryKey(input)
-      : ['github-actions-runs', 'none', 'none', 'none', 0, '', false, false],
+      : ['github-actions-runs', 'none', 'none', 'none', 0, 'runs', '', false, false],
     queryFn: async (): Promise<GitHubActionsRuns> => {
       if (!input) {
         throw new Error('A GitHub Actions tile configuration is required.');

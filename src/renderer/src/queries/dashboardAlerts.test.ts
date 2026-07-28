@@ -23,6 +23,7 @@ describe('dashboard action monitoring', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'runs',
           filters
         },
         {
@@ -31,6 +32,7 @@ describe('dashboard action monitoring', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'runs',
           filters
         },
         {
@@ -39,6 +41,7 @@ describe('dashboard action monitoring', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'pull-requests',
           filters: {
             branches: [],
             includeTags: false,
@@ -56,6 +59,7 @@ describe('dashboard action monitoring', () => {
         owner: 'acme',
         repository: 'widgets',
         limit: 10,
+        view: 'runs',
         filters
       },
       {
@@ -63,6 +67,7 @@ describe('dashboard action monitoring', () => {
         owner: 'acme',
         repository: 'widgets',
         limit: 10,
+        view: 'pull-requests',
         filters: {
           branches: [],
           includeTags: false,

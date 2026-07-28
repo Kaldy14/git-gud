@@ -142,6 +142,7 @@ describe('IPC argument validation', () => {
               owner: 'acme',
               repository: 'widgets',
               limit: 10,
+              view: 'runs',
               filters: {
                 branches: ['main', 'release/next'],
                 includeTags: true,
@@ -167,6 +168,7 @@ describe('IPC argument validation', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'runs',
           filters: {
             branches: ['main', 'release/next'],
             includeTags: true,
@@ -243,6 +245,7 @@ describe('IPC argument validation', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'pull-requests',
           filters: {
             branches: ['main'],
             includeTags: false,
@@ -256,6 +259,7 @@ describe('IPC argument validation', () => {
         owner: 'acme',
         repository: 'widgets',
         limit: 10,
+        view: 'pull-requests',
         filters: {
           branches: ['main'],
           includeTags: false,

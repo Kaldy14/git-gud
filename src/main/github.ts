@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 
 import type {
+  GitHubActionsPullRequestGroup,
   GitHubActionsRuns,
   GitHubActionsRunFilters,
   GitHubActionsRunsInput,
@@ -166,6 +167,11 @@ export async function loadGitHubRepositories(profileId: string): Promise<GitHubR
 
 export async function loadGitHubActionsRuns(input: GitHubActionsRunsInput): Promise<GitHubActionsRuns> {
   const context = await getGitHubContext(input.profileId);
+
+  if (input.view === 'pull-requests') {
+    return loadGitHubActionsPullRequestGroups(context, input);
+  }
+
   const filtersActive = hasGitHubActionsRunFilters(input.filters);
 
   if (!filtersActive) {
@@ -204,6 +210,70 @@ export async function loadGitHubActionsRuns(input: GitHubActionsRunsInput): Prom
     search.runs,
     search.searchedRunCount,
     search.searchLimitReached
+  );
+}
+
+async function loadGitHubActionsPullRequestGroups(
+  context: GitHubContext,
+  input: GitHubActionsRunsInput
+): Promise<GitHubActionsRuns> {
+  const cachedInbox = gitHubPullRequestInboxCache.get(input.profileId);
+  const inbox =
+    cachedInbox && canReuseGitHubPullRequestInbox(cachedInbox)
+      ? cachedInbox
+      : await loadGitHubPullRequestInboxForContext(context, input.profileId);
+  const groupsWithoutRuns = buildGitHubActionsPullRequestGroups(
+    inbox.pullRequests,
+    [],
+    inbox.viewerLogin,
+    input.owner,
+    input.repository,
+    input.limit
+  );
+
+  if (groupsWithoutRuns.length === 0) {
+    return buildGitHubActionsRuns(input, [], 0, false, []);
+  }
+
+  const openPullRequestNumbers = new Set(
+    groupsWithoutRuns.map((pullRequest) => pullRequest.number)
+  );
+  const search = await searchGitHubActionsRunPages(
+    GITHUB_ACTIONS_FILTERED_RUN_CAP,
+    (page) =>
+      loadGitHubWorkflowRunsPage(
+        context,
+        input,
+        GITHUB_ACTIONS_FILTERED_PAGE_SIZE,
+        page
+      ).then(parseGitHubWorkflowRuns),
+    async (runs) =>
+      runs.filter((run) =>
+        run.pullRequestNumbers.some((number) => openPullRequestNumbers.has(number))
+      )
+  );
+  const pullRequests = buildGitHubActionsPullRequestGroups(
+    inbox.pullRequests,
+    search.runs,
+    inbox.viewerLogin,
+    input.owner,
+    input.repository,
+    input.limit
+  );
+  const runs = [
+    ...new Map(
+      pullRequests.flatMap((pullRequest) =>
+        pullRequest.runs.map((run) => [run.id, run] as const)
+      )
+    ).values()
+  ];
+
+  return buildGitHubActionsRuns(
+    input,
+    runs,
+    search.searchedRunCount,
+    search.searchLimitReached,
+    pullRequests
   );
 }
 
@@ -299,17 +369,68 @@ function buildGitHubActionsRuns(
   input: GitHubActionsRunsInput,
   runs: GitHubWorkflowRun[],
   searchedRunCount: number,
-  searchLimitReached: boolean
+  searchLimitReached: boolean,
+  pullRequests: GitHubActionsPullRequestGroup[] = []
 ): GitHubActionsRuns {
   return {
     profileId: input.profileId,
     owner: input.owner,
     repository: input.repository,
     runs,
+    pullRequests,
     searchedRunCount,
     searchLimitReached,
     loadedAt: new Date().toISOString()
   };
+}
+
+export function buildGitHubActionsPullRequestGroups(
+  pullRequests: GitHubPullRequestSummary[],
+  runs: GitHubWorkflowRun[],
+  viewerLogin: string,
+  owner: string,
+  repository: string,
+  limit: number
+): GitHubActionsPullRequestGroup[] {
+  const normalizedViewerLogin = viewerLogin.toLowerCase();
+
+  return pullRequests
+    .filter(
+      (pullRequest) =>
+        pullRequest.owner === owner &&
+        pullRequest.repository === repository &&
+        pullRequest.author.toLowerCase() === normalizedViewerLogin
+    )
+    .sort(
+      (left, right) =>
+        Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+    )
+    .slice(0, limit)
+    .map((pullRequest) => {
+      const latestRunsByWorkflow = new Map<string, GitHubWorkflowRun>();
+
+      runs
+        .filter((run) => run.pullRequestNumbers.includes(pullRequest.number))
+        .sort(
+          (left, right) =>
+            Date.parse(right.createdAt) - Date.parse(left.createdAt)
+        )
+        .forEach((run) => {
+          if (!latestRunsByWorkflow.has(run.name)) {
+            latestRunsByWorkflow.set(run.name, run);
+          }
+        });
+
+      return {
+        number: pullRequest.number,
+        title: pullRequest.title,
+        url: pullRequest.url,
+        headRefName: pullRequest.headRefName,
+        baseRefName: pullRequest.baseRefName,
+        updatedAt: pullRequest.updatedAt,
+        runs: [...latestRunsByWorkflow.values()]
+      };
+    });
 }
 
 export type GitHubActionsRunSearchResult = {

@@ -866,12 +866,25 @@ export type GitHubActionsRunFilters = {
   includeMyPullRequests: boolean;
 };
 
+export type GitHubActionsTileView = 'runs' | 'pull-requests';
+
 export type GitHubActionsRunsInput = {
   profileId: string;
   owner: string;
   repository: string;
   limit: number;
+  view: GitHubActionsTileView;
   filters: GitHubActionsRunFilters;
+};
+
+export type GitHubActionsPullRequestGroup = {
+  number: number;
+  title: string;
+  url: string;
+  headRefName: string;
+  baseRefName: string;
+  updatedAt: string;
+  runs: GitHubWorkflowRun[];
 };
 
 export type GitHubActionsRuns = {
@@ -879,6 +892,7 @@ export type GitHubActionsRuns = {
   owner: string;
   repository: string;
   runs: GitHubWorkflowRun[];
+  pullRequests: GitHubActionsPullRequestGroup[];
   searchedRunCount: number;
   searchLimitReached: boolean;
   loadedAt: string;
@@ -890,6 +904,7 @@ export type GitHubActionsDashboardTile = {
   owner: string;
   repository: string;
   limit: number;
+  view: GitHubActionsTileView;
   filters: GitHubActionsRunFilters;
 };
 

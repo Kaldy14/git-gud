@@ -18,6 +18,7 @@ import type {
   GitHubPullRequestLocator,
   GitHubActionsRunsInput,
   GitHubActionsRunFilters,
+  GitHubActionsTileView,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestReviewCommentUpdateInput,
@@ -579,6 +580,7 @@ function readDashboardInput(value: unknown): DashboardInput {
             `tiles[${index}].repository`
           ),
           limit,
+          view: readGitHubActionsTileView(tile.view),
           filters: readGitHubActionsRunFilters(
             tile.filters,
             `tiles[${index}].filters`
@@ -673,8 +675,21 @@ function readGitHubActionsRunsInput(value: unknown): GitHubActionsRunsInput {
     owner: readGitHubName(record.owner, 'owner'),
     repository: readGitHubName(record.repository, 'repository'),
     limit,
+    view: readGitHubActionsTileView(record.view),
     filters: readGitHubActionsRunFilters(record.filters, 'filters')
   };
+}
+
+function readGitHubActionsTileView(value: unknown): GitHubActionsTileView {
+  if (value === undefined || value === 'runs') {
+    return 'runs';
+  }
+
+  if (value === 'pull-requests') {
+    return 'pull-requests';
+  }
+
+  throw new Error('view must be one of: runs, pull-requests.');
 }
 
 function readGitHubActionsRunFilters(

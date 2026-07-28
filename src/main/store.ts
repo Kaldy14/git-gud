@@ -17,6 +17,7 @@ import type {
   GitHubActionsRuns,
   GitHubActionsRunsInput,
   GitHubActionsRunFilters,
+  GitHubActionsTileView,
   GitHubWorkflowRun,
   GitHubWorkflowRunConclusion,
   RepositorySummary,
@@ -228,6 +229,7 @@ export function saveDashboard(input: DashboardInput): DashboardState {
             owner: tile.owner.trim(),
             repository: tile.repository.trim(),
             limit: tile.limit,
+            view: normalizeGitHubActionsTileView(tile.view),
             filters: normalizeGitHubActionsRunFilters(tile.filters)
           }
         : {
@@ -481,6 +483,9 @@ function normalizeDashboards(value: unknown): Dashboard[] {
             owner: tile.owner,
             repository: tile.repository,
             limit: tile.limit,
+            view: normalizeGitHubActionsTileView(
+              (tile as { view?: unknown }).view
+            ),
             filters: normalizeGitHubActionsRunFilters(
               (tile as { filters?: unknown }).filters
             )
@@ -556,6 +561,10 @@ function normalizeGitHubActionsRunFilters(value: unknown): GitHubActionsRunFilte
     includeTags: candidate.includeTags === true,
     includeMyPullRequests: candidate.includeMyPullRequests === true
   };
+}
+
+function normalizeGitHubActionsTileView(value: unknown): GitHubActionsTileView {
+  return value === 'pull-requests' ? 'pull-requests' : 'runs';
 }
 
 function normalizeDashboardActionAlerts(value: unknown): StoredDashboardActionAlerts {
@@ -649,6 +658,7 @@ function dashboardActionSourceKey(input: GitHubActionsRunsInput): string {
     input.owner,
     input.repository,
     input.limit,
+    input.view,
     [...input.filters.branches].sort(),
     input.filters.includeTags,
     input.filters.includeMyPullRequests

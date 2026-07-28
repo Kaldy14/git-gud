@@ -9,9 +9,12 @@ import {
   AlertTriangle,
   BellRing,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   CircleSlash2,
   ExternalLink,
   GitBranch,
+  GitPullRequest,
   GripVertical,
   LayoutDashboard,
   Loader2,
@@ -46,6 +49,7 @@ import type {
   DashboardActionFailureAlert,
   DashboardTile,
   GitHubActionsDashboardTile,
+  GitHubActionsPullRequestGroup,
   GitHubRepositorySummary,
   GitHubWorkflowRun,
   GitProfile,
@@ -55,6 +59,7 @@ import type {
 
 import { PortainerConnectionDialog } from './PortainerConnectionDialog';
 import { PortainerStackTile } from './PortainerStackTile';
+import { dashboardRepositoryOptions } from './dashboardRepositoryOptions';
 import { resolveActiveDashboard } from './dashboardSelection';
 import {
   dashboardTileDropPositionForPointer,
@@ -84,6 +89,7 @@ type DashboardTileDialogFields = {
   tileKind: 'github-actions' | 'portainer-swarm-stack';
   repository: string;
   limit: number;
+  view: 'runs' | 'pull-requests';
   branches: string;
   includeTags: boolean;
   includeMyPullRequests: boolean;
@@ -156,44 +162,15 @@ export function DashboardView({
     dashboardsQuery.data?.selectedDashboardId
   );
   const editingTileId = dialog?.kind === 'edit-tile' ? dialog.tileId : undefined;
-  const availableRepositories = useMemo(() => {
-    const repositories = (repositoriesQuery.data ?? []).filter(
-      (repository) =>
-        !activeDashboard?.tiles.some(
-          (tile) =>
-            tile.id !== editingTileId &&
-            tile.kind === 'github-actions' &&
-            tile.owner === repository.owner &&
-            tile.repository === repository.name
-        )
-    );
-    const editingTile = activeDashboard?.tiles.find(
-      (tile) => tile.id === editingTileId && tile.kind === 'github-actions'
-    );
-
-    if (
-      editingTile?.kind === 'github-actions' &&
-      !repositories.some(
-        (repository) =>
-          repository.owner === editingTile.owner &&
-          repository.name === editingTile.repository
-      )
-    ) {
-      return [
-        {
-          owner: editingTile.owner,
-          name: editingTile.repository,
-          fullName: `${editingTile.owner}/${editingTile.repository}`,
-          url: '',
-          isPrivate: false,
-          defaultBranch: ''
-        },
-        ...repositories
-      ];
-    }
-
-    return repositories;
-  }, [activeDashboard?.tiles, editingTileId, repositoriesQuery.data]);
+  const availableRepositories = useMemo(
+    () =>
+      dashboardRepositoryOptions(
+        repositoriesQuery.data ?? [],
+        activeDashboard,
+        editingTileId
+      ),
+    [activeDashboard, editingTileId, repositoriesQuery.data]
+  );
   const selectedConnectionId =
     isTileDialog(dialog) && dialog.tileKind === 'portainer-swarm-stack'
       ? dialog.connectionId || connectionsQuery.data?.[0]?.id
@@ -308,6 +285,7 @@ export function DashboardView({
             owner: repository.owner,
             repository: repository.name,
             limit: dialog.limit,
+            view: dialog.view,
             filters: {
               branches: parseWorkflowRunBranches(dialog.branches),
               includeTags: dialog.includeTags,
@@ -390,6 +368,7 @@ export function DashboardView({
       tileKind: gitHubProfileId ? 'github-actions' : 'portainer-swarm-stack',
       repository: availableRepositories[0]?.fullName ?? '',
       limit: 10,
+      view: 'runs',
       branches: '',
       includeTags: false,
       includeMyPullRequests: false,
@@ -409,6 +388,7 @@ export function DashboardView({
         tileKind: tile.kind,
         repository: `${tile.owner}/${tile.repository}`,
         limit: tile.limit,
+        view: tile.view,
         branches: tile.filters.branches.join(', '),
         includeTags: tile.filters.includeTags,
         includeMyPullRequests: tile.filters.includeMyPullRequests,
@@ -425,6 +405,7 @@ export function DashboardView({
       tileKind: tile.kind,
       repository: availableRepositories[0]?.fullName ?? '',
       limit: 10,
+      view: 'runs',
       branches: '',
       includeTags: false,
       includeMyPullRequests: false,
@@ -1054,11 +1035,16 @@ function GitHubActionsTile({
           owner: tile.owner,
           repository: tile.repository,
           limit: tile.limit,
+          view: tile.view,
           filters: tile.filters
         }
       : undefined
   );
   const runs = runsQuery.data?.runs ?? [];
+  const pullRequests = runsQuery.data?.pullRequests;
+  const [pullRequestExpansionOverrides, setPullRequestExpansionOverrides] =
+    useState<Map<number, boolean>>(() => new Map());
+  const pullRequestCount = pullRequests?.length ?? 0;
   const filterSummary = workflowRunFilterSummary(tile.filters);
   const isFiltered = hasWorkflowRunFilters(tile.filters);
   const searchLimitReached = runsQuery.data?.searchLimitReached === true;
@@ -1074,11 +1060,19 @@ function GitHubActionsTile({
   const unknownCount = runPresentations.filter(
     (presentation) => presentation.label === 'Unknown'
   ).length;
+  const tileSubtitle =
+    tile.view === 'pull-requests'
+      ? `my open PRs${runsQuery.data ? ` · ${pullRequestCount} ${
+          pullRequestCount === 1 ? 'PR' : 'PRs'
+        }` : ''}`
+      : filterSummary;
 
   return (
     <article
       className="actions-tile"
-      aria-label={`${tile.owner}/${tile.repository} workflow runs, ${filterSummary}`}
+      aria-label={`${tile.owner}/${tile.repository} ${
+        tile.view === 'pull-requests' ? 'open pull requests' : 'workflow runs'
+      }, ${tileSubtitle}`}
     >
       <header className="actions-tile-header">
         <div className="actions-tile-identity">
@@ -1087,7 +1081,15 @@ function GitHubActionsTile({
               <span>{tile.owner}/</span>
               {tile.repository}
             </strong>
-            <small title={`Run filters: ${filterSummary}`}>{filterSummary}</small>
+            <small
+              title={
+                tile.view === 'pull-requests'
+                  ? 'Open pull requests authored by you'
+                  : `Run filters: ${filterSummary}`
+              }
+            >
+              {tileSubtitle}
+            </small>
           </span>
         </div>
         <div className="actions-tile-header-actions">
@@ -1159,8 +1161,42 @@ function GitHubActionsTile({
       {runsQuery.isLoading && !runsQuery.data ? (
         <div className="actions-tile-loading" role="status">
           <Loader2 size={18} className="animate-spin" />
-          <span>Loading workflow runs…</span>
+          <span>
+            {tile.view === 'pull-requests'
+              ? 'Loading open pull requests…'
+              : 'Loading workflow runs…'}
+          </span>
         </div>
+      ) : tile.view === 'pull-requests' && pullRequests && pullRequests.length > 0 ? (
+        <>
+          <div className="pull-request-workflow-list">
+            {pullRequests.map((pullRequest, index) => {
+              const expanded =
+                pullRequestExpansionOverrides.get(pullRequest.number) ??
+                isPullRequestExpandedByDefault(pullRequest, index);
+
+              return (
+                <PullRequestWorkflowGroup
+                  key={pullRequest.number}
+                  pullRequest={pullRequest}
+                  expanded={expanded}
+                  onToggle={() =>
+                    setPullRequestExpansionOverrides((current) => {
+                      const next = new Map(current);
+                      next.set(pullRequest.number, !expanded);
+                      return next;
+                    })
+                  }
+                />
+              );
+            })}
+          </div>
+          {searchLimitReached ? (
+            <div className="actions-tile-search-note">
+              Grouped from the latest {searchedRunCount} workflow runs.
+            </div>
+          ) : null}
+        </>
       ) : runs.length > 0 ? (
         <>
           <div className="workflow-run-list">
@@ -1176,9 +1212,15 @@ function GitHubActionsTile({
         </>
       ) : profileId && !runsQuery.error ? (
         <div className="actions-tile-empty">
-          <CircleSlash2 size={17} />
+          {tile.view === 'pull-requests' ? (
+            <GitPullRequest size={17} />
+          ) : (
+            <CircleSlash2 size={17} />
+          )}
           <span>
-            {searchLimitReached
+            {tile.view === 'pull-requests'
+              ? 'No open pull requests authored by you.'
+              : searchLimitReached
               ? `No matches in the latest ${searchedRunCount} workflow runs.`
               : isFiltered
                 ? 'No workflow runs match these filters.'
@@ -1188,6 +1230,182 @@ function GitHubActionsTile({
       ) : null}
     </article>
   );
+}
+
+function PullRequestWorkflowGroup({
+  pullRequest,
+  expanded,
+  onToggle
+}: {
+  pullRequest: GitHubActionsPullRequestGroup;
+  expanded: boolean;
+  onToggle: () => void;
+}): ReactElement {
+  const presentation = pullRequestGroupPresentation(pullRequest);
+  const updatedRelativeTime = formatRelativeTime(pullRequest.updatedAt);
+
+  return (
+    <section className="pull-request-workflow-group">
+      <header>
+        <button
+          className="pull-request-workflow-toggle icon-btn"
+          type="button"
+          aria-expanded={expanded}
+          aria-label={`${expanded ? 'Collapse' : 'Expand'} pull request #${pullRequest.number}`}
+          onClick={onToggle}
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+        <a
+          className="pull-request-workflow-identity"
+          href={pullRequest.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open pull request #${pullRequest.number}: ${pullRequest.title}`}
+        >
+          <strong title={`#${pullRequest.number} ${pullRequest.title}`}>
+            <span>#{pullRequest.number}</span> {pullRequest.title}
+          </strong>
+          <small>
+            <GitBranch size={9} />
+            <span title={pullRequest.headRefName}>{pullRequest.headRefName}</span>
+            <span aria-hidden="true">→</span>
+            <span title={pullRequest.baseRefName}>{pullRequest.baseRefName}</span>
+            <span aria-hidden="true">·</span>
+            <time
+              dateTime={pullRequest.updatedAt}
+              title={formatAbsoluteTime(pullRequest.updatedAt)}
+            >
+              updated {updatedRelativeTime}
+            </time>
+          </small>
+        </a>
+        <span
+          className="pull-request-workflow-summary"
+          data-tone={presentation.tone}
+        >
+          {presentation.icon === 'running' ? (
+            <Loader2 size={10} className="animate-spin" />
+          ) : presentation.icon === 'success' ? (
+            <CheckCircle2 size={10} />
+          ) : presentation.icon === 'failure' ? (
+            <XCircle size={10} />
+          ) : (
+            <CircleSlash2 size={10} />
+          )}
+          {presentation.label}
+        </span>
+      </header>
+      {expanded ? (
+        pullRequest.runs.length > 0 ? (
+          <div className="pull-request-workflow-runs">
+            {pullRequest.runs.map((run) => (
+              <PullRequestWorkflowRow key={run.id} run={run} />
+            ))}
+          </div>
+        ) : (
+          <div className="pull-request-workflow-empty">
+            No recent workflow runs.
+          </div>
+        )
+      ) : null}
+    </section>
+  );
+}
+
+function PullRequestWorkflowRow({
+  run
+}: {
+  run: GitHubWorkflowRun;
+}): ReactElement {
+  const presentation = workflowRunPresentation(run);
+  const statusIcon =
+    presentation.icon === 'running' ? (
+      <Loader2 size={11} className="animate-spin" />
+    ) : presentation.icon === 'success' ? (
+      <CheckCircle2 size={11} />
+    ) : presentation.icon === 'failure' ? (
+      <XCircle size={11} />
+    ) : (
+      <CircleSlash2 size={11} />
+    );
+
+  return (
+    <a
+      className="pull-request-workflow-run"
+      href={run.url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${run.name}, ${presentation.label}. Open workflow run in browser`}
+    >
+      <span data-tone={presentation.tone}>{statusIcon}</span>
+      <strong title={run.name}>{run.name}</strong>
+      <span data-tone={presentation.tone}>{presentation.label}</span>
+      <ExternalLink size={10} aria-hidden="true" />
+    </a>
+  );
+}
+
+function pullRequestGroupPresentation(
+  pullRequest: GitHubActionsPullRequestGroup
+): {
+  label: string;
+  tone: 'running' | 'success' | 'danger' | 'muted';
+  icon: 'running' | 'success' | 'failure' | 'cancelled';
+} {
+  const presentations = pullRequest.runs.map(workflowRunPresentation);
+  const failedCount = presentations.filter(
+    (presentation) => presentation.tone === 'danger'
+  ).length;
+
+  if (failedCount > 0) {
+    return {
+      label: `${failedCount} failed`,
+      tone: 'danger',
+      icon: 'failure'
+    };
+  }
+
+  const runningCount = presentations.filter(
+    (presentation) => presentation.tone === 'running'
+  ).length;
+
+  if (runningCount > 0) {
+    return {
+      label: `${runningCount} running`,
+      tone: 'running',
+      icon: 'running'
+    };
+  }
+
+  if (presentations.length === 0) {
+    return {
+      label: 'No runs',
+      tone: 'muted',
+      icon: 'cancelled'
+    };
+  }
+
+  if (presentations.some((presentation) => presentation.tone === 'muted')) {
+    return {
+      label: 'Unknown',
+      tone: 'muted',
+      icon: 'cancelled'
+    };
+  }
+
+  return {
+    label: 'Healthy',
+    tone: 'success',
+    icon: 'success'
+  };
+}
+
+function isPullRequestExpandedByDefault(
+  pullRequest: GitHubActionsPullRequestGroup,
+  index: number
+): boolean {
+  return index === 0 || pullRequestGroupPresentation(pullRequest).tone === 'danger';
 }
 
 function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
@@ -1421,7 +1639,7 @@ export function DashboardDialogSurface({
                         >
                           {repositoriesLoading ? <option value="">Loading projects…</option> : null}
                           {!repositoriesLoading && repositories.length === 0 ? (
-                            <option value="">No additional projects available</option>
+                            <option value="">No projects available</option>
                           ) : null}
                           {repositories.map((repository) => (
                             <option key={repository.fullName} value={repository.fullName}>
@@ -1432,7 +1650,35 @@ export function DashboardDialogSurface({
                         </select>
                       </label>
                       <label className="dashboard-field">
-                        <span>Workflow runs to show</span>
+                        <span>View</span>
+                        <select
+                          value={dialog.view}
+                          onChange={(event) => {
+                            const view = event.target.value as
+                              | 'runs'
+                              | 'pull-requests';
+                            onChange({
+                              ...dialog,
+                              view,
+                              branches: view === 'pull-requests' ? '' : dialog.branches,
+                              includeTags:
+                                view === 'pull-requests'
+                                  ? false
+                                  : dialog.includeTags,
+                              includeMyPullRequests: view === 'pull-requests'
+                            });
+                          }}
+                        >
+                          <option value="runs">Recent workflow runs</option>
+                          <option value="pull-requests">My open pull requests</option>
+                        </select>
+                      </label>
+                      <label className="dashboard-field">
+                        <span>
+                          {dialog.view === 'pull-requests'
+                            ? 'Pull requests to show'
+                            : 'Workflow runs to show'}
+                        </span>
                         <select
                           value={dialog.limit}
                           onChange={(event) =>
@@ -1441,59 +1687,71 @@ export function DashboardDialogSurface({
                         >
                           {[5, 10, 15, 20].map((limit) => (
                             <option key={limit} value={limit}>
-                              Last {limit} runs
+                              {dialog.view === 'pull-requests'
+                                ? `Last ${limit} open PRs`
+                                : `Last ${limit} runs`}
                             </option>
                           ))}
                         </select>
                       </label>
-                      <fieldset className="dashboard-filter-field">
-                        <legend>Runs to include</legend>
-                        <WorkflowBranchFilterField
-                          value={dialog.branches}
-                          placeholder={
-                            selectedRepository?.defaultBranch || 'main, release/next'
-                          }
-                          onChange={(branches) => onChange({ ...dialog, branches })}
-                        />
-                        <div className="dashboard-filter-options">
-                          <label className="dashboard-filter-option">
-                            <input
-                              type="checkbox"
-                              checked={dialog.includeTags}
-                              onChange={(event) =>
-                                onChange({
-                                  ...dialog,
-                                  includeTags: event.target.checked
-                                })
-                              }
-                            />
-                            <span>
-                              <strong>Tags</strong>
-                              <small>Runs matching current repository tags.</small>
-                            </span>
-                          </label>
-                          <label className="dashboard-filter-option">
-                            <input
-                              type="checkbox"
-                              checked={dialog.includeMyPullRequests}
-                              onChange={(event) =>
-                                onChange({
-                                  ...dialog,
-                                  includeMyPullRequests: event.target.checked
-                                })
-                              }
-                            />
-                            <span>
-                              <strong>My pull requests</strong>
-                              <small>Runs linked to pull requests you authored.</small>
-                            </span>
-                          </label>
+                      {dialog.view === 'pull-requests' ? (
+                        <div className="dashboard-pr-view-note">
+                          <GitPullRequest size={13} />
+                          <span>
+                            Groups open PRs you authored and shows the latest attempt of
+                            each workflow.
+                          </span>
                         </div>
-                        <p className="dashboard-filter-help">
-                          Matches any selected filter. Leave everything empty to show all
-                          runs.
-                        </p>
-                      </fieldset>
+                      ) : (
+                        <fieldset className="dashboard-filter-field">
+                          <legend>Runs to include</legend>
+                          <WorkflowBranchFilterField
+                            value={dialog.branches}
+                            placeholder={
+                              selectedRepository?.defaultBranch || 'main, release/next'
+                            }
+                            onChange={(branches) => onChange({ ...dialog, branches })}
+                          />
+                          <div className="dashboard-filter-options">
+                            <label className="dashboard-filter-option">
+                              <input
+                                type="checkbox"
+                                checked={dialog.includeTags}
+                                onChange={(event) =>
+                                  onChange({
+                                    ...dialog,
+                                    includeTags: event.target.checked
+                                  })
+                                }
+                              />
+                              <span>
+                                <strong>Tags</strong>
+                                <small>Runs matching current repository tags.</small>
+                              </span>
+                            </label>
+                            <label className="dashboard-filter-option">
+                              <input
+                                type="checkbox"
+                                checked={dialog.includeMyPullRequests}
+                                onChange={(event) =>
+                                  onChange({
+                                    ...dialog,
+                                    includeMyPullRequests: event.target.checked
+                                  })
+                                }
+                              />
+                              <span>
+                                <strong>My pull requests</strong>
+                                <small>Runs linked to pull requests you authored.</small>
+                              </span>
+                            </label>
+                          </div>
+                          <p className="dashboard-filter-help">
+                            Matches any selected filter. Leave everything empty to show
+                            all runs.
+                          </p>
+                        </fieldset>
+                      )}
                       <div className="dashboard-dialog-note">
                         {gitHubConnected ? (
                           <>

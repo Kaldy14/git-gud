@@ -74,6 +74,7 @@ describe('workspace persistence', () => {
           owner: 'acme',
           repository: 'widgets',
           limit: 10,
+          view: 'runs',
           filters: {
             branches: ['main'],
             includeTags: true,
@@ -176,6 +177,64 @@ describe('workspace persistence', () => {
     expect(deleteDashboard(profileId, firstDashboardId).dashboards).toEqual([]);
   });
 
+  it('persists multiple GitHub tiles for the same project with independent filters', () => {
+    const profileId = `profile:duplicate-dashboard-tiles:${randomUUID()}`;
+    const saved = saveDashboard({
+      profileId,
+      name: 'Hive workflows',
+      tiles: [
+        {
+          kind: 'github-actions',
+          owner: 'VosoBrands',
+          repository: 'hive',
+          limit: 10,
+          view: 'runs',
+          filters: {
+            branches: ['main'],
+            includeTags: true,
+            includeMyPullRequests: false
+          }
+        },
+        {
+          kind: 'github-actions',
+          owner: 'VosoBrands',
+          repository: 'hive',
+          limit: 5,
+          view: 'pull-requests',
+          filters: {
+            branches: [],
+            includeTags: false,
+            includeMyPullRequests: true
+          }
+        }
+      ]
+    });
+    const tiles = saved.dashboards[0]?.tiles;
+
+    expect(tiles).toHaveLength(2);
+    expect(tiles?.[0]).toMatchObject({
+      owner: 'VosoBrands',
+      repository: 'hive',
+      limit: 10,
+      filters: {
+        branches: ['main'],
+        includeTags: true,
+        includeMyPullRequests: false
+      }
+    });
+    expect(tiles?.[1]).toMatchObject({
+      owner: 'VosoBrands',
+      repository: 'hive',
+      limit: 5,
+      filters: {
+        branches: [],
+        includeTags: false,
+        includeMyPullRequests: true
+      }
+    });
+    expect(tiles?.[0]?.id).not.toBe(tiles?.[1]?.id);
+  });
+
   it('records new workflow failures once and keeps them unread until acknowledged', () => {
     const profileId = `profile:dashboard-alert-test:${randomUUID()}`;
     const input: GitHubActionsRunsInput = {
@@ -183,6 +242,7 @@ describe('workspace persistence', () => {
       owner: 'acme',
       repository: 'widgets',
       limit: 10,
+      view: 'runs',
       filters: {
         branches: [],
         includeTags: false,
@@ -258,6 +318,7 @@ describe('workspace persistence', () => {
       owner: 'acme',
       repository: 'api',
       limit: 5,
+      view: 'runs',
       filters: {
         branches: ['main'],
         includeTags: false,
@@ -332,6 +393,9 @@ describe('workspace persistence', () => {
       includeTags: false,
       includeMyPullRequests: false
     });
+    expect(
+      restoredTile?.kind === 'github-actions' ? restoredTile.view : undefined
+    ).toBe('runs');
   });
 });
 
@@ -345,6 +409,7 @@ function dashboardActionRunsResult(
     owner: input.owner,
     repository: input.repository,
     runs,
+    pullRequests: [],
     searchedRunCount: runs.length,
     searchLimitReached: false,
     loadedAt
