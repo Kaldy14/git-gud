@@ -1397,6 +1397,28 @@ button.ref-chip:active {
 
 /* --- Buttons ---------------------------------------------------------- */
 
+.statusbar-update-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+  color: var(--bg-field);
+  transition:
+    background 100ms ease,
+    border-color 100ms ease;
+}
+
+.statusbar-update-button:not(:disabled):hover {
+  border-color: var(--accent-2);
+  background: var(--accent-2);
+}
+
+.statusbar-update-button:disabled {
+  border-color: var(--border-strong);
+  background: var(--bg-surface-2);
+  box-shadow: none;
+  color: var(--text-3);
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;

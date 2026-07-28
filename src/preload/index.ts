@@ -10,6 +10,8 @@ function invoke<TChannel extends keyof IpcChannelMap>(
 }
 
 const api: RendererApi = {
+  getApplicationUpdateState: () => invoke('updates:get-state'),
+  applyApplicationUpdate: () => invoke('updates:apply'),
   getWorkspace: () => invoke('workspace:get'),
   openRepository: () => invoke('repo:open-dialog'),
   chooseRepositoryParentDirectory: () => invoke('repo:choose-parent-directory'),
@@ -135,6 +137,15 @@ const api: RendererApi = {
   },
   onDashboardActionAlertsChanged: (listener) => {
     const channel = 'dashboards:alerts-changed';
+    const wrappedListener = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]): void => {
+      listener(state);
+    };
+
+    ipcRenderer.on(channel, wrappedListener);
+    return () => ipcRenderer.removeListener(channel, wrappedListener);
+  },
+  onApplicationUpdateStateChanged: (listener) => {
+    const channel = 'updates:state-changed';
     const wrappedListener = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]): void => {
       listener(state);
     };

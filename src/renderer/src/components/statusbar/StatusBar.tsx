@@ -1,8 +1,12 @@
-import type { ReactElement } from 'react';
-import { FolderGit2, GitBranch, Loader2, UserCircle } from 'lucide-react';
+import { useEffect, useState, type ReactElement } from 'react';
+import { Download, FolderGit2, GitBranch, Loader2, UserCircle } from 'lucide-react';
 
 import { FILE_STATUS_COLORS } from '@shared/graph';
-import type { GitRepositoryOverview, RepoTab } from '@shared/types';
+import type {
+  ApplicationUpdateState,
+  GitRepositoryOverview,
+  RepoTab
+} from '@shared/types';
 
 type StatusBarProps = {
   activeTab?: RepoTab;
@@ -29,12 +33,52 @@ export function StatusBar({
       : 'clean'
     : undefined;
   const identityLabel = formatIdentity(repositoryOverview);
+  const [applicationUpdateState, setApplicationUpdateState] =
+    useState<ApplicationUpdateState>({ status: 'idle' });
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = window.api.onApplicationUpdateStateChanged((state) => {
+      if (isMounted) {
+        setApplicationUpdateState(state);
+      }
+    });
+
+    void window.api.getApplicationUpdateState().then((state) => {
+      if (isMounted) {
+        setApplicationUpdateState(state);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  async function handleApplyUpdate(): Promise<void> {
+    setIsApplyingUpdate(true);
+
+    try {
+      setApplicationUpdateState(await window.api.applyApplicationUpdate());
+    } catch (error) {
+      console.error('Unable to apply the Git Gud update.', error);
+    } finally {
+      setIsApplyingUpdate(false);
+    }
+  }
 
   return (
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-titlebar)] px-3 text-[11px] text-[var(--text-3)]">
       <span className="flex min-w-0 items-center gap-1.5">
         <FolderGit2 size={12} className="shrink-0" />
         <span className="min-w-0 truncate">{activeTab ? activeTab.path : 'No repository open'}</span>
+        <ApplicationUpdateButton
+          state={applicationUpdateState}
+          isApplying={isApplyingUpdate}
+          onUpdate={() => void handleApplyUpdate()}
+        />
       </span>
       {activeOperation || isRepositoryRefreshing ? (
         <span
@@ -79,6 +123,45 @@ export function StatusBar({
         <span>v{import.meta.env.VITE_APP_VERSION}</span>
       </span>
     </footer>
+  );
+}
+
+type ApplicationUpdateButtonProps = {
+  state: ApplicationUpdateState;
+  isApplying: boolean;
+  onUpdate: () => void;
+};
+
+export function ApplicationUpdateButton({
+  state,
+  isApplying,
+  onUpdate
+}: ApplicationUpdateButtonProps): ReactElement | null {
+  if (!('releaseName' in state)) {
+    return null;
+  }
+
+  const isDownloading = state.status === 'downloading' || isApplying;
+  const title =
+    state.status === 'downloaded'
+      ? `${state.releaseName} is ready. Restart Git Gud to install it.`
+      : `${state.releaseName} is available.`;
+
+  return (
+    <button
+      type="button"
+      className="statusbar-update-button flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-semibold"
+      disabled={isDownloading}
+      title={title}
+      onClick={onUpdate}
+    >
+      {isDownloading ? (
+        <Loader2 size={11} className="animate-spin" />
+      ) : (
+        <Download size={11} />
+      )}
+      {isDownloading ? 'Downloading update…' : 'Update Git Gud'}
+    </button>
   );
 }
 

@@ -55,6 +55,8 @@ type IpcArgValidators = {
 const MAX_BULK_CHERRY_PICK_COMMITS = 100;
 
 const validators = {
+  'updates:get-state': (args) => noArgs('updates:get-state', args),
+  'updates:apply': (args) => noArgs('updates:apply', args),
   'workspace:get': (args) => noArgs('workspace:get', args),
   'repo:open-dialog': (args) => noArgs('repo:open-dialog', args),
   'repo:choose-parent-directory': (args) => noArgs('repo:choose-parent-directory', args),

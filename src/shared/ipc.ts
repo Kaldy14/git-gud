@@ -1,4 +1,5 @@
 import type {
+  ApplicationUpdateState,
   AppSettings,
   AppSettingsInput,
   CommitGraphPage,
@@ -80,6 +81,14 @@ export type RepositoryCloneInput = {
 };
 
 export type IpcChannelMap = {
+  'updates:get-state': {
+    args: [];
+    result: ApplicationUpdateState;
+  };
+  'updates:apply': {
+    args: [];
+    result: ApplicationUpdateState;
+  };
   'workspace:get': {
     args: [];
     result: WorkspaceState;
@@ -469,6 +478,8 @@ export type IpcChannelMap = {
 export type IpcChannelName = keyof IpcChannelMap;
 
 export type RendererApi = {
+  getApplicationUpdateState: () => Promise<ApplicationUpdateState>;
+  applyApplicationUpdate: () => Promise<ApplicationUpdateState>;
   getWorkspace: () => Promise<WorkspaceState>;
   openRepository: () => Promise<WorkspaceState | null>;
   chooseRepositoryParentDirectory: () => Promise<string | null>;
@@ -593,5 +604,8 @@ export type RendererApi = {
   onOperationProgress: (listener: (event: GitOperationProgressEvent) => void) => () => void;
   onDashboardActionAlertsChanged: (
     listener: (state: DashboardActionAlertState) => void
+  ) => () => void;
+  onApplicationUpdateStateChanged: (
+    listener: (state: ApplicationUpdateState) => void
   ) => () => void;
 };

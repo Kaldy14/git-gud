@@ -131,7 +131,7 @@ app.whenReady().then(() => {
     app.dock?.setIcon(iconPath);
   }
 
-  registerIpcHandlers(repoWatchers);
+  registerIpcHandlers(repoWatchers, applicationUpdater);
   repoWatchers.sync(getWorkspace().tabs);
 
   app.on('browser-window-created', (_event, window) => {
@@ -222,6 +222,11 @@ function createApplicationUpdater(): ApplicationUpdater {
     transport,
     showMessageBox: (options) => dialog.showMessageBox(options),
     requestInstall: requestUpdateInstall,
+    onStateChange: (state) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('updates:state-changed', state);
+      }
+    },
     logError: (message, error) => console.error(message, error)
   });
 }

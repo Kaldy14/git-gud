@@ -93,6 +93,7 @@ import {
 import { assignProfileToRepository, listGitHubAccounts, listProfiles, saveProfile } from './profiles';
 import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
 import { reviewGuideManager } from './reviewGuide';
+import type { ApplicationUpdater } from './updater';
 import {
   activateWorkspaceTab,
   activateWorkspaceProfile,
@@ -172,7 +173,10 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:assign-profile': { label: 'Apply Git profile' }
 };
 
-export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
+export function registerIpcHandlers(
+  repoWatchers: RepoWatcherRegistry,
+  applicationUpdater: Pick<ApplicationUpdater, 'applyUpdate' | 'getState'>
+): void {
   function broadcastDashboardActionAlerts(state: DashboardActionAlertState): void {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('dashboards:alerts-changed', state);
@@ -271,6 +275,8 @@ export function registerIpcHandlers(repoWatchers: RepoWatcherRegistry): void {
     }
   });
 
+  handle('updates:get-state', () => applicationUpdater.getState());
+  handle('updates:apply', () => applicationUpdater.applyUpdate());
   handle('workspace:get', () => getWorkspace());
 
   handle('repo:open-dialog', async (event) => {

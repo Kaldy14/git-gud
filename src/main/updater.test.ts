@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { ApplicationUpdateState } from '@shared/types';
+
 import {
   ApplicationUpdater,
   buildUpdateFeedUrl,
@@ -46,6 +48,7 @@ interface UpdaterFixture {
   transport: FakeUpdateTransport;
   dialogs: UpdateDialogOptions[];
   requestInstall: ReturnType<typeof vi.fn>;
+  states: ApplicationUpdateState[];
 }
 
 afterEach(() => {
@@ -96,35 +99,71 @@ describe('ApplicationUpdater', () => {
     ]);
   });
 
-  it('downloads automatically and installs only after restart confirmation', async () => {
-    const { updater, transport, dialogs, requestInstall } = createUpdater({ dialogResponse: 0 });
+  it('surfaces an automatically downloaded update without interrupting the user', async () => {
+    const { updater, transport, dialogs, requestInstall, states } = createUpdater();
 
     updater.checkForUpdates();
     transport.updateAvailableListener?.();
     expect(dialogs).toEqual([]);
+    expect(updater.getState()).toEqual({
+      status: 'available',
+      releaseName: 'A new Git Gud version'
+    });
 
     transport.updateDownloadedListener?.('Git Gud v0.4.6');
     await Promise.resolve();
 
+    expect(dialogs).toEqual([]);
+    expect(requestInstall).not.toHaveBeenCalled();
+    expect(updater.getState()).toEqual({
+      status: 'downloaded',
+      releaseName: 'Git Gud v0.4.6'
+    });
+    expect(states).toContainEqual({
+      status: 'downloaded',
+      releaseName: 'Git Gud v0.4.6'
+    });
+
+    updater.applyUpdate();
+    expect(requestInstall).toHaveBeenCalledOnce();
+  });
+
+  it('installs after downloading when the footer update action was selected', () => {
+    const { updater, transport, requestInstall } = createUpdater();
+
+    updater.checkForUpdates();
+    transport.updateAvailableListener?.();
+
+    expect(updater.applyUpdate()).toEqual({
+      status: 'downloading',
+      releaseName: 'A new Git Gud version'
+    });
+    expect(requestInstall).not.toHaveBeenCalled();
+
+    transport.updateDownloadedListener?.('Git Gud v0.4.6');
+    expect(requestInstall).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the existing restart prompt for a manual update check', async () => {
+    const { updater, transport, dialogs, requestInstall } = createUpdater({
+      dialogResponse: 0
+    });
+
+    updater.checkForUpdates(true);
+    transport.updateAvailableListener?.();
+    transport.updateDownloadedListener?.('Git Gud v0.4.6');
+    await Promise.resolve();
+
     expect(dialogs).toEqual([
+      expect.objectContaining({
+        message: 'A new Git Gud version is downloading.'
+      }),
       expect.objectContaining({
         buttons: ['Restart Git Gud', 'Later'],
         message: 'Git Gud v0.4.6 is ready to install.'
       })
     ]);
     expect(requestInstall).toHaveBeenCalledOnce();
-  });
-
-  it('leaves a downloaded update pending when restart is deferred', async () => {
-    const { updater, transport, requestInstall } = createUpdater({ dialogResponse: 1 });
-
-    updater.checkForUpdates();
-    transport.updateDownloadedListener?.('Git Gud v0.4.6');
-    await Promise.resolve();
-
-    expect(requestInstall).not.toHaveBeenCalled();
-    updater.checkForUpdates();
-    expect(transport.checks).toBe(1);
   });
 
   it('keeps automatic failures quiet and reports manual failures', async () => {
@@ -145,6 +184,25 @@ describe('ApplicationUpdater', () => {
         detail: 'still offline'
       })
     ]);
+  });
+
+  it('reports a download failure after the footer update action', async () => {
+    const { updater, transport, dialogs } = createUpdater();
+
+    updater.checkForUpdates();
+    transport.updateAvailableListener?.();
+    updater.applyUpdate();
+    transport.errorListener?.(new Error('signature mismatch'));
+    await Promise.resolve();
+
+    expect(dialogs).toEqual([
+      expect.objectContaining({
+        type: 'error',
+        message: "Git Gud couldn't download the update.",
+        detail: 'signature mismatch'
+      })
+    ]);
+    expect(updater.getState()).toEqual({ status: 'idle' });
   });
 
   it('does not initialize outside supported packaged macOS architectures', () => {
@@ -177,6 +235,7 @@ function createUpdater(
   const transport = overrides.transport ?? new FakeUpdateTransport();
   const dialogs: UpdateDialogOptions[] = [];
   const requestInstall = vi.fn();
+  const states: ApplicationUpdateState[] = [];
   const updater = new ApplicationUpdater({
     appVersion: '0.4.5',
     architecture: overrides.architecture ?? 'arm64',
@@ -187,8 +246,9 @@ function createUpdater(
       dialogs.push(options);
       return Promise.resolve({ response: overrides.dialogResponse ?? 1 });
     },
-    requestInstall
+    requestInstall,
+    onStateChange: (state) => states.push(state)
   });
 
-  return { updater, transport, dialogs, requestInstall };
+  return { updater, transport, dialogs, requestInstall, states };
 }

@@ -34,6 +34,15 @@ export type WorkspaceState = {
   detailPanelWidth: number;
 };
 
+export type ApplicationUpdateState =
+  | {
+      status: 'idle' | 'checking';
+    }
+  | {
+      status: 'available' | 'downloading' | 'downloaded';
+      releaseName: string;
+    };
+
 export type GitStatusCode =
   | 'unmodified'
   | 'modified'

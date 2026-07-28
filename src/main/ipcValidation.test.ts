@@ -4,6 +4,9 @@ import { validateIpcArgs } from './ipcValidation';
 
 describe('IPC argument validation', () => {
   it('accepts valid typed command payloads', () => {
+    expect(validateIpcArgs('updates:get-state', [])).toEqual([]);
+    expect(validateIpcArgs('updates:apply', [])).toEqual([]);
+
     const branchArgs = validateIpcArgs('repo:create-branch', [
       '/repo',
       {

@@ -1,3 +1,5 @@
+import type { ApplicationUpdateState } from '@shared/types';
+
 export const updateCheckIntervalMs = 6 * 60 * 60 * 1000;
 
 const updateServerBaseUrl = 'https://update.electronjs.org/Kaldy14/git-gud';
@@ -30,6 +32,7 @@ interface ApplicationUpdaterOptions {
   transport: UpdateTransport;
   showMessageBox: (options: UpdateDialogOptions) => Promise<{ response: number }>;
   requestInstall: () => void;
+  onStateChange?: (state: ApplicationUpdateState) => void;
   logError?: (message: string, error: unknown) => void;
 }
 
@@ -44,18 +47,22 @@ export class ApplicationUpdater {
   private readonly transport: UpdateTransport;
   private readonly showMessageBox: ApplicationUpdaterOptions['showMessageBox'];
   private readonly requestInstall: () => void;
+  private readonly onStateChange: NonNullable<ApplicationUpdaterOptions['onStateChange']>;
   private readonly logError: NonNullable<ApplicationUpdaterOptions['logError']>;
   private checkInterval: ReturnType<typeof setInterval> | undefined;
   private isChecking = false;
   private isManualCheck = false;
+  private installWhenDownloaded = false;
   private downloadedReleaseName: string | undefined;
   private restartPrompt: Promise<void> | undefined;
+  private state: ApplicationUpdateState = { status: 'idle' };
 
   constructor(options: ApplicationUpdaterOptions) {
     this.appVersion = options.appVersion;
     this.transport = options.transport;
     this.showMessageBox = options.showMessageBox;
     this.requestInstall = options.requestInstall;
+    this.onStateChange = options.onStateChange ?? (() => undefined);
     this.logError = options.logError ?? (() => undefined);
     this.isSupported =
       options.isPackaged &&
@@ -94,6 +101,31 @@ export class ApplicationUpdater {
     this.checkInterval = undefined;
   }
 
+  getState(): ApplicationUpdateState {
+    return this.state;
+  }
+
+  applyUpdate(): ApplicationUpdateState {
+    if (!this.isSupported) {
+      return this.state;
+    }
+
+    if (this.downloadedReleaseName) {
+      this.requestInstall();
+      return this.state;
+    }
+
+    if (this.state.status === 'available') {
+      this.installWhenDownloaded = true;
+      this.setState({
+        status: 'downloading',
+        releaseName: this.state.releaseName
+      });
+    }
+
+    return this.state;
+  }
+
   checkForUpdates(manual = false): void {
     if (!this.isSupported) {
       return;
@@ -113,6 +145,7 @@ export class ApplicationUpdater {
 
     this.isChecking = true;
     this.isManualCheck = manual;
+    this.setState({ status: 'checking' });
 
     try {
       const check = this.transport.checkForUpdates();
@@ -123,6 +156,11 @@ export class ApplicationUpdater {
   }
 
   private handleUpdateAvailable(): void {
+    this.setState({
+      status: 'available',
+      releaseName: 'A new Git Gud version'
+    });
+
     if (!this.isManualCheck) {
       return;
     }
@@ -137,7 +175,9 @@ export class ApplicationUpdater {
 
   private handleUpdateNotAvailable(): void {
     const showResult = this.isManualCheck;
+    this.installWhenDownloaded = false;
     this.finishCheck();
+    this.setState({ status: 'idle' });
 
     if (!showResult) {
       return;
@@ -152,13 +192,27 @@ export class ApplicationUpdater {
 
   private handleUpdateDownloaded(releaseName: string): void {
     this.downloadedReleaseName = releaseName || 'A new Git Gud version';
+    const installImmediately = this.installWhenDownloaded;
+    const promptToRestart = this.isManualCheck && !installImmediately;
     this.finishCheck();
-    void this.promptToRestart(this.downloadedReleaseName);
+    this.setState({
+      status: 'downloaded',
+      releaseName: this.downloadedReleaseName
+    });
+
+    if (installImmediately) {
+      this.requestInstall();
+    } else if (promptToRestart) {
+      void this.promptToRestart(this.downloadedReleaseName);
+    }
   }
 
   private handleError(error: Error): void {
-    const showResult = this.isManualCheck;
+    const wasApplyingUpdate = this.installWhenDownloaded;
+    const showResult = this.isManualCheck || wasApplyingUpdate;
+    this.installWhenDownloaded = false;
     this.finishCheck();
+    this.setState({ status: 'idle' });
     this.logError('Git Gud update check failed.', error);
 
     if (!showResult) {
@@ -168,7 +222,9 @@ export class ApplicationUpdater {
     void this.showMessageBox({
       type: 'error',
       title: 'Git Gud Update',
-      message: "Git Gud couldn't check for updates.",
+      message: wasApplyingUpdate
+        ? "Git Gud couldn't download the update."
+        : "Git Gud couldn't check for updates.",
       detail: error.message
     });
   }
@@ -201,6 +257,19 @@ export class ApplicationUpdater {
   private finishCheck(): void {
     this.isChecking = false;
     this.isManualCheck = false;
+  }
+
+  private setState(state: ApplicationUpdateState): void {
+    if (
+      this.state.status === state.status &&
+      ('releaseName' in this.state ? this.state.releaseName : undefined) ===
+        ('releaseName' in state ? state.releaseName : undefined)
+    ) {
+      return;
+    }
+
+    this.state = state;
+    this.onStateChange(state);
   }
 }
 
