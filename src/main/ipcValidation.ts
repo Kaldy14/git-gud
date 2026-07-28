@@ -574,6 +574,7 @@ function readDashboardInput(value: unknown): DashboardInput {
         return {
           id,
           kind,
+          startsNewRow: readOptionalBooleanProperty(tile, 'startsNewRow'),
           owner: readGitHubName(tile.owner, `tiles[${index}].owner`),
           repository: readGitHubName(
             tile.repository,
@@ -591,6 +592,7 @@ function readDashboardInput(value: unknown): DashboardInput {
       return {
         id,
         kind,
+        startsNewRow: readOptionalBooleanProperty(tile, 'startsNewRow'),
         connectionId: readNonEmptyLimitedString(
           tile.connectionId,
           `tiles[${index}].connectionId`,

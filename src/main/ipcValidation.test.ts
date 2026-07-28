@@ -151,6 +151,7 @@ describe('IPC argument validation', () => {
             },
             {
               kind: 'portainer-swarm-stack',
+              startsNewRow: true,
               connectionId: 'portainer:production',
               endpointId: 3,
               stackId: 12,
@@ -176,6 +177,7 @@ describe('IPC argument validation', () => {
           }
         },
         {
+          startsNewRow: true,
           connectionId: 'portainer:production',
           endpointId: 3,
           stackId: 12,

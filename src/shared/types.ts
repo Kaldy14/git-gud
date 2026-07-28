@@ -901,6 +901,7 @@ export type GitHubActionsRuns = {
 export type GitHubActionsDashboardTile = {
   id: string;
   kind: 'github-actions';
+  startsNewRow?: boolean;
   owner: string;
   repository: string;
   limit: number;
@@ -961,6 +962,7 @@ export type PortainerStackCatalog = {
 export type PortainerStackDashboardTile = {
   id: string;
   kind: 'portainer-swarm-stack';
+  startsNewRow?: boolean;
   connectionId: string;
   endpointId: number;
   stackId: number;

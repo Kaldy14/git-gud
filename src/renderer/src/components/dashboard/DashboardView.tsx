@@ -62,8 +62,10 @@ import { PortainerStackTile } from './PortainerStackTile';
 import { dashboardRepositoryOptions } from './dashboardRepositoryOptions';
 import { resolveActiveDashboard } from './dashboardSelection';
 import {
+  dashboardTileRows,
   dashboardTileDropPositionForPointer,
   moveDashboardTile,
+  moveDashboardTileToNewRow,
   reorderDashboardTiles,
   type DashboardTileDropPosition
 } from './dashboardTileLayout';
@@ -116,10 +118,15 @@ type DashboardTileDragSession = {
   dragging: boolean;
 };
 
-type DashboardTileDropTarget = {
-  tileId: string;
-  position: DashboardTileDropPosition;
-};
+type DashboardTileDropTarget =
+  | {
+      kind: 'tile';
+      tileId: string;
+      position: DashboardTileDropPosition;
+    }
+  | {
+      kind: 'new-row';
+    };
 
 function isTileDialog(
   dialog: DashboardDialog | undefined
@@ -466,7 +473,19 @@ export function DashboardView({
     event.preventDefault();
     const targetElement = document
       .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>('[data-dashboard-tile-id]');
+      ?.closest<HTMLElement>(
+        '[data-dashboard-tile-id], [data-dashboard-new-row]'
+      );
+
+    if (targetElement?.dataset.dashboardNewRow !== undefined) {
+      const nextDropTarget = { kind: 'new-row' } as const;
+      tileDropTargetRef.current = nextDropTarget;
+      setDropTarget((current) =>
+        current?.kind === 'new-row' ? current : nextDropTarget
+      );
+      return;
+    }
+
     const targetTileId = targetElement?.dataset.dashboardTileId;
 
     if (!targetElement || !targetTileId) {
@@ -485,10 +504,16 @@ export function DashboardView({
       targetElement.getBoundingClientRect(),
       gridColumnCount
     );
-    const nextDropTarget = { tileId: targetTileId, position };
+    const nextDropTarget = {
+      kind: 'tile',
+      tileId: targetTileId,
+      position
+    } as const;
     tileDropTargetRef.current = nextDropTarget;
     setDropTarget((current) =>
-      current?.tileId === targetTileId && current.position === position
+      current?.kind === 'tile' &&
+      current.tileId === targetTileId &&
+      current.position === position
         ? current
         : nextDropTarget
     );
@@ -514,12 +539,15 @@ export function DashboardView({
     }
 
     event.preventDefault();
-    const reorderedTiles = reorderDashboardTiles(
-      activeDashboard.tiles,
-      session.tileId,
-      target.tileId,
-      target.position
-    );
+    const reorderedTiles =
+      target.kind === 'new-row'
+        ? moveDashboardTileToNewRow(activeDashboard.tiles, session.tileId)
+        : reorderDashboardTiles(
+            activeDashboard.tiles,
+            session.tileId,
+            target.tileId,
+            target.position
+          );
     void persistReorderedTiles(activeDashboard, reorderedTiles, session.tileId);
   }
 
@@ -736,59 +764,94 @@ export function DashboardView({
 
             {activeDashboard.tiles.length > 0 ? (
               <div className="dashboard-grid">
-                {activeDashboard.tiles.map((tile, tileIndex) => {
-                  const tileLabel =
-                    tile.kind === 'github-actions'
-                      ? `${tile.owner}/${tile.repository}`
-                      : `${tile.environmentName}/${tile.stackName}`;
-                  const dragHandle = (
-                    <TileDragHandle
-                      label={tileLabel}
-                      position={tileIndex + 1}
-                      tileCount={activeDashboard.tiles.length}
-                      isDragging={draggedTileId === tile.id}
-                      isDisabled={isSaving}
-                      onPointerDown={(event) => handleTilePointerDown(event, tile.id)}
-                      onPointerMove={handleTilePointerMove}
-                      onPointerUp={handleTilePointerUp}
-                      onPointerCancel={finishTileDrag}
-                      onKeyDown={(event) => handleTileReorderKeyDown(event, tile.id)}
-                    />
-                  );
+                {dashboardTileRows(activeDashboard.tiles).map((row, rowIndex) => (
+                  <div
+                    className="dashboard-grid-row"
+                    key={`row:${row[0]?.id ?? rowIndex}`}
+                  >
+                    {row.map((tile) => {
+                      const tileIndex = activeDashboard.tiles.findIndex(
+                        (candidate) => candidate.id === tile.id
+                      );
+                      const tileLabel =
+                        tile.kind === 'github-actions'
+                          ? `${tile.owner}/${tile.repository}`
+                          : `${tile.environmentName}/${tile.stackName}`;
+                      const dragHandle = (
+                        <TileDragHandle
+                          label={tileLabel}
+                          position={tileIndex + 1}
+                          tileCount={activeDashboard.tiles.length}
+                          isDragging={draggedTileId === tile.id}
+                          isDisabled={isSaving}
+                          onPointerDown={(event) =>
+                            handleTilePointerDown(event, tile.id)
+                          }
+                          onPointerMove={handleTilePointerMove}
+                          onPointerUp={handleTilePointerUp}
+                          onPointerCancel={finishTileDrag}
+                          onKeyDown={(event) =>
+                            handleTileReorderKeyDown(event, tile.id)
+                          }
+                        />
+                      );
 
-                  return (
-                    <div
-                      className="dashboard-tile-slot"
-                      key={tile.id}
-                      data-dashboard-tile-id={tile.id}
-                      data-dragging={draggedTileId === tile.id}
-                      data-drop-position={
-                        dropTarget?.tileId === tile.id && draggedTileId !== tile.id
-                          ? dropTarget.position
-                          : undefined
-                      }
-                    >
-                      {tile.kind === 'github-actions' ? (
-                        <GitHubActionsTile
-                          profileId={gitHubProfileId}
-                          tile={tile}
-                          dragHandle={dragHandle}
-                          isSaving={isSaving}
-                          onEdit={() => openEditTileDialog(tile)}
-                          onRemove={() => void handleRemoveTile(tile.id)}
-                        />
-                      ) : (
-                        <PortainerStackTile
-                          tile={tile}
-                          dragHandle={dragHandle}
-                          isSaving={isSaving}
-                          onEdit={() => openEditTileDialog(tile)}
-                          onRemove={() => void handleRemoveTile(tile.id)}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
+                      return (
+                        <div
+                          className="dashboard-tile-slot"
+                          key={tile.id}
+                          data-dashboard-tile-id={tile.id}
+                          data-dragging={draggedTileId === tile.id}
+                          data-drop-position={
+                            dropTarget?.kind === 'tile' &&
+                            dropTarget.tileId === tile.id &&
+                            draggedTileId !== tile.id
+                              ? dropTarget.position
+                              : undefined
+                          }
+                        >
+                          {tile.kind === 'github-actions' ? (
+                            <GitHubActionsTile
+                              profileId={gitHubProfileId}
+                              tile={tile}
+                              dragHandle={dragHandle}
+                              isSaving={isSaving}
+                              onEdit={() => openEditTileDialog(tile)}
+                              onRemove={() => void handleRemoveTile(tile.id)}
+                            />
+                          ) : (
+                            <PortainerStackTile
+                              tile={tile}
+                              dragHandle={dragHandle}
+                              isSaving={isSaving}
+                              onEdit={() => openEditTileDialog(tile)}
+                              onRemove={() => void handleRemoveTile(tile.id)}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                    {Array.from({
+                      length: activeDashboard.tiles.length - row.length
+                    }).map((_, placeholderIndex) => (
+                      <span
+                        aria-hidden="true"
+                        className="dashboard-grid-placeholder"
+                        key={`placeholder:${placeholderIndex}`}
+                      />
+                    ))}
+                  </div>
+                ))}
+                {draggedTileId ? (
+                  <div
+                    className="dashboard-new-row-drop-zone"
+                    data-dashboard-new-row="true"
+                    data-drop-active={dropTarget?.kind === 'new-row'}
+                  >
+                    <LayoutDashboard size={14} />
+                    <span>Drop into a new row</span>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="dashboard-empty">

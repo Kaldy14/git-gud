@@ -83,6 +83,7 @@ describe('workspace persistence', () => {
         },
         {
           kind: 'portainer-swarm-stack',
+          startsNewRow: true,
           connectionId: 'portainer:production',
           endpointId: 3,
           stackId: 12,
@@ -112,6 +113,7 @@ describe('workspace persistence', () => {
         },
         {
           kind: 'portainer-swarm-stack',
+          startsNewRow: true,
           connectionId: 'portainer:production',
           endpointId: 3,
           stackId: 12,

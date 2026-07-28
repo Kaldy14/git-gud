@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dashboardTileDropPositionForPointer,
+  dashboardTileRows,
   moveDashboardTile,
+  moveDashboardTileToNewRow,
   reorderDashboardTiles
 } from './dashboardTileLayout';
 
@@ -49,5 +51,43 @@ describe('dashboard tile layout', () => {
     expect(dashboardTileDropPositionForPointer(350, 220, bounds, 2)).toBe('after');
     expect(dashboardTileDropPositionForPointer(450, 300, bounds, 1)).toBe('before');
     expect(dashboardTileDropPositionForPointer(110, 400, bounds, 1)).toBe('after');
+  });
+
+  it('moves a tile into its own row and keeps row grouping when reordering', () => {
+    const onSecondRow = moveDashboardTileToNewRow(tiles, 'gamma');
+
+    expect(onSecondRow).toEqual([
+      { id: 'alpha', startsNewRow: undefined },
+      { id: 'beta', startsNewRow: undefined },
+      { id: 'gamma', startsNewRow: true }
+    ]);
+    expect(dashboardTileRows(onSecondRow).map((row) => row.map((tile) => tile.id))).toEqual([
+      ['alpha', 'beta'],
+      ['gamma']
+    ]);
+
+    expect(
+      reorderDashboardTiles(onSecondRow, 'gamma', 'alpha', 'after')
+    ).toEqual([
+      { id: 'alpha', startsNewRow: undefined },
+      { id: 'gamma', startsNewRow: undefined },
+      { id: 'beta', startsNewRow: undefined }
+    ]);
+  });
+
+  it('preserves a populated row when its first tile moves elsewhere', () => {
+    const withSecondRow = [
+      { id: 'alpha' },
+      { id: 'beta', startsNewRow: true },
+      { id: 'gamma' }
+    ];
+
+    expect(
+      reorderDashboardTiles(withSecondRow, 'beta', 'alpha', 'before')
+    ).toEqual([
+      { id: 'beta', startsNewRow: undefined },
+      { id: 'alpha', startsNewRow: undefined },
+      { id: 'gamma', startsNewRow: true }
+    ]);
   });
 });

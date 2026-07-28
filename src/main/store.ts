@@ -226,6 +226,7 @@ export function saveDashboard(input: DashboardInput): DashboardState {
         ? {
             id: tile.id || randomUUID(),
             kind: tile.kind,
+            startsNewRow: tile.startsNewRow || undefined,
             owner: tile.owner.trim(),
             repository: tile.repository.trim(),
             limit: tile.limit,
@@ -235,6 +236,7 @@ export function saveDashboard(input: DashboardInput): DashboardState {
         : {
             id: tile.id || randomUUID(),
             kind: tile.kind,
+            startsNewRow: tile.startsNewRow || undefined,
             connectionId: tile.connectionId,
             endpointId: tile.endpointId,
             stackId: tile.stackId,
@@ -480,6 +482,10 @@ function normalizeDashboards(value: unknown): Dashboard[] {
           {
             id: tile.id,
             kind: tile.kind,
+            startsNewRow:
+              (tile as { startsNewRow?: unknown }).startsNewRow === true
+                ? true
+                : undefined,
             owner: tile.owner,
             repository: tile.repository,
             limit: tile.limit,
@@ -510,6 +516,10 @@ function normalizeDashboards(value: unknown): Dashboard[] {
           {
             id: tile.id,
             kind: tile.kind,
+            startsNewRow:
+              (tile as { startsNewRow?: unknown }).startsNewRow === true
+                ? true
+                : undefined,
             connectionId: tile.connectionId,
             endpointId: tile.endpointId,
             stackId: tile.stackId,
