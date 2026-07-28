@@ -3,17 +3,21 @@ import type {
   GitReviewPlan
 } from '@shared/types';
 
-const MAX_CACHED_PULL_REQUEST_PLANS = 100;
+const MAX_CACHED_PULL_REQUEST_PLANS = 8;
 
 export class GitHubPullRequestReviewPlanCache {
   private readonly plans = new Map<string, GitReviewPlan>();
+
+  constructor(
+    private readonly maxCachedPlans = MAX_CACHED_PULL_REQUEST_PLANS
+  ) {}
 
   remember(locator: GitHubPullRequestLocator, plan: GitReviewPlan): void {
     const key = pullRequestKey(locator);
     this.plans.delete(key);
     this.plans.set(key, plan);
 
-    while (this.plans.size > MAX_CACHED_PULL_REQUEST_PLANS) {
+    while (this.plans.size > this.maxCachedPlans) {
       const oldestKey = this.plans.keys().next().value;
 
       if (typeof oldestKey !== 'string') {

@@ -47,6 +47,23 @@ describe('GitHub pull request review plan cache', () => {
     expect(cache.has(previousPlan)).toBe(false);
     expect(cache.get(locator, 'fingerprint-2')).toBe(currentPlan);
   });
+
+  it('evicts the oldest pull request plan when the recent-plan limit is reached', () => {
+    const cache = new GitHubPullRequestReviewPlanCache(2);
+    const firstLocator = { ...locator, number: 1 };
+    const secondLocator = { ...locator, number: 2 };
+    const thirdLocator = { ...locator, number: 3 };
+
+    cache.remember(firstLocator, reviewPlan('fingerprint-1'));
+    cache.remember(secondLocator, reviewPlan('fingerprint-2'));
+    cache.remember(thirdLocator, reviewPlan('fingerprint-3'));
+
+    expect(() => cache.get(firstLocator, 'fingerprint-1')).toThrow(
+      'Reload the pull request before starting its AI guide.'
+    );
+    expect(cache.get(secondLocator, 'fingerprint-2').sourceFingerprint).toBe('fingerprint-2');
+    expect(cache.get(thirdLocator, 'fingerprint-3').sourceFingerprint).toBe('fingerprint-3');
+  });
 });
 
 function reviewPlan(sourceFingerprint: string): GitReviewPlan {

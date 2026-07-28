@@ -8,7 +8,9 @@ import type {
 
 import {
   gitHubActionsRunsQueryKey,
+  gitHubActionsRunsQueryOptions,
   gitHubActionsRunsRefetchInterval,
+  gitHubPullRequestInboxRefetchInterval,
   gitHubPullRequestInboxQueryKey,
   refreshGitHubPullRequestInboxAfterMerge
 } from './github';
@@ -56,6 +58,28 @@ describe('GitHub Actions run queries', () => {
         includeMyPullRequests: true
       })
     ).toBe(60_000);
+  });
+
+  it('slows hidden dashboard monitoring without changing interactive polling', () => {
+    const input = {
+      profileId: 'profile',
+      owner: 'owner',
+      repository: 'repository',
+      limit: 10,
+      view: 'runs' as const,
+      filters: {
+        branches: ['main'],
+        includeTags: false,
+        includeMyPullRequests: false
+      }
+    };
+
+    expect(gitHubActionsRunsQueryOptions(input).refetchInterval).toBe(60_000);
+    expect(
+      gitHubActionsRunsQueryOptions(input, 'background-monitor').refetchInterval
+    ).toBe(5 * 60_000);
+    expect(gitHubPullRequestInboxRefetchInterval('interactive')).toBe(60_000);
+    expect(gitHubPullRequestInboxRefetchInterval('background-monitor')).toBe(5 * 60_000);
   });
 });
 

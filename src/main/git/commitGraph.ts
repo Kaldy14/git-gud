@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+
 import { buildCommitGraphRows, COMMIT_GRAPH_LIMIT_STEP, DEFAULT_COMMIT_GRAPH_LIMIT, type GraphCommitInput } from '@shared/graph';
 import type {
   CommitGraphPage,
@@ -24,6 +26,7 @@ import { loadRefs, loadRemotes, loadStashes, loadStatus, loadWorktrees } from '.
 import { gravatarUrlForEmail } from './gravatar';
 
 const MAX_COMMIT_GRAPH_LIMIT = 12000;
+const MAX_LINKED_WORKTREE_STATUS_CONCURRENCY = 6;
 
 export async function loadCommitGraph(
   tab: Pick<RepoTab, 'path' | 'assignedProfileId'>,
@@ -112,37 +115,60 @@ async function loadWorktreeWipInputs(
   const listedWorktrees = worktrees.some((worktree) => worktree.current)
     ? worktrees
     : [{ path: repoPath, head: currentStatus.branch.oid, branch: currentStatus.branch.head, detached: currentStatus.branch.isDetached, bare: false, current: true }];
-  const loaded = await Promise.all(
-    listedWorktrees
-      .filter((worktree) => !worktree.bare)
-      .map(async (worktree): Promise<GraphCommitInput | undefined> => {
-        const status = worktree.current ? currentStatus : await loadLinkedWorktreeStatus(worktree.path, env);
+  const loaded = await mapWithConcurrency(
+    listedWorktrees.filter(
+      (worktree) => !worktree.bare && (worktree.current || existsSync(worktree.path))
+    ),
+    MAX_LINKED_WORKTREE_STATUS_CONCURRENCY,
+    async (worktree): Promise<GraphCommitInput | undefined> => {
+      const status = worktree.current ? currentStatus : await loadLinkedWorktreeStatus(worktree.path, env);
 
-        if (!status?.isDirty) {
-          return undefined;
-        }
+      if (!status?.isDirty) {
+        return undefined;
+      }
 
-        return {
-          sha: worktree.current ? 'wip' : `wip:${worktree.path}`,
-          parentShas: status.branch.oid ? [status.branch.oid] : worktree.head ? [worktree.head] : [],
-          subject: '// WIP',
-          authorName: 'Worktree',
-          authoredAt: new Date().toISOString(),
-          dateLabel: 'now',
-          kind: 'wip',
-          colorOverride: '#bc271b',
-          refs: [{ label: 'WIP', kind: 'wip' }],
-          worktree: {
-            path: worktree.path,
-            branch: worktree.branch ?? status.branch.head,
-            current: worktree.current
-          },
-          files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
-        };
-      })
+      return {
+        sha: worktree.current ? 'wip' : `wip:${worktree.path}`,
+        parentShas: status.branch.oid ? [status.branch.oid] : worktree.head ? [worktree.head] : [],
+        subject: '// WIP',
+        authorName: 'Worktree',
+        authoredAt: new Date().toISOString(),
+        dateLabel: 'now',
+        kind: 'wip',
+        colorOverride: '#bc271b',
+        refs: [{ label: 'WIP', kind: 'wip' }],
+        worktree: {
+          path: worktree.path,
+          branch: worktree.branch ?? status.branch.head,
+          current: worktree.current
+        },
+        files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
+      };
+    }
   );
 
   return loaded.filter((input): input is GraphCommitInput => Boolean(input));
+}
+
+async function mapWithConcurrency<Value, Result>(
+  values: readonly Value[],
+  concurrency: number,
+  mapper: (value: Value) => Promise<Result>
+): Promise<Result[]> {
+  const results = new Array<Result>(values.length);
+  const workerCount = Math.min(concurrency, values.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]!);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
 }
 
 function createInputsByBase(inputs: GraphCommitInput[]): Map<string, GraphCommitInput[]> {

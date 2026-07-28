@@ -379,6 +379,14 @@ const allRepositoryInvalidations: readonly GitQueryInvalidation[] = [
   'review-plan'
 ];
 
+const currentWorktreeInvalidations: readonly GitQueryInvalidation[] = [
+  'overview',
+  'wip-detail',
+  'file-diff',
+  'conflict-file',
+  'review-plan'
+];
+
 export function scopesForRepositoryChange(event: RepoChangedEvent): readonly GitQueryInvalidation[] {
   const normalizedPaths = event.paths.map((path) => path.replaceAll('\\', '/').toLowerCase());
   const hasWorktreeChange = event.reasons.includes('worktree');
@@ -404,11 +412,41 @@ export function scopesForRepositoryChange(event: RepoChangedEvent): readonly Git
     return allRepositoryInvalidations;
   }
 
+  if (
+    hasWorktreeChange &&
+    normalizedPaths.length > 0 &&
+    event.reasons.every((reason) => reason === 'worktree')
+  ) {
+    const normalizedRepoPath = event.repoPath
+      .replaceAll('\\', '/')
+      .toLowerCase()
+      .replace(/\/+$/, '');
+    const currentPathChanges = normalizedPaths.filter((path) =>
+      isPathInsideRepository(path, normalizedRepoPath)
+    );
+
+    if (currentPathChanges.length === 0) {
+      return ['graph'];
+    }
+
+    if (currentPathChanges.length === normalizedPaths.length) {
+      return currentWorktreeInvalidations;
+    }
+  }
+
   if (hasWorktreeChange || hasIndexOrOperationChange) {
-    return ['overview', 'graph', 'wip-detail', 'file-diff', 'conflict-file', 'review-plan'];
+    return allRepositoryInvalidations;
   }
 
   return ['overview', 'graph'];
+}
+
+function isPathInsideRepository(path: string, normalizedRepoPath: string): boolean {
+  if (!normalizedRepoPath) {
+    return path.startsWith('/');
+  }
+
+  return path === normalizedRepoPath || path.startsWith(`${normalizedRepoPath}/`);
 }
 
 function isLowerLimitCommitGraphQuery(queryKey: readonly unknown[], repoPath: string, loadedLimit: number): boolean {

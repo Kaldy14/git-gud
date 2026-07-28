@@ -51,30 +51,21 @@ export function useDashboardActionAlerts(profileId: string | undefined) {
 
 export function useDashboardActionsMonitor(
   profileId: string | undefined,
-  dashboards: Dashboard[]
+  dashboards: Dashboard[],
+  isDashboardVisible: boolean
 ): void {
-  const queryClient = useQueryClient();
   const inputs = useMemo(
     () => dashboardActionMonitoringInputs(profileId, dashboards),
     [dashboards, profileId]
   );
-  const queries = useQueries({
-    queries: inputs.map((input) => gitHubActionsRunsQueryOptions(input))
+  useQueries({
+    queries: inputs.map((input) =>
+      gitHubActionsRunsQueryOptions(
+        input,
+        isDashboardVisible ? 'interactive' : 'background-monitor'
+      )
+    )
   });
-  const loadedSignature = queries
-    .map((query) => query.data?.loadedAt ?? '')
-    .join('\n');
-  const hasLoadedData = queries.some((query) => Boolean(query.data));
-
-  useEffect(() => {
-    if (!profileId || !hasLoadedData) {
-      return;
-    }
-
-    void queryClient.invalidateQueries({
-      queryKey: dashboardActionAlertsQueryKey(profileId)
-    });
-  }, [hasLoadedData, loadedSignature, profileId, queryClient]);
 }
 
 export async function markDashboardActionAlertsRead(

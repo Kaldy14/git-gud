@@ -3,30 +3,27 @@ import type { GitWorktree } from '@shared/types';
 export function parseWorktreeList(output: string, currentRepoPath: string): GitWorktree[] {
   const records: GitWorktree[] = [];
   const nullDelimited = output.includes('\0');
-  let current: Partial<GitWorktree> | undefined;
+  let current: (Partial<GitWorktree> & { prunable: boolean }) | undefined;
 
   for (const rawToken of output.split(nullDelimited ? '\0' : '\n')) {
     const token = rawToken.endsWith('\r') ? rawToken.slice(0, -1) : rawToken;
 
     if (!token) {
-      if (current?.path) {
-        records.push(finalizeWorktree(current, currentRepoPath));
-        current = undefined;
-      }
+      appendWorktree(records, current, currentRepoPath);
+      current = undefined;
 
       continue;
     }
 
     if (token.startsWith('worktree ')) {
-      if (current?.path) {
-        records.push(finalizeWorktree(current, currentRepoPath));
-      }
+      appendWorktree(records, current, currentRepoPath);
 
       current = {
         path: parseWorktreePath(token.slice('worktree '.length), nullDelimited),
         detached: false,
         bare: false,
-        current: false
+        current: false,
+        prunable: false
       };
       continue;
     }
@@ -52,14 +49,27 @@ export function parseWorktreeList(output: string, currentRepoPath: string): GitW
 
     if (token === 'bare') {
       current.bare = true;
+      continue;
+    }
+
+    if (token === 'prunable' || token.startsWith('prunable ')) {
+      current.prunable = true;
     }
   }
 
-  if (current?.path) {
-    records.push(finalizeWorktree(current, currentRepoPath));
-  }
+  appendWorktree(records, current, currentRepoPath);
 
   return records.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function appendWorktree(
+  records: GitWorktree[],
+  worktree: (Partial<GitWorktree> & { prunable: boolean }) | undefined,
+  currentRepoPath: string
+): void {
+  if (worktree?.path && !worktree.prunable) {
+    records.push(finalizeWorktree(worktree, currentRepoPath));
+  }
 }
 
 function parseWorktreePath(path: string, nullDelimited: boolean): string {

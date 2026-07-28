@@ -26,15 +26,34 @@ function repoChange(overrides: Partial<RepoChangedEvent>): RepoChangedEvent {
 }
 
 describe('repository watcher invalidation', () => {
-  it('refreshes the graph WIP row without invalidating immutable commit details', () => {
+  it('refreshes current WIP data without rebuilding graph history', () => {
     expect(scopesForRepositoryChange(repoChange({}))).toEqual([
       'overview',
-      'graph',
       'wip-detail',
       'file-diff',
       'conflict-file',
       'review-plan'
     ]);
+  });
+
+  it('refreshes only the graph for a linked-worktree source change', () => {
+    expect(
+      scopesForRepositoryChange(
+        repoChange({
+          paths: ['/repo-linked/src/file.ts']
+        })
+      )
+    ).toEqual(['graph']);
+  });
+
+  it('refreshes current and linked WIP data when a batch spans both worktrees', () => {
+    expect(
+      scopesForRepositoryChange(
+        repoChange({
+          paths: ['/repo/src/current.ts', '/repo-linked/src/linked.ts']
+        })
+      )
+    ).toEqual(['overview', 'graph', 'wip-detail', 'file-diff', 'conflict-file', 'review-plan']);
   });
 
   it('invalidates history when a ref changes', () => {

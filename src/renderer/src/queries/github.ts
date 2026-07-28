@@ -13,6 +13,9 @@ import type {
 
 const GITHUB_ACTIONS_REFETCH_INTERVAL_MS = 15_000;
 const GITHUB_ACTIONS_FILTERED_REFETCH_INTERVAL_MS = 60_000;
+const GITHUB_ACTIONS_BACKGROUND_MONITOR_INTERVAL_MS = 5 * 60_000;
+
+export type GitHubPollingMode = 'interactive' | 'background-monitor';
 
 export const dashboardsQueryKey = (
   profileId: string
@@ -117,7 +120,8 @@ export function useGitHubActionsRuns(input: GitHubActionsRunsInput | undefined) 
 }
 
 export function gitHubActionsRunsQueryOptions(
-  input: GitHubActionsRunsInput | undefined
+  input: GitHubActionsRunsInput | undefined,
+  pollingMode: GitHubPollingMode = 'interactive'
 ) {
   return {
     queryKey: input
@@ -133,7 +137,9 @@ export function gitHubActionsRunsQueryOptions(
     staleTime: 5_000,
     refetchIntervalInBackground: true,
     refetchInterval: input
-      ? gitHubActionsRunsRefetchInterval(input.filters)
+      ? pollingMode === 'background-monitor'
+        ? GITHUB_ACTIONS_BACKGROUND_MONITOR_INTERVAL_MS
+        : gitHubActionsRunsRefetchInterval(input.filters)
       : GITHUB_ACTIONS_REFETCH_INTERVAL_MS
   };
 }
@@ -148,7 +154,10 @@ export function gitHubActionsRunsRefetchInterval(
     : GITHUB_ACTIONS_REFETCH_INTERVAL_MS;
 }
 
-export function useGitHubPullRequestInbox(profileId: string | undefined) {
+export function useGitHubPullRequestInbox(
+  profileId: string | undefined,
+  pollingMode: GitHubPollingMode = 'interactive'
+) {
   return useQuery({
     queryKey: profileId
       ? gitHubPullRequestInboxQueryKey(profileId)
@@ -161,8 +170,16 @@ export function useGitHubPullRequestInbox(profileId: string | undefined) {
     },
     enabled: Boolean(profileId),
     staleTime: 30_000,
-    refetchInterval: 60_000
+    refetchInterval: gitHubPullRequestInboxRefetchInterval(pollingMode)
   });
+}
+
+export function gitHubPullRequestInboxRefetchInterval(
+  pollingMode: GitHubPollingMode
+): number {
+  return pollingMode === 'background-monitor'
+    ? GITHUB_ACTIONS_BACKGROUND_MONITOR_INTERVAL_MS
+    : 60_000;
 }
 
 export function useGitHubPullRequestDetail(locator: GitHubPullRequestLocator | undefined) {

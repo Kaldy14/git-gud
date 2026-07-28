@@ -97,6 +97,7 @@ import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ip
 import type {
   AppSettings,
   CommitGraphRow,
+  Dashboard,
   DashboardState,
   GitConflictActionInput,
   GitDeleteBranchInput,
@@ -188,6 +189,19 @@ type GitHubWorkspaceView =
 
 const PROFILE_TRANSITION_MIN_MS = 240;
 const PROFILE_TRANSITION_EXIT_MS = 180;
+
+function DashboardActionsMonitor({
+  dashboards,
+  isDashboardVisible,
+  profileId
+}: {
+  dashboards: Dashboard[];
+  isDashboardVisible: boolean;
+  profileId: string | undefined;
+}): null {
+  useDashboardActionsMonitor(profileId, dashboards, isDashboardVisible);
+  return null;
+}
 
 export function WorkspaceShell(): ReactElement {
   const {
@@ -288,7 +302,11 @@ export function WorkspaceShell(): ReactElement {
     [activeTab, workspace.tabs]
   );
   const repositoryQuery = useRepositoryOverview(activeTab?.path);
-  const graphQuery = useCommitGraph(activeTab?.path, graphLimit, relatedRepoPaths);
+  const graphQuery = useCommitGraph(
+    gitHubWorkspaceView ? undefined : activeTab?.path,
+    graphLimit,
+    relatedRepoPaths
+  );
   const activeWorkspaceProfile = useMemo(
     () => profiles.find((profile) => profile.id === workspace.activeProfileId),
     [profiles, workspace.activeProfileId]
@@ -319,7 +337,10 @@ export function WorkspaceShell(): ReactElement {
       ? activeGitHubProfile.id
       : undefined;
   const activeDashboardProfileId = dashboardProfileId(activeGitHubProfile);
-  const pullRequestInboxQuery = useGitHubPullRequestInbox(connectedGitHubProfileId);
+  const pullRequestInboxQuery = useGitHubPullRequestInbox(
+    connectedGitHubProfileId,
+    gitHubWorkspaceView?.kind === 'inbox' ? 'interactive' : 'background-monitor'
+  );
   const pullRequestsByBranch = useMemo(
     () =>
       indexPullRequestsByBranch(
@@ -364,10 +385,6 @@ export function WorkspaceShell(): ReactElement {
   const dashboardsQuery = useDashboards(activeDashboardProfileId);
   const dashboardActionAlertsQuery = useDashboardActionAlerts(
     activeDashboardProfileId
-  );
-  useDashboardActionsMonitor(
-    connectedGitHubProfileId,
-    dashboardsQuery.data?.dashboards ?? []
   );
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
@@ -2399,6 +2416,11 @@ export function WorkspaceShell(): ReactElement {
       className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]"
       aria-busy={Boolean(profileTransition)}
     >
+      <DashboardActionsMonitor
+        dashboards={dashboardsQuery.data?.dashboards ?? []}
+        isDashboardVisible={gitHubWorkspaceView?.kind === 'dashboard'}
+        profileId={connectedGitHubProfileId}
+      />
       <TabStrip
         tabs={workspace.tabs}
         activeTabId={

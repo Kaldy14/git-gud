@@ -201,6 +201,24 @@ describe('git read parsers', () => {
     expect(featurePaths).toEqual(mainPaths);
   });
 
+  it('omits worktrees that Git marks as prunable', () => {
+    const worktrees = parseWorktreeList(
+      [
+        'worktree /repos/project',
+        'HEAD aaa',
+        'branch refs/heads/main',
+        '',
+        'worktree /private/tmp/project-stale',
+        'HEAD bbb',
+        'prunable gitdir file points to non-existent location',
+        ''
+      ].join('\0'),
+      '/repos/project'
+    );
+
+    expect(worktrees.map((worktree) => worktree.path)).toEqual(['/repos/project']);
+  });
+
   it('parses commit detail file lists and short stats', () => {
     const files = parseNameStatus(
       [
