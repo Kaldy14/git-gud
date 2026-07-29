@@ -6,6 +6,8 @@ import {
   ArrowRight,
   ArrowUp,
   FileClock,
+  FolderOpen,
+  FolderX,
   GitBranch,
   GitCompareArrows,
   Keyboard,
@@ -117,6 +119,7 @@ import type {
   GitTagDeleteInput
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
+import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 
 const emptyGraphRows: CommitGraphRow[] = [];
 const emptySelectedShas: string[] = [];
@@ -398,6 +401,9 @@ export function WorkspaceShell(): ReactElement {
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
+  const repositoryUnavailable =
+    isRepositoryUnavailableError(repositoryQuery.error) ||
+    isRepositoryUnavailableError(graphQuery.error);
   const graphRows = useMemo(
     () => syncWipGraphRow(graphQuery.data?.rows ?? emptyGraphRows, repositoryQuery.data?.status),
     [graphQuery.data?.rows, repositoryQuery.data?.status]
@@ -1061,6 +1067,21 @@ export function WorkspaceShell(): ReactElement {
 
     completeStartPageAction();
     return true;
+  }
+
+  async function handleOpenRepositoryFromUnavailable(): Promise<void> {
+    if (!activeTab) {
+      return;
+    }
+
+    const unavailableTabId = activeTab.id;
+    const openedWorkspace = await openRepository();
+
+    if (!openedWorkspace) {
+      return;
+    }
+
+    handleCloseTab(unavailableTabId);
   }
 
   async function handleOpenRecentRepositoryFromStart(repoPath: string): Promise<boolean> {
@@ -2477,7 +2498,7 @@ export function WorkspaceShell(): ReactElement {
         onSaveAndActivateProfile={handleSaveAndActivateProfile}
       />
 
-      {!gitHubWorkspaceView && !isStartTabActive ? (
+      {!gitHubWorkspaceView && !isStartTabActive && !repositoryUnavailable ? (
         <Toolbar
           activeTab={activeTab}
           repositoryOverview={repositoryQuery.data}
@@ -2499,7 +2520,7 @@ export function WorkspaceShell(): ReactElement {
         />
       ) : null}
 
-      {!gitHubWorkspaceView && (errorMessage || repositoryError) ? (
+      {!gitHubWorkspaceView && !repositoryUnavailable && (errorMessage || repositoryError) ? (
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
           <span>{errorMessage ?? repositoryError}</span>
           <button className="icon-btn h-6 w-6" type="button" onClick={handleErrorAction} aria-label="Retry or dismiss error">
@@ -2508,7 +2529,7 @@ export function WorkspaceShell(): ReactElement {
         </div>
       ) : null}
 
-      {!gitHubWorkspaceView && !isStartTabActive ? (
+      {!gitHubWorkspaceView && !isStartTabActive && !repositoryUnavailable ? (
         <ConflictBanner
           conflictState={repositoryQuery.data?.conflictState}
           isBusy={isOperationBusy}
@@ -2618,7 +2639,17 @@ export function WorkspaceShell(): ReactElement {
             onCloneRepository={handleCloneRepositoryFromStart}
           />
         ) : activeTab ? (
-          interactiveRebaseDialog ? (
+          repositoryUnavailable ? (
+            <UnavailableRepositoryView
+              repoPath={activeTab.path}
+              isOpening={isLoading}
+              onRetry={() => {
+                void Promise.all([repositoryQuery.refetch(), graphQuery.refetch()]);
+              }}
+              onOpenAnother={() => void handleOpenRepositoryFromUnavailable()}
+              onClose={() => handleCloseTab(activeTab.id)}
+            />
+          ) : interactiveRebaseDialog ? (
             <InteractiveRebaseDialog
               plan={interactiveRebaseDialog.plan}
               initialSquashShas={interactiveRebaseDialog.initialSquashShas}
@@ -2925,6 +2956,58 @@ function ProfileTransition({ transition }: { transition: ProfileTransitionState 
         <p className="profile-transition-detail">Restoring tabs and repository state…</p>
       </div>
     </div>
+  );
+}
+
+function UnavailableRepositoryView({
+  repoPath,
+  isOpening,
+  onRetry,
+  onOpenAnother,
+  onClose
+}: {
+  repoPath: string;
+  isOpening: boolean;
+  onRetry: () => void;
+  onOpenAnother: () => void;
+  onClose: () => void;
+}): ReactElement {
+  return (
+    <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] px-8 py-12">
+      <div className="w-full max-w-xl rounded-xl border border-[var(--border)] bg-[var(--bg-sidebar)] p-8 text-center shadow-2xl">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)]">
+          <FolderX size={22} />
+        </span>
+        <h1 className="mt-5 text-base font-semibold text-[var(--text-1)]">
+          Repository folder is unavailable
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-2)]">
+          This worktree may have been removed or its drive may be disconnected.
+        </p>
+        <p className="mono mt-4 break-all rounded-md border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2.5 text-left text-xs text-[var(--text-3)]">
+          {repoPath}
+        </p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          <button
+            className="btn-primary btn-regular"
+            type="button"
+            disabled={isOpening}
+            onClick={onOpenAnother}
+          >
+            <FolderOpen size={14} />
+            Open another repository
+          </button>
+          <button className="btn-subtle btn-regular" type="button" onClick={onRetry}>
+            <RefreshCw size={14} />
+            Retry
+          </button>
+          <button className="btn-subtle btn-regular" type="button" onClick={onClose}>
+            <X size={14} />
+            Close tab
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 

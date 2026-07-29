@@ -9,6 +9,7 @@ import {
   GitExecutor,
   GitOperationCancelledError,
   GitOutputLimitError,
+  GitWorkingDirectoryUnavailableError,
   type GitProgressEvent
 } from './exec';
 
@@ -179,6 +180,20 @@ describe('GitExecutor coordination', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it('reports a missing working directory instead of blaming the Git executable', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-missing-repository-'));
+    const executor = new GitExecutor();
+
+    await executor.run(['--version'], { cwd: directory });
+    await rm(directory, { recursive: true, force: true });
+
+    await expect(executor.run(['--version'], { cwd: directory })).rejects.toMatchObject({
+      name: 'GitWorkingDirectoryUnavailableError',
+      cwd: directory,
+      message: `Repository folder is unavailable: ${directory}`
+    } satisfies Partial<GitWorkingDirectoryUnavailableError>);
   });
 
   it('correlates progress only with the operation async context that owns the command', async () => {

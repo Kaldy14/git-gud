@@ -3,6 +3,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 
+import { repositoryUnavailableErrorMessage } from '@shared/repositoryAvailability';
+
 export type GitCommandKind = 'read' | 'mutation';
 
 export type GitCommandOptions = {
@@ -152,6 +154,16 @@ export class GitOperationCancelledError extends Error {
     super('Git operation was cancelled.');
     this.name = 'GitOperationCancelledError';
     this.operationId = operationId;
+  }
+}
+
+export class GitWorkingDirectoryUnavailableError extends Error {
+  readonly cwd: string;
+
+  constructor(cwd: string) {
+    super(repositoryUnavailableErrorMessage(cwd));
+    this.name = 'GitWorkingDirectoryUnavailableError';
+    this.cwd = cwd;
   }
 }
 
@@ -623,7 +635,7 @@ export class GitExecutor {
         if (resolutionKey) {
           this.resolvedGitExecutables.delete(resolutionKey);
         }
-        spawnError = error;
+        spawnError = normalizeGitSpawnError(error, options.cwd);
       });
       child.on('close', (exitCode) => {
         if (timeoutTimer) {
@@ -849,6 +861,22 @@ function isExecutable(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+function normalizeGitSpawnError(error: NodeJS.ErrnoException, cwd: string): Error {
+  if (error.code !== 'ENOENT') {
+    return error;
+  }
+
+  try {
+    if (statSync(cwd).isDirectory()) {
+      return error;
+    }
+  } catch {
+    // The repository may have been removed or its parent volume may be unavailable.
+  }
+
+  return new GitWorkingDirectoryUnavailableError(cwd);
 }
 
 function createGitErrorMessage(args: string[], result: GitCommandResult): string {
