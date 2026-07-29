@@ -1114,6 +1114,13 @@ export type GitHubPullRequestLocator = {
   number: number;
 };
 
+export type GitHubPullRequestReviewer = {
+  author: string;
+  authorAvatarUrl?: string;
+  state: 'approved' | 'changes-requested' | 'pending';
+  submittedAt?: string;
+};
+
 export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   id: string;
   title: string;
@@ -1127,6 +1134,7 @@ export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   mergeState: 'clean' | 'blocked' | 'behind' | 'dirty' | 'unstable' | 'unknown';
   mergeable: 'mergeable' | 'conflicting' | 'unknown';
   canMerge: boolean;
+  reviewers: GitHubPullRequestReviewer[];
   comments: number;
   changedFiles: number;
   additions: number;
@@ -1161,6 +1169,7 @@ export type GitHubPullRequestFile = {
 
 export type GitHubPullRequestReviewComment = {
   id: number;
+  reviewId?: number;
   body: string;
   author: string;
   authorAvatarUrl?: string;
@@ -1196,6 +1205,15 @@ export type GitHubPullRequestReview = {
   url: string;
 };
 
+export type GitHubPullRequestCommit = {
+  sha: string;
+  message: string;
+  author: string;
+  authorAvatarUrl?: string;
+  committedAt: string;
+  url: string;
+};
+
 export type GitHubPullRequestMergeMethod = 'merge' | 'squash' | 'rebase';
 
 export type GitHubRepositoryMergeSettings = {
@@ -1208,6 +1226,7 @@ export type GitHubPullRequestDetail = GitHubPullRequestSummary & {
   headSha: string;
   baseSha: string;
   commits: number;
+  commitTimeline: GitHubPullRequestCommit[];
   files: GitHubPullRequestFile[];
   reviewPlan: GitReviewPlan;
   mergeSettings: GitHubRepositoryMergeSettings;

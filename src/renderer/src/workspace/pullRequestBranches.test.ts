@@ -225,6 +225,7 @@ function pullRequest(
     mergeState: 'clean',
     mergeable: 'mergeable',
     canMerge: true,
+    reviewers: [],
     comments: 0,
     changedFiles: 1,
     additions: 1,

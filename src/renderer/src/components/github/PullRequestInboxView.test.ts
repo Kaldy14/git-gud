@@ -2,7 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
 
+import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
 import { pullRequestStatus } from './pullRequestInboxStatus';
+
+describe('pull request inbox group expansion', () => {
+  it('expands populated groups and collapses empty groups by default', () => {
+    expect(resolvePullRequestGroupExpansion(undefined, 2)).toBe(true);
+    expect(resolvePullRequestGroupExpansion(undefined, 0)).toBe(false);
+  });
+
+  it('preserves an explicit user expansion choice', () => {
+    expect(resolvePullRequestGroupExpansion(false, 2)).toBe(false);
+    expect(resolvePullRequestGroupExpansion(true, 0)).toBe(true);
+  });
+});
 
 describe('pull request inbox status', () => {
   it('shows GitHub merge conflicts even when the viewer was requested for review', () => {
@@ -42,7 +55,7 @@ describe('pull request inbox status', () => {
     });
   });
 
-  it('uses GitHub review state when the pull request is otherwise healthy', () => {
+  it('shows branch-rule readiness when the pull request is otherwise healthy', () => {
     expect(
       pullRequestStatus(
         pullRequestSummary({
@@ -50,9 +63,65 @@ describe('pull request inbox status', () => {
         })
       )
     ).toEqual({
-      label: 'Approved',
+      label: 'Ready to merge',
       tone: 'success',
       icon: 'check'
+    });
+  });
+
+  it('uses clean merge state when GitHub omits the aggregate review decision', () => {
+    expect(
+      pullRequestStatus(
+        pullRequestSummary({
+          reviewDecision: 'unknown',
+          reviewers: [{
+            author: 'teammate',
+            authorAvatarUrl: 'https://avatars.example/teammate',
+            state: 'approved'
+          }]
+        })
+      )
+    ).toEqual({
+      label: 'Ready to merge',
+      tone: 'success',
+      icon: 'check'
+    });
+  });
+
+  it('shows an outstanding requested reviewer as pending', () => {
+    expect(
+      pullRequestStatus(
+        pullRequestSummary({
+          reviewDecision: 'unknown',
+          mergeState: 'blocked',
+          reviewers: [{
+            author: 'teammate',
+            state: 'pending'
+          }]
+        })
+      )
+    ).toEqual({
+      label: 'Awaiting review',
+      tone: 'pending',
+      icon: 'dot'
+    });
+  });
+
+  it('surfaces a colleague request for changes without relying on reviewDecision', () => {
+    expect(
+      pullRequestStatus(
+        pullRequestSummary({
+          reviewDecision: 'unknown',
+          reviewers: [{
+            author: 'teammate',
+            state: 'changes-requested'
+          }]
+        })
+      )
+    ).toEqual({
+      label: 'Changes requested',
+      tone: 'danger',
+      icon: 'warning'
     });
   });
 });
@@ -77,6 +146,7 @@ function pullRequestSummary(
     mergeState: 'clean',
     mergeable: 'mergeable',
     canMerge: true,
+    reviewers: [],
     comments: 5,
     changedFiles: 1,
     additions: 1,

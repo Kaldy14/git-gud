@@ -8,6 +8,7 @@ import type {
   GitHubPullRequestActionResult,
   GitHubPullRequestCategory,
   GitHubPullRequestChecks,
+  GitHubPullRequestCommit,
   GitHubPullRequestConversationComment,
   GitHubPullRequestDetail,
   GitHubPullRequestFile,
@@ -15,6 +16,7 @@ import type {
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReview,
+  GitHubPullRequestReviewer,
   GitHubPullRequestReviewComment,
   GitHubPullRequestReviewCommentUpdateInput,
   GitHubPullRequestReviewInput,
@@ -89,11 +91,18 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
         repository { nameWithOwner }
         headRepository { nameWithOwner }
         totalCommentsCount
+        latestReviews(first: 20) {
+          nodes {
+            state
+            submittedAt
+            author { login avatarUrl }
+          }
+        }
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
               __typename
-              ... on User { login }
+              ... on User { login avatarUrl }
               ... on Team { slug name organization { login } }
             }
           }
@@ -121,11 +130,18 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
         repository { nameWithOwner }
         headRepository { nameWithOwner }
         totalCommentsCount
+        latestReviews(first: 20) {
+          nodes {
+            state
+            submittedAt
+            author { login avatarUrl }
+          }
+        }
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
               __typename
-              ... on User { login }
+              ... on User { login avatarUrl }
               ... on Team { slug name organization { login } }
             }
           }
@@ -754,6 +770,7 @@ export async function loadGitHubPullRequestDetail(
     pullRaw,
     repositoryRaw,
     filesRaw,
+    commitsRaw,
     reviewCommentsRaw,
     conversationCommentsRaw,
     reviewsRaw
@@ -762,6 +779,7 @@ export async function loadGitHubPullRequestDetail(
     runGitHubJson(context, ['api', '--hostname', context.host, endpoint]),
     runGitHubJson(context, ['api', '--hostname', context.host, repositoryEndpoint(locator)]),
     runGitHubPaginatedArray(context, `${endpoint}/files?per_page=100`),
+    runGitHubPaginatedArray(context, `${endpoint}/commits?per_page=100`),
     runGitHubPaginatedArray(context, `${endpoint}/comments?per_page=100`),
     runGitHubPaginatedArray(
       context,
@@ -805,6 +823,7 @@ export async function loadGitHubPullRequestDetail(
     headSha,
     baseSha,
     commits: readNumber(pull.commits, 'pull request commits'),
+    commitTimeline: commitsRaw.map(parsePullRequestCommit),
     files,
     reviewPlan,
     mergeSettings: parseGitHubRepositoryMergeSettings(repositoryRaw),
@@ -1365,6 +1384,7 @@ function parsePullRequestSummary(
   const reviewDecision = normalizeReviewDecision(readOptionalString(pullRequest.reviewDecision));
   const mergeState = normalizeMergeState(readOptionalString(pullRequest.mergeStateStatus));
   const mergeable = normalizeMergeable(readOptionalString(pullRequest.mergeable));
+  const reviewers = parsePullRequestReviewers(pullRequest);
   const category = categorizePullRequest({
     source,
     viewerLogin,
@@ -1373,6 +1393,7 @@ function parsePullRequestSummary(
     mergeState,
     mergeable,
     checks,
+    reviewers,
     reviewRequests: pullRequest.reviewRequests
   });
 
@@ -1393,6 +1414,7 @@ function parsePullRequestSummary(
     mergeState,
     mergeable,
     canMerge: pullRequest.viewerCanUpdate === true,
+    reviewers,
     comments: readNumber(pullRequest.totalCommentsCount, 'pull request comments'),
     changedFiles: readNumber(pullRequest.changedFiles, 'pull request changed files'),
     additions: readNumber(pullRequest.additions, 'pull request additions'),
@@ -1429,6 +1451,7 @@ export function categorizePullRequest(input: {
   mergeState: GitHubPullRequestSummary['mergeState'];
   mergeable: GitHubPullRequestSummary['mergeable'];
   checks: GitHubPullRequestChecks;
+  reviewers: GitHubPullRequestReviewer[];
   reviewRequests: unknown;
 }): GitHubPullRequestCategory {
   if (input.source === 'review') {
@@ -1443,6 +1466,7 @@ export function categorizePullRequest(input: {
 
   const needsAction =
     input.reviewDecision === 'changes-requested' ||
+    input.reviewers.some((reviewer) => reviewer.state === 'changes-requested') ||
     input.checks.state === 'failure' ||
     input.checks.state === 'error';
 
@@ -1451,7 +1475,7 @@ export function categorizePullRequest(input: {
   }
 
   const readyToMerge =
-    input.reviewDecision === 'approved' &&
+    input.reviewDecision !== 'review-required' &&
     input.mergeable === 'mergeable' &&
     input.mergeState === 'clean' &&
     (input.checks.total === 0 || input.checks.state === 'success');
@@ -1586,6 +1610,7 @@ export function parseReviewComment(value: unknown): GitHubPullRequestReviewComme
 
   return {
     id: readNumber(comment.id, 'review comment id'),
+    reviewId: readOptionalNumber(comment.pull_request_review_id),
     body: readString(comment.body, 'review comment body'),
     author: readNestedString(comment, ['user', 'login'], 'review comment author'),
     authorAvatarUrl: readNestedOptionalString(comment, ['user', 'avatar_url']),
@@ -1604,6 +1629,27 @@ export function parseReviewComment(value: unknown): GitHubPullRequestReviewComme
   };
 }
 
+export function parsePullRequestCommit(value: unknown): GitHubPullRequestCommit {
+  const pullRequestCommit = readRecord(value, 'pull request commit');
+  const commit = readRecord(pullRequestCommit.commit, 'pull request commit detail');
+  const commitAuthor = nestedRecord(commit, ['author']);
+  const author = nestedRecord(pullRequestCommit, ['author']);
+
+  return {
+    sha: readString(pullRequestCommit.sha, 'commit SHA'),
+    message: readString(commit.message, 'commit message'),
+    author:
+      readOptionalString(author?.login) ??
+      readOptionalString(commitAuthor?.name) ??
+      'Unknown author',
+    authorAvatarUrl: readOptionalString(author?.avatar_url),
+    committedAt:
+      readOptionalString(commitAuthor?.date) ??
+      readNestedString(commit, ['committer', 'date'], 'commit date'),
+    url: readString(pullRequestCommit.html_url, 'commit URL')
+  };
+}
+
 function parseConversationComment(value: unknown): GitHubPullRequestConversationComment {
   const comment = readRecord(value, 'conversation comment');
   return {
@@ -1615,6 +1661,88 @@ function parseConversationComment(value: unknown): GitHubPullRequestConversation
     createdAt: readString(comment.created_at, 'conversation comment created time'),
     updatedAt: readString(comment.updated_at, 'conversation comment updated time')
   };
+}
+
+function parsePullRequestReviewers(
+  pullRequest: Record<string, unknown>
+): GitHubPullRequestReviewer[] {
+  const latestReviews = nestedRecord(pullRequest, ['latestReviews']);
+  const latestReviewNodes = latestReviews && Array.isArray(latestReviews.nodes)
+    ? latestReviews.nodes
+    : [];
+  const reviewers = new Map<string, GitHubPullRequestReviewer>();
+
+  for (const value of latestReviewNodes) {
+    if (!isRecord(value)) {
+      continue;
+    }
+
+    const author = nestedRecord(value, ['author']);
+    const login = readOptionalString(author?.login);
+    const state =
+      value.state === 'APPROVED'
+        ? 'approved'
+        : value.state === 'CHANGES_REQUESTED'
+          ? 'changes-requested'
+          : undefined;
+
+    if (!login || !state) {
+      continue;
+    }
+
+    reviewers.set(login, {
+      author: login,
+      authorAvatarUrl: readOptionalString(author?.avatarUrl),
+      state,
+      submittedAt: readOptionalString(value.submittedAt)
+    });
+  }
+
+  const reviewRequests = nestedRecord(pullRequest, ['reviewRequests']);
+  const requestNodes = reviewRequests && Array.isArray(reviewRequests.nodes)
+    ? reviewRequests.nodes
+    : [];
+
+  for (const value of requestNodes) {
+    if (!isRecord(value)) {
+      continue;
+    }
+
+    const requestedReviewer = nestedRecord(value, ['requestedReviewer']);
+    if (!requestedReviewer) {
+      continue;
+    }
+
+    const author =
+      requestedReviewer.__typename === 'User'
+        ? readOptionalString(requestedReviewer.login)
+        : requestedReviewer.__typename === 'Team'
+          ? formatRequestedTeam(requestedReviewer)
+          : undefined;
+
+    if (!author || reviewers.has(author)) {
+      continue;
+    }
+
+    reviewers.set(author, {
+      author,
+      authorAvatarUrl: readOptionalString(requestedReviewer.avatarUrl),
+      state: 'pending'
+    });
+  }
+
+  return [...reviewers.values()];
+}
+
+function formatRequestedTeam(team: Record<string, unknown>): string | undefined {
+  const slug = readOptionalString(team.slug);
+  if (!slug) {
+    return undefined;
+  }
+
+  const organization = nestedRecord(team, ['organization']);
+  const organizationLogin = readOptionalString(organization?.login);
+  return organizationLogin ? `${organizationLogin}/${slug}` : slug;
 }
 
 function parseReview(value: unknown): GitHubPullRequestReview {

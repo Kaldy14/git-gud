@@ -2794,6 +2794,69 @@ button.ref-chip {
   font-size: 10.5px;
 }
 
+.pr-reviewer-avatars {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding-left: 3px;
+}
+
+.pr-reviewer-avatar-wrap {
+  position: relative;
+  display: inline-grid;
+  width: 19px;
+  height: 19px;
+  margin-left: -4px;
+  place-items: center;
+}
+
+.pr-reviewer-avatar {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid var(--bg-app);
+  border-radius: 50%;
+  background: var(--bg-field);
+  color: var(--text-2);
+  font-size: 8px;
+  font-weight: 750;
+  object-fit: cover;
+}
+
+.pr-reviewer-avatar--count {
+  background: var(--bg-surface);
+  font-size: 7.5px;
+}
+
+.pr-reviewer-state {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  width: 10px;
+  height: 10px;
+  place-items: center;
+  border: 1px solid var(--bg-app);
+  border-radius: 50%;
+  background: var(--bg-surface);
+}
+
+.pr-reviewer-state[data-state='approved'] {
+  background: var(--success-text);
+  color: var(--bg-app);
+}
+
+.pr-reviewer-state[data-state='changes-requested'] {
+  background: var(--danger-text);
+  color: var(--bg-app);
+}
+
+.pr-reviewer-state[data-state='pending'] {
+  background: var(--warning-text);
+  color: var(--bg-app);
+}
+
 .pr-row-state svg[data-tone='success'],
 .pr-row-checks[data-tone='success'] {
   color: var(--success-text);
@@ -3316,9 +3379,9 @@ button.ref-chip {
 
 .pr-review-overview-body {
   display: grid;
-  max-height: min(440px, 56vh);
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
+  max-height: min(620px, 64vh);
+  grid-template-columns: minmax(240px, 0.72fr) minmax(360px, 1.28fr);
+  gap: 18px;
   overflow-y: auto;
   border-top: 1px solid var(--border);
   padding: 12px 14px;
@@ -3331,7 +3394,7 @@ button.ref-chip {
 }
 
 .pr-review-description > h2,
-.pr-general-discussion > h2 {
+.pr-review-timeline > h2 {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3343,7 +3406,7 @@ button.ref-chip {
   text-transform: uppercase;
 }
 
-.pr-general-discussion > h2 > span {
+.pr-review-timeline > h2 > span {
   display: inline-grid;
   min-width: 16px;
   height: 16px;
@@ -3355,14 +3418,223 @@ button.ref-chip {
 }
 
 .pr-review-description > .review-line-comment-body {
-  max-height: 180px;
+  max-height: none;
+  overflow: visible;
   padding: 0;
   color: var(--text-2);
 }
 
-.pr-general-discussion > div {
+.pr-review-timeline {
+  min-width: 0;
+}
+
+.pr-review-timeline > div {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+
+.pr-review-timeline > div::before {
+  position: absolute;
+  top: 15px;
+  bottom: 15px;
+  left: 13px;
+  width: 1px;
+  background: var(--border-strong);
+  content: '';
+}
+
+.pr-review-timeline-empty {
+  margin: 0;
+  padding: 9px 0;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+.pr-timeline-event {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 0 12px;
+}
+
+.pr-timeline-event:last-child {
+  padding-bottom: 0;
+}
+
+.pr-timeline-avatar {
+  z-index: 1;
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-field);
+  color: var(--text-2);
+  font-size: 9px;
+  font-weight: 750;
+  object-fit: cover;
+}
+
+.pr-timeline-event[data-state='approved'] > .pr-timeline-avatar {
+  border-color: color-mix(in srgb, var(--success-text) 52%, var(--border));
+}
+
+.pr-timeline-event[data-state='changes-requested'] > .pr-timeline-avatar {
+  border-color: var(--danger-border);
+}
+
+.pr-timeline-event-content {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.pr-timeline-event-content > header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 9.5px;
+}
+
+.pr-timeline-event-content > header > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.pr-timeline-event-content > header strong {
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+.pr-timeline-event[data-state='approved'] .pr-timeline-event-content > header > span > svg {
+  color: var(--success-text);
+}
+
+.pr-timeline-event[data-state='changes-requested'] .pr-timeline-event-content > header > span > svg {
+  color: var(--danger-text);
+}
+
+.pr-timeline-event-content > header > a {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--text-3);
+  text-decoration: none;
+}
+
+.pr-timeline-event-content > header > a:hover {
+  color: var(--text-2);
+}
+
+.pr-timeline-commit {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.pr-timeline-commit > a {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 620;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-timeline-commit > a:hover {
+  color: var(--text-1);
+  text-decoration: underline;
+}
+
+.pr-timeline-commit > code,
+.pr-timeline-commit-sha {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 9px;
+}
+
+.pr-timeline-commit-sha:hover {
+  color: var(--accent-2);
+  text-decoration: underline;
+}
+
+.pr-timeline-comment,
+.pr-timeline-review {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgb(25 29 35 / 0.56);
+}
+
+.pr-timeline-comment > header,
+.pr-timeline-review > header {
+  min-height: 32px;
+  padding: 5px 8px;
+}
+
+.pr-timeline-comment > .review-line-comment-body,
+.pr-timeline-review > .review-line-comment-body {
+  max-height: none;
+  overflow: visible;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+}
+
+.pr-timeline-review-comments {
   display: grid;
   gap: 7px;
+  border-top: 1px solid var(--border);
+  padding: 8px;
+}
+
+.pr-timeline-review-comment {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-app);
+}
+
+.pr-timeline-review-comment > header {
+  display: flex;
+  min-width: 0;
+  min-height: 27px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 7px;
+}
+
+.pr-timeline-review-comment > header > code {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 8.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-timeline-review-comment > header > a {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--text-3);
+}
+
+.pr-timeline-review-comment > .review-line-comment-body {
+  max-height: none;
+  overflow: visible;
+  color: var(--text-2);
 }
 
 .pr-general-comment {

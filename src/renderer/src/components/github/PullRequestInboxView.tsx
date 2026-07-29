@@ -23,6 +23,8 @@ import type {
   GitProfile
 } from '@shared/types';
 
+import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
+import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
 import { pullRequestStatus } from './pullRequestInboxStatus';
 
 type PullRequestInboxViewProps = {
@@ -43,43 +45,36 @@ const GROUPS: Array<{
   id: GitHubPullRequestCategory;
   title: string;
   description: string;
-  initiallyExpanded: boolean;
 }> = [
   {
     id: 'needs-your-review',
     title: 'Needs your review',
-    description: 'You were requested directly as a reviewer.',
-    initiallyExpanded: true
+    description: 'You were requested directly as a reviewer.'
   },
   {
     id: 'needs-team-review',
     title: "Needs your teams' review",
-    description: 'A team you belong to was requested.',
-    initiallyExpanded: false
+    description: 'A team you belong to was requested.'
   },
   {
     id: 'drafts',
     title: 'Your drafts',
-    description: 'Open draft pull requests you authored.',
-    initiallyExpanded: false
+    description: 'Open draft pull requests you authored.'
   },
   {
     id: 'waiting',
     title: 'Waiting for review or checks',
-    description: 'Your pull requests that are still progressing.',
-    initiallyExpanded: true
+    description: 'Your pull requests that are still progressing.'
   },
   {
     id: 'needs-action',
     title: 'Needs action',
-    description: 'Requested changes or failing checks need attention.',
-    initiallyExpanded: false
+    description: 'Requested changes or failing checks need attention.'
   },
   {
     id: 'ready-to-merge',
     title: 'Ready to merge',
-    description: 'Approved pull requests with successful checks.',
-    initiallyExpanded: false
+    description: 'Approved pull requests with successful checks.'
   }
 ];
 
@@ -96,12 +91,9 @@ export function PullRequestInboxView({
 }: PullRequestInboxViewProps): ReactElement {
   const [search, setSearch] = useState('');
   const [updatedRange, setUpdatedRange] = useState<UpdatedRange>('30');
-  const [expandedGroups, setExpandedGroups] = useState<Record<GitHubPullRequestCategory, boolean>>(
-    () =>
-      Object.fromEntries(
-        GROUPS.map((group) => [group.id, group.initiallyExpanded])
-      ) as Record<GitHubPullRequestCategory, boolean>
-  );
+  const [expandedGroups, setExpandedGroups] = useState<
+    Partial<Record<GitHubPullRequestCategory, boolean>>
+  >({});
   const filteredPullRequests = useMemo(
     () => filterPullRequests(inbox?.pullRequests ?? [], search, updatedRange),
     [inbox?.pullRequests, search, updatedRange]
@@ -217,7 +209,10 @@ export function PullRequestInboxView({
       <div className="pr-inbox-groups">
         {GROUPS.map((group) => {
           const rows = filteredPullRequests.filter((pullRequest) => pullRequest.category === group.id);
-          const isExpanded = expandedGroups[group.id];
+          const isExpanded = resolvePullRequestGroupExpansion(
+            expandedGroups[group.id],
+            rows.length
+          );
 
           return (
             <section className="pr-inbox-group" key={group.id}>
@@ -227,7 +222,13 @@ export function PullRequestInboxView({
                 aria-expanded={isExpanded}
                 title={group.description}
                 onClick={() =>
-                  setExpandedGroups((current) => ({ ...current, [group.id]: !current[group.id] }))
+                  setExpandedGroups((current) => ({
+                    ...current,
+                    [group.id]: !resolvePullRequestGroupExpansion(
+                      current[group.id],
+                      rows.length
+                    )
+                  }))
                 }
               >
                 {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -304,6 +305,7 @@ function PullRequestRow({
         </span>
       </span>
       <span className="pr-row-state">
+        <PullRequestReviewerAvatars reviewers={pullRequest.reviewers} />
         {status.icon === 'warning' ? (
           <AlertTriangle size={13} data-tone={status.tone} />
         ) : status.icon === 'check' ? (

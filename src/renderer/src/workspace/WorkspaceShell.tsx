@@ -363,7 +363,15 @@ export function WorkspaceShell(): ReactElement {
       return undefined;
     }
 
-    return workspace.tabs.find((tab) => {
+    const activeWorkspaceTab = workspace.tabs.find((tab) => tab.id === workspace.activeTabId);
+    const candidateTabs = activeWorkspaceTab
+      ? [
+          activeWorkspaceTab,
+          ...workspace.tabs.filter((tab) => tab.id !== activeWorkspaceTab.id)
+        ]
+      : workspace.tabs;
+
+    return candidateTabs.find((tab) => {
       const overview =
         tab.path === activeTab?.path
           ? repositoryQuery.data
@@ -380,6 +388,7 @@ export function WorkspaceShell(): ReactElement {
     gitHubWorkspaceView,
     queryClient,
     repositoryQuery.data,
+    workspace.activeTabId,
     workspace.tabs
   ]);
   const dashboardsQuery = useDashboards(activeDashboardProfileId);
@@ -766,6 +775,28 @@ export function WorkspaceShell(): ReactElement {
     setGitHubWorkspaceView({ kind: 'review', pullRequest });
     setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
+  }
+
+  async function handleOpenPullRequestCommit(sha: string): Promise<void> {
+    const tab = workspace.tabs.find((candidate) => candidate.path === pullRequestCodexRepoPath);
+
+    if (!tab) {
+      return;
+    }
+
+    setBulkSelectionByTab((value) => ({ ...value, [tab.id]: [] }));
+    setReviewTargetByTab((value) => withoutRecordKey(value, tab.id));
+    setGitHubWorkspaceView(undefined);
+    setIsStartTabActive(false);
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(false);
+
+    if (workspace.activeTabId !== tab.id) {
+      await activateTab(tab.id);
+    }
+
+    await selectFile(tab.id, undefined);
+    await selectCommit(tab.id, sha);
   }
 
   function handleClosePullRequestWorkspace(): void {
@@ -2548,6 +2579,11 @@ export function WorkspaceShell(): ReactElement {
                 diffSyntaxTheme={settings.diffSyntaxTheme}
                 onSetDiffStyle={handleSetDiffStyle}
                 onBackToInbox={handleOpenPullRequestInbox}
+                onOpenCommit={
+                  pullRequestCodexRepoPath
+                    ? (sha) => void handleOpenPullRequestCommit(sha)
+                    : undefined
+                }
                 onClose={handleClosePullRequestWorkspace}
                 onMerged={handleOpenPullRequestInbox}
               />

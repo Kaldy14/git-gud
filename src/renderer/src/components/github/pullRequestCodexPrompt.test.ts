@@ -63,6 +63,7 @@ function pullRequest(): GitHubPullRequestDetail {
     mergeState: 'clean',
     mergeable: 'mergeable',
     canMerge: true,
+    reviewers: [],
     comments: 1,
     changedFiles: 1,
     additions: 10,
@@ -80,6 +81,7 @@ function pullRequest(): GitHubPullRequestDetail {
     body: 'Teach the parser about empty values.',
     baseSha: 'abcdef1234567890',
     commits: 1,
+    commitTimeline: [],
     files: [],
     reviewPlan: {
       repoPath: 'github://github.com/acme/widgets',

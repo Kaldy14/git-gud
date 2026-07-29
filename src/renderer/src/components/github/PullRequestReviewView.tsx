@@ -58,12 +58,14 @@ import type {
   GitHubPullRequestSummary
 } from '@shared/types';
 
-import {
-  buildPullRequestDiscussion,
-  type PullRequestDiscussionEntry
-} from './pullRequestDiscussion';
+import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
+import { pullRequestStatus } from './pullRequestInboxStatus';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
+import {
+  buildPullRequestTimeline,
+  type PullRequestTimelineEntry
+} from './pullRequestTimeline';
 
 type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
@@ -72,6 +74,7 @@ type PullRequestReviewViewProps = {
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
   onBackToInbox: () => void;
+  onOpenCommit?: (sha: string) => void;
   onClose: () => void;
   onMerged: () => void;
 };
@@ -99,6 +102,7 @@ export function PullRequestReviewView({
   diffSyntaxTheme,
   onSetDiffStyle,
   onBackToInbox,
+  onOpenCommit,
   onClose,
   onMerged
 }: PullRequestReviewViewProps): ReactElement {
@@ -158,6 +162,7 @@ export function PullRequestReviewView({
       diffSyntaxTheme={diffSyntaxTheme}
       onSetDiffStyle={onSetDiffStyle}
       onBackToInbox={onBackToInbox}
+      onOpenCommit={onOpenCommit}
       onClose={onClose}
       onMerged={onMerged}
     />
@@ -312,6 +317,7 @@ function PullRequestReviewContent({
   diffSyntaxTheme,
   onSetDiffStyle,
   onBackToInbox,
+  onOpenCommit,
   onClose,
   onMerged
 }: {
@@ -321,6 +327,7 @@ function PullRequestReviewContent({
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
   onBackToInbox: () => void;
+  onOpenCommit?: (sha: string) => void;
   onClose: () => void;
   onMerged: () => void;
 }): ReactElement {
@@ -354,9 +361,19 @@ function PullRequestReviewContent({
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; message: string }>();
-  const generalDiscussion = useMemo(
-    () => buildPullRequestDiscussion(detail.conversationComments, detail.reviews),
-    [detail.conversationComments, detail.reviews]
+  const timeline = useMemo(
+    () => buildPullRequestTimeline({
+      commits: detail.commitTimeline,
+      conversationComments: detail.conversationComments,
+      reviews: detail.reviews,
+      reviewComments: detail.reviewComments
+    }),
+    [
+      detail.commitTimeline,
+      detail.conversationComments,
+      detail.reviewComments,
+      detail.reviews
+    ]
   );
   const displayedLineComments = useMemo<ReviewLineComment[]>(() => {
     const publishedComments: ReviewLineComment[] = detail.reviewComments.map((comment) => ({
@@ -717,7 +734,7 @@ function PullRequestReviewContent({
                 <Minus size={11} /> {detail.deletions.toLocaleString()}
               </span>
               <span className="pr-review-comment-stat">
-                <MessageSquare size={11} /> {generalDiscussion.length + detail.reviewComments.length} comments
+                <MessageSquare size={11} /> {detail.comments} comments
               </span>
               <span>
                 {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'}
@@ -730,30 +747,26 @@ function PullRequestReviewContent({
                 <h2 id="pr-review-description-heading">Description</h2>
                 <ReviewCommentBody body={detail.body || 'No pull request description was provided.'} />
               </section>
-              {generalDiscussion.length > 0 ? (
-                <section className="pr-general-discussion" aria-labelledby="pr-general-discussion-heading">
-                  <h2 id="pr-general-discussion-heading">
-                    General discussion
-                    <span>{generalDiscussion.length}</span>
-                  </h2>
-                  <div>
-                    {generalDiscussion.map((entry) => (
-                      <GeneralDiscussionComment entry={entry} key={entry.key} />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
             </div>
-            {detail.reviews.length > 0 ? (
-              <div className="pr-review-reviewers">
-                {detail.reviews.slice(-8).map((review) => (
-                  <span key={review.id} data-state={review.state}>
-                    {review.state === 'approved' ? <Check size={11} /> : <MessageSquare size={11} />}
-                    {review.author} · {formatReviewState(review.state)}
-                  </span>
-                ))}
+            <section className="pr-review-timeline" aria-labelledby="pr-review-timeline-heading">
+              <h2 id="pr-review-timeline-heading">
+                Timeline
+                <span>{timeline.length}</span>
+              </h2>
+              <div>
+                {timeline.length > 0 ? (
+                  timeline.map((entry) => (
+                    <PullRequestTimelineItem
+                      entry={entry}
+                      key={entry.key}
+                      onOpenCommit={onOpenCommit}
+                    />
+                  ))
+                ) : (
+                  <p className="pr-review-timeline-empty">No activity has been reported yet.</p>
+                )}
               </div>
-            ) : null}
+            </section>
           </div>
         </section>
       ) : null}
@@ -836,40 +849,201 @@ function PullRequestReviewContent({
   );
 }
 
-function GeneralDiscussionComment({
-  entry
+function PullRequestTimelineItem({
+  entry,
+  onOpenCommit
 }: {
-  entry: PullRequestDiscussionEntry;
+  entry: PullRequestTimelineEntry;
+  onOpenCommit?: (sha: string) => void;
+}): ReactElement {
+  if (entry.kind === 'commit') {
+    const subject = entry.commit.message.split('\n', 1)[0] || 'Untitled commit';
+
+    return (
+      <article className="pr-timeline-event" data-kind="commit">
+        <TimelineAvatar
+          author={entry.commit.author}
+          authorAvatarUrl={entry.commit.authorAvatarUrl}
+        />
+        <div className="pr-timeline-event-content">
+          <header>
+            <span>
+              <strong>{entry.commit.author}</strong>
+              committed
+            </span>
+            <a href={entry.commit.url} target="_blank" rel="noreferrer">
+              <time dateTime={entry.createdAt}>{formatDiscussionDate(entry.createdAt)}</time>
+              <ExternalLink size={10} />
+            </a>
+          </header>
+          <div className="pr-timeline-commit">
+            <a href={entry.commit.url} target="_blank" rel="noreferrer" title={subject}>
+              {subject}
+            </a>
+            {onOpenCommit ? (
+              <button
+                className="pr-timeline-commit-sha"
+                type="button"
+                aria-label={`Open commit ${entry.commit.sha.slice(0, 7)} in graph`}
+                title="Open commit in graph"
+                onClick={() => onOpenCommit(entry.commit.sha)}
+              >
+                {entry.commit.sha.slice(0, 7)}
+              </button>
+            ) : (
+              <code title="Open this repository locally to view the commit in the graph">
+                {entry.commit.sha.slice(0, 7)}
+              </code>
+            )}
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  if (entry.kind === 'conversation') {
+    return (
+      <article className="pr-timeline-event" data-kind="conversation">
+        <TimelineAvatar
+          author={entry.comment.author}
+          authorAvatarUrl={entry.comment.authorAvatarUrl}
+        />
+        <div className="pr-timeline-event-content pr-timeline-comment">
+          <TimelineEventHeader
+            author={entry.comment.author}
+            action="commented"
+            createdAt={entry.createdAt}
+            url={entry.comment.url}
+          />
+          <ReviewCommentBody body={entry.comment.body} />
+        </div>
+      </article>
+    );
+  }
+
+  if (entry.kind === 'review-comment') {
+    return (
+      <article className="pr-timeline-event" data-kind="review-comment">
+        <TimelineAvatar
+          author={entry.comment.author}
+          authorAvatarUrl={entry.comment.authorAvatarUrl}
+        />
+        <div className="pr-timeline-event-content pr-timeline-comment">
+          <TimelineEventHeader
+            author={entry.comment.author}
+            action="left a review comment"
+            createdAt={entry.createdAt}
+            url={entry.comment.url}
+          />
+          <ReviewTimelineComment comment={entry.comment} />
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="pr-timeline-event" data-kind="review" data-state={entry.review.state}>
+      <TimelineAvatar
+        author={entry.review.author}
+        authorAvatarUrl={entry.review.authorAvatarUrl}
+      />
+      <div className="pr-timeline-event-content pr-timeline-review">
+        <TimelineEventHeader
+          author={entry.review.author}
+          action={reviewTimelineAction(entry.review.state)}
+          createdAt={entry.createdAt}
+          url={entry.review.url}
+          state={entry.review.state}
+        />
+        {entry.review.body.trim() ? <ReviewCommentBody body={entry.review.body} /> : null}
+        {entry.comments.length > 0 ? (
+          <div className="pr-timeline-review-comments">
+            {entry.comments.map((comment) => (
+              <ReviewTimelineComment comment={comment} key={comment.id} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function TimelineAvatar({
+  author,
+  authorAvatarUrl
+}: {
+  author: string;
+  authorAvatarUrl?: string;
 }): ReactElement {
   const [didAvatarFail, setDidAvatarFail] = useState(false);
 
+  if (authorAvatarUrl && !didAvatarFail) {
+    return (
+      <img
+        className="pr-timeline-avatar"
+        src={authorAvatarUrl}
+        alt=""
+        aria-hidden="true"
+        referrerPolicy="no-referrer"
+        onError={() => setDidAvatarFail(true)}
+      />
+    );
+  }
+
   return (
-    <article className="pr-general-comment">
+    <span className="pr-timeline-avatar" aria-hidden="true">
+      {author.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+function TimelineEventHeader({
+  author,
+  action,
+  createdAt,
+  url,
+  state
+}: {
+  author: string;
+  action: string;
+  createdAt: string;
+  url: string;
+  state?: string;
+}): ReactElement {
+  return (
+    <header>
+      <span>
+        {state === 'approved' ? <CheckCircle2 size={12} /> : null}
+        {state === 'changes-requested' ? <AlertTriangle size={12} /> : null}
+        <strong>{author}</strong>
+        {action}
+      </span>
+      <a href={url} target="_blank" rel="noreferrer">
+        <time dateTime={createdAt}>{formatDiscussionDate(createdAt)}</time>
+        <ExternalLink size={10} />
+      </a>
+    </header>
+  );
+}
+
+function ReviewTimelineComment({
+  comment
+}: {
+  comment: GitHubPullRequestDetail['reviewComments'][number];
+}): ReactElement {
+  const lineLabel = comment.subjectType === 'file'
+    ? comment.path
+    : `${comment.path}:${comment.line ?? '?'}`;
+
+  return (
+    <article className="pr-timeline-review-comment">
       <header>
-        {entry.authorAvatarUrl && !didAvatarFail ? (
-          <img
-            src={entry.authorAvatarUrl}
-            alt=""
-            aria-hidden="true"
-            onError={() => setDidAvatarFail(true)}
-          />
-        ) : (
-          <span className="pr-general-comment-avatar" aria-hidden="true">
-            {entry.author.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <strong>{entry.author}</strong>
-        {entry.kind === 'review' ? (
-          <span className="pr-general-comment-kind" data-state={entry.reviewState}>
-            {formatReviewState(entry.reviewState)}
-          </span>
-        ) : null}
-        <a href={entry.url} target="_blank" rel="noreferrer" title="Open comment on GitHub">
-          <time dateTime={entry.createdAt}>{formatDiscussionDate(entry.createdAt)}</time>
+        <code title={lineLabel}>{lineLabel}</code>
+        <a href={comment.url} target="_blank" rel="noreferrer" aria-label="Open review comment on GitHub">
           <ExternalLink size={10} />
         </a>
       </header>
-      <ReviewCommentBody body={entry.body} />
+      <ReviewCommentBody body={comment.body} />
     </article>
   );
 }
@@ -1118,6 +1292,7 @@ function ReviewStatus({
 }: {
   detail: GitHubPullRequestSummary;
 }): ReactElement {
+  const reviewStatus = pullRequestStatus(detail);
   const checksTone =
     detail.checks.state === 'success'
       ? 'success'
@@ -1126,13 +1301,14 @@ function ReviewStatus({
         : 'pending';
   return (
     <>
-      <span data-tone={detail.reviewDecision === 'approved' ? 'success' : detail.reviewDecision === 'changes-requested' ? 'danger' : 'pending'}>
-        {detail.reviewDecision === 'approved' ? <Check size={12} /> : <CircleDot size={11} />}
-        {detail.reviewDecision === 'approved'
-          ? 'Approved'
-          : detail.reviewDecision === 'changes-requested'
-            ? 'Changes requested'
-            : 'Awaiting approval'}
+      <span data-tone={reviewStatus.tone}>
+        <PullRequestReviewerAvatars reviewers={detail.reviewers} />
+        {reviewStatus.icon === 'check'
+          ? <Check size={12} />
+          : reviewStatus.icon === 'warning'
+            ? <AlertTriangle size={12} />
+            : <CircleDot size={11} />}
+        {reviewStatus.label}
       </span>
       <span data-tone={checksTone}>
         {checksTone === 'success' ? <Check size={12} /> : checksTone === 'danger' ? <AlertTriangle size={12} /> : <CircleDot size={11} />}
@@ -1285,6 +1461,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function formatReviewState(state: string): string {
-  return state.replace('-', ' ');
+function reviewTimelineAction(state: string): string {
+  if (state === 'approved') {
+    return 'approved these changes';
+  }
+  if (state === 'changes-requested') {
+    return 'requested changes';
+  }
+  if (state === 'dismissed') {
+    return 'had a review dismissed';
+  }
+  return 'reviewed these changes';
 }

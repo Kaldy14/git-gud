@@ -12,6 +12,7 @@ import {
   filterGitHubActionsRuns,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
+  parsePullRequestCommit,
   parseGitHubRepositoriesResponse,
   parseGitHubRepositoryMergeSettings,
   parseReviewComment,
@@ -372,7 +373,13 @@ describe('GitHub pull request inbox', () => {
                 number: 1,
                 title: 'Direct review',
                 reviewRequests: {
-                  nodes: [{ requestedReviewer: { __typename: 'User', login: 'octocat' } }]
+                  nodes: [{
+                    requestedReviewer: {
+                      __typename: 'User',
+                      login: 'octocat',
+                      avatarUrl: 'https://avatars.example/octocat'
+                    }
+                  }]
                 }
               }),
               pullRequestNode({
@@ -406,13 +413,33 @@ describe('GitHub pull request inbox', () => {
                 number: 5,
                 title: 'Conflicting work',
                 mergeStateStatus: 'DIRTY',
-                mergeable: 'CONFLICTING'
+                mergeable: 'CONFLICTING',
+                latestReviews: {
+                  nodes: [{
+                    state: 'APPROVED',
+                    submittedAt: '2026-07-23T09:00:00Z',
+                    author: {
+                      login: 'teammate',
+                      avatarUrl: 'https://avatars.example/teammate'
+                    }
+                  }]
+                }
               }),
               pullRequestNode({
                 id: 'action',
                 number: 6,
                 title: 'Changes requested',
-                reviewDecision: 'CHANGES_REQUESTED'
+                reviewDecision: 'CHANGES_REQUESTED',
+                latestReviews: {
+                  nodes: [{
+                    state: 'CHANGES_REQUESTED',
+                    submittedAt: '2026-07-23T09:30:00Z',
+                    author: {
+                      login: 'strict-reviewer',
+                      avatarUrl: 'https://avatars.example/strict-reviewer'
+                    }
+                  }]
+                }
               })
             ]
           }
@@ -432,8 +459,29 @@ describe('GitHub pull request inbox', () => {
     ]);
     expect(response.pullRequests.find((pullRequest) => pullRequest.id === 'direct')).toMatchObject({
       comments: 5,
-      authorAvatarUrl: 'https://avatars.example/developer'
+      authorAvatarUrl: 'https://avatars.example/developer',
+      reviewers: [{
+        author: 'octocat',
+        authorAvatarUrl: 'https://avatars.example/octocat',
+        state: 'pending'
+      }]
     });
+    expect(response.pullRequests.find((pullRequest) => pullRequest.id === 'conflict')?.reviewers).toEqual([
+      {
+        author: 'teammate',
+        authorAvatarUrl: 'https://avatars.example/teammate',
+        state: 'approved',
+        submittedAt: '2026-07-23T09:00:00Z'
+      }
+    ]);
+    expect(response.pullRequests.find((pullRequest) => pullRequest.id === 'action')?.reviewers).toEqual([
+      {
+        author: 'strict-reviewer',
+        authorAvatarUrl: 'https://avatars.example/strict-reviewer',
+        state: 'changes-requested',
+        submittedAt: '2026-07-23T09:30:00Z'
+      }
+    ]);
     expect(response.pullRequests.find((pullRequest) => pullRequest.id === 'ready')?.checks).toEqual({
       state: 'success',
       total: 3,
@@ -452,6 +500,7 @@ describe('GitHub pull request inbox', () => {
         reviewDecision: 'approved',
         mergeState: 'clean',
         mergeable: 'mergeable',
+        reviewers: [],
         checks: {
           state: 'pending',
           total: 4,
@@ -462,6 +511,31 @@ describe('GitHub pull request inbox', () => {
         reviewRequests: { nodes: [] }
       })
     ).toBe('waiting');
+  });
+
+  it('treats clean merge rules as ready when GitHub omits the aggregate review decision', () => {
+    expect(
+      categorizePullRequest({
+        source: 'authored',
+        viewerLogin: 'octocat',
+        isDraft: false,
+        reviewDecision: 'unknown',
+        mergeState: 'clean',
+        mergeable: 'mergeable',
+        reviewers: [{
+          author: 'teammate',
+          state: 'approved'
+        }],
+        checks: {
+          state: 'success',
+          total: 3,
+          passed: 3,
+          failed: 0,
+          pending: 0
+        },
+        reviewRequests: { nodes: [] }
+      })
+    ).toBe('ready-to-merge');
   });
 
   it('turns GitHub hunk-only file patches into one complete diff', () => {
@@ -484,6 +558,36 @@ describe('GitHub pull request inbox', () => {
         '+new'
       ].join('\n')
     );
+  });
+
+  it('parses pull request commits for the overview timeline', () => {
+    expect(
+      parsePullRequestCommit({
+        sha: 'abcdef1234567890',
+        html_url: 'https://github.com/acme/widgets/commit/abcdef1234567890',
+        author: {
+          login: 'developer',
+          avatar_url: 'https://avatars.example/developer'
+        },
+        commit: {
+          message: 'Add approval context\n\nKeep aggregate state visible.',
+          author: {
+            name: 'Developer',
+            date: '2026-07-29T08:00:00Z'
+          },
+          committer: {
+            date: '2026-07-29T08:01:00Z'
+          }
+        }
+      })
+    ).toEqual({
+      sha: 'abcdef1234567890',
+      message: 'Add approval context\n\nKeep aggregate state visible.',
+      author: 'developer',
+      authorAvatarUrl: 'https://avatars.example/developer',
+      committedAt: '2026-07-29T08:00:00Z',
+      url: 'https://github.com/acme/widgets/commit/abcdef1234567890'
+    });
   });
 
   it('quotes paths with spaces in reconstructed patches', () => {
@@ -516,6 +620,7 @@ describe('GitHub pull request inbox', () => {
       mergeState: 'blocked',
       mergeable: 'mergeable',
       canMerge: true,
+      reviewers: [],
       comments: 0,
       changedFiles: 1,
       additions: 1,
@@ -633,6 +738,7 @@ function pullRequestSummary(): GitHubPullRequestSummary {
     mergeState: 'blocked',
     mergeable: 'mergeable',
     canMerge: true,
+    reviewers: [],
     comments: 0,
     changedFiles: 1,
     additions: 1,
@@ -724,6 +830,7 @@ function pullRequestNode(overrides: Record<string, unknown>): Record<string, unk
     repository: { nameWithOwner: 'acme/widgets' },
     headRepository: { nameWithOwner: 'acme/widgets' },
     totalCommentsCount: 5,
+    latestReviews: { nodes: [] },
     reviewRequests: { nodes: [] },
     statusCheckRollup: {
       state: 'SUCCESS',
