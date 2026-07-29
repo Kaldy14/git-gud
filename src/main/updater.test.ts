@@ -99,6 +99,23 @@ describe('ApplicationUpdater', () => {
     ]);
   });
 
+  it('ignores a contradictory not-available event after finding an update', async () => {
+    const { updater, transport, dialogs } = createUpdater();
+
+    updater.checkForUpdates(true);
+    transport.updateAvailableListener?.();
+    transport.updateNotAvailableListener?.();
+    await Promise.resolve();
+
+    expect(updater.getState()).toEqual({
+      status: 'available',
+      releaseName: 'A new Git Gud version'
+    });
+    expect(dialogs).toEqual([
+      expect.objectContaining({ message: 'A new Git Gud version is downloading.' })
+    ]);
+  });
+
   it('surfaces an automatically downloaded update without interrupting the user', async () => {
     const { updater, transport, dialogs, requestInstall, states } = createUpdater();
 

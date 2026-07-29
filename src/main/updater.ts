@@ -174,6 +174,10 @@ export class ApplicationUpdater {
   }
 
   private handleUpdateNotAvailable(): void {
+    if (this.state.status !== 'checking') {
+      return;
+    }
+
     const showResult = this.isManualCheck;
     this.installWhenDownloaded = false;
     this.finishCheck();
