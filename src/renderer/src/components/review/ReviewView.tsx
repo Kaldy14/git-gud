@@ -168,17 +168,23 @@ type ReviewLineCollaboration = {
   selectedPath?: string;
   selectedSubject?: 'line' | 'file';
   selectedLines: SelectedLineRange | null;
-  body: string;
+  getBody: () => string;
   isSubmitting: boolean;
   errorMessage?: string;
   onSelectLines: (chunkId: string, path: string, range: SelectedLineRange | null) => void;
   onSelectFile: (chunkId: string, path: string) => void;
   onBodyChange: (body: string) => void;
   onCancel: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>, body: string) => void;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
   onUpdateComment?: (commentId: number, body: string) => Promise<void>;
   onRemoveDraftComment?: (id: string) => void;
+};
+
+type ReviewCommentBodyBuffer = {
+  get: () => string;
+  set: (body: string) => void;
+  clear: () => void;
 };
 
 export function ReviewView({
@@ -217,7 +223,7 @@ export function ReviewView({
       : []
   );
   const [selectedCommentTarget, setSelectedCommentTarget] = useState<ReviewCommentTarget>();
-  const [lineCommentBody, setLineCommentBody] = useState('');
+  const [lineCommentBody] = useState<ReviewCommentBodyBuffer>(createReviewCommentBodyBuffer);
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
   const reviewQuery = useReviewPlan(
     embeddedPlan ? undefined : repoPath,
@@ -364,7 +370,7 @@ export function ReviewView({
     },
     onSuccess: () => {
       setSelectedCommentTarget(undefined);
-      setLineCommentBody('');
+      lineCommentBody.clear();
     }
   });
 
@@ -502,7 +508,7 @@ export function ReviewView({
 
   function cancelCommentComposer(): void {
     setSelectedCommentTarget(undefined);
-    setLineCommentBody('');
+    lineCommentBody.clear();
     commentMutation.reset();
   }
 
@@ -623,15 +629,17 @@ export function ReviewView({
     commentMutation.reset();
   }
 
-  function handleSubmitComment(event: FormEvent<HTMLFormElement>): void {
+  function handleSubmitComment(event: FormEvent<HTMLFormElement>, body: string): void {
     event.preventDefault();
-    if (!selectedCommentTarget || !lineCommentBody.trim()) {
+    const trimmedBody = body.trim();
+
+    if (!selectedCommentTarget || !trimmedBody) {
       return;
     }
     if (selectedCommentTarget.kind === 'file') {
       commentMutation.mutate({
         kind: 'file',
-        comment: { body: lineCommentBody.trim(), path: selectedCommentTarget.path }
+        comment: { body: trimmedBody, path: selectedCommentTarget.path }
       });
       return;
     }
@@ -647,7 +655,7 @@ export function ReviewView({
     commentMutation.mutate({
       kind: 'line',
       comment: {
-        body: lineCommentBody.trim(),
+        body: trimmedBody,
         path: selectedCommentTarget.path,
         line: selection.line,
         side: selection.side,
@@ -666,7 +674,7 @@ export function ReviewView({
         selectedSubject: selectedCommentTarget?.kind,
         selectedLines:
           selectedCommentTarget?.kind === 'line' ? selectedCommentTarget.range : null,
-        body: lineCommentBody,
+        getBody: lineCommentBody.get,
         isSubmitting: commentMutation.isPending,
         errorMessage:
           commentMutation.error instanceof Error
@@ -674,7 +682,7 @@ export function ReviewView({
             : undefined,
         onSelectLines: handleSelectCommentLines,
         onSelectFile: handleSelectCommentFile,
-        onBodyChange: setLineCommentBody,
+        onBodyChange: lineCommentBody.set,
         onCancel: cancelCommentComposer,
         onSubmit: handleSubmitComment,
         onAddDraftReply,
@@ -1751,18 +1759,20 @@ function ReviewInlineComposer({
 }: {
   collaboration: ReviewLineCollaboration;
 }): ReactElement {
+  const [initialBody] = useState(collaboration.getBody);
+  const [hasBody, setHasBody] = useState(() => Boolean(initialBody.trim()));
   const normalizedSelection = normalizeReviewLineSelection(collaboration.selectedLines);
-  const canSubmitLineComment = Boolean(
-    collaboration.body.trim() &&
-      (collaboration.selectedSubject === 'file' ||
-        (normalizedSelection && normalizedSelection.side === normalizedSelection.startSide))
+  const canSubmitSelection = Boolean(
+    collaboration.selectedSubject === 'file' ||
+      (normalizedSelection && normalizedSelection.side === normalizedSelection.startSide)
   );
+  const canSubmitLineComment = hasBody && canSubmitSelection;
 
   return (
     <form
       className="review-inline-composer"
       data-subject-type={collaboration.selectedSubject}
-      onSubmit={collaboration.onSubmit}
+      onSubmit={(event) => collaboration.onSubmit(event, collaboration.getBody())}
     >
       <div className="review-inline-composer-label">
         <MessageSquare size={13} />
@@ -1774,14 +1784,22 @@ function ReviewInlineComposer({
       </div>
       <textarea
         rows={3}
-        value={collaboration.body}
+        defaultValue={initialBody}
         placeholder={collaboration.selectedSubject === 'file'
           ? 'Leave a whole-file review comment…'
           : 'Leave an inline review comment…'}
         aria-label={collaboration.selectedSubject === 'file'
           ? 'File review comment'
           : 'Inline review comment'}
-        onChange={(event) => collaboration.onBodyChange(event.target.value)}
+        onChange={(event) => {
+          const nextBody = event.target.value;
+          const nextHasBody = Boolean(nextBody.trim());
+
+          collaboration.onBodyChange(nextBody);
+          if (nextHasBody !== hasBody) {
+            setHasBody(nextHasBody);
+          }
+        }}
       />
       <p className="review-inline-composer-hint">
         Saved in Git Gud only. Nothing is posted until you submit the review.
@@ -2288,6 +2306,20 @@ function createReviewCommentThreads(
       ...comment,
       replies: repliesByParent.get(String(comment.id)) ?? []
     }));
+}
+
+function createReviewCommentBodyBuffer(): ReviewCommentBodyBuffer {
+  let body = '';
+
+  return {
+    get: () => body,
+    set: (nextBody) => {
+      body = nextBody;
+    },
+    clear: () => {
+      body = '';
+    }
+  };
 }
 
 function patchContainsLine(
