@@ -69,6 +69,11 @@ import type {
   RepoChangedEvent,
   WorkspaceState
 } from './types';
+import type {
+  ExternalApplication,
+  OpenPullRequestInApplicationInput,
+  OpenPullRequestInApplicationResult
+} from './externalApplications';
 
 export type RepositoryInitializeInput = {
   parentDirectory: string;
@@ -246,6 +251,10 @@ export type IpcChannelMap = {
   'system:open-codex-task': {
     args: [repoPath: string, prompt: string];
     result: void;
+  };
+  'system:external-applications': {
+    args: [];
+    result: ExternalApplication[];
   };
   'repo:stage-all': {
     args: [repoPath: string];
@@ -451,6 +460,10 @@ export type IpcChannelMap = {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestDetail;
   };
+  'github:open-pull-request-in-application': {
+    args: [repoPath: string, input: OpenPullRequestInApplicationInput];
+    result: OpenPullRequestInApplicationResult;
+  };
   'github:pull-request-review-guide-state': {
     args: [locator: GitHubPullRequestLocator, sourceFingerprint: string];
     result: GitReviewGuideState;
@@ -538,6 +551,7 @@ export type RendererApi = {
   openFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   revealFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   openCodexTask: (repoPath: string, prompt: string) => Promise<void>;
+  listExternalApplications: () => Promise<ExternalApplication[]>;
   stageAll: (repoPath: string) => Promise<GitOperationResult>;
   unstageAll: (repoPath: string) => Promise<GitOperationResult>;
   commitChanges: (repoPath: string, input: GitCommitInput) => Promise<GitOperationResult>;
@@ -603,6 +617,10 @@ export type RendererApi = {
   getGitHubActionsRuns: (input: GitHubActionsRunsInput) => Promise<GitHubActionsRuns>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
+  openGitHubPullRequestInApplication: (
+    repoPath: string,
+    input: OpenPullRequestInApplicationInput
+  ) => Promise<OpenPullRequestInApplicationResult>;
   getGitHubPullRequestReviewGuideState: (
     locator: GitHubPullRequestLocator,
     sourceFingerprint: string

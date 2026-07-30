@@ -11,6 +11,46 @@ export function DropdownMenuTrigger(props: ComponentProps<typeof DropdownMenuPri
   return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
 }
 
+export function DropdownMenuSub(props: ComponentProps<typeof DropdownMenuPrimitive.Sub>): ReactElement {
+  return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />;
+}
+
+export function DropdownMenuSubTrigger({
+  className,
+  ...props
+}: ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>): ReactElement {
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      data-slot="dropdown-menu-sub-trigger"
+      className={cn(
+        'menu-row cursor-default outline-none focus:bg-[var(--bg-hover)] focus:text-[var(--text-1)] data-[state=open]:bg-[var(--bg-hover)] data-[state=open]:text-[var(--text-1)] data-[disabled]:pointer-events-none data-[disabled]:text-[var(--text-3)] data-[disabled]:opacity-[0.68]',
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+export function DropdownMenuSubContent({
+  className,
+  sideOffset = 4,
+  ...props
+}: ComponentProps<typeof DropdownMenuPrimitive.SubContent>): ReactElement {
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        data-slot="dropdown-menu-sub-content"
+        sideOffset={sideOffset}
+        className={cn(
+          'z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-32 overflow-x-hidden overflow-y-auto rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-1.5 text-[var(--text-2)] shadow-2xl shadow-black/60 outline-none',
+          className
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
+  );
+}
+
 export function DropdownMenuContent({
   className,
   sideOffset = 4,

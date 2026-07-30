@@ -5,6 +5,10 @@ import type {
   RepositoryInitializeInput
 } from '@shared/ipc';
 import { MAX_CODEX_DEEP_LINK_PROMPT_LENGTH } from '@shared/codex';
+import {
+  externalApplicationIds,
+  type OpenPullRequestInApplicationInput
+} from '@shared/externalApplications';
 import type {
   AppSettingsInput,
   DashboardInput,
@@ -113,6 +117,7 @@ const validators = {
   'repo:open-file': (args) => readStringPair(args, 'repo:open-file', 'repoPath', 'path'),
   'repo:reveal-file': (args) => readStringPair(args, 'repo:reveal-file', 'repoPath', 'path'),
   'system:open-codex-task': (args) => readCodexTaskArgs(args),
+  'system:external-applications': (args) => noArgs('system:external-applications', args),
   'repo:stage-all': (args) => readOnlyArg(args, 'repo:stage-all', 'repoPath', readString),
   'repo:unstage-all': (args) => readOnlyArg(args, 'repo:unstage-all', 'repoPath', readString),
   'repo:commit': (args) => readRepoPathWithObject(args, 'repo:commit', readCommitInput),
@@ -224,6 +229,12 @@ const validators = {
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
     readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
+  'github:open-pull-request-in-application': (args) =>
+    readRepoPathWithObject(
+      args,
+      'github:open-pull-request-in-application',
+      readOpenPullRequestInApplicationInput
+    ),
   'github:pull-request-review-guide-state': (args) =>
     readGitHubPullRequestReviewGuideArgs('github:pull-request-review-guide-state', args),
   'github:start-pull-request-review-guide': (args) =>
@@ -542,6 +553,41 @@ function readGitHubPullRequestLocator(value: unknown): GitHubPullRequestLocator 
     owner: readGitHubName(record.owner, 'owner'),
     repository: readGitHubName(record.repository, 'repository'),
     number: readPositiveInteger(record.number, 'number')
+  };
+}
+
+function readOpenPullRequestInApplicationInput(
+  value: unknown
+): OpenPullRequestInApplicationInput {
+  const record = readRecord(value, 'open pull request input');
+  const url = readNonEmptyLimitedString(record.url, 'url', 2_048);
+  const headSha = readNonEmptyLimitedString(record.headSha, 'headSha', 64).toLowerCase();
+
+  try {
+    const parsedUrl = new URL(url);
+
+    if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+      throw new Error();
+    }
+  } catch {
+    throw new Error('url must be a valid HTTP or HTTPS URL.');
+  }
+
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(headSha)) {
+    throw new Error('headSha must be a full Git object ID.');
+  }
+
+  return {
+    applicationId: readEnum(
+      record.applicationId,
+      'applicationId',
+      externalApplicationIds
+    ),
+    url,
+    owner: readGitHubName(record.owner, 'owner'),
+    repository: readGitHubName(record.repository, 'repository'),
+    number: readPositiveInteger(record.number, 'number'),
+    headSha
   };
 }
 

@@ -133,6 +133,30 @@ describe('IPC argument validation', () => {
       '/repo',
       'Explain this selection.'
     ]);
+    expect(validateIpcArgs('system:external-applications', [])).toEqual([]);
+    expect(
+      validateIpcArgs('github:open-pull-request-in-application', [
+        '/repo',
+        {
+          applicationId: 'cursor',
+          url: 'https://github.com/acme/widgets/pull/42',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          headSha: 'A'.repeat(40)
+        }
+      ])
+    ).toEqual([
+      '/repo',
+      {
+        applicationId: 'cursor',
+        url: 'https://github.com/acme/widgets/pull/42',
+        owner: 'acme',
+        repository: 'widgets',
+        number: 42,
+        headSha: 'a'.repeat(40)
+      }
+    ]);
     expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
     expect(validateIpcArgs('workspace:set-detail-panel-collapsed', [true])).toEqual([true]);
     expect(validateIpcArgs('workspace:set-detail-panel-width', [440])).toEqual([440]);
@@ -765,6 +789,32 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('system:open-codex-task', ['/repo', '   '])).toThrow(
       'prompt must not be empty.'
     );
+    expect(() =>
+      validateIpcArgs('github:open-pull-request-in-application', [
+        '/repo',
+        {
+          applicationId: 'photoshop',
+          url: 'https://github.com/acme/widgets/pull/42',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          headSha: 'a'.repeat(40)
+        }
+      ])
+    ).toThrow('applicationId must be one of');
+    expect(() =>
+      validateIpcArgs('github:open-pull-request-in-application', [
+        '/repo',
+        {
+          applicationId: 'cursor',
+          url: 'file:///tmp/widget',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          headSha: 'short'
+        }
+      ])
+    ).toThrow('url must be a valid HTTP or HTTPS URL.');
     expect(() =>
       validateIpcArgs('settings:update', [
         {

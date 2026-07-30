@@ -15,6 +15,7 @@ import {
 import { RepoWatcherRegistry } from './git/watcher';
 import { gitExecutor } from './git/exec';
 import { registerIpcHandlers } from './ipc';
+import { cleanupExpiredPullRequestWorktrees } from './managedPullRequestWorktrees';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { flushPendingWorkspaceWrites, getWorkspace } from './store';
 import { reviewGuideManager } from './reviewGuide';
@@ -135,6 +136,9 @@ app.whenReady().then(() => {
 
   registerIpcHandlers(repoWatchers, applicationUpdater, is.dev);
   repoWatchers.sync(getWorkspace().tabs);
+  void cleanupExpiredPullRequestWorktrees().catch((error: unknown) => {
+    console.warn('Could not clean expired pull request worktrees:', error);
+  });
 
   app.on('browser-window-created', (_event, window) => {
     optimizer.watchWindowShortcuts(window);

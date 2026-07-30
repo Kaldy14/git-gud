@@ -59,6 +59,7 @@ const api: RendererApi = {
   openFile: (repoPath, path) => invoke('repo:open-file', repoPath, path),
   revealFile: (repoPath, path) => invoke('repo:reveal-file', repoPath, path),
   openCodexTask: (repoPath, prompt) => invoke('system:open-codex-task', repoPath, prompt),
+  listExternalApplications: () => invoke('system:external-applications'),
   stageAll: (repoPath) => invoke('repo:stage-all', repoPath),
   unstageAll: (repoPath) => invoke('repo:unstage-all', repoPath),
   commitChanges: (repoPath, input) => invoke('repo:commit', repoPath, input),
@@ -114,6 +115,8 @@ const api: RendererApi = {
   getGitHubActionsRuns: (input) => invoke('github:actions-runs', input),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),
   getGitHubPullRequestDetail: (locator) => invoke('github:pull-request-detail', locator),
+  openGitHubPullRequestInApplication: (repoPath, input) =>
+    invoke('github:open-pull-request-in-application', repoPath, input),
   getGitHubPullRequestReviewGuideState: (locator, sourceFingerprint) =>
     invoke('github:pull-request-review-guide-state', locator, sourceFingerprint),
   startGitHubPullRequestReviewGuide: (locator, sourceFingerprint) =>

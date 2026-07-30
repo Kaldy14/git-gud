@@ -63,6 +63,7 @@ import {
 } from './git/repositoryDetails';
 import { loadRepositoryOverview } from './git/repositoryOverview';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
+import { listExternalApplications } from './externalApplications';
 import {
   loadGitHubActionsRuns,
   loadGitHubPullRequestDetail,
@@ -79,6 +80,7 @@ import type { RepoWatcherRegistry } from './git/watcher';
 import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { requestOperationCancellation } from './operationCancellation';
+import { openPullRequestInApplication } from './managedPullRequestWorktrees';
 import {
   loadPortainerStackCatalog,
   loadPortainerStackImages,
@@ -170,7 +172,10 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:resolve-conflict': { label: 'Resolve conflict' },
   'repo:resolve-conflict-file': { label: 'Save conflict resolution' },
   'repo:undo': { label: 'Undo' },
-  'repo:assign-profile': { label: 'Apply Git profile' }
+  'repo:assign-profile': { label: 'Apply Git profile' },
+  'github:open-pull-request-in-application': {
+    label: 'Prepare pull request checkout'
+  }
 };
 
 export function registerIpcHandlers(
@@ -466,6 +471,7 @@ export function registerIpcHandlers(
   handle('system:open-codex-task', async (_event, repoPath, prompt) =>
     openCodexTaskForRepository(getOpenRepositoryTab(repoPath), prompt)
   );
+  handle('system:external-applications', () => listExternalApplications());
   handle('repo:stage-all', async (_event, repoPath) => inRepositoryTransaction(repoPath, stageAll));
   handle('repo:unstage-all', async (_event, repoPath) => inRepositoryTransaction(repoPath, unstageAll));
   handle('repo:commit', async (_event, repoPath, input) =>
@@ -613,6 +619,9 @@ export function registerIpcHandlers(
   });
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
+  handle('github:open-pull-request-in-application', (_event, repoPath, input) =>
+    openPullRequestInApplication(getOpenRepositoryTab(repoPath), input)
+  );
   handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {
     const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
     return reviewGuideManager.getState(plan.repoPath, sourceFingerprint);

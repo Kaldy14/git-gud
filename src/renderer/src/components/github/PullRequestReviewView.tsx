@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
-  ChevronDown,
   CircleDot,
   Clock3,
   CornerDownRight,
@@ -60,6 +59,7 @@ import type {
 
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestGitHubLink } from './PullRequestGitHubLink';
+import { PullRequestHeaderActions } from './PullRequestHeaderActions';
 import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
 import { pullRequestStatus } from './pullRequestInboxStatus';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
@@ -635,53 +635,30 @@ function PullRequestReviewContent({
             {detail.owner}/{detail.repository}#{detail.number}
           </span>
         </div>
-        <div className="pr-review-header-status">
+        <div className="pr-review-header-status overflow-hidden">
           <ReviewStatus detail={detail} />
         </div>
-        <div className="pr-review-header-actions">
-          <button
-            className="btn-subtle btn-regular pr-review-overview-button"
-            type="button"
-            aria-controls="pr-review-overview-panel"
-            aria-expanded={isOverviewOpen}
-            onClick={() => setIsOverviewOpen((isOpen) => !isOpen)}
-          >
-            <ChevronDown size={13} />
-            Overview
-          </button>
-          <PullRequestGitHubLink url={detail.url} />
-          <button className="btn-subtle btn-regular" type="button" onClick={() => setIsReviewDialogOpen(true)}>
-            <ShieldCheck size={13} />
-            {reviewDrafts.length > 0
-              ? `Finish review · ${reviewDrafts.length}`
-              : 'Finish review'}
-          </button>
-          <button
-            className="btn-primary btn-regular"
-            type="button"
-            disabled={!detail.canMerge || detail.isDraft || mergeMutation.isPending}
-            title={
-              detail.isDraft
-                ? 'Draft pull requests cannot be merged'
-                : !detail.canMerge
-                  ? 'The connected account cannot merge this pull request'
-                  : 'Merge pull request'
-            }
-            onClick={() => setIsMergeDialogOpen(true)}
-          >
-            <GitMerge size={13} />
-            {mergeMethodLabel(detail.mergeSettings.defaultMethod)}
-          </button>
-          <button
-            className="icon-btn icon-btn-regular shrink-0"
-            type="button"
-            onClick={onClose}
-            aria-label="Close pull request review and return to commit graph"
-            title="Return to commit graph"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <PullRequestHeaderActions
+          detail={detail}
+          repoPath={codexRepoPath}
+          isOverviewOpen={isOverviewOpen}
+          reviewDraftCount={reviewDrafts.length}
+          mergeLabel={mergeMethodLabel(detail.mergeSettings.defaultMethod)}
+          mergeDisabled={!detail.canMerge || detail.isDraft || mergeMutation.isPending}
+          mergeTitle={
+            detail.isDraft
+              ? 'Draft pull requests cannot be merged'
+              : !detail.canMerge
+                ? 'The connected account cannot merge this pull request'
+                : 'Merge pull request'
+          }
+          isMergePending={mergeMutation.isPending}
+          onToggleOverview={() => setIsOverviewOpen((isOpen) => !isOpen)}
+          onFinishReview={() => setIsReviewDialogOpen(true)}
+          onOpenMerge={() => setIsMergeDialogOpen(true)}
+          onClose={onClose}
+          onNotice={setNotice}
+        />
       </header>
 
       {notice ? (
