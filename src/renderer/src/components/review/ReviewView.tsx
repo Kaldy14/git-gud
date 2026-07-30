@@ -57,6 +57,7 @@ import type {
   DiffSyntaxTheme,
   GitReviewChunk,
   GitReviewFileContext,
+  GitReviewGuide,
   GitReviewGuidePriority,
   GitReviewGuideState,
   GitReviewGuideUnit,
@@ -293,9 +294,6 @@ export function ReviewView({
     presentation?.units.find((candidate) => candidate.unit.id === selectedUnitId) ??
     presentation?.units.find((candidate) => !candidate.isViewed) ??
     presentation?.units[0];
-  const selectedReviewGuideUnit = selectedUnit
-    ? reviewGuideUnits.get(selectedUnit.unit.id)
-    : undefined;
   const preparedDiffCacheKeyPrefix = `${repoPath}:${reviewPlan?.targetKey ?? targetKey(target)}`;
   const selectedPreparedDiffs = useMemo(
     () => prepareReviewUnitDiffs(
@@ -718,7 +716,6 @@ export function ReviewView({
           {isReviewGuideEnabled && reviewPlan?.units.length ? (
             <ReviewGuideControl
               state={currentReviewGuideState}
-              guideUnit={selectedReviewGuideUnit}
               onStart={() => void startReviewGuide()}
             />
           ) : null}
@@ -776,9 +773,11 @@ export function ReviewView({
         isMutating={progressMutation.isPending}
         mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
         lineCollaboration={lineCollaboration}
+        reviewGuide={reviewGuide}
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
         onSelectUnit={selectReviewUnit}
+        onStartReviewGuide={() => void startReviewGuide()}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
 
@@ -803,11 +802,9 @@ export function ReviewView({
 
 function ReviewGuideControl({
   state,
-  guideUnit,
   onStart
 }: {
   state: GitReviewGuideState | undefined;
-  guideUnit: GitReviewGuideUnit | undefined;
   onStart: () => void;
 }): ReactElement {
   if (state?.status === 'running') {
@@ -821,87 +818,21 @@ function ReviewGuideControl({
 
   if (state?.status === 'ready') {
     return (
-      <PopoverPrimitive.Root>
-        <PopoverPrimitive.Trigger asChild>
-          <button className="btn-subtle btn-compact" type="button">
+      <ReviewGuidePopover
+        guide={state.guide}
+        trigger={(
+          <button
+            className="btn-subtle btn-compact"
+            type="button"
+            aria-label="Open AI guide overview"
+            title="Open AI guide overview"
+          >
             <Sparkles size={12} />
             AI guide
           </button>
-        </PopoverPrimitive.Trigger>
-        <PopoverPrimitive.Portal>
-          <PopoverPrimitive.Content
-            className="review-guide-popover"
-            align="end"
-            sideOffset={6}
-            aria-label="AI guide"
-          >
-            <header>
-              <div>
-                <span className="review-guide-kicker">AI guide</span>
-                <strong>{guideUnit ? 'Selected review group' : 'Review overview'}</strong>
-              </div>
-              <PopoverPrimitive.Close asChild>
-                <button
-                  className="icon-btn icon-btn-compact"
-                  type="button"
-                  aria-label="Close AI guide"
-                  title="Close AI guide"
-                >
-                  <X size={13} />
-                </button>
-              </PopoverPrimitive.Close>
-            </header>
-
-            <section>
-              <span className="review-guide-kicker">Change intent</span>
-              <p>{state.guide.summary}</p>
-            </section>
-
-            {guideUnit ? (
-              <>
-                <section className="review-guide-popover-unit">
-                  <div className="review-guide-popover-unit-heading">
-                    <ReviewGuidePriority priority={guideUnit.priority} />
-                    <span>Current group</span>
-                  </div>
-                  <div className="review-guide-popover-columns">
-                    <div>
-                      <span className="review-guide-kicker">Why this changed</span>
-                      <p>{guideUnit.why}</p>
-                    </div>
-                    <div>
-                      <span className="review-guide-kicker">What changed</span>
-                      <p>{guideUnit.what}</p>
-                    </div>
-                  </div>
-                </section>
-                {guideUnit.confirmedIssues.map((issue) => (
-                  <section
-                    className="review-guide-popover-issue"
-                    key={`${issue.path}:${issue.line}`}
-                  >
-                    <AlertTriangle size={13} />
-                    <div>
-                      <div className="flex flex-wrap items-baseline gap-x-2">
-                        <strong>AI-confirmed issue</strong>
-                        <code>{issue.path}:{issue.line}</code>
-                      </div>
-                      <p>{issue.summary} {issue.evidence}</p>
-                    </div>
-                  </section>
-                ))}
-              </>
-            ) : null}
-
-            <footer>
-              <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
-                <Sparkles size={12} />
-                Rebuild guide
-              </button>
-            </footer>
-          </PopoverPrimitive.Content>
-        </PopoverPrimitive.Portal>
-      </PopoverPrimitive.Root>
+        )}
+        onStart={onStart}
+      />
     );
   }
 
@@ -923,6 +854,103 @@ function ReviewGuideControl({
     <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
       Build AI guide
     </button>
+  );
+}
+
+function ReviewGuidePopover({
+  guide,
+  guideUnit,
+  reviewUnitTitle,
+  trigger,
+  align = 'end',
+  onStart
+}: {
+  guide: GitReviewGuide;
+  guideUnit?: GitReviewGuideUnit;
+  reviewUnitTitle?: string;
+  trigger: ReactElement;
+  align?: 'start' | 'center' | 'end';
+  onStart: () => void;
+}): ReactElement {
+  return (
+    <PopoverPrimitive.Root>
+      <PopoverPrimitive.Trigger asChild>
+        {trigger}
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          className="review-guide-popover"
+          align={align}
+          sideOffset={6}
+          aria-label="AI guide"
+        >
+          <header>
+            <div>
+              <span className="review-guide-kicker">AI guide</span>
+              <strong>{guideUnit ? reviewUnitTitle ?? 'Review block' : 'Review overview'}</strong>
+            </div>
+            <PopoverPrimitive.Close asChild>
+              <button
+                className="icon-btn icon-btn-compact"
+                type="button"
+                aria-label="Close AI guide"
+                title="Close AI guide"
+              >
+                <X size={13} />
+              </button>
+            </PopoverPrimitive.Close>
+          </header>
+
+          <section>
+            <span className="review-guide-kicker">Change intent</span>
+            <p>{guide.summary}</p>
+          </section>
+
+          {guideUnit ? (
+            <>
+              <section className="review-guide-popover-unit">
+                <div className="review-guide-popover-unit-heading">
+                  <ReviewGuidePriority priority={guideUnit.priority} />
+                  <span>This review block</span>
+                </div>
+                <div className="review-guide-popover-columns">
+                  <div>
+                    <span className="review-guide-kicker">Why this changed</span>
+                    <p>{guideUnit.why}</p>
+                  </div>
+                  <div>
+                    <span className="review-guide-kicker">What changed</span>
+                    <p>{guideUnit.what}</p>
+                  </div>
+                </div>
+              </section>
+              {guideUnit.confirmedIssues.map((issue) => (
+                <section
+                  className="review-guide-popover-issue"
+                  key={`${issue.path}:${issue.line}`}
+                >
+                  <AlertTriangle size={13} />
+                  <div>
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <strong>AI-confirmed issue</strong>
+                      <code>{issue.path}:{issue.line}</code>
+                    </div>
+                    <p>{issue.summary} {issue.evidence}</p>
+                  </div>
+                </section>
+              ))}
+            </>
+          ) : null}
+
+          <footer>
+            <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
+              <Sparkles size={12} />
+              Rebuild guide
+            </button>
+          </footer>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
   );
 }
 
@@ -1063,9 +1091,11 @@ function ReviewBody({
   isMutating,
   mutationError,
   lineCollaboration,
+  reviewGuide,
   reviewGuideUnits,
   isFileTreeOpen,
   onSelectUnit,
+  onStartReviewGuide,
   onToggleViewed
 }: {
   repoPath: string;
@@ -1080,9 +1110,11 @@ function ReviewBody({
   isMutating: boolean;
   mutationError?: string;
   lineCollaboration?: ReviewLineCollaboration;
+  reviewGuide?: GitReviewGuide;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
   onSelectUnit: (unitId: string) => void;
+  onStartReviewGuide: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
@@ -1101,6 +1133,9 @@ function ReviewBody({
       firstChunkIdByPath.set(chunk.path, chunk.id);
     }
   }
+  const selectedGuideUnit = selectedUnit
+    ? reviewGuideUnits.get(selectedUnit.unit.id)
+    : undefined;
 
   useEffect(() => {
     reviewChunksRef.current?.scrollTo({ top: 0 });
@@ -1210,8 +1245,28 @@ function ReviewBody({
             <header className="review-unit-header">
               <div className="review-unit-heading">
                 <h2 title={selectedUnit.unit.title}>{selectedUnit.unit.title}</h2>
-                {reviewGuideUnits.get(selectedUnit.unit.id) ? (
-                  <ReviewGuidePriority priority={reviewGuideUnits.get(selectedUnit.unit.id)!.priority} />
+                {reviewGuide && selectedGuideUnit ? (
+                  <ReviewGuidePopover
+                    guide={reviewGuide}
+                    guideUnit={selectedGuideUnit}
+                    reviewUnitTitle={selectedUnit.unit.title}
+                    align="start"
+                    trigger={(
+                      <button
+                        className="btn-subtle btn-compact review-guide-unit-trigger"
+                        type="button"
+                        aria-label={`Open AI guide for ${selectedUnit.unit.title}`}
+                        title="Open AI guide for this review block"
+                      >
+                        <Sparkles size={12} />
+                        AI
+                      </button>
+                    )}
+                    onStart={onStartReviewGuide}
+                  />
+                ) : null}
+                {selectedGuideUnit ? (
+                  <ReviewGuidePriority priority={selectedGuideUnit.priority} />
                 ) : null}
                 <span className="badge-mini shrink-0" title="Grouping confidence">{selectedUnit.unit.confidence}</span>
                 <span

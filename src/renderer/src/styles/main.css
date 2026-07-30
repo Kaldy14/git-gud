@@ -1877,6 +1877,13 @@ button.ref-chip {
   color: var(--text-2);
 }
 
+.review-guide-unit-trigger {
+  height: 22px;
+  border-color: var(--control-active-border);
+  background: var(--control-active-bg);
+  color: var(--accent-2);
+}
+
 .review-content {
   display: flex;
   min-width: 0;
