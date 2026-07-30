@@ -127,7 +127,9 @@ app.whenReady().then(() => {
   );
   const iconPath = resolveAppIconPath();
 
-  if (iconPath && process.platform === 'darwin') {
+  // Packaged macOS apps use the bundle's .icns file. Replacing it with the
+  // standalone PNG changes the icon's optical size while the app is running.
+  if (is.dev && iconPath && process.platform === 'darwin') {
     app.dock?.setIcon(iconPath);
   }
 
