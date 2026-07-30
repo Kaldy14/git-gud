@@ -2,8 +2,8 @@ import { defineReviewGroupingDataset } from '../types';
 
 export default defineReviewGroupingDataset({
   id: 'deleted-api-and-cleanup',
-  title: 'Deleted API with caller and test cleanup',
-  description: 'Removing a deprecated cache API, its import, fallback branch, and tests is one review unit; an unrelated debug helper deletion is separate.',
+  title: 'Deleted API with caller cleanup',
+  description: 'Removing a deprecated cache API, its import, and fallback branch is one review unit; an unrelated debug helper deletion is separate.',
   tags: ['deletion', 'cleanup', 'cross-file', 'typescript'],
   files: [
     {
@@ -72,22 +72,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/cache/read-legacy-cache.test.ts',
-      before: [
-        'it("reads the legacy cache key", async () => {',
-        '  await expect(readLegacyCache("user-1")).resolves.toEqual(cachedUser);',
-        '});',
-        ''
-      ].join('\n'),
-      after: null,
-      hunks: [
-        {
-          id: 'legacy-cache-test-deletion',
-          contains: 'reads the legacy cache key'
-        }
-      ]
-    },
-    {
       path: 'src/debug/trace-request.ts',
       before: [
         'export function traceRequest(requestId: string) {',
@@ -110,8 +94,7 @@ export default defineReviewGroupingDataset({
       chunks: [
         'legacy-cache-api-deletion',
         'legacy-cache-import-cleanup',
-        'legacy-cache-fallback-cleanup',
-        'legacy-cache-test-deletion'
+        'legacy-cache-fallback-cleanup'
       ]
     },
     {

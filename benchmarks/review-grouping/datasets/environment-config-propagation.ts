@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'environment-config-propagation',
   title: 'Environment setting propagated to runtime behavior',
-  description: 'An environment variable example, validation, runtime mapping, HTTP client usage, and test form one deployable change; an unrelated documentation edit stays separate.',
+  description: 'An environment variable example, validation, runtime mapping, and HTTP client usage form one deployable change; an unrelated documentation edit stays separate.',
   tags: ['configuration', 'environment', 'non-code', 'cross-file', 'typescript'],
   files: [
     {
@@ -97,28 +97,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/http/client.test.ts',
-      before: [
-        'it("uses runtime configuration", () => {',
-        '  expect(httpClient.baseUrl).toBe("https://api.example.test");',
-        '});',
-        ''
-      ].join('\n'),
-      after: [
-        'it("uses runtime configuration", () => {',
-        '  expect(httpClient.baseUrl).toBe("https://api.example.test");',
-        '  expect(httpClient.timeout).toBe(8000);',
-        '});',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'request-timeout-client-test',
-          contains: 'expect(httpClient.timeout).toBe(8000)'
-        }
-      ]
-    },
-    {
       path: 'README.md',
       before: 'Run the service locally with the development command.\n',
       after: 'Run the service locally using the development command.\n',
@@ -137,8 +115,7 @@ export default defineReviewGroupingDataset({
         'request-timeout-env-example',
         'request-timeout-validation',
         'request-timeout-runtime-mapping',
-        'request-timeout-client-usage',
-        'request-timeout-client-test'
+        'request-timeout-client-usage'
       ]
     },
     {

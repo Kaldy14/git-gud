@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'dependency-manifest-and-integration',
   title: 'Dependency manifest change with its integration',
-  description: 'Adding a retry dependency should stay with the implementation and test that adopt it; an unrelated changelog correction is separate.',
+  description: 'Adding a retry dependency should stay with the implementation that adopts it; an unrelated changelog correction is separate.',
   tags: ['dependency', 'manifest', 'json', 'cross-file', 'typescript'],
   files: [
     {
@@ -70,31 +70,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/request.test.ts',
-      before: [
-        'it("tries a failed request three times", async () => {',
-        '  request.mockRejectedValue(new Error("offline"));',
-        '  await expect(fetchProfile(url)).rejects.toThrow("offline");',
-        '  expect(request).toHaveBeenCalledTimes(3);',
-        '});',
-        ''
-      ].join('\n'),
-      after: [
-        'it("retries a failed request twice", async () => {',
-        '  request.mockRejectedValue(new Error("offline"));',
-        '  await expect(fetchProfile(url)).rejects.toThrow("offline");',
-        '  expect(request).toHaveBeenCalledTimes(3);',
-        '});',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'p-retry-behavior-test',
-          contains: 'retries a failed request twice'
-        }
-      ]
-    },
-    {
       path: 'CHANGELOG.md',
       before: '- Fixed an typo in the setup guide.\n',
       after: '- Fixed a typo in the setup guide.\n',
@@ -109,11 +84,7 @@ export default defineReviewGroupingDataset({
   expectedUnits: [
     {
       id: 'adopt-p-retry',
-      chunks: [
-        'p-retry-manifest-entry',
-        'p-retry-integration',
-        'p-retry-behavior-test'
-      ]
+      chunks: ['p-retry-manifest-entry', 'p-retry-integration']
     },
     {
       id: 'changelog-copy-edit',

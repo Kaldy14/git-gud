@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'type-only-and-generic-usages',
   title: 'Type-only imports and generic constraints',
-  description: 'A renamed type should stay with import-type, annotation, generic, and type-test usages, while the same text in metadata remains independent.',
+  description: 'A renamed type should stay with import-type, annotation, and generic usages, while the same text in metadata remains independent.',
   tags: ['types', 'generics', 'negative', 'typescript', 'cross-file'],
   files: [
     {
@@ -63,17 +63,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/storage/types.test-d.ts',
-      before: 'expectTypeOf<User>().toMatchTypeOf<PersistedEntity>();\n',
-      after: 'expectTypeOf<User>().toMatchTypeOf<StoredEntity>();\n',
-      hunks: [
-        {
-          id: 'stored-entity-type-test',
-          contains: 'toMatchTypeOf<StoredEntity>'
-        }
-      ]
-    },
-    {
       path: 'src/telemetry/metadata.ts',
       before: 'export const storageLabel = "PersistedEntity";\n',
       after: 'export const storageLabel = "StoredEntity";\n',
@@ -91,8 +80,7 @@ export default defineReviewGroupingDataset({
       chunks: [
         'stored-entity-definition',
         'stored-entity-type-import',
-        'stored-entity-generic-constraint',
-        'stored-entity-type-test'
+        'stored-entity-generic-constraint'
       ]
     },
     {

@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'renamed-file-and-import-updates',
   title: 'Renamed domain file with import updates',
-  description: 'A moved and renamed domain type should stay with the production and test imports updated for that move.',
+  description: 'A moved and renamed domain type should stay with the production import updated for that move.',
   tags: ['rename', 'file-move', 'cross-file', 'typescript'],
   files: [
     {
@@ -69,42 +69,12 @@ export default defineReviewGroupingDataset({
           ]
         }
       ]
-    },
-    {
-      path: 'src/accounts/load-account.test.ts',
-      before: [
-        'import type { UserRecord } from "../legacy/user-record";',
-        '',
-        'const account: UserRecord = makeAccount();',
-        'expect(account.id).toBe("account-1");',
-        ''
-      ].join('\n'),
-      after: [
-        'import type { AccountRecord } from "../domain/account-record";',
-        '',
-        'const account: AccountRecord = makeAccount();',
-        'expect(account.status).toBe("active");',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'account-record-test-import',
-          contains: [
-            'import type { AccountRecord }',
-            'expect(account.status)'
-          ]
-        }
-      ]
     }
   ],
   expectedUnits: [
     {
       id: 'account-record-move',
-      chunks: [
-        'account-record-rename',
-        'account-record-production-import',
-        'account-record-test-import'
-      ]
+      chunks: ['account-record-rename', 'account-record-production-import']
     }
   ]
 });

@@ -2,8 +2,8 @@ import { defineReviewGroupingDataset } from '../types';
 
 export default defineReviewGroupingDataset({
   id: 'definition-and-usages',
-  title: 'Definition with production and test usages',
-  description: 'A new constant, its production consumer, and its test belong together; an unrelated constant does not.',
+  title: 'Definition with its production usage',
+  description: 'A new constant and its production consumer belong together; an unrelated constant does not.',
   tags: ['baseline', 'cross-file', 'typescript', 'added-files'],
   files: [
     {
@@ -29,17 +29,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/client.test.ts',
-      before: null,
-      after: 'expect(connect(DEFAULT_TIMEOUT)).toBeDefined();\n',
-      hunks: [
-        {
-          id: 'timeout-test',
-          contains: 'connect(DEFAULT_TIMEOUT)'
-        }
-      ]
-    },
-    {
       path: 'src/logging.ts',
       before: null,
       after: 'export const LOG_PREFIX = "[client]";\n',
@@ -54,7 +43,7 @@ export default defineReviewGroupingDataset({
   expectedUnits: [
     {
       id: 'timeout-change',
-      chunks: ['timeout-definition', 'timeout-usage', 'timeout-test']
+      chunks: ['timeout-definition', 'timeout-usage']
     },
     {
       id: 'logging-change',

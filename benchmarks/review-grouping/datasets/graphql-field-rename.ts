@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'graphql-field-rename',
   title: 'GraphQL field rename across server and client',
-  description: 'The schema field, resolver, client query, and contract test should be reviewed together; an unrelated health-schema description edit remains separate.',
+  description: 'The schema field, resolver, and client query should be reviewed together; an unrelated health-schema description edit remains separate.',
   tags: ['graphql', 'api-contract', 'cross-language', 'cross-file', 'typescript'],
   files: [
     {
@@ -78,30 +78,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/graphql/user-contract.test.ts',
-      before: [
-        'it("returns the user display name", async () => {',
-        '  expect(await execute(CurrentUser)).toMatchObject({ displayName: "Ada" });',
-        '});',
-        ''
-      ].join('\n'),
-      after: [
-        'it("returns the user full name", async () => {',
-        '  expect(await execute(CurrentUser)).toMatchObject({ fullName: "Ada" });',
-        '});',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'full-name-contract-test',
-          contains: [
-            'returns the user full name',
-            'fullName: "Ada"'
-          ]
-        }
-      ]
-    },
-    {
       path: 'schema/health.graphql',
       before: [
         '"""Service status."""',
@@ -127,8 +103,7 @@ export default defineReviewGroupingDataset({
       chunks: [
         'full-name-schema-field',
         'full-name-resolver',
-        'full-name-client-query',
-        'full-name-contract-test'
+        'full-name-client-query'
       ]
     },
     {

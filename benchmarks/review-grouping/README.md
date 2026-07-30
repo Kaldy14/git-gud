@@ -12,6 +12,8 @@ Useful focused runs:
 
 ```bash
 REVIEW_BENCHMARK_FILTER=tree-sitter pnpm benchmark:review
+REVIEW_BENCHMARK_FILTER=complex pnpm benchmark:review
+REVIEW_BENCHMARK_FILTER=graphql pnpm benchmark:review
 REVIEW_BENCHMARK_PIPELINE=local-commit pnpm benchmark:review
 REVIEW_BENCHMARK_PIPELINE=core-full-context,github-builder pnpm benchmark:review
 REVIEW_BENCHMARK_JSON=1 pnpm benchmark:review
@@ -37,7 +39,9 @@ benchmarks/review-grouping/
   review-grouping.benchmark.ts      command entry point
 ```
 
-Keep one scenario per dataset file. Use a descriptive id and tags so focused runs remain useful as the suite grows.
+Keep one scenario per dataset file. Use a descriptive id and tags so focused runs remain useful as the suite grows. Benchmark datasets intentionally exclude test and spec files so the score reflects production review behavior.
+
+Expected units describe the best human review experience, independent of how the current grouping algorithm behaves. Prefer realistic cross-layer scenarios, preserve genuinely independent changes as separate units even when they share files, and do not weaken an expectation to match the current score.
 
 ## Pipeline meanings
 

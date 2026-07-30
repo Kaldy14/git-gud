@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'database-field-end-to-end',
   title: 'Database field propagated through the application',
-  description: 'The migration, model, row mapping, query, API field, and test for account archival belong together despite mixed naming conventions and file formats.',
+  description: 'The migration, model, row mapping, query, and API field for account archival belong together despite mixed naming conventions and file formats.',
   tags: ['database', 'sql', 'graphql', 'cross-language', 'cross-file'],
   files: [
     {
@@ -115,27 +115,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'src/accounts/list-active-accounts.test.ts',
-      before: [
-        'it("lists accounts", async () => {',
-        '  expect(await listActiveAccounts()).toHaveLength(2);',
-        '});',
-        ''
-      ].join('\n'),
-      after: [
-        'it("excludes archived accounts", async () => {',
-        '  expect(await listActiveAccounts()).toEqual([activeAccount]);',
-        '});',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'archived-at-behavior-test',
-          contains: 'excludes archived accounts'
-        }
-      ]
-    },
-    {
       path: 'db/seeds/demo.sql',
       before: 'INSERT INTO teams (name) VALUES (\'Demo Team\');\n',
       after: 'INSERT INTO teams (name) VALUES (\'Demo workspace\');\n',
@@ -155,8 +134,7 @@ export default defineReviewGroupingDataset({
         'archived-at-model',
         'archived-at-row-mapping',
         'archived-at-query-filter',
-        'archived-at-api-field',
-        'archived-at-behavior-test'
+        'archived-at-api-field'
       ]
     },
     {

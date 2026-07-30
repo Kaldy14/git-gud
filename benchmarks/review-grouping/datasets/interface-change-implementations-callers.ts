@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'interface-change-implementations-callers',
   title: 'Interface signature propagated to implementations and callers',
-  description: 'A request-object migration groups the interface contract with production and test implementations and its caller.',
+  description: 'A request-object migration groups the interface contract with its production implementation and caller.',
   tags: ['typescript', 'interface', 'implementations', 'cross-file'],
   files: [
     {
@@ -65,40 +65,6 @@ export default defineReviewGroupingDataset({
       ]
     },
     {
-      path: 'test/support/fake-payment-gateway.ts',
-      before: [
-        'export class FakePaymentGateway implements PaymentGateway {',
-        '  charges: Array<{ customerId: string; amount: number }> = [];',
-        '',
-        '  async charge(customerId: string, amount: number): Promise<Receipt> {',
-        '    this.charges.push({ customerId, amount });',
-        '    return { id: "receipt-1" };',
-        '  }',
-        '}',
-        ''
-      ].join('\n'),
-      after: [
-        'export class FakePaymentGateway implements PaymentGateway {',
-        '  charges: ChargeRequest[] = [];',
-        '',
-        '  async charge(request: ChargeRequest): Promise<Receipt> {',
-        '    this.charges.push(request);',
-        '    return { id: "receipt-1" };',
-        '  }',
-        '}',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'fake-gateway-implementation',
-          contains: [
-            'charges: ChargeRequest[] = [];',
-            'async charge(request: ChargeRequest)'
-          ]
-        }
-      ]
-    },
-    {
       path: 'src/checkout/complete-checkout.ts',
       before: [
         'export async function completeCheckout(order: Order, gateway: PaymentGateway) {',
@@ -133,7 +99,6 @@ export default defineReviewGroupingDataset({
       chunks: [
         'payment-gateway-contract',
         'stripe-gateway-implementation',
-        'fake-gateway-implementation',
         'checkout-gateway-caller'
       ]
     }

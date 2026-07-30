@@ -16,7 +16,7 @@ describe('review grouping benchmark dev preview', () => {
     expect(summaries).toContainEqual(expect.objectContaining({
       id: 'two-independent-features-cross-same-files',
       expectedUnitCount: 2,
-      chunkCount: 6
+      chunkCount: 4
     }));
   });
 

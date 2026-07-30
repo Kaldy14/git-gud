@@ -3,7 +3,7 @@ import { defineReviewGroupingDataset } from '../types';
 export default defineReviewGroupingDataset({
   id: 'two-independent-features-cross-same-files',
   title: 'Independent features interleaved across the same files',
-  description: 'Timeout and retry changes should form separate review units even though each touches the same config, implementation, and test files.',
+  description: 'Timeout and retry changes should form separate review units even though each touches the same config and implementation files.',
   tags: ['review-boundary', 'multi-feature', 'same-file', 'typescript'],
   files: [
     {
@@ -97,65 +97,16 @@ export default defineReviewGroupingDataset({
           contains: 'attempt <= MAX_RETRY_ATTEMPTS'
         }
       ]
-    },
-    {
-      path: 'src/client.test.ts',
-      before: [
-        'it("uses the configured timeout", () => {',
-        '  expect(connect()).toHaveTimeout(5_000);',
-        '});',
-        'const makeTransientError = () => new Error("transient");',
-        'const makeFatalError = () => new Error("fatal");',
-        'const stubClock = () => vi.useFakeTimers();',
-        'const restoreClock = () => vi.useRealTimers();',
-        'const resetMetrics = () => metrics.reset();',
-        'const resetSockets = () => sockets.reset();',
-        'const resetCircuit = () => circuit.reset();',
-        'const resetLogger = () => logger.reset();',
-        '',
-        'it("stops after the retry limit", () => {',
-        '  expect(shouldRetry(2)).toBe(false);',
-        '});',
-        ''
-      ].join('\n'),
-      after: [
-        'it("uses the configured timeout", () => {',
-        '  expect(connect()).toHaveTimeout(8_000);',
-        '});',
-        'const makeTransientError = () => new Error("transient");',
-        'const makeFatalError = () => new Error("fatal");',
-        'const stubClock = () => vi.useFakeTimers();',
-        'const restoreClock = () => vi.useRealTimers();',
-        'const resetMetrics = () => metrics.reset();',
-        'const resetSockets = () => sockets.reset();',
-        'const resetCircuit = () => circuit.reset();',
-        'const resetLogger = () => logger.reset();',
-        '',
-        'it("stops after the retry limit", () => {',
-        '  expect(shouldRetry(4)).toBe(false);',
-        '});',
-        ''
-      ].join('\n'),
-      hunks: [
-        {
-          id: 'timeout-test',
-          contains: 'toHaveTimeout(8_000)'
-        },
-        {
-          id: 'retry-test',
-          contains: 'shouldRetry(4)'
-        }
-      ]
     }
   ],
   expectedUnits: [
     {
       id: 'timeout-behavior',
-      chunks: ['timeout-config', 'timeout-consumer', 'timeout-test']
+      chunks: ['timeout-config', 'timeout-consumer']
     },
     {
       id: 'retry-behavior',
-      chunks: ['retry-config', 'retry-consumer', 'retry-test']
+      chunks: ['retry-config', 'retry-consumer']
     }
   ]
 });
