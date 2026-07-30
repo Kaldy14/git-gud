@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import { Download, FolderGit2, GitBranch, Loader2, UserCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  FolderGit2,
+  GitBranch,
+  Loader2,
+  RefreshCw,
+  UserCircle
+} from 'lucide-react';
 
 import { FILE_STATUS_COLORS } from '@shared/graph';
 import type {
@@ -73,7 +82,7 @@ export function StatusBar({
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-titlebar)] px-3 text-[11px] text-[var(--text-3)]">
       <span className="flex min-w-0 items-center gap-1.5">
         <FolderGit2 size={12} className="shrink-0" />
-        <span className="min-w-0 truncate">{activeTab ? activeTab.path : 'No repository open'}</span>
+        <span className="min-w-0 truncate">{activeTab ? activeTab.path : 'Git Gud'}</span>
         <ApplicationUpdateButton
           state={applicationUpdateState}
           isApplying={isApplyingUpdate}
@@ -137,30 +146,69 @@ export function ApplicationUpdateButton({
   isApplying,
   onUpdate
 }: ApplicationUpdateButtonProps): ReactElement | null {
-  if (!('releaseName' in state)) {
+  if (state.status === 'idle') {
     return null;
   }
 
-  const isDownloading = state.status === 'downloading' || isApplying;
-  const title =
+  if (state.status === 'checking' || state.status === 'downloading') {
+    return (
+      <span
+        className="statusbar-update-status flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-semibold"
+        data-update-status={state.status}
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 size={11} className="animate-spin" />
+        {state.status === 'checking' ? 'Checking for update…' : 'Downloading update…'}
+      </span>
+    );
+  }
+
+  if (state.status === 'up-to-date') {
+    return (
+      <span
+        className="statusbar-update-status flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-semibold"
+        data-update-status={state.status}
+        role="status"
+        aria-live="polite"
+        title={state.message}
+      >
+        <CheckCircle2 size={11} />
+        Up to date
+      </span>
+    );
+  }
+
+  const presentation =
     state.status === 'downloaded'
-      ? `${state.releaseName} is ready. Restart Git Gud to install it.`
-      : `${state.releaseName} is available.`;
+      ? {
+          icon: <RefreshCw size={11} />,
+          label: isApplying ? 'Restarting…' : 'Restart to update',
+          title: `${state.releaseName} is ready. Restart Git Gud to install it.`
+        }
+      : state.status === 'manual-update-required'
+        ? {
+            icon: <Download size={11} />,
+            label: isApplying ? 'Opening release…' : 'Get signed release',
+            title: state.message
+          }
+        : {
+            icon: <AlertCircle size={11} />,
+            label: isApplying ? 'Checking…' : 'Update failed · Retry',
+            title: state.message
+          };
 
   return (
     <button
       type="button"
       className="statusbar-update-button flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-semibold"
-      disabled={isDownloading}
-      title={title}
+      data-update-status={state.status}
+      disabled={isApplying}
+      title={presentation.title}
       onClick={onUpdate}
     >
-      {isDownloading ? (
-        <Loader2 size={11} className="animate-spin" />
-      ) : (
-        <Download size={11} />
-      )}
-      {isDownloading ? 'Downloading update…' : 'Update Git Gud'}
+      {isApplying ? <Loader2 size={11} className="animate-spin" /> : presentation.icon}
+      {presentation.label}
     </button>
   );
 }

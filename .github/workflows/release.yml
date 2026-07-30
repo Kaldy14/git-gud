@@ -169,6 +169,22 @@ jobs:
         shell: bash
         run: |
           codesign --verify --deep --strict --verbose=2 "dist/mac/Git Gud.app"
+          team_identifier="$(
+            codesign -d --verbose=4 "dist/mac/Git Gud.app" 2>&1 \
+              | awk -F= '/^TeamIdentifier=/ { print $2; exit }'
+          )"
+          if [[ "$team_identifier" != "G6L7T68JBX" ]]; then
+            echo "Unexpected updater signing team: ${team_identifier:-missing}"
+            exit 1
+          fi
+          bundle_identifier="$(
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+              "dist/mac/Git Gud.app/Contents/Info.plist"
+          )"
+          if [[ "$bundle_identifier" != "dev.kaldy.git-gud" ]]; then
+            echo "Unexpected updater bundle identifier: ${bundle_identifier:-missing}"
+            exit 1
+          fi
           xcrun stapler validate "dist/mac/Git Gud.app"
           spctl --assess --type execute --verbose=4 "dist/mac/Git Gud.app"
 

@@ -33,7 +33,7 @@ Git Gud is a focused desktop Git client inspired by the strongest parts of GitKr
 - **Safer mutations:** serialized operations, progress reporting, explicit destructive-action confirmation, and operation-aware local undo.
 - **Workspace flow:** multiple repository tabs, restored sessions, per-repository Git profiles, resizable panels, keyboard navigation, and a command palette.
 - **Live dashboards:** editable and reorderable GitHub Actions and Portainer stack tiles with filters, automatic refresh, workflow-failure alerts, health and image visibility, and direct links to the source service.
-- **Built-in updates:** automatic background downloads, restart-to-install prompts, and a manual update action in packaged macOS builds.
+- **Built-in updates:** signed releases download in the background and expose a direct restart action; locally signed builds link to the latest compatible release instead of attempting an unsafe replacement.
 
 ## Screenshots
 

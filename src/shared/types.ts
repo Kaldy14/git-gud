@@ -36,11 +36,30 @@ export type WorkspaceState = {
 
 export type ApplicationUpdateState =
   | {
-      status: 'idle' | 'checking';
+      status: 'idle';
     }
   | {
-      status: 'available' | 'downloading' | 'downloaded';
+      status: 'checking';
+    }
+  | {
+      status: 'downloading';
       releaseName: string;
+    }
+  | {
+      status: 'downloaded';
+      releaseName: string;
+    }
+  | {
+      status: 'up-to-date';
+      message: string;
+    }
+  | {
+      status: 'error';
+      message: string;
+    }
+  | {
+      status: 'manual-update-required';
+      message: string;
     };
 
 export type GitStatusCode =

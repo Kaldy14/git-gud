@@ -1357,26 +1357,58 @@ button.ref-chip {
 
 /* --- Buttons ---------------------------------------------------------- */
 
-.statusbar-update-button {
+.statusbar-update-button,
+.statusbar-update-status {
   border: 1px solid var(--accent);
   background: var(--accent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
   color: var(--bg-field);
+}
+
+.statusbar-update-button {
   transition:
     background 100ms ease,
     border-color 100ms ease;
 }
 
-.statusbar-update-button:not(:disabled):hover {
+.statusbar-update-button[data-update-status='downloaded']:not(:disabled):hover {
   border-color: var(--accent-2);
   background: var(--accent-2);
 }
 
+.statusbar-update-status[data-update-status='checking'],
+.statusbar-update-status[data-update-status='downloading'],
+.statusbar-update-button[data-update-status='manual-update-required'],
 .statusbar-update-button:disabled {
   border-color: var(--border-strong);
   background: var(--bg-surface-2);
   box-shadow: none;
-  color: var(--text-3);
+  color: var(--text-2);
+}
+
+.statusbar-update-button[data-update-status='manual-update-required']:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.statusbar-update-status[data-update-status='up-to-date'] {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  box-shadow: none;
+  color: var(--success-text);
+}
+
+.statusbar-update-button[data-update-status='error'] {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  box-shadow: none;
+  color: var(--danger-text);
+}
+
+.statusbar-update-button[data-update-status='error']:not(:disabled):hover {
+  border-color: var(--danger-text);
+  background: var(--bg-hover);
 }
 
 .btn-primary {

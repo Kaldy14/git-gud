@@ -1,19 +1,18 @@
+import { spawnSync } from 'node:child_process';
+import { basename, dirname } from 'node:path';
+
 import type { ApplicationUpdateState } from '@shared/types';
 
 export const updateCheckIntervalMs = 6 * 60 * 60 * 1000;
+export const updateFeedbackDurationMs = 5_000;
+export const updateReleasePageUrl = 'https://github.com/Kaldy14/git-gud/releases/latest';
 
 const updateServerBaseUrl = 'https://update.electronjs.org/Kaldy14/git-gud';
+const updaterBundleIdentifier = 'dev.kaldy.git-gud';
+const updaterDeveloperTeamId = 'G6L7T68JBX';
 const supportedArchitectures = new Set(['arm64', 'x64']);
-
-export interface UpdateDialogOptions {
-  type: 'error' | 'info';
-  buttons?: string[];
-  defaultId?: number;
-  cancelId?: number;
-  title: string;
-  message: string;
-  detail?: string;
-}
+const manualUpdateMessage =
+  'This copy was built locally and cannot replace itself safely. Download the signed release once; automatic updates will work after that.';
 
 export interface UpdateTransport {
   setFeedUrl: (url: string) => void;
@@ -30,8 +29,9 @@ interface ApplicationUpdaterOptions {
   isPackaged: boolean;
   platform: NodeJS.Platform;
   transport: UpdateTransport;
-  showMessageBox: (options: UpdateDialogOptions) => Promise<{ response: number }>;
   requestInstall: () => void;
+  automaticUpdatesEnabled?: boolean;
+  openManualDownload?: () => void;
   onStateChange?: (state: ApplicationUpdateState) => void;
   logError?: (message: string, error: unknown) => void;
 }
@@ -42,34 +42,44 @@ export function buildUpdateFeedUrl(platform: NodeJS.Platform, architecture: stri
 
 export class ApplicationUpdater {
   readonly isSupported: boolean;
+  readonly supportsAutomaticUpdates: boolean;
 
   private readonly appVersion: string;
   private readonly transport: UpdateTransport;
-  private readonly showMessageBox: ApplicationUpdaterOptions['showMessageBox'];
   private readonly requestInstall: () => void;
+  private readonly openManualDownload: NonNullable<ApplicationUpdaterOptions['openManualDownload']>;
   private readonly onStateChange: NonNullable<ApplicationUpdaterOptions['onStateChange']>;
   private readonly logError: NonNullable<ApplicationUpdaterOptions['logError']>;
   private checkInterval: ReturnType<typeof setInterval> | undefined;
+  private feedbackResetTimer: ReturnType<typeof setTimeout> | undefined;
   private isChecking = false;
   private isManualCheck = false;
-  private installWhenDownloaded = false;
   private downloadedReleaseName: string | undefined;
-  private restartPrompt: Promise<void> | undefined;
   private state: ApplicationUpdateState = { status: 'idle' };
 
   constructor(options: ApplicationUpdaterOptions) {
     this.appVersion = options.appVersion;
     this.transport = options.transport;
-    this.showMessageBox = options.showMessageBox;
     this.requestInstall = options.requestInstall;
+    this.openManualDownload = options.openManualDownload ?? (() => undefined);
     this.onStateChange = options.onStateChange ?? (() => undefined);
     this.logError = options.logError ?? (() => undefined);
     this.isSupported =
       options.isPackaged &&
       options.platform === 'darwin' &&
       supportedArchitectures.has(options.architecture);
+    this.supportsAutomaticUpdates =
+      this.isSupported && (options.automaticUpdatesEnabled ?? true);
 
     if (!this.isSupported) {
+      return;
+    }
+
+    if (!this.supportsAutomaticUpdates) {
+      this.state = {
+        status: 'manual-update-required',
+        message: manualUpdateMessage
+      };
       return;
     }
 
@@ -83,7 +93,7 @@ export class ApplicationUpdater {
   }
 
   start(): void {
-    if (!this.isSupported || this.checkInterval) {
+    if (!this.supportsAutomaticUpdates || this.checkInterval) {
       return;
     }
 
@@ -93,12 +103,12 @@ export class ApplicationUpdater {
   }
 
   stop(): void {
-    if (!this.checkInterval) {
-      return;
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = undefined;
     }
 
-    clearInterval(this.checkInterval);
-    this.checkInterval = undefined;
+    this.clearFeedbackReset();
   }
 
   getState(): ApplicationUpdateState {
@@ -110,17 +120,18 @@ export class ApplicationUpdater {
       return this.state;
     }
 
+    if (this.state.status === 'manual-update-required') {
+      this.openManualDownload();
+      return this.state;
+    }
+
     if (this.downloadedReleaseName) {
       this.requestInstall();
       return this.state;
     }
 
-    if (this.state.status === 'available') {
-      this.installWhenDownloaded = true;
-      this.setState({
-        status: 'downloading',
-        releaseName: this.state.releaseName
-      });
+    if (this.state.status === 'error') {
+      this.checkForUpdates(true);
     }
 
     return this.state;
@@ -131,10 +142,12 @@ export class ApplicationUpdater {
       return;
     }
 
+    if (!this.supportsAutomaticUpdates) {
+      this.openManualDownload();
+      return;
+    }
+
     if (this.downloadedReleaseName) {
-      if (manual) {
-        void this.promptToRestart(this.downloadedReleaseName);
-      }
       return;
     }
 
@@ -145,6 +158,7 @@ export class ApplicationUpdater {
 
     this.isChecking = true;
     this.isManualCheck = manual;
+    this.clearFeedbackReset();
     this.setState({ status: 'checking' });
 
     try {
@@ -157,19 +171,8 @@ export class ApplicationUpdater {
 
   private handleUpdateAvailable(): void {
     this.setState({
-      status: 'available',
+      status: 'downloading',
       releaseName: 'A new Git Gud version'
-    });
-
-    if (!this.isManualCheck) {
-      return;
-    }
-
-    void this.showMessageBox({
-      type: 'info',
-      title: 'Git Gud Update',
-      message: 'A new Git Gud version is downloading.',
-      detail: 'You can keep working. Git Gud will let you know when the update is ready.'
     });
   }
 
@@ -179,83 +182,72 @@ export class ApplicationUpdater {
     }
 
     const showResult = this.isManualCheck;
-    this.installWhenDownloaded = false;
     this.finishCheck();
-    this.setState({ status: 'idle' });
 
     if (!showResult) {
+      this.setState({ status: 'idle' });
       return;
     }
 
-    void this.showMessageBox({
-      type: 'info',
-      title: 'Git Gud Update',
+    this.setState({
+      status: 'up-to-date',
       message: `Git Gud ${this.appVersion} is up to date.`
     });
+    this.scheduleFeedbackReset();
   }
 
   private handleUpdateDownloaded(releaseName: string): void {
     this.downloadedReleaseName = releaseName || 'A new Git Gud version';
-    const installImmediately = this.installWhenDownloaded;
-    const promptToRestart = this.isManualCheck && !installImmediately;
     this.finishCheck();
     this.setState({
       status: 'downloaded',
       releaseName: this.downloadedReleaseName
     });
-
-    if (installImmediately) {
-      this.requestInstall();
-    } else if (promptToRestart) {
-      void this.promptToRestart(this.downloadedReleaseName);
-    }
   }
 
   private handleError(error: Error): void {
-    const wasApplyingUpdate = this.installWhenDownloaded;
-    const showResult = this.isManualCheck || wasApplyingUpdate;
-    this.installWhenDownloaded = false;
+    const wasDownloading = this.state.status === 'downloading';
+    const showResult = this.isManualCheck || wasDownloading;
     this.finishCheck();
-    this.setState({ status: 'idle' });
     this.logError('Git Gud update check failed.', error);
 
-    if (!showResult) {
+    if (isCodeSignatureError(error)) {
+      this.setState({
+        status: 'manual-update-required',
+        message: manualUpdateMessage
+      });
       return;
     }
 
-    void this.showMessageBox({
-      type: 'error',
-      title: 'Git Gud Update',
-      message: wasApplyingUpdate
-        ? "Git Gud couldn't download the update."
-        : "Git Gud couldn't check for updates.",
-      detail: error.message
+    if (!showResult) {
+      this.setState({ status: 'idle' });
+      return;
+    }
+
+    this.setState({
+      status: 'error',
+      message: wasDownloading
+        ? "Couldn't download the update. Check your connection, then retry."
+        : "Couldn't check for updates. Check your connection, then retry."
     });
   }
 
-  private promptToRestart(releaseName: string): Promise<void> {
-    if (this.restartPrompt) {
-      return this.restartPrompt;
+  private scheduleFeedbackReset(): void {
+    this.clearFeedbackReset();
+    this.feedbackResetTimer = setTimeout(() => {
+      this.feedbackResetTimer = undefined;
+      this.setState({ status: 'idle' });
+    }, updateFeedbackDurationMs);
+    this.feedbackResetTimer.unref();
+  }
+
+  private clearFeedbackReset(): void {
+    if (!this.feedbackResetTimer) {
+      return;
     }
 
-    const prompt = this.showMessageBox({
-      type: 'info',
-      buttons: ['Restart Git Gud', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Git Gud Update',
-      message: `${releaseName} is ready to install.`,
-      detail: 'Restart Git Gud now to finish the update, or install it the next time you open the app.'
-    }).then(({ response }) => {
-      if (response === 0) {
-        this.requestInstall();
-      }
-    });
-
-    this.restartPrompt = prompt.finally(() => {
-      this.restartPrompt = undefined;
-    });
-    return this.restartPrompt;
+    clearTimeout(this.feedbackResetTimer);
+    this.feedbackResetTimer = undefined;
   }
 
   private finishCheck(): void {
@@ -279,4 +271,48 @@ export class ApplicationUpdater {
 
 function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
+}
+
+export function hasCompatibleMacOsUpdateSignature(executablePath: string): boolean {
+  const appBundlePath = findAncestorAppBundle(executablePath);
+
+  if (!appBundlePath) {
+    return false;
+  }
+
+  const result = spawnSync('/usr/bin/codesign', ['-d', '--verbose=4', appBundlePath], {
+    encoding: 'utf8'
+  });
+
+  if (result.error || result.status !== 0) {
+    return false;
+  }
+
+  return isCompatibleMacOsCodeSignature(`${result.stdout ?? ''}\n${result.stderr ?? ''}`);
+}
+
+export function isCompatibleMacOsCodeSignature(signatureDetails: string): boolean {
+  return (
+    signatureDetails.includes(`Identifier=${updaterBundleIdentifier}`) &&
+    signatureDetails.includes(`TeamIdentifier=${updaterDeveloperTeamId}`) &&
+    signatureDetails.includes('Authority=Developer ID Application:')
+  );
+}
+
+function findAncestorAppBundle(path: string): string | undefined {
+  let currentPath = path;
+
+  while (currentPath && currentPath !== dirname(currentPath)) {
+    if (basename(currentPath).endsWith('.app')) {
+      return currentPath;
+    }
+
+    currentPath = dirname(currentPath);
+  }
+
+  return undefined;
+}
+
+function isCodeSignatureError(error: Error): boolean {
+  return /code signature|code failed to satisfy specified code requirement/i.test(error.message);
 }

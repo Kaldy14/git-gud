@@ -3095,19 +3095,23 @@ export function WorkspaceShell(): ReactElement {
         )}
       </section>
 
-      {!gitHubWorkspaceView && !isStartTabActive ? (
-        <StatusBar
-          activeTab={activeTab}
-          repositoryOverview={repositoryQuery.data}
-          isRepositoryLoading={repositoryQuery.isLoading}
-          isRepositoryRefreshing={
-            !checkoutTransition &&
-            Boolean(repositoryQuery.data || graphQuery.data) &&
-            (repositoryQuery.isFetching || graphQuery.isFetching)
-          }
-          activeOperation={checkoutTransition ? undefined : visibleActiveOperation}
-        />
-      ) : null}
+      <StatusBar
+        activeTab={isStartTabActive ? undefined : activeTab}
+        repositoryOverview={isStartTabActive ? undefined : repositoryQuery.data}
+        isRepositoryLoading={!isStartTabActive && repositoryQuery.isLoading}
+        isRepositoryRefreshing={
+          !isStartTabActive &&
+          !gitHubWorkspaceView &&
+          !checkoutTransition &&
+          Boolean(repositoryQuery.data || graphQuery.data) &&
+          (repositoryQuery.isFetching || graphQuery.isFetching)
+        }
+        activeOperation={
+          isStartTabActive || gitHubWorkspaceView || checkoutTransition
+            ? undefined
+            : visibleActiveOperation
+        }
+      />
       {import.meta.env.DEV && !isReviewBenchmarkOpen ? (
         <button
           className="fixed bottom-10 right-3 z-40 flex h-8 items-center gap-1.5 rounded-md border border-[var(--select-border)] bg-[var(--bg-popover)] px-2.5 text-[10px] font-semibold text-[var(--accent-2)] shadow-lg shadow-black/50 hover:bg-[var(--bg-hover)]"

@@ -6,7 +6,6 @@ import {
   app,
   autoUpdater,
   BrowserWindow,
-  dialog,
   Menu,
   shell,
   type MenuItemConstructorOptions
@@ -19,7 +18,12 @@ import { cleanupExpiredPullRequestWorktrees } from './managedPullRequestWorktree
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { flushPendingWorkspaceWrites, getWorkspace } from './store';
 import { reviewGuideManager } from './reviewGuide';
-import { ApplicationUpdater, type UpdateTransport } from './updater';
+import {
+  ApplicationUpdater,
+  hasCompatibleMacOsUpdateSignature,
+  type UpdateTransport,
+  updateReleasePageUrl
+} from './updater';
 
 const quitCleanupTimeoutMs = 1500;
 const hardQuitTimeoutMs = 3000;
@@ -124,7 +128,8 @@ app.whenReady().then(() => {
   const applicationUpdater = createApplicationUpdater();
   installApplicationMenu(
     () => applicationUpdater.checkForUpdates(true),
-    applicationUpdater.isSupported
+    applicationUpdater.isSupported,
+    applicationUpdater.supportsAutomaticUpdates
   );
   const iconPath = resolveAppIconPath();
 
@@ -167,14 +172,18 @@ app.on('before-quit', (event) => {
   requestQuit();
 });
 
-function installApplicationMenu(checkForUpdates: () => void, updaterEnabled: boolean): void {
+function installApplicationMenu(
+  checkForUpdates: () => void,
+  updaterEnabled: boolean,
+  automaticUpdatesEnabled: boolean
+): void {
   const template: MenuItemConstructorOptions[] = [
     {
       label: appDisplayName,
       submenu: [
         { role: 'about' },
         {
-          label: 'Check for Updates…',
+          label: automaticUpdatesEnabled ? 'Check for Updates…' : 'Download Latest Release…',
           enabled: updaterEnabled,
           click: checkForUpdates
         },
@@ -226,8 +235,16 @@ function createApplicationUpdater(): ApplicationUpdater {
     isPackaged: app.isPackaged,
     platform: process.platform,
     transport,
-    showMessageBox: (options) => dialog.showMessageBox(options),
     requestInstall: requestUpdateInstall,
+    automaticUpdatesEnabled:
+      app.isPackaged &&
+      process.platform === 'darwin' &&
+      hasCompatibleMacOsUpdateSignature(process.execPath),
+    openManualDownload: () => {
+      void shell.openExternal(updateReleasePageUrl).catch((error: unknown) => {
+        console.error('Unable to open the Git Gud release page.', error);
+      });
+    },
     onStateChange: (state) => {
       for (const window of BrowserWindow.getAllWindows()) {
         window.webContents.send('updates:state-changed', state);
