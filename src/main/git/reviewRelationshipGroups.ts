@@ -23,7 +23,10 @@ export type ReviewRelationshipChunk = {
   graphqlQualifiedSymbols: string[];
   syntaxQualifiedSymbols: string[];
   syntaxIdentifiers: ReviewSyntaxIdentifier[];
+  changedSyntaxIdentifiers: ReviewSyntaxIdentifier[];
   identifiers: Set<string>;
+  changedIdentifiers: Set<string>;
+  storySignals: Set<string>;
   renameCandidates: ReviewRenameCandidate[];
   pathConcepts: Set<string>;
   generated: boolean;
@@ -169,6 +172,21 @@ function collectRelationshipMaps(chunks: ReviewRelationshipChunk[]): Relationshi
     occurrences: new Map(),
     displays: new Map()
   };
+  const graphqlOwnerChunkIds = new Map<string, Set<string>>();
+
+  for (const chunk of chunks) {
+    for (const qualifiedSymbol of chunk.graphqlQualifiedSymbols) {
+      const ownerKey = normalizeReviewSymbol(qualifiedSymbol.split('.')[0] ?? '');
+      const chunkIds = graphqlOwnerChunkIds.get(ownerKey) ?? new Set<string>();
+      chunkIds.add(chunk.id);
+      graphqlOwnerChunkIds.set(ownerKey, chunkIds);
+    }
+  }
+  const broadGraphqlOwnerKeys = new Set(
+    [...graphqlOwnerChunkIds]
+      .filter(([, chunkIds]) => chunkIds.size > 1)
+      .map(([ownerKey]) => ownerKey)
+  );
 
   for (const chunk of chunks) {
     addValues(maps.occurrences, maps.displays, chunk.identifiers, chunk.id);
@@ -182,7 +200,14 @@ function collectRelationshipMaps(chunks: ReviewRelationshipChunk[]): Relationshi
     );
 
     if (!chunk.generated) {
-      addValues(maps.graphql, maps.displays, chunk.graphqlSymbols, chunk.id);
+      addValues(
+        maps.graphql,
+        maps.displays,
+        chunk.graphqlSymbols.filter((symbol) =>
+          !broadGraphqlOwnerKeys.has(normalizeReviewSymbol(symbol))
+        ),
+        chunk.id
+      );
       addValues(maps.graphqlQualified, maps.displays, chunk.graphqlQualifiedSymbols, chunk.id);
       addValues(maps.sourceDeclarations, maps.displays, chunk.declarations, chunk.id);
       addNames(maps.sourceDeclarationNames, chunk.declarations);

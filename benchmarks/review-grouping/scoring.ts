@@ -162,10 +162,26 @@ export function identifyReviewUnits(
     [...chunkByMarkerId].map(([markerId, chunk]) => [chunk.id, markerId])
   );
 
+  for (const file of dataset.files) {
+    if (!file.previousPath || file.hunks.length !== 1) {
+      continue;
+    }
+
+    for (const chunk of plan.units.flatMap((unit) => unit.chunks)) {
+      if (chunk.path === file.previousPath && chunk.changeType === 'deleted') {
+        markerIdByPlanChunkId.set(chunk.id, file.hunks[0]!.id);
+      }
+    }
+  }
+
   return plan.units.map((unit) => ({
     title: unit.title,
-    chunks: unit.chunks.map((chunk) => markerIdByPlanChunkId.get(chunk.id)!)
-  }));
+    chunks: [...new Set(
+      unit.chunks
+        .map((chunk) => markerIdByPlanChunkId.get(chunk.id))
+        .filter((markerId): markerId is string => Boolean(markerId))
+    )]
+  })).filter((unit) => unit.chunks.length > 0);
 }
 
 export function identifyReviewChunks(
@@ -202,7 +218,15 @@ export function identifyReviewChunks(
     }
   }
 
-  const unidentified = chunks.filter((chunk) => !chunkIdByPlanChunkId.has(chunk.id));
+  const explicitMoveCompanionPaths = new Set(
+    dataset.files.flatMap((file) =>
+      file.previousPath && file.hunks.length === 1 ? [file.previousPath] : []
+    )
+  );
+  const unidentified = chunks.filter((chunk) =>
+    !chunkIdByPlanChunkId.has(chunk.id) &&
+    !(chunk.changeType === 'deleted' && explicitMoveCompanionPaths.has(chunk.path))
+  );
 
   if (unidentified.length) {
     throw new Error(

@@ -9,6 +9,7 @@ const ignoredIdentifiers = new Set([
   'catch',
   'class',
   'const',
+  'data',
   'continue',
   'default',
   'delete',
@@ -22,10 +23,15 @@ const ignoredIdentifiers = new Set([
   'for',
   'from',
   'function',
+  'field',
+  'fields',
   'if',
   'implements',
   'import',
   'interface',
+  'item',
+  'items',
+  'name',
   'int',
   'let',
   'new',
@@ -104,6 +110,38 @@ const graphqlWrapperWords = new Set([
   'type'
 ]);
 
+const ignoredStorySignalWords = new Set([
+  ...ignoredIdentifiers,
+  'array',
+  'async',
+  'boolean',
+  'class',
+  'const',
+  'date',
+  'error',
+  'event',
+  'export',
+  'false',
+  'function',
+  'id',
+  'import',
+  'interface',
+  'null',
+  'number',
+  'object',
+  'return',
+  'schema',
+  'state',
+  'status',
+  'string',
+  'true',
+  'type',
+  'undefined',
+  'value',
+  'values',
+  'void'
+]);
+
 export type ReviewRenameCandidate = {
   from: string;
   to: string;
@@ -122,6 +160,37 @@ export function extractReviewIdentifiers(value: string): Set<string> {
   }
 
   return identifiers;
+}
+
+export function extractReviewStorySignals(value: string): Set<string> {
+  const signals = new Set<string>();
+
+  for (const line of value.split('\n')) {
+    for (const match of line.matchAll(/\b[A-Za-z_$][\w$]*\b/g)) {
+      const words = reviewSymbolWords(match[0]).filter(isStorySignalWord);
+      addStorySignals(signals, words);
+    }
+
+    for (const match of line.matchAll(/[A-Za-z_$][\w$]*(?:[.:-][A-Za-z\d_$]+)+/g)) {
+      addDelimitedStorySignals(signals, match[0]);
+    }
+  }
+
+  return signals;
+}
+
+export function extractStructuredLiteralStorySignals(value: string): Set<string> {
+  const signals = new Set<string>();
+
+  for (const literal of value.matchAll(/["'`]([^"'`]*)["'`]/g)) {
+    for (const token of literal[1]?.matchAll(/[A-Za-z_$][\w$]*(?:[.:-][A-Za-z\d_$]+)*/g) ?? []) {
+      if (/[_:.-]/u.test(token[0])) {
+        addDelimitedStorySignals(signals, token[0]);
+      }
+    }
+  }
+
+  return signals;
 }
 
 export function extractReviewRenameCandidates(
@@ -260,4 +329,62 @@ export function isGeneratedReviewPath(filePath: string): boolean {
     /\/migrations\/meta\/\d+_snapshot\.json$/.test(normalizedPath) ||
     basename === 'schema.generated.graphql'
   );
+}
+
+function addStorySignals(signals: Set<string>, words: string[]): void {
+  const distinctWords = [...new Set(words)];
+
+  if (distinctWords.length === 1) {
+    const word = distinctWords[0]!;
+
+    if (word.length >= 5) {
+      signals.add(`word:${word}`);
+    }
+    return;
+  }
+
+  if (distinctWords.length >= 2) {
+    signals.add(`exact:${distinctWords.join(':')}`);
+    addStoryWordPairs(signals, distinctWords);
+
+    for (const word of distinctWords) {
+      if (word.length >= 5) {
+        signals.add(`word:${word}`);
+      }
+    }
+  }
+}
+
+function addDelimitedStorySignals(signals: Set<string>, value: string): void {
+  const words = reviewSymbolWords(value);
+  addStorySignals(signals, words.filter(isStorySignalWord));
+
+  if (
+    value.includes('-') &&
+    words.length >= 2 &&
+    words[0]?.length === 1 &&
+    words.slice(1).every(isStorySignalWord)
+  ) {
+    signals.add(`exact:${words.join(':')}`);
+    addStoryWordPairs(signals, words);
+  }
+}
+
+function addStoryWordPairs(signals: Set<string>, words: string[]): void {
+  for (let leftIndex = 0; leftIndex < words.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < words.length; rightIndex += 1) {
+      const left = words[leftIndex]!;
+      const right = words[rightIndex]!;
+
+      if (left !== right) {
+        signals.add(`pair:${[left, right].sort().join(':')}`);
+      }
+    }
+  }
+}
+
+function isStorySignalWord(word: string): boolean {
+  return word.length >= 2 &&
+    !/^\d+$/u.test(word) &&
+    !ignoredStorySignalWords.has(word);
 }

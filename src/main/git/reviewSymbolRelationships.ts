@@ -10,7 +10,7 @@ import {
   normalizeReviewSymbol,
   reviewSymbolWords
 } from './reviewRelationshipFacts';
-import type { ReviewSyntaxIdentifierRole } from './reviewStructure';
+import type { ReviewSyntaxIdentifier, ReviewSyntaxIdentifierRole } from './reviewStructure';
 
 export type { ReviewRelationshipChunk, ReviewRelationshipGroup } from './reviewRelationshipGroups';
 
@@ -38,8 +38,10 @@ type NormalizedChunkEvidence = {
   qualifiedCodeKeys: Set<string>;
   graphqlKeys: Set<string>;
   qualifiedGraphqlKeys: Set<string>;
-  identifierKeys: Set<string>;
+  changedIdentifierKeys: Set<string>;
+  storyWords: Set<string>;
   syntaxRoles: Map<string, ReviewSyntaxIdentifierRole>;
+  changedSyntaxRoles: Map<string, ReviewSyntaxIdentifierRole>;
   renames: Array<{ fromKey: string; toKey: string }>;
 };
 
@@ -84,6 +86,7 @@ function selectBestGroup(
       right.group.symbol.length - left.group.symbol.length ||
       left.group.title.localeCompare(right.group.title)
     );
+
   let best = candidates[0];
 
   if (best && chunk.category !== 'source') {
@@ -107,8 +110,16 @@ function selectBestGroup(
   if (best?.role === 'anchor' && best.group.renameKeys.size === 0) {
     const broaderReference = candidates
       .filter((candidate) =>
-        candidate.role === 'usage' &&
-        candidate.evidenceRank >= 2 &&
+        (
+          candidate.group.renameKeys.size > 0 ||
+          (
+            candidate.role === 'usage' &&
+            (
+              candidate.evidenceRank >= 3 ||
+              (chunk.syntaxIdentifiers.length === 0 && candidate.evidenceRank >= 2)
+            )
+          )
+        ) &&
         candidate.group.relatedChunkCount > best!.group.relatedChunkCount
       )
       .sort((left, right) =>
@@ -169,8 +180,13 @@ function scoreChunkForGroup(
   const graphql = intersects(evidence.graphqlKeys, group.aliasKeys);
   const exactIdentifierKeys = isGraphqlReviewPath(chunk.path)
     ? new Set<string>()
-    : intersection(evidence.identifierKeys, group.aliasKeys);
-  const syntaxRole = strongestMatchingSyntaxRole(evidence.syntaxRoles, group.aliasKeys);
+    : intersection(evidence.changedIdentifierKeys, group.aliasKeys);
+  const changedSyntaxRole = strongestMatchingSyntaxRole(
+    evidence.changedSyntaxRoles,
+    group.aliasKeys
+  );
+  const syntaxRole = changedSyntaxRole ??
+    strongestMatchingSyntaxRole(evidence.syntaxRoles, group.aliasKeys);
   let score = 0;
   let evidenceRank = 0;
   let role: ReviewGroupSelection['role'] = 'usage';
@@ -208,13 +224,32 @@ function scoreChunkForGroup(
 
   if (syntaxRole) {
     const isDefinition = syntaxRole === 'declaration' || syntaxRole === 'member';
-    const roleScore = syntaxRoleScore(syntaxRole);
-    score = Math.max(score, chunk.generated ? Math.min(roleScore, 92) : roleScore);
-    evidenceRank = Math.max(evidenceRank, isDefinition ? 4 : syntaxRole === 'import' ? 2 : 3);
-    role = !chunk.generated && isDefinition ? 'anchor' : 'usage';
-    relationship = chunk.generated
-      ? `Generated from ${group.symbol}`
-      : syntaxRoleRelationship(syntaxRole, group.symbol);
+    const stableSyntaxMatchesChangedStory =
+      Boolean(changedSyntaxRole) ||
+      intersects(evidence.storyWords, new Set(reviewSymbolWords(group.symbol)));
+
+    if (stableSyntaxMatchesChangedStory) {
+      const roleScore = changedSyntaxRole
+        ? syntaxRoleScore(syntaxRole)
+        : Math.min(58, syntaxRoleScore(syntaxRole));
+      score = Math.max(score, chunk.generated ? Math.min(roleScore, 92) : roleScore);
+      evidenceRank = Math.max(
+        evidenceRank,
+        changedSyntaxRole
+          ? isDefinition
+            ? 4
+            : syntaxRole === 'import'
+              ? 2
+              : 3
+          : group.renameKeys.size > 0
+            ? 2
+            : 1
+      );
+      role = !chunk.generated && isDefinition ? 'anchor' : 'usage';
+      relationship = chunk.generated
+        ? `Generated from ${group.symbol}`
+        : syntaxRoleRelationship(syntaxRole, group.symbol);
+    }
   }
 
   if (qualifiedGraphql) {
@@ -302,9 +337,44 @@ function strongestMatchingSyntaxRole(
 }
 
 function normalizeChunkEvidence(chunk: ReviewRelationshipChunk): NormalizedChunkEvidence {
+  const syntaxRoles = syntaxRolesByKey(chunk.syntaxIdentifiers);
+  const changedSyntaxRoles = syntaxRolesByKey(chunk.changedSyntaxIdentifiers);
+
+  return {
+    declarationKeys: normalizedValues(chunk.declarations),
+    enclosingKeys: normalizedValues(chunk.enclosingSymbols),
+    qualifiedCodeKeys: normalizedValues(chunk.syntaxQualifiedSymbols),
+    graphqlKeys: normalizedValues(chunk.graphqlSymbols),
+    qualifiedGraphqlKeys: normalizedValues(chunk.graphqlQualifiedSymbols),
+    changedIdentifierKeys: normalizedValues(chunk.changedIdentifiers),
+    storyWords: storySignalWords(chunk.storySignals),
+    syntaxRoles,
+    changedSyntaxRoles,
+    renames: chunk.renameCandidates.map((rename) => ({
+      fromKey: normalizeReviewSymbol(rename.from),
+      toKey: normalizeReviewSymbol(rename.to)
+    }))
+  };
+}
+
+function storySignalWords(signals: Iterable<string>): Set<string> {
+  const words = new Set<string>();
+
+  for (const signal of signals) {
+    for (const word of signal.slice(signal.indexOf(':') + 1).split(':')) {
+      words.add(word);
+    }
+  }
+
+  return words;
+}
+
+function syntaxRolesByKey(
+  identifiers: readonly ReviewSyntaxIdentifier[]
+): Map<string, ReviewSyntaxIdentifierRole> {
   const syntaxRoles = new Map<string, ReviewSyntaxIdentifierRole>();
 
-  for (const identifier of chunk.syntaxIdentifiers) {
+  for (const identifier of identifiers) {
     for (const value of [identifier.qualifiedName, identifier.name]) {
       const key = normalizeReviewSymbol(value ?? '');
       const current = syntaxRoles.get(key);
@@ -315,19 +385,7 @@ function normalizeChunkEvidence(chunk: ReviewRelationshipChunk): NormalizedChunk
     }
   }
 
-  return {
-    declarationKeys: normalizedValues(chunk.declarations),
-    enclosingKeys: normalizedValues(chunk.enclosingSymbols),
-    qualifiedCodeKeys: normalizedValues(chunk.syntaxQualifiedSymbols),
-    graphqlKeys: normalizedValues(chunk.graphqlSymbols),
-    qualifiedGraphqlKeys: normalizedValues(chunk.graphqlQualifiedSymbols),
-    identifierKeys: normalizedValues(chunk.identifiers),
-    syntaxRoles,
-    renames: chunk.renameCandidates.map((rename) => ({
-      fromKey: normalizeReviewSymbol(rename.from),
-      toKey: normalizeReviewSymbol(rename.to)
-    }))
-  };
+  return syntaxRoles;
 }
 
 function syntaxRoleRank(role: ReviewSyntaxIdentifierRole): number {

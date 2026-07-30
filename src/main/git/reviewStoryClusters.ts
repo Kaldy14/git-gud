@@ -9,7 +9,10 @@ export type ReviewStoryChunk = {
   graphqlSymbols: string[];
   syntaxQualifiedSymbols: string[];
   syntaxIdentifiers: ReviewSyntaxIdentifier[];
+  changedSyntaxIdentifiers: ReviewSyntaxIdentifier[];
   identifiers: Set<string>;
+  changedIdentifiers: Set<string>;
+  storySignals: Set<string>;
   structuralFingerprints: string[];
   pathConcepts: Set<string>;
   generated: boolean;
@@ -35,9 +38,13 @@ type GroupFacts = {
   paths: Set<string>;
   concepts: Set<string>;
   identifiers: Set<string>;
+  storySignalCounts: Map<string, number>;
+  storyChunkCount: number;
   structuralFingerprints: Set<string>;
   symbols: Set<string>;
+  symbolWords: Set<string>;
   broadAcrossFeatures: boolean;
+  proseOnly: boolean;
 };
 
 type StoryEdge = {
@@ -50,7 +57,9 @@ const ignoredStoryWords = new Set([
   'data',
   'admin',
   'authenticated',
+  'client',
   'common',
+  'config',
   'core',
   'description',
   'error',
@@ -178,12 +187,60 @@ function collectStoryEdges(groups: GroupFacts[]): StoryEdge[] {
       const sharedIdentifiers = intersectionSize(left.identifiers, right.identifiers);
       const sharedFingerprints = intersectionSize(left.structuralFingerprints, right.structuralFingerprints);
       const crossReferences = crossReferenceCount(left, right);
-      const bothFileFallbacks = left.group.kind === 'file' && right.group.kind === 'file';
+      const sharedStorySignals = collectSharedStorySignals(left, right);
+      const distinctiveSharedWords = sharedStorySignals.words.filter((word) =>
+        !left.concepts.has(word) || !right.concepts.has(word)
+      );
+      const bothRelationships =
+        left.group.kind === 'relationship' &&
+        right.group.kind === 'relationship';
+      const relationshipSignalMatch = !bothRelationships ||
+        sharedStorySignals.signals.some((signal) => {
+          const signalWords = storySignalWords(signal);
+          const commonSymbolWords = intersection(left.symbolWords, right.symbolWords);
+
+          return signalWords.size > 1 && intersects(signalWords, new Set([
+            ...left.symbolWords,
+            ...right.symbolWords
+          ])) && (
+            [...signalWords].some((word) => !commonSymbolWords.has(word)) ||
+            [...signalWords].some((word) =>
+              !left.concepts.has(word) || !right.concepts.has(word)
+            )
+          );
+        });
+      const semanticSignalsCanMerge =
+        !(left.proseOnly && right.proseOnly) &&
+        relationshipSignalMatch &&
+        (
+          sharedFingerprints === 0 ||
+          sharedConcepts > 0 ||
+          crossReferences > 0
+        );
+      const focusedSameFiles =
+        sharedPaths >= 2 &&
+        left.paths.size === sharedPaths &&
+        right.paths.size === sharedPaths &&
+        sharedPaths <= 2 &&
+        sharedConcepts >= 2;
       const shouldMerge =
-        (sharedPaths >= 2 && (crossReferences > 0 || sharedConcepts >= 2)) ||
-        (crossReferences > 0 && (sharedPaths > 0 || sharedConcepts >= 2)) ||
-        (sharedFingerprints > 0 && (sharedPaths > 0 || sharedConcepts > 0 || crossReferences > 0)) ||
-        (bothFileFallbacks && sharedPaths > 0);
+        (semanticSignalsCanMerge && (
+          sharedStorySignals.exact > 0 ||
+          sharedStorySignals.pairs > 0 ||
+          distinctiveSharedWords.length >= 2 ||
+          (
+            distinctiveSharedWords.length > 0 &&
+            (
+              sharedConcepts > 0 ||
+              distinctiveSharedWords.some((word) =>
+                left.symbolWords.has(word) || right.symbolWords.has(word)
+              )
+            )
+          )
+        )) ||
+        focusedSameFiles ||
+        (crossReferences > 0 && (sharedPaths > 0 || sharedConcepts > 0)) ||
+        (sharedFingerprints > 0 && (sharedPaths > 0 || sharedConcepts > 0 || crossReferences > 0));
 
       if (!shouldMerge) {
         continue;
@@ -192,7 +249,15 @@ function collectStoryEdges(groups: GroupFacts[]): StoryEdge[] {
       edges.push({
         left: left.group.key,
         right: right.group.key,
-        score: sharedPaths * 40 + crossReferences * 30 + sharedFingerprints * 25 + sharedIdentifiers * 5 + sharedConcepts * 3
+        score:
+          sharedStorySignals.exact * 70 +
+          sharedStorySignals.pairs * 50 +
+          distinctiveSharedWords.length * 20 +
+          sharedFingerprints * 25 +
+          crossReferences * 20 +
+          sharedPaths * 8 +
+          sharedIdentifiers * 5 +
+          sharedConcepts * 3
       });
     }
   }
@@ -212,23 +277,28 @@ function collectGroupFacts(group: ReviewStoryGroup): GroupFacts {
     chunk.changeType !== 'deleted'
   );
   const evidenceChunks = relationshipChunks.length > 0 ? relationshipChunks : [];
+  const storyChunks = group.chunks.filter((chunk) => !chunk.generated);
   const identifiers = normalizedValues(evidenceChunks.flatMap((chunk) => [
     ...chunk.declarations,
     ...chunk.enclosingSymbols,
     ...chunk.graphqlSymbols,
     ...chunk.syntaxQualifiedSymbols,
-    ...chunk.identifiers
+    ...chunk.changedIdentifiers
   ]));
 
   for (const word of ignoredStoryWords) {
     identifiers.delete(normalizeReviewSymbol(word));
   }
 
-  const paths = new Set(evidenceChunks.map((chunk) => chunk.path));
+  const storyPaths = new Set(storyChunks.map((chunk) => chunk.path));
   const conceptPathCounts = new Map<string, Set<string>>();
 
-  for (const chunk of evidenceChunks) {
+  for (const chunk of storyChunks) {
     for (const concept of chunk.pathConcepts) {
+      if (ignoredStoryWords.has(concept)) {
+        continue;
+      }
+
       const conceptPaths = conceptPathCounts.get(concept) ?? new Set<string>();
       conceptPaths.add(chunk.path);
       conceptPathCounts.set(concept, conceptPaths);
@@ -237,21 +307,94 @@ function collectGroupFacts(group: ReviewStoryGroup): GroupFacts {
 
   const dominantConceptCoverage = Math.max(
     0,
-    ...[...conceptPathCounts.values()].map((conceptPaths) => conceptPaths.size / Math.max(paths.size, 1))
+    ...[...conceptPathCounts.values()].map((conceptPaths) => conceptPaths.size / Math.max(storyPaths.size, 1))
   );
+  const storySignalCounts = new Map<string, number>();
+
+  for (const chunk of storyChunks) {
+    for (const signal of chunk.storySignals) {
+      storySignalCounts.set(signal, (storySignalCounts.get(signal) ?? 0) + 1);
+    }
+  }
 
   return {
     group,
-    paths,
-    concepts: new Set(evidenceChunks.flatMap((chunk) => [...chunk.pathConcepts])),
+    paths: storyPaths,
+    concepts: new Set(
+      storyChunks.flatMap((chunk) =>
+        [...chunk.pathConcepts].filter((concept) => !ignoredStoryWords.has(concept))
+      )
+    ),
     identifiers,
+    storySignalCounts,
+    storyChunkCount: storyChunks.length,
     structuralFingerprints: new Set(evidenceChunks.flatMap((chunk) => chunk.structuralFingerprints)),
     symbols: normalizedValues(group.symbols),
+    symbolWords: new Set(group.symbols.flatMap(reviewSymbolWords)),
     broadAcrossFeatures:
       group.kind === 'relationship' &&
-      paths.size >= 12 &&
-      dominantConceptCoverage < 0.7
+      storyPaths.size >= 12 &&
+      dominantConceptCoverage < 0.7,
+    proseOnly:
+      storyChunks.length > 0 &&
+      storyChunks.every((chunk) => isProseReviewPath(chunk.path))
   };
+}
+
+function collectSharedStorySignals(
+  left: GroupFacts,
+  right: GroupFacts
+): {
+  exact: number;
+  pairs: number;
+  words: string[];
+  signals: string[];
+} {
+  let exact = 0;
+  let pairs = 0;
+  const words: string[] = [];
+  const signals: string[] = [];
+
+  for (const [signal, leftCount] of left.storySignalCounts) {
+    const rightCount = right.storySignalCounts.get(signal);
+
+    if (
+      !rightCount ||
+      !hasStorySignalCoverage(leftCount, left.storyChunkCount) ||
+      !hasStorySignalCoverage(rightCount, right.storyChunkCount)
+    ) {
+      continue;
+    }
+
+    signals.push(signal);
+
+    if (signal.startsWith('exact:')) {
+      exact += 1;
+    } else if (signal.startsWith('pair:')) {
+      pairs += 1;
+    } else if (signal.startsWith('word:')) {
+      words.push(signal.slice('word:'.length));
+    }
+  }
+
+  return { exact, pairs, words, signals };
+}
+
+function hasStorySignalCoverage(count: number, chunkCount: number): boolean {
+  return chunkCount > 0 && count / chunkCount >= 0.5;
+}
+
+function isProseReviewPath(filePath: string): boolean {
+  return /\.(?:adoc|md|mdx|rst|txt)$/iu.test(filePath);
+}
+
+function storySignalWords(signal: string): Set<string> {
+  return new Set(signal.slice(signal.indexOf(':') + 1).split(':'));
+}
+
+function intersection(left: ReadonlySet<string>, right: ReadonlySet<string>): Set<string> {
+  const [smaller, larger] = left.size <= right.size ? [left, right] : [right, left];
+  return new Set([...smaller].filter((value) => larger.has(value)));
 }
 
 function crossReferenceCount(left: GroupFacts, right: GroupFacts): number {

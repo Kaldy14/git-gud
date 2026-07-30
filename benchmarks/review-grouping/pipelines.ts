@@ -42,7 +42,7 @@ async function runCoreFullContext(
   dataset: ReviewGroupingDataset,
   fixture: ReviewBenchmarkFixture
 ): Promise<GitReviewPlan> {
-  const datasetFileByPath = new Map(dataset.files.map((file) => [file.path, file]));
+  const datasetFileByPath = datasetFilesByCommitPath(dataset);
   const patches = await Promise.all(fixture.commit.files.map(async (file): Promise<ReviewPatchInput> => {
     const datasetFile = datasetFileByPath.get(file.path);
     const diff = fixture.diffsByPath.get(file.path);
@@ -57,7 +57,7 @@ async function runCoreFullContext(
       status: file.status,
       source: 'commit',
       diff,
-      fileContext: fileContext(datasetFile)
+      fileContext: fileContext(datasetFile, file.path)
     });
   }));
 
@@ -72,7 +72,7 @@ async function runGitHubBuilder(
   dataset: ReviewGroupingDataset,
   fixture: ReviewBenchmarkFixture
 ): Promise<GitReviewPlan> {
-  const datasetFileByPath = new Map(dataset.files.map((file) => [file.path, file]));
+  const datasetFileByPath = datasetFilesByCommitPath(dataset);
   const files = fixture.commit.files.map((file): GitHubPullRequestFile => {
     const diff = fixture.diffsByPath.get(file.path);
 
@@ -104,7 +104,7 @@ async function runGitHubBuilder(
     return {
       path: file.path,
       originalPath: file.originalPath,
-      ...fileContext(datasetFile)
+      ...fileContext(datasetFile, file.path)
     };
   });
 
@@ -117,14 +117,30 @@ async function runGitHubBuilder(
   );
 }
 
-function fileContext(file: ReviewBenchmarkFile): {
+function fileContext(file: ReviewBenchmarkFile, commitPath = file.path): {
   oldContents: string;
   newContents: string;
 } {
+  if (file.previousPath && commitPath === file.previousPath) {
+    return {
+      oldContents: file.before ?? '',
+      newContents: ''
+    };
+  }
+
   return {
     oldContents: file.before ?? '',
     newContents: file.after ?? ''
   };
+}
+
+function datasetFilesByCommitPath(
+  dataset: ReviewGroupingDataset
+): Map<string, ReviewBenchmarkFile> {
+  return new Map(dataset.files.flatMap((file) => [
+    [file.path, file] as const,
+    ...(file.previousPath ? [[file.previousPath, file] as const] : [])
+  ]));
 }
 
 function gitHubStatus(status: GitStatusCode): GitHubPullRequestFile['status'] {

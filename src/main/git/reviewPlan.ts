@@ -34,7 +34,11 @@ import {
   extractReviewIdentifiers,
   extractReviewPathConcepts,
   extractReviewRenameCandidates,
+  extractReviewStorySignals,
+  extractStructuredLiteralStorySignals,
   isGeneratedReviewPath,
+  normalizeReviewSymbol,
+  reviewSymbolWords,
   type ReviewRenameCandidate
 } from './reviewRelationshipFacts';
 import {
@@ -67,8 +71,11 @@ type ParsedReviewChunk = Omit<GitReviewChunk, 'id' | 'role' | 'relationship' | '
   graphqlQualifiedSymbols: string[];
   syntaxQualifiedSymbols: string[];
   syntaxIdentifiers: ReviewSyntaxIdentifier[];
+  changedSyntaxIdentifiers: ReviewSyntaxIdentifier[];
   identifiers: Set<string>;
+  changedIdentifiers: Set<string>;
   renameCandidates: ReviewRenameCandidate[];
+  storySignals: Set<string>;
   structuralFingerprints: string[];
   pathConcepts: Set<string>;
   generated: boolean;
@@ -190,6 +197,12 @@ function parseReviewPatch(input: ReviewPatchInput): ParsedReviewChunk[] {
       ...(syntaxHunk?.oldIdentifiers ?? []),
       ...(syntaxHunk?.newIdentifiers ?? [])
     ];
+    const changedSyntaxFacts = trustedSyntax
+      ? changedReviewSyntaxIdentifiers(
+          syntaxHunk?.oldIdentifiers ?? [],
+          syntaxHunk?.newIdentifiers ?? []
+        )
+      : [];
     const declarations = trustedSyntax
       ? [...new Set(syntaxFacts
           .filter((fact) => fact.role === 'declaration')
@@ -222,16 +235,60 @@ function parseReviewPatch(input: ReviewPatchInput): ParsedReviewChunk[] {
     const graphqlFacts = isGraphqlReviewPath(input.path)
       ? extractGraphqlReviewFacts(bodyLines, functionContext, graphqlOwnerContext)
       : { symbols: [], qualifiedSymbols: [] };
-    const addedIdentifiers = trustedSyntax
+    const newIdentifiers = trustedSyntax
       ? new Set(syntaxHunk!.newIdentifiers.map((fact) => fact.name))
       : extractReviewIdentifiers(addedText);
-    const deletedIdentifiers = trustedSyntax
+    const oldIdentifiers = trustedSyntax
       ? new Set(syntaxHunk!.oldIdentifiers.map((fact) => fact.name))
       : extractReviewIdentifiers(deletedText);
-    const identifiers = new Set([...addedIdentifiers, ...deletedIdentifiers]);
+    const addedIdentifiers = newIdentifiers;
+    const deletedIdentifiers = oldIdentifiers;
+    const identifiers = new Set([...newIdentifiers, ...oldIdentifiers]);
+    const changedIdentifiers = new Set([
+      ...setDifference(newIdentifiers, oldIdentifiers),
+      ...setDifference(oldIdentifiers, newIdentifiers)
+    ]);
     const generated = isGeneratedReviewPath(input.path);
     const patch = ensureTrailingNewline([...fileHeader, ...hunkLines].join(''));
     const boundaryContext = extractBoundaryContext(bodyLines);
+    const localDeclarationKeys = new Set(
+      changedSyntaxFacts
+        .filter((fact) =>
+          fact.role === 'declaration' &&
+          fact.qualifiedName?.includes('.')
+        )
+        .map((fact) => normalizeReviewSymbol(fact.name))
+    );
+    const storySignalText = trustedSyntax
+      ? [
+          ...changedSyntaxFacts
+            .filter((fact) => !localDeclarationKeys.has(normalizeReviewSymbol(fact.name)))
+            .map((fact) => fact.qualifiedName ?? fact.name),
+          ...syntaxFacts
+            .filter((fact) => fact.role === 'call' && fact.qualifiedName?.includes('.'))
+            .map((fact) => fact.qualifiedName!),
+          ...syntaxFacts
+            .filter((fact) =>
+              !localDeclarationKeys.has(normalizeReviewSymbol(fact.name)) &&
+              reviewSymbolWords(fact.qualifiedName ?? fact.name).length >= 2
+            )
+            .map((fact) => fact.qualifiedName ?? fact.name),
+          ...declarations.filter((declaration) =>
+            !localDeclarationKeys.has(normalizeReviewSymbol(declaration))
+          ),
+          ...enclosingSymbols,
+          ...graphqlFacts.symbols,
+          ...graphqlFacts.qualifiedSymbols
+        ].join('\n')
+      : changedText;
+
+    const storySignals = extractReviewStorySignals(storySignalText);
+
+    if (trustedSyntax) {
+      for (const signal of extractStructuredLiteralStorySignals(changedText)) {
+        storySignals.add(signal);
+      }
+    }
 
     const baseId = chunkId(input.path, input.source, functionContext ?? '', changedText, boundaryContext);
 
@@ -255,10 +312,13 @@ function parseReviewPatch(input: ReviewPatchInput): ParsedReviewChunk[] {
       graphqlQualifiedSymbols: graphqlFacts.qualifiedSymbols,
       syntaxQualifiedSymbols,
       syntaxIdentifiers,
+      changedSyntaxIdentifiers: changedSyntaxFacts,
       identifiers,
+      changedIdentifiers,
       renameCandidates: generated
         ? []
         : extractReviewRenameCandidates(deletedIdentifiers, addedIdentifiers),
+      storySignals: generated ? new Set() : storySignals,
       structuralFingerprints: trustedSyntax ? syntaxHunk!.structuralFingerprints : [],
       pathConcepts: extractReviewPathConcepts(input.path),
       generated,
@@ -302,8 +362,11 @@ function createOmittedChunk(input: ReviewPatchInput): ParsedReviewChunk {
     graphqlQualifiedSymbols: [],
     syntaxQualifiedSymbols: [],
     syntaxIdentifiers: [],
+    changedSyntaxIdentifiers: [],
     identifiers: new Set(),
+    changedIdentifiers: new Set(),
     renameCandidates: [],
+    storySignals: new Set(),
     structuralFingerprints: [],
     pathConcepts: extractReviewPathConcepts(input.path),
     generated: isGeneratedReviewPath(input.path)
@@ -404,7 +467,13 @@ function createStoryGroup(
       : metadata?.symbol
         ? 'relationship'
         : 'file',
-    symbols: [metadata?.symbol, ...splitRenameTitle(metadata?.title)].filter((value): value is string => Boolean(value)),
+    symbols: [
+      metadata?.symbol,
+      ...splitRenameTitle(metadata?.title),
+      ...(metadata?.symbol
+        ? chunks.flatMap((chunk) => chunk.syntaxQualifiedSymbols)
+        : [])
+    ].filter((value): value is string => Boolean(value)),
     chunks
   };
 }
@@ -630,6 +699,32 @@ function fallbackChunkRelationship(metadata: ReviewGroupMetadata | undefined): s
     : metadata?.functionContext
       ? 'Same surrounding code'
       : 'Same changed file';
+}
+
+function changedReviewSyntaxIdentifiers(
+  oldIdentifiers: readonly ReviewSyntaxIdentifier[],
+  newIdentifiers: readonly ReviewSyntaxIdentifier[]
+): ReviewSyntaxIdentifier[] {
+  const oldKeys = new Set(oldIdentifiers.map(reviewSyntaxIdentifierKey));
+  const newKeys = new Set(newIdentifiers.map(reviewSyntaxIdentifierKey));
+
+  return [
+    ...oldIdentifiers.filter((identifier) => !newKeys.has(reviewSyntaxIdentifierKey(identifier))),
+    ...newIdentifiers.filter((identifier) => !oldKeys.has(reviewSyntaxIdentifierKey(identifier)))
+  ];
+}
+
+function reviewSyntaxIdentifierKey(identifier: ReviewSyntaxIdentifier): string {
+  return [
+    identifier.role,
+    identifier.name,
+    identifier.scope ?? '',
+    identifier.qualifiedName ?? ''
+  ].join('\0');
+}
+
+function setDifference(left: ReadonlySet<string>, right: ReadonlySet<string>): Set<string> {
+  return new Set([...left].filter((value) => !right.has(value)));
 }
 
 function changedLineText(
