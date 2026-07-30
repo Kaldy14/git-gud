@@ -11,6 +11,7 @@ describe('app settings', () => {
         date: false,
         sha: false
       },
+      confirmForcePush: true,
       remoteAvatars: true
     });
   });
@@ -41,6 +42,11 @@ describe('app settings', () => {
   it('restores Gravatar for legacy settings while preserving an explicit opt-out', () => {
     expect(normalizeAppSettings({ graphPageSize: 1500 }).remoteAvatars).toBe(true);
     expect(normalizeAppSettings({ remoteAvatars: false }).remoteAvatars).toBe(false);
+  });
+
+  it('requires force-push confirmation by default and preserves an explicit opt-out', () => {
+    expect(normalizeAppSettings({ graphPageSize: 1500 }).confirmForcePush).toBe(true);
+    expect(normalizeAppSettings({ confirmForcePush: false }).confirmForcePush).toBe(false);
   });
 
   it('keeps legacy author and date preferences hidden', () => {

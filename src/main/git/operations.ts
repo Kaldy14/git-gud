@@ -114,11 +114,12 @@ export async function pullRepository(
 
 export async function pushRepository(tab: OperationTab, input: GitPushInput): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const args = ['push'];
 
-  if (input.forceWithLease) {
-    args.push('--force-with-lease');
+  if (input.target) {
+    return pushRepositoryToExactTarget(tab, input, env);
   }
+
+  const args = ['push'];
 
   if (input.branch) {
     const branchName = normalizeRequiredName(input.branch, 'Branch name');
@@ -158,7 +159,7 @@ export async function pushRepository(tab: OperationTab, input: GitPushInput): Pr
       tab,
       env,
       'push',
-      `${input.forceWithLease ? 'Push with lease' : 'Push'} ${branchName} to ${remote.name}`
+      `Push ${branchName} to ${remote.name}`
     );
   }
 
@@ -180,7 +181,60 @@ export async function pushRepository(tab: OperationTab, input: GitPushInput): Pr
     cancellable: true,
     timeoutMs: NETWORK_GIT_TIMEOUT_MS
   });
-  return createOperationResult(tab, env, 'push', input.forceWithLease ? 'Push with lease' : 'Push');
+  return createOperationResult(tab, env, 'push', 'Push');
+}
+
+async function pushRepositoryToExactTarget(
+  tab: OperationTab,
+  input: Extract<GitPushInput, { expectedLocalSha: string }>,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<GitOperationResult> {
+  const branchName = normalizeRequiredName(input.branch, 'Branch name');
+  const remoteName = normalizeRequiredName(input.target.remote, 'Remote name');
+  const remoteBranchName = normalizeRequiredName(input.target.branch, 'Remote branch name');
+  const expectedLocalSha = normalizeExpectedCommitSha(input.expectedLocalSha, 'Expected local SHA');
+  const expectedRemoteSha = input.forceWithLease
+    ? normalizeExpectedCommitSha(input.target.expectedSha, 'Expected remote SHA')
+    : undefined;
+
+  await assertValidBranchName(tab.path, branchName, env);
+  await assertValidBranchName(tab.path, remoteBranchName, env);
+  await assertRemoteExists(tab.path, remoteName, env);
+
+  const actualLocalSha = await revParse(tab.path, `refs/heads/${branchName}^{commit}`, env);
+
+  if (actualLocalSha.toLowerCase() !== expectedLocalSha.toLowerCase()) {
+    throw new Error(
+      `${branchName} changed after force push was offered. Review the updated branch and try again.`
+    );
+  }
+
+  const remoteRef = `refs/heads/${remoteBranchName}`;
+  const args = ['push'];
+
+  if (expectedRemoteSha) {
+    args.push(`--force-with-lease=${remoteRef}:${expectedRemoteSha}`);
+  }
+
+  if (input.target.setUpstream) {
+    args.push('-u');
+  }
+
+  args.push('--', remoteName, `refs/heads/${branchName}:${remoteRef}`);
+  await gitExecutor.run(args, {
+    cwd: tab.path,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
+
+  return createOperationResult(
+    tab,
+    env,
+    'push',
+    `${input.forceWithLease ? 'Push with lease' : 'Push'} ${branchName} to ${remoteName}`
+  );
 }
 
 export async function createBranch(tab: OperationTab, input: GitCreateBranchInput): Promise<GitOperationResult> {
@@ -1506,6 +1560,16 @@ function normalizeRequiredName(value: string, label: string): string {
 
   if (!normalized) {
     throw new Error(`${label} is required.`);
+  }
+
+  return normalized;
+}
+
+function normalizeExpectedCommitSha(value: string, label: string): string {
+  const normalized = normalizeRequiredName(value, label);
+
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(normalized)) {
+    throw new Error(`${label} is invalid.`);
   }
 
   return normalized;

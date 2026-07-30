@@ -605,6 +605,112 @@ describe('git operations', () => {
     }
   });
 
+  it('force pushes rewritten current-branch history with a lease after a non-fast-forward rejection', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'local.txt', 'local rewrite\n', 'local rewrite');
+      const localHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(remoteWriterPath, 'remote.txt', 'remote work\n', 'remote work');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      const remoteHead = (await git(remoteWriterPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['fetch', 'origin']);
+
+      await expect(
+        pushRepository(tab, { forceWithLease: false })
+      ).rejects.toThrow(/fetch first|non-fast-forward/i);
+
+      const result = await pushRepository(tab, {
+        forceWithLease: true,
+        branch: 'main',
+        expectedLocalSha: localHead,
+        target: {
+          remote: 'origin',
+          branch: 'main',
+          expectedSha: remoteHead,
+          setUpstream: false
+        }
+      });
+
+      expect((await git(repoPath, ['ls-remote', 'origin', 'refs/heads/main'])).stdout).toContain(localHead);
+      expect(result.operation?.label).toBe('Push with lease main to origin');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a force push when the local branch changed after confirmation was offered', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'local.txt', 'first local tip\n', 'first local tip');
+      const confirmedLocalHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(remoteWriterPath, 'remote.txt', 'remote work\n', 'remote work');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      const remoteHead = (await git(remoteWriterPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['fetch', 'origin']);
+      await commitFile(repoPath, 'later.txt', 'changed after confirmation\n', 'later local tip');
+
+      await expect(
+        pushRepository(tab, {
+          forceWithLease: true,
+          branch: 'main',
+          expectedLocalSha: confirmedLocalHead,
+          target: {
+            remote: 'origin',
+            branch: 'main',
+            expectedSha: remoteHead,
+            setUpstream: false
+          }
+        })
+      ).rejects.toThrow('changed after force push was offered');
+
+      expect((await git(repoPath, ['ls-remote', 'origin', 'refs/heads/main'])).stdout).toContain(remoteHead);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a force push when the remote branch changed after confirmation was offered', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'local.txt', 'local rewrite\n', 'local rewrite');
+      const localHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(remoteWriterPath, 'remote-one.txt', 'remote one\n', 'remote one');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      const confirmedRemoteHead = (await git(remoteWriterPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['fetch', 'origin']);
+      await commitFile(remoteWriterPath, 'remote-two.txt', 'remote two\n', 'remote two');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      const latestRemoteHead = (await git(remoteWriterPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      await expect(
+        pushRepository(tab, {
+          forceWithLease: true,
+          branch: 'main',
+          expectedLocalSha: localHead,
+          target: {
+            remote: 'origin',
+            branch: 'main',
+            expectedSha: confirmedRemoteHead,
+            setUpstream: false
+          }
+        })
+      ).rejects.toThrow(/stale info|rejected/i);
+
+      expect((await git(repoPath, ['ls-remote', 'origin', 'refs/heads/main'])).stdout).toContain(latestRemoteHead);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('sets an existing remote branch as the upstream without checking out the local branch', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 

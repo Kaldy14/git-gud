@@ -9,6 +9,7 @@ export function createDefaultAppSettings(): AppSettings {
     diffSyntaxTheme: 'git-gud-dark',
     graphPageSize: 1500,
     largeRepoMode: false,
+    confirmForcePush: true,
     graphColumns: {
       author: false,
       date: false,
@@ -36,6 +37,10 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
     ),
     largeRepoMode:
       typeof settings.largeRepoMode === 'boolean' ? settings.largeRepoMode : fallback.largeRepoMode,
+    confirmForcePush:
+      typeof settings.confirmForcePush === 'boolean'
+        ? settings.confirmForcePush
+        : fallback.confirmForcePush,
     graphColumns: {
       author: false,
       date: false,

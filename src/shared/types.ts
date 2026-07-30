@@ -378,10 +378,33 @@ export type GitPullInput = {
   expectedBranch?: string;
 };
 
-export type GitPushInput = {
-  forceWithLease: boolean;
-  branch?: string;
+export type GitPushTarget = {
+  remote: string;
+  branch: string;
+  setUpstream: boolean;
 };
+
+export type GitPushInput =
+  | {
+      forceWithLease: false;
+      branch?: string;
+      expectedLocalSha?: never;
+      target?: never;
+    }
+  | {
+      forceWithLease: false;
+      branch: string;
+      expectedLocalSha: string;
+      target: GitPushTarget;
+    }
+  | {
+      forceWithLease: true;
+      branch: string;
+      expectedLocalSha: string;
+      target: GitPushTarget & {
+        expectedSha: string;
+      };
+    };
 
 export type GitCreateBranchInput = {
   name: string;
@@ -642,6 +665,7 @@ export type AppSettings = {
   diffSyntaxTheme: DiffSyntaxTheme;
   graphPageSize: number;
   largeRepoMode: boolean;
+  confirmForcePush: boolean;
   graphColumns: {
     author: boolean;
     date: boolean;

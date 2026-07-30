@@ -44,6 +44,20 @@ describe('IPC argument validation', () => {
         branch: 'feature/ipc-validation'
       }
     ]);
+    const forcePushArgs = validateIpcArgs('repo:push', [
+      '/repo',
+      {
+        forceWithLease: true,
+        branch: 'feature/ipc-validation',
+        expectedLocalSha: 'a'.repeat(40),
+        target: {
+          remote: 'origin',
+          branch: 'feature/ipc-validation',
+          expectedSha: 'b'.repeat(40),
+          setUpstream: false
+        }
+      }
+    ]);
     const tagArgs = validateIpcArgs('repo:create-tag', [
       '/repo',
       {
@@ -76,6 +90,17 @@ describe('IPC argument validation', () => {
       forceWithLease: false,
       branch: 'feature/ipc-validation'
     });
+    expect(forcePushArgs[1]).toEqual({
+      forceWithLease: true,
+      branch: 'feature/ipc-validation',
+      expectedLocalSha: 'a'.repeat(40),
+      target: {
+        remote: 'origin',
+        branch: 'feature/ipc-validation',
+        expectedSha: 'b'.repeat(40),
+        setUpstream: false
+      }
+    });
     expect(tagArgs[1]).toEqual({
       name: 'v1.0.0',
       targetSha: 'abc123',
@@ -107,6 +132,17 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('workspace:set-sidebar-width', [420])).toEqual([420]);
     expect(validateIpcArgs('workspace:set-detail-panel-collapsed', [true])).toEqual([true]);
     expect(validateIpcArgs('workspace:set-detail-panel-width', [440])).toEqual([440]);
+    expect(validateIpcArgs('settings:update', [{ confirmForcePush: false }])).toEqual([
+      {
+        defaultDiffStyle: undefined,
+        diffSyntaxTheme: undefined,
+        graphPageSize: undefined,
+        largeRepoMode: undefined,
+        confirmForcePush: false,
+        graphColumns: undefined,
+        remoteAvatars: undefined
+      }
+    ]);
     expect(validateIpcArgs('repo:replace-path', ['repo:/project', '/project-worktree'])).toEqual([
       'repo:/project',
       '/project-worktree'
@@ -669,6 +705,16 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:push', ['/repo', { forceWithLease: false, branch: 42 }])).toThrow(
       'branch must be a string.'
     );
+    expect(() =>
+      validateIpcArgs('repo:push', [
+        '/repo',
+        {
+          forceWithLease: true,
+          branch: 'main',
+          expectedLocalSha: 'a'.repeat(40)
+        }
+      ])
+    ).toThrow('force push target must be an object.');
     expect(() => validateIpcArgs('repo:push-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
       'remote must be a string.'
     );
@@ -703,5 +749,8 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('sha must be a boolean.');
+    expect(() =>
+      validateIpcArgs('settings:update', [{ confirmForcePush: 'never' }])
+    ).toThrow('confirmForcePush must be a boolean.');
   });
 });

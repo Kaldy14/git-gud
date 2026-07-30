@@ -1,6 +1,6 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useState } from 'react';
-import { Check, Gauge, GitGraph, Palette, Rows3, Settings, SplitSquareHorizontal, X } from 'lucide-react';
+import { Check, Gauge, GitGraph, Palette, Rows3, Settings, ShieldAlert, SplitSquareHorizontal, X } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { MAX_GRAPH_PAGE_SIZE, MIN_GRAPH_PAGE_SIZE, clampGraphPageSize } from '@shared/settings';
@@ -163,6 +163,24 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
               <span className="min-w-0">
                 <span className="block font-semibold text-[var(--text-1)]">Load remote author avatars</span>
                 <span className="mt-1 block leading-5 text-[var(--text-3)]">Uses GitHub identities for GitHub repositories, then falls back to Gravatar. Disable to keep author identities local.</span>
+              </span>
+            </label>
+          </section>
+
+          <section className="space-y-3 py-4">
+            <SettingHeading icon={<ShieldAlert size={15} />} label="Safety" />
+            <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+              <input
+                className="mt-0.5"
+                type="checkbox"
+                checked={draft.confirmForcePush}
+                onChange={(event) => setDraft((value) => ({ ...value, confirmForcePush: event.target.checked }))}
+              />
+              <span className="min-w-0">
+                <span className="block font-semibold text-[var(--text-1)]">Confirm before force pushing</span>
+                <span className="mt-1 block leading-5 text-[var(--text-3)]">
+                  Show a destructive-action warning before replacing remote branch history.
+                </span>
               </span>
             </label>
           </section>

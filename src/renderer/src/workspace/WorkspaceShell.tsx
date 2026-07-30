@@ -46,6 +46,7 @@ import {
   applyOperationProgress,
   createOptimisticOperationEntry
 } from '@renderer/components/operations/operationProgress';
+import { PushRejectedBanner } from '@renderer/components/operations/PushRejectedBanner';
 import { QuickJumpDialog, type PaletteAction } from '@renderer/components/operations/QuickJumpDialog';
 import { InteractiveRebaseDialog } from '@renderer/components/rebase/InteractiveRebaseDialog';
 import { SettingsPanel } from '@renderer/components/settings/SettingsPanel';
@@ -93,6 +94,12 @@ import {
   indexPullRequestsByBranch,
   repositoryMatchesPullRequest
 } from '@renderer/workspace/pullRequestBranches';
+import {
+  createPushPlan,
+  createPushRejectionPrompt,
+  isNonFastForwardPushError,
+  type PushRejectionPrompt
+} from '@renderer/workspace/pushRejection';
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import { dashboardProfileId } from '@shared/dashboard';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
@@ -164,6 +171,7 @@ type RepositoryOperationOptions = {
   repoPath?: string;
   retryable?: boolean;
   checkout?: Omit<CheckoutTransition, 'phase'>;
+  onFailure?: (failure: { repoPath: string; message: string }) => void;
 };
 
 type ActiveRepositoryOperation = {
@@ -244,6 +252,7 @@ export function WorkspaceShell(): ReactElement {
   >({});
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogState>();
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
+  const [pushRejectionPrompt, setPushRejectionPrompt] = useState<PushRejectionPrompt>();
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
   const [profiles, setProfiles] = useState<GitProfile[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1354,14 +1363,16 @@ export function WorkspaceShell(): ReactElement {
       );
       return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Git operation failed.';
       setOperationLogEntries((entries) =>
         applyOperationFailure(
           entries,
           id,
-          error instanceof Error ? error.message : 'Git operation failed.',
+          message,
           new Date().toISOString()
         )
       );
+      options.onFailure?.({ repoPath: requestedRepoPath, message });
       return false;
     } finally {
       operationStartGuardRef.current.delete(requestedRepoPath);
@@ -1499,13 +1510,178 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handlePush(): void {
-    void runRepositoryOperation('Push', (repoPath) => window.api.pushRepository(repoPath, { forceWithLease: false }));
+    const branch = repositoryQuery.data?.refs.localBranches.find((candidate) => candidate.current);
+    const pushPlan = branch
+      ? createPushPlan(branch, repositoryQuery.data?.remotes ?? [])
+      : undefined;
+
+    setPushRejectionPrompt(undefined);
+    void runRepositoryOperation(
+      'Push',
+      (repoPath) =>
+        window.api.pushRepository(
+          repoPath,
+          pushPlan
+            ? {
+                forceWithLease: false,
+                branch: pushPlan.branchName,
+                expectedLocalSha: pushPlan.expectedLocalSha,
+                target: pushPlan.target
+              }
+            : { forceWithLease: false }
+        ),
+      {
+        onFailure: ({ repoPath, message }) => {
+          if (pushPlan && isNonFastForwardPushError(message)) {
+            setPushRejectionPrompt(
+              createPushRejectionPrompt(
+                repoPath,
+                pushPlan,
+                repositoryQuery.data?.refs.remoteBranches ?? []
+              )
+            );
+          }
+        }
+      }
+    );
   }
 
   function handlePushBranch(name: string): void {
-    void runRepositoryOperation(`Push ${name}`, (repoPath) =>
-      window.api.pushRepository(repoPath, { forceWithLease: false, branch: name })
+    const branch = repositoryQuery.data?.refs.localBranches.find((candidate) => candidate.name === name);
+    const pushPlan = branch
+      ? createPushPlan(branch, repositoryQuery.data?.remotes ?? [])
+      : undefined;
+
+    setPushRejectionPrompt(undefined);
+    void runRepositoryOperation(
+      `Push ${name}`,
+      (repoPath) =>
+        window.api.pushRepository(
+          repoPath,
+          pushPlan
+            ? {
+                forceWithLease: false,
+                branch: pushPlan.branchName,
+                expectedLocalSha: pushPlan.expectedLocalSha,
+                target: pushPlan.target
+              }
+            : { forceWithLease: false, branch: name }
+        ),
+      {
+        onFailure: ({ repoPath, message }) => {
+          if (pushPlan && isNonFastForwardPushError(message)) {
+            setPushRejectionPrompt(
+              createPushRejectionPrompt(
+                repoPath,
+                pushPlan,
+                repositoryQuery.data?.refs.remoteBranches ?? []
+              )
+            );
+          }
+        }
+      }
     );
+  }
+
+  function handlePullRejectedBranch(prompt: PushRejectionPrompt): void {
+    setPushRejectionPrompt(undefined);
+
+    if (prompt.isCurrentBranch) {
+      void runRepositoryOperation(
+        `Pull ${prompt.branchName}`,
+        (repoPath) =>
+          window.api.pullRepository(repoPath, {
+            mode: 'ff-only',
+            expectedBranch: prompt.branchName
+          }),
+        { repoPath: prompt.repoPath }
+      );
+      return;
+    }
+
+    const activation = resolveLocalBranchActivation(
+      prompt.branchName,
+      repositoryQuery.data?.worktrees ?? []
+    );
+
+    if (activation.kind === 'activate-worktree') {
+      void activateWorktreeAndPull(activation.branchName, activation.worktreePath);
+      return;
+    }
+
+    void runRepositoryOperation(
+      `Checkout and pull ${prompt.branchName}`,
+      async (repoPath) => {
+        await window.api.checkoutRef(repoPath, {
+          kind: 'local',
+          name: prompt.branchName
+        });
+        return window.api.pullRepository(repoPath, {
+          mode: 'ff-only',
+          expectedBranch: prompt.branchName
+        });
+      },
+      {
+        repoPath: prompt.repoPath,
+        checkout: { targetBranch: prompt.branchName }
+      }
+    );
+  }
+
+  function handleOfferForcePush(prompt: PushRejectionPrompt): void {
+    if (!settings.confirmForcePush) {
+      executeForcePush(prompt);
+      return;
+    }
+
+    openCommandDialog({
+      title: `Force push ${prompt.branchName}?`,
+      description: 'Force push is a destructive action and cannot be undone. Are you sure?',
+      detail: `This can discard commits from ${prompt.remoteBranchName}. Git Gud uses force-with-lease so the push is refused if the remote changed since your last fetch.`,
+      confirmLabel: 'Force Push',
+      tone: 'danger',
+      fields: [
+        {
+          id: 'dontAskAgain',
+          kind: 'checkbox',
+          label: "Don't ask again",
+          checked: false,
+          helper: 'You can restore this confirmation in Settings → Safety.'
+        }
+      ],
+      onSubmit(values) {
+        if (dialogChecked(values, 'dontAskAgain')) {
+          void updateForcePushConfirmation(false);
+        }
+        executeForcePush(prompt);
+      }
+    });
+  }
+
+  function executeForcePush(prompt: PushRejectionPrompt): void {
+    setPushRejectionPrompt(undefined);
+    void runRepositoryOperation(
+      `Force push ${prompt.branchName}`,
+      (repoPath) =>
+        window.api.pushRepository(repoPath, {
+          forceWithLease: true,
+          branch: prompt.branchName,
+          expectedLocalSha: prompt.expectedLocalSha,
+          target: prompt.target
+        }),
+      { repoPath: prompt.repoPath }
+    );
+  }
+
+  async function updateForcePushConfirmation(confirmForcePush: boolean): Promise<void> {
+    try {
+      const savedSettings = await window.api.updateSettings({ confirmForcePush });
+      setSettings(savedSettings);
+    } catch (error) {
+      setSettingsErrorMessage(
+        error instanceof Error ? error.message : 'Unable to save the force-push confirmation preference.'
+      );
+    }
   }
 
   function handleDiscardWipFile(file: GitFileChangeDetail): void {
@@ -2527,6 +2703,19 @@ export function WorkspaceShell(): ReactElement {
             <X size={13} />
           </button>
         </div>
+      ) : null}
+
+      {!gitHubWorkspaceView &&
+      !isStartTabActive &&
+      !repositoryUnavailable &&
+      pushRejectionPrompt?.repoPath === activeTab?.path ? (
+        <PushRejectedBanner
+          prompt={pushRejectionPrompt}
+          isBusy={isOperationBusy}
+          onPull={handlePullRejectedBranch}
+          onForcePush={handleOfferForcePush}
+          onDismiss={() => setPushRejectionPrompt(undefined)}
+        />
       ) : null}
 
       {!gitHubWorkspaceView && !isStartTabActive && !repositoryUnavailable ? (

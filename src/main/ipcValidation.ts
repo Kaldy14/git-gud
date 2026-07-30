@@ -871,9 +871,40 @@ function readPullInput(value: unknown): GitPullInput {
 
 function readPushInput(value: unknown): GitPushInput {
   const record = readRecord(value, 'push input');
+  const forceWithLease = readBooleanProperty(record, 'forceWithLease');
+
+  if (!forceWithLease) {
+    if (record.target !== undefined || record.expectedLocalSha !== undefined) {
+      const target = readRecord(record.target, 'push target');
+      return {
+        forceWithLease: false,
+        branch: readStringProperty(record, 'branch'),
+        expectedLocalSha: readStringProperty(record, 'expectedLocalSha'),
+        target: {
+          remote: readStringProperty(target, 'remote'),
+          branch: readStringProperty(target, 'branch'),
+          setUpstream: readBooleanProperty(target, 'setUpstream')
+        }
+      };
+    }
+
+    return {
+      forceWithLease: false,
+      branch: readOptionalStringProperty(record, 'branch')
+    };
+  }
+
+  const target = readRecord(record.target, 'force push target');
   return {
-    forceWithLease: readBooleanProperty(record, 'forceWithLease'),
-    branch: readOptionalStringProperty(record, 'branch')
+    forceWithLease: true,
+    branch: readStringProperty(record, 'branch'),
+    expectedLocalSha: readStringProperty(record, 'expectedLocalSha'),
+    target: {
+      remote: readStringProperty(target, 'remote'),
+      branch: readStringProperty(target, 'branch'),
+      expectedSha: readStringProperty(target, 'expectedSha'),
+      setUpstream: readBooleanProperty(target, 'setUpstream')
+    }
   };
 }
 
@@ -1131,6 +1162,7 @@ function readSettingsInput(value: unknown): AppSettingsInput {
     diffSyntaxTheme: readOptionalEnumProperty(record, 'diffSyntaxTheme', ['git-gud-dark', 'tokyo-night-storm']),
     graphPageSize: readOptionalPositiveIntegerProperty(record, 'graphPageSize'),
     largeRepoMode: readOptionalBooleanProperty(record, 'largeRepoMode'),
+    confirmForcePush: readOptionalBooleanProperty(record, 'confirmForcePush'),
     graphColumns: readOptionalGraphColumns(record.graphColumns),
     remoteAvatars: readOptionalBooleanProperty(record, 'remoteAvatars')
   };
