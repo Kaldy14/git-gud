@@ -269,8 +269,8 @@ export function WorkspaceShell(): ReactElement {
   const [isCommitSearchOpen, setIsCommitSearchOpen] = useState(false);
   const [commitSearchFocusSignal, setCommitSearchFocusSignal] = useState(0);
   const [repositoryInspector, setRepositoryInspector] = useState<RepositoryInspectorState>();
-  const [sidebarWidth, setSidebarWidthDraft] = useState(workspace.sidebarWidth);
-  const [detailPanelWidth, setDetailPanelWidthDraft] = useState(workspace.detailPanelWidth);
+  const [sidebarWidthDraft, setSidebarWidthDraft] = useState<number>();
+  const [detailPanelWidthDraft, setDetailPanelWidthDraft] = useState<number>();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [compactSidebarOpen, setCompactSidebarOpen] = useState(false);
   const [compactDetailOpen, setCompactDetailOpen] = useState(false);
@@ -496,6 +496,8 @@ export function WorkspaceShell(): ReactElement {
   const usesCompactSidebar = viewportWidth < 700;
   const sidebarWidthCap = viewportWidth < 900 ? 230 : viewportWidth < 1200 ? 280 : 560;
   const detailPanelWidthCap = viewportWidth < 1200 ? 320 : 620;
+  const sidebarWidth = sidebarWidthDraft ?? workspace.sidebarWidth;
+  const detailPanelWidth = detailPanelWidthDraft ?? workspace.detailPanelWidth;
   const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarWidthCap);
   const effectiveDetailPanelWidth = Math.min(detailPanelWidth, detailPanelWidthCap);
   const isDetailPanelCollapsed = workspace.detailPanelCollapsed || (usesCompactDetail && !compactDetailOpen);
@@ -531,14 +533,6 @@ export function WorkspaceShell(): ReactElement {
   }, [isLoading, workspace.tabs.length]);
 
   useEffect(() => {
-    setSidebarWidthDraft(workspace.sidebarWidth);
-  }, [workspace.sidebarWidth]);
-
-  useEffect(() => {
-    setDetailPanelWidthDraft(workspace.detailPanelWidth);
-  }, [workspace.detailPanelWidth]);
-
-  useEffect(() => {
     function handleResize(): void {
       setViewportWidth(window.innerWidth);
     }
@@ -546,15 +540,6 @@ export function WorkspaceShell(): ReactElement {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  useEffect(() => {
-    if (
-      gitHubWorkspaceView?.kind === 'review' &&
-      gitHubWorkspaceView.pullRequest.profileId !== connectedGitHubProfileId
-    ) {
-      setGitHubWorkspaceView({ kind: 'inbox' });
-    }
-  }, [connectedGitHubProfileId, gitHubWorkspaceView]);
 
   useEffect(() => {
     if (!diffWorkerPool) {
@@ -757,6 +742,7 @@ export function WorkspaceShell(): ReactElement {
 
   const handleSidebarResizeCommit = useCallback(
     (width: number): void => {
+      setSidebarWidthDraft(undefined);
       void setSidebarWidth(Math.min(width, sidebarWidthCap));
     },
     [setSidebarWidth, sidebarWidthCap]
@@ -771,6 +757,7 @@ export function WorkspaceShell(): ReactElement {
 
   const handleDetailPanelResizeCommit = useCallback(
     (width: number): void => {
+      setDetailPanelWidthDraft(undefined);
       void setDetailPanelWidth(Math.min(width, detailPanelWidthCap));
     },
     [detailPanelWidthCap, setDetailPanelWidth]
@@ -948,6 +935,13 @@ export function WorkspaceShell(): ReactElement {
         return;
       }
 
+      const connectedProfileId =
+        nextProfile?.ghConfigDir && nextProfile.githubLogin ? nextProfile.id : undefined;
+      setGitHubWorkspaceView((view) =>
+        view?.kind === 'review' && view.pullRequest.profileId !== connectedProfileId
+          ? { kind: 'inbox' }
+          : view
+      );
       setGraphLimitByTab({});
       setDiffStyleByTab({});
       setWipScopeByTab({});
