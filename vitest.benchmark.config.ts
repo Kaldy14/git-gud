@@ -12,7 +12,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'benchmarks/**/*.test.ts'],
+    include: ['benchmarks/**/*.benchmark.ts'],
+    testTimeout: 120_000,
+    disableConsoleIntercept: true,
     server: {
       deps: {
         inline: ['electron-store']

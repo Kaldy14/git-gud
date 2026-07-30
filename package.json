@@ -12,7 +12,8 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark:review": "vitest run --config vitest.benchmark.config.ts"
   },
   "dependencies": {
     "@electron-toolkit/utils": "4.0.0",

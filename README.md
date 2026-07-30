@@ -142,6 +142,7 @@ Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-defaul
 | `pnpm typecheck` | Check main, preload, and renderer TypeScript |
 | `pnpm lint` | Run ESLint across the repository |
 | `pnpm test` | Run the Vitest suite |
+| `pnpm benchmark:review` | Score review-chunk grouping against the benchmark datasets |
 | `pnpm build` | Typecheck and create production bundles |
 | `pnpm dist` | Build the local macOS application bundle |
 
