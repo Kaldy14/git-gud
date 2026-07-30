@@ -95,6 +95,12 @@ export function normalizeReviewSearchSelection(value: string): string {
   return value.replace(/\r\n/g, '\n').trim().slice(0, 4_000);
 }
 
+export function readReviewSearchSelection(
+  selection: Pick<Selection, 'isCollapsed' | 'toString'> | null | undefined
+): string {
+  return normalizeReviewSearchSelection(selection?.toString() ?? '');
+}
+
 function collectSearchCandidates(
   plan: GitReviewPlan,
   visibleUnits: readonly VisibleReviewUnit[],

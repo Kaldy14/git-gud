@@ -97,6 +97,7 @@ import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import {
   createReviewSearchResults,
   normalizeReviewSearchSelection,
+  readReviewSearchSelection,
   type ReviewSearchInclusion,
   type ReviewSearchLine,
   type ReviewSearchResults,
@@ -3012,11 +3013,7 @@ function formatReviewSearchResultCount(count: number): string {
 }
 
 function readSelectedReviewText(): string {
-  const selection = window.getSelection();
-
-  return selection?.isCollapsed
-    ? ''
-    : normalizeReviewSearchSelection(selection?.toString() ?? '');
+  return readReviewSearchSelection(window.getSelection());
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

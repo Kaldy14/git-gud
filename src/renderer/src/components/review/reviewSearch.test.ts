@@ -10,7 +10,8 @@ import type {
 import type { VisibleReviewUnit } from './reviewFilters';
 import {
   createReviewSearchResults,
-  normalizeReviewSearchSelection
+  normalizeReviewSearchSelection,
+  readReviewSearchSelection
 } from './reviewSearch';
 
 describe('review search', () => {
@@ -218,6 +219,13 @@ describe('review search', () => {
   it('normalizes selected code and bounds the query payload', () => {
     expect(normalizeReviewSearchSelection(' \r\nconst value = 1\r\n ')).toBe('const value = 1');
     expect(normalizeReviewSearchSelection('x'.repeat(5_000))).toHaveLength(4_000);
+  });
+
+  it('keeps shadow-root text when the document selection reports itself as collapsed', () => {
+    expect(readReviewSearchSelection({
+      isCollapsed: true,
+      toString: () => 'AvailabilityConfirmationAction'
+    })).toBe('AvailabilityConfirmationAction');
   });
 });
 
