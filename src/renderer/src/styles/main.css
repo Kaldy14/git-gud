@@ -1337,22 +1337,6 @@ button.ref-chip {
   background: transparent;
 }
 
-.wip-message-pill {
-  display: inline-flex;
-  height: 22px;
-  min-width: 92px;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-field);
-  color: var(--text-2);
-  font-size: 12px;
-  font-style: italic;
-  font-weight: 600;
-  line-height: 1;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .commit-search-bar {
     animation: none;

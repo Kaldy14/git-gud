@@ -42,6 +42,8 @@ import {
   roundedRailCurveInPath,
   roundedRailCurveOutPath
 } from '@renderer/components/graph/graphGeometry';
+import { graphRowAriaLabel } from '@renderer/components/graph/graphRowPresentation';
+import { WipStatusCounts } from '@renderer/components/graph/WipStatusCounts';
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
 import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
@@ -59,20 +61,13 @@ import {
 } from '@renderer/components/graph/graphInteraction';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
-import {
-  FILE_STATUS_COLORS,
-  laneBandColor,
-  laneColor,
-  laneRefColor,
-  uniqueRelativeDateMarkerLabels
-} from '@shared/graph';
+import { laneBandColor, laneColor, laneRefColor, uniqueRelativeDateMarkerLabels } from '@shared/graph';
 import type {
   CommitGraphRow,
   GitBranchRef,
   GitHubPullRequestSummary,
   GitStashRefInput,
   GitTagDeleteInput,
-  GraphFile,
   GraphRailSegment,
   GraphRefChip,
   GraphWorktree
@@ -1221,7 +1216,9 @@ function GraphRowView({
       >
         {isWip ? (
           <>
-            <span className="wip-message-pill">// WIP</span>
+            <span className="shrink-0 text-[13px] font-semibold italic leading-none text-[var(--text-3)]">
+              // WIP
+            </span>
             {row.files.length > 0 ? <WipStatusCounts files={row.files} /> : null}
           </>
         ) : (
@@ -1408,16 +1405,6 @@ function splitCommitSubject(subject: string): [string, string | undefined] {
   return [subject, undefined];
 }
 
-function WipStatusCounts({ files }: { files: GraphFile[] }): ReactElement {
-  const changedCount = files.length;
-
-  return (
-    <span className="shrink-0 text-[15px] font-semibold leading-none tabular-nums" style={{ color: FILE_STATUS_COLORS.added }}>
-      + {changedCount}
-    </span>
-  );
-}
-
 function graphContentWidthForRows(rows: CommitGraphRow[], graphWidth: number): number {
   let maxLane = 0;
 
@@ -1533,17 +1520,6 @@ function buildDateMarkers(rows: CommitGraphRow[]): Array<string | undefined> {
 
 function graphRowDomId(sha: string): string {
   return `graph-row-${sha.replace(/[^\dA-Za-z_-]/g, '-')}`;
-}
-
-function graphRowAriaLabel(row: CommitGraphRow): string {
-  if (row.node.kind === 'wip') {
-    const worktree = row.worktree;
-    const identity = worktree ? describeWipWorktree(worktree).identity : 'working directory';
-    return `${identity}, ${row.files.length} changed files`;
-  }
-
-  const refs = row.refs?.map((ref) => ref.label).join(', ');
-  return [row.subject, row.author.name, row.dateLabel, row.sha.slice(0, 7), refs].filter(Boolean).join(', ');
 }
 
 function WorktreeChipView({
