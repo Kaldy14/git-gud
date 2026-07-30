@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
 
+import { analyzeReviewPatchSyntax } from './git/reviewSyntax';
 import {
   buildCompleteFilePatch,
   buildGitHubActionsPullRequestGroups,
@@ -603,7 +604,7 @@ describe('GitHub pull request inbox', () => {
     ).toContain('diff --git "a/src/old widget.ts" "b/src/new widget.ts"');
   });
 
-  it('feeds remote pull request patches into the focused review plan', () => {
+  it('feeds remote pull request patches into the focused review plan', async () => {
     const pullRequest: GitHubPullRequestSummary = {
       profileId: 'profile-1',
       id: 'pr-42',
@@ -631,7 +632,7 @@ describe('GitHub pull request inbox', () => {
     };
     const oldContents = Array.from({ length: 12 }, (_, index) => `line ${index + 1}\n`).join('');
     const newContents = oldContents.replace('line 6\n', 'export const timeout = 20\n');
-    const reviewPlan = buildGitHubPullRequestReviewPlan(
+    const reviewPlan = await buildGitHubPullRequestReviewPlan(
       'github.com',
       pullRequest,
       'head-sha',
@@ -680,20 +681,152 @@ describe('GitHub pull request inbox', () => {
     expect(reviewPlan.units[0]?.chunks[0]?.fileContextId).toBe(reviewPlan.fileContexts[0]?.id);
   });
 
-  it('bounds remote file-context requests in focused review order', () => {
+  it('uses Tree-sitter contexts for added and removed pull request files', async () => {
+    const pullRequest = pullRequestSummary();
+    const addedDefinition = [
+      'export function loadProduct() {',
+      '  return null;',
+      '}'
+    ].join('\n');
+    const removedDefinition = [
+      'export function loadLegacyProduct() {',
+      '  return null;',
+      '}'
+    ].join('\n');
+    const files = [
+      {
+        ...pullRequestFile('src/load-product.ts'),
+        status: 'added' as const,
+        additions: 3,
+        deletions: 0,
+        changes: 3,
+        patch: [
+          'diff --git a/src/load-product.ts b/src/load-product.ts',
+          '--- /dev/null',
+          '+++ b/src/load-product.ts',
+          '@@ -0,0 +1,3 @@',
+          '+export function loadProduct() {',
+          '+  return null;',
+          '+}'
+        ].join('\n')
+      },
+      {
+        ...pullRequestFile('src/load-legacy-product.ts'),
+        status: 'removed' as const,
+        additions: 0,
+        deletions: 3,
+        changes: 3,
+        patch: [
+          'diff --git a/src/load-legacy-product.ts b/src/load-legacy-product.ts',
+          '--- a/src/load-legacy-product.ts',
+          '+++ /dev/null',
+          '@@ -1,3 +0,0 @@',
+          '-export function loadLegacyProduct() {',
+          '-  return null;',
+          '-}'
+        ].join('\n')
+      }
+    ];
+    const reviewPlan = await buildGitHubPullRequestReviewPlan(
+      'github.com',
+      pullRequest,
+      'head-sha',
+      files,
+      [
+        {
+          path: 'src/load-product.ts',
+          oldContents: '',
+          newContents: addedDefinition
+        },
+        {
+          path: 'src/load-legacy-product.ts',
+          oldContents: removedDefinition,
+          newContents: ''
+        }
+      ]
+    );
+    const addedContext = reviewPlan.fileContexts.find((context) =>
+      context.path === 'src/load-product.ts'
+    );
+    const removedContext = reviewPlan.fileContexts.find((context) =>
+      context.path === 'src/load-legacy-product.ts'
+    );
+
+    expect(addedContext?.syntax).toMatchObject({
+      language: 'typescript',
+      oldNodes: [],
+      hasErrors: false
+    });
+    expect(addedContext?.syntax?.newNodes.length).toBeGreaterThan(0);
+    expect(removedContext?.syntax).toMatchObject({
+      language: 'typescript',
+      newNodes: [],
+      hasErrors: false
+    });
+    expect(removedContext?.syntax?.oldNodes.length).toBeGreaterThan(0);
+  });
+
+  it('uses compact prepared syntax after full file context is no longer retained', async () => {
+    const pullRequest = pullRequestSummary();
+    const path = 'src/load-product.ts';
+    const newContents = 'export function loadProduct() { return null; }\n';
+    const file = {
+      ...pullRequestFile(path),
+      status: 'added' as const,
+      additions: 1,
+      deletions: 0,
+      changes: 1,
+      patch: [
+        `diff --git a/${path} b/${path}`,
+        '--- /dev/null',
+        `+++ b/${path}`,
+        '@@ -0,0 +1 @@',
+        '+export function loadProduct() { return null; }'
+      ].join('\n')
+    };
+    const syntax = await analyzeReviewPatchSyntax(
+      path,
+      file.patch,
+      { oldContents: '', newContents },
+      'github-prepared-syntax'
+    );
+    const reviewPlan = await buildGitHubPullRequestReviewPlan(
+      'github.com',
+      pullRequest,
+      'head-sha',
+      [file],
+      [],
+      new Map([[path, syntax]])
+    );
+
+    expect(reviewPlan.fileContexts).toEqual([]);
+    expect(reviewPlan.units[0]?.chunks[0]).toMatchObject({
+      path,
+      role: 'anchor',
+      reviewSection: 'definition'
+    });
+  });
+
+  it('selects every textual pull request file for context analysis', async () => {
     const pullRequest = pullRequestSummary();
     const files = [
-      pullRequestFile('src/first.ts'),
-      pullRequestFile('src/second.ts'),
-      pullRequestFile('src/third.ts'),
-      { ...pullRequestFile('src/added.ts'), status: 'added' as const }
+      ...Array.from({ length: 30 }, (_, index) => pullRequestFile(`src/file-${index}.ts`)),
+      { ...pullRequestFile('src/added.ts'), status: 'added' as const },
+      { ...pullRequestFile('src/removed.ts'), status: 'removed' as const },
+      { ...pullRequestFile('assets/logo.png'), patch: undefined, omittedReason: 'binary' as const }
     ];
-    const reviewPlan = buildGitHubPullRequestReviewPlan('github.com', pullRequest, 'head-sha', files);
+    const reviewPlan = await buildGitHubPullRequestReviewPlan(
+      'github.com',
+      pullRequest,
+      'head-sha',
+      files
+    );
+    const selectedPaths = selectGitHubReviewContextFiles(reviewPlan, files).map((file) => file.path);
 
-    expect(selectGitHubReviewContextFiles(reviewPlan, files, 2).map((file) => file.path)).toEqual([
-      'src/first.ts',
-      'src/second.ts'
-    ]);
+    expect(selectedPaths).toHaveLength(32);
+    expect(selectedPaths).toContain('src/added.ts');
+    expect(selectedPaths).toContain('src/removed.ts');
+    expect(selectedPaths).not.toContain('assets/logo.png');
   });
 
   it('uses only merge methods enabled by the GitHub repository', () => {
