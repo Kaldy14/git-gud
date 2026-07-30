@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleSlash2,
+  Copy,
   ExternalLink,
   GitBranch,
   GitPullRequest,
@@ -23,14 +24,17 @@ import {
   PlugZap,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
   Workflow,
   X,
   XCircle
 } from 'lucide-react';
+import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
+import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
 import {
   dashboardsQueryKey,
   useDashboards,
@@ -76,6 +80,15 @@ import {
   workflowRunFilterSummary
 } from './workflowRunFilters';
 import { workflowRunPresentation } from './workflowRunPresentation';
+import {
+  buildWorkflowRunCodexPrompt,
+  copyWorkflowRunFailure
+} from './workflowRunFailureActions';
+
+type WorkflowRunNotice = {
+  tone: 'progress' | 'success' | 'danger';
+  message: string;
+};
 
 type DashboardViewProps = {
   profile?: GitProfile;
@@ -85,6 +98,11 @@ type DashboardViewProps = {
   onSelectDashboard: (dashboardId: string | undefined) => void;
   onOpenProfileSettings: () => void;
   onClose: () => void;
+  resolveRepositoryPath?: (repository: {
+    host: string;
+    owner: string;
+    name: string;
+  }) => string | undefined;
 };
 
 type DashboardTileDialogFields = {
@@ -141,7 +159,8 @@ export function DashboardView({
   onMarkActionAlertsRead,
   onSelectDashboard,
   onOpenProfileSettings,
-  onClose
+  onClose,
+  resolveRepositoryPath
 }: DashboardViewProps): ReactElement {
   const activeDashboardProfileId = dashboardProfileId(profile);
   const gitHubProfileId =
@@ -157,6 +176,8 @@ export function DashboardView({
   }>();
   const [isSaving, setIsSaving] = useState(false);
   const [mutationError, setMutationError] = useState<string>();
+  const [workflowRunNotice, setWorkflowRunNotice] =
+    useState<WorkflowRunNotice>();
   const [draggedTileId, setDraggedTileId] = useState<string>();
   const [dropTarget, setDropTarget] = useState<DashboardTileDropTarget>();
   const [tileOrderAnnouncement, setTileOrderAnnouncement] = useState('');
@@ -752,6 +773,31 @@ export function DashboardView({
                 <span>{mutationError}</span>
               </div>
             ) : null}
+            {workflowRunNotice ? (
+              <div
+                className="dashboard-workflow-notice"
+                data-tone={workflowRunNotice.tone}
+                role="status"
+                aria-live="polite"
+              >
+                {workflowRunNotice.tone === 'progress' ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : workflowRunNotice.tone === 'success' ? (
+                  <CheckCircle2 size={13} />
+                ) : (
+                  <AlertTriangle size={13} />
+                )}
+                <span>{workflowRunNotice.message}</span>
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Dismiss workflow action message"
+                  onClick={() => setWorkflowRunNotice(undefined)}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : null}
             {unreadActionAlerts.length > 0 ? (
               <DashboardFailureAlerts
                 alerts={unreadActionAlerts}
@@ -814,8 +860,14 @@ export function DashboardView({
                             <GitHubActionsTile
                               profileId={gitHubProfileId}
                               tile={tile}
+                              codexRepoPath={resolveRepositoryPath?.({
+                                host: profile?.githubHost || 'github.com',
+                                owner: tile.owner,
+                                name: tile.repository
+                              })}
                               dragHandle={dragHandle}
                               isSaving={isSaving}
+                              onWorkflowRunNotice={setWorkflowRunNotice}
                               onEdit={() => openEditTileDialog(tile)}
                               onRemove={() => void handleRemoveTile(tile.id)}
                             />
@@ -1077,8 +1129,10 @@ function TileDragHandle({
 type GitHubActionsTileProps = {
   profileId?: string;
   tile: GitHubActionsDashboardTile;
+  codexRepoPath?: string;
   dragHandle: ReactElement;
   isSaving: boolean;
+  onWorkflowRunNotice: (notice: WorkflowRunNotice) => void;
   onEdit: () => void;
   onRemove: () => void;
 };
@@ -1086,8 +1140,10 @@ type GitHubActionsTileProps = {
 function GitHubActionsTile({
   profileId,
   tile,
+  codexRepoPath,
   dragHandle,
   isSaving,
+  onWorkflowRunNotice,
   onEdit,
   onRemove
 }: GitHubActionsTileProps): ReactElement {
@@ -1242,6 +1298,13 @@ function GitHubActionsTile({
                 <PullRequestWorkflowGroup
                   key={pullRequest.number}
                   pullRequest={pullRequest}
+                  failureActions={{
+                    profileId,
+                    owner: tile.owner,
+                    repository: tile.repository,
+                    codexRepoPath,
+                    onNotice: onWorkflowRunNotice
+                  }}
                   expanded={expanded}
                   onToggle={() =>
                     setPullRequestExpansionOverrides((current) => {
@@ -1264,7 +1327,17 @@ function GitHubActionsTile({
         <>
           <div className="workflow-run-list">
             {runs.map((run) => (
-              <WorkflowRunRow key={run.id} run={run} />
+              <WorkflowRunRow
+                key={run.id}
+                run={run}
+                failureActions={{
+                  profileId,
+                  owner: tile.owner,
+                  repository: tile.repository,
+                  codexRepoPath,
+                  onNotice: onWorkflowRunNotice
+                }}
+              />
             ))}
           </div>
           {searchLimitReached ? (
@@ -1297,10 +1370,12 @@ function GitHubActionsTile({
 
 function PullRequestWorkflowGroup({
   pullRequest,
+  failureActions,
   expanded,
   onToggle
 }: {
   pullRequest: GitHubActionsPullRequestGroup;
+  failureActions: WorkflowRunFailureActionsContext;
   expanded: boolean;
   onToggle: () => void;
 }): ReactElement {
@@ -1363,7 +1438,11 @@ function PullRequestWorkflowGroup({
         pullRequest.runs.length > 0 ? (
           <div className="pull-request-workflow-runs">
             {pullRequest.runs.map((run) => (
-              <PullRequestWorkflowRow key={run.id} run={run} />
+              <PullRequestWorkflowRow
+                key={run.id}
+                run={run}
+                failureActions={failureActions}
+              />
             ))}
           </div>
         ) : (
@@ -1377,9 +1456,11 @@ function PullRequestWorkflowGroup({
 }
 
 function PullRequestWorkflowRow({
-  run
+  run,
+  failureActions
 }: {
   run: GitHubWorkflowRun;
+  failureActions: WorkflowRunFailureActionsContext;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
   const statusIcon =
@@ -1393,12 +1474,23 @@ function PullRequestWorkflowRow({
       <CircleSlash2 size={11} />
     );
 
-  return (
+  const hasFailureActions =
+    presentation.tone === 'danger' && Boolean(failureActions.profileId);
+  const row = (
     <a
       className="pull-request-workflow-run"
       href={run.url}
       target="_blank"
       rel="noreferrer"
+      aria-haspopup={hasFailureActions ? 'menu' : undefined}
+      title={
+        hasFailureActions
+          ? 'Open workflow run · right-click for failure actions'
+          : undefined
+      }
+      onKeyDown={
+        hasFailureActions ? openContextMenuFromKeyboard : undefined
+      }
       aria-label={`${run.name}, ${presentation.label}. Open workflow run in browser`}
     >
       <span data-tone={presentation.tone}>{statusIcon}</span>
@@ -1406,6 +1498,156 @@ function PullRequestWorkflowRow({
       <span data-tone={presentation.tone}>{presentation.label}</span>
       <ExternalLink size={10} aria-hidden="true" />
     </a>
+  );
+
+  return (
+    <WorkflowRunFailureContextMenu
+      run={run}
+      actions={failureActions}
+    >
+      {row}
+    </WorkflowRunFailureContextMenu>
+  );
+}
+
+type WorkflowRunFailureActionsContext = {
+  profileId?: string;
+  owner: string;
+  repository: string;
+  codexRepoPath?: string;
+  onNotice: (notice: WorkflowRunNotice) => void;
+};
+
+function WorkflowRunFailureContextMenu({
+  run,
+  actions,
+  children
+}: {
+  run: GitHubWorkflowRun;
+  actions: WorkflowRunFailureActionsContext;
+  children: ReactElement;
+}): ReactElement {
+  const failedLogPromiseRef = useRef<Promise<string> | undefined>(undefined);
+  const profileId = actions.profileId;
+  const isFailure =
+    workflowRunPresentation(run).tone === 'danger' && Boolean(profileId);
+
+  if (!isFailure || !profileId) {
+    return children;
+  }
+  const connectedProfileId = profileId;
+
+  function loadFailedLog(): Promise<string> {
+    if (!failedLogPromiseRef.current) {
+      failedLogPromiseRef.current = window.api
+        .getGitHubWorkflowRunFailedLog({
+          profileId: connectedProfileId,
+          owner: actions.owner,
+          repository: actions.repository,
+          runId: run.id
+        })
+        .catch((error: unknown) => {
+          failedLogPromiseRef.current = undefined;
+          throw error;
+        });
+    }
+
+    return failedLogPromiseRef.current;
+  }
+
+  async function copyFailure(): Promise<void> {
+    actions.onNotice({
+      tone: 'progress',
+      message: `Loading the failed log for ${run.name} #${run.runNumber}…`
+    });
+
+    try {
+      const failedLog = await loadFailedLog();
+      await copyWorkflowRunFailure(failedLog, navigator.clipboard);
+      actions.onNotice({
+        tone: 'success',
+        message: `Copied the error from ${run.name} #${run.runNumber}.`
+      });
+    } catch (error) {
+      actions.onNotice({
+        tone: 'danger',
+        message: `Could not copy the workflow error: ${errorMessage(error)}`
+      });
+    }
+  }
+
+  async function sendFailureToCodex(): Promise<void> {
+    if (!actions.codexRepoPath) {
+      return;
+    }
+
+    actions.onNotice({
+      tone: 'progress',
+      message: `Loading the failed log for ${run.name} #${run.runNumber}…`
+    });
+
+    try {
+      const failedLog = await loadFailedLog();
+      await window.api.openCodexTask(
+        actions.codexRepoPath,
+        buildWorkflowRunCodexPrompt(
+          {
+            owner: actions.owner,
+            repository: actions.repository,
+            run
+          },
+          failedLog
+        )
+      );
+      actions.onNotice({
+        tone: 'success',
+        message: `Opened a Codex task for ${run.name} #${run.runNumber}.`
+      });
+    } catch (error) {
+      actions.onNotice({
+        tone: 'danger',
+        message: `Could not send the workflow error to Codex: ${errorMessage(error)}`
+      });
+    }
+  }
+
+  return (
+    <ContextMenuPrimitive.Root>
+      <ContextMenuPrimitive.Trigger asChild>
+        {children}
+      </ContextMenuPrimitive.Trigger>
+      <ContextMenuPrimitive.Portal>
+        <ContextMenuPrimitive.Content
+          className="context-menu-surface workflow-run-context-menu"
+          collisionPadding={8}
+          aria-label={`Failure actions for ${run.name} #${run.runNumber}`}
+        >
+          <ContextMenuPrimitive.Label className="workflow-run-context-menu-label">
+            Workflow failure
+          </ContextMenuPrimitive.Label>
+          <ContextMenuPrimitive.Item
+            className="menu-row"
+            onSelect={() => void copyFailure()}
+          >
+            <Copy size={13} />
+            <span>Copy error</span>
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item
+            className="menu-row"
+            disabled={!actions.codexRepoPath}
+            title={
+              actions.codexRepoPath
+                ? 'Open a new Codex task with the failed log'
+                : `Open ${actions.owner}/${actions.repository} in Git Gud to send this error to Codex`
+            }
+            onSelect={() => void sendFailureToCodex()}
+          >
+            <Sparkles size={13} />
+            <span>Send error to Codex</span>
+          </ContextMenuPrimitive.Item>
+        </ContextMenuPrimitive.Content>
+      </ContextMenuPrimitive.Portal>
+    </ContextMenuPrimitive.Root>
   );
 }
 
@@ -1471,7 +1713,13 @@ function isPullRequestExpandedByDefault(
   return index === 0 || pullRequestGroupPresentation(pullRequest).tone === 'danger';
 }
 
-function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
+function WorkflowRunRow({
+  run,
+  failureActions
+}: {
+  run: GitHubWorkflowRun;
+  failureActions: WorkflowRunFailureActionsContext;
+}): ReactElement {
   const presentation = workflowRunPresentation(run);
   const triggeredRelativeTime = formatRelativeTime(run.createdAt);
   const startedRelativeTime = run.startedAt ? formatRelativeTime(run.startedAt) : undefined;
@@ -1486,12 +1734,23 @@ function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
       <CircleSlash2 size={14} />
     );
 
-  return (
+  const hasFailureActions =
+    presentation.tone === 'danger' && Boolean(failureActions.profileId);
+  const row = (
     <a
       className="workflow-run-row"
       href={run.url}
       target="_blank"
       rel="noreferrer"
+      aria-haspopup={hasFailureActions ? 'menu' : undefined}
+      title={
+        hasFailureActions
+          ? 'Open workflow run · right-click for failure actions'
+          : undefined
+      }
+      onKeyDown={
+        hasFailureActions ? openContextMenuFromKeyboard : undefined
+      }
       aria-label={`${run.displayTitle}, ${presentation.label}, triggered ${triggeredRelativeTime}${
         startedRelativeTime ? `, started ${startedRelativeTime}` : ''
       }. Open workflow run in browser`}
@@ -1527,6 +1786,15 @@ function WorkflowRunRow({ run }: { run: GitHubWorkflowRun }): ReactElement {
       </span>
       <ExternalLink size={12} className="workflow-run-external" aria-hidden="true" />
     </a>
+  );
+
+  return (
+    <WorkflowRunFailureContextMenu
+      run={run}
+      actions={failureActions}
+    >
+      {row}
+    </WorkflowRunFailureContextMenu>
   );
 }
 

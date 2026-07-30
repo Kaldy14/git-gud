@@ -93,6 +93,7 @@ import {
 } from '@renderer/workspace/autoFetch';
 import {
   indexPullRequestsByBranch,
+  repositoryMatchesGitHubRepository,
   repositoryMatchesPullRequest
 } from '@renderer/workspace/pullRequestBranches';
 import {
@@ -413,6 +414,39 @@ export function WorkspaceShell(): ReactElement {
     workspace.activeTabId,
     workspace.tabs
   ]);
+  const resolveDashboardRepositoryPath = useCallback(
+    (repository: { host: string; owner: string; name: string }) => {
+      const activeWorkspaceTab = workspace.tabs.find(
+        (tab) => tab.id === workspace.activeTabId
+      );
+      const candidateTabs = activeWorkspaceTab
+        ? [
+            activeWorkspaceTab,
+            ...workspace.tabs.filter((tab) => tab.id !== activeWorkspaceTab.id)
+          ]
+        : workspace.tabs;
+
+      return candidateTabs.find((tab) => {
+        const overview =
+          tab.path === activeTab?.path
+            ? repositoryQuery.data
+            : queryClient.getQueryData<GitRepositoryOverview>(
+                repositoryOverviewQueryKey(tab.path)
+              );
+        return repositoryMatchesGitHubRepository(
+          repository,
+          overview?.remotes ?? []
+        );
+      })?.path;
+    },
+    [
+      activeTab?.path,
+      queryClient,
+      repositoryQuery.data,
+      workspace.activeTabId,
+      workspace.tabs
+    ]
+  );
   const dashboardsQuery = useDashboards(activeDashboardProfileId);
   const dashboardActionAlertsQuery = useDashboardActionAlerts(
     activeDashboardProfileId
@@ -2741,6 +2775,7 @@ export function WorkspaceShell(): ReactElement {
             onSelectDashboard={handleSelectDashboard}
             onOpenProfileSettings={handleOpenGitProfileMenu}
             onClose={handleClosePullRequestWorkspace}
+            resolveRepositoryPath={resolveDashboardRepositoryPath}
           />
         ) : gitHubWorkspaceView ? (
           <>

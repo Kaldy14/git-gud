@@ -23,6 +23,7 @@ import type {
   GitHubActionsRunsInput,
   GitHubActionsRunFilters,
   GitHubActionsTileView,
+  GitHubWorkflowRunFailureInput,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestReviewCommentUpdateInput,
@@ -225,6 +226,13 @@ const validators = {
     readOnlyArg(args, 'github:repositories', 'profileId', readNonEmptyString),
   'github:actions-runs': (args) =>
     readOnlyArg(args, 'github:actions-runs', 'input', readGitHubActionsRunsInput),
+  'github:workflow-run-failed-log': (args) =>
+    readOnlyArg(
+      args,
+      'github:workflow-run-failed-log',
+      'input',
+      readGitHubWorkflowRunFailureInput
+    ),
   'github:pull-request-inbox': (args) =>
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
@@ -743,6 +751,19 @@ function readGitHubActionsRunsInput(value: unknown): GitHubActionsRunsInput {
     limit,
     view: readGitHubActionsTileView(record.view),
     filters: readGitHubActionsRunFilters(record.filters, 'filters')
+  };
+}
+
+function readGitHubWorkflowRunFailureInput(
+  value: unknown
+): GitHubWorkflowRunFailureInput {
+  const record = readRecord(value, 'GitHub workflow run failure input');
+
+  return {
+    profileId: readNonEmptyLimitedString(record.profileId, 'profileId', 128),
+    owner: readGitHubName(record.owner, 'owner'),
+    repository: readGitHubName(record.repository, 'repository'),
+    runId: readPositiveInteger(record.runId, 'runId')
   };
 }
 

@@ -66,6 +66,7 @@ import { loadComparison, loadFileBlame, loadFileHistory } from './git/repository
 import { listExternalApplications } from './externalApplications';
 import {
   loadGitHubActionsRuns,
+  loadGitHubWorkflowRunFailedLog,
   loadGitHubPullRequestDetail,
   loadGitHubPullRequestInbox,
   loadGitHubRepositories,
@@ -617,6 +618,9 @@ export function registerIpcHandlers(
 
     return runs;
   });
+  handle('github:workflow-run-failed-log', (_event, input) =>
+    loadGitHubWorkflowRunFailedLog(input)
+  );
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
   handle('github:open-pull-request-in-application', (_event, repoPath, input) =>

@@ -502,6 +502,27 @@ describe('DashboardView', () => {
     }
   });
 
+  it('exposes failure actions only on failed workflow rows', () => {
+    const markup = renderActionsDashboard([
+      workflowRun({
+        id: 101,
+        status: 'completed',
+        conclusion: 'failure'
+      }),
+      workflowRun({
+        id: 100,
+        status: 'completed',
+        conclusion: 'success'
+      })
+    ]);
+
+    expect(markup).toContain('aria-haspopup="menu"');
+    expect(markup).toContain(
+      'title="Open workflow run · right-click for failure actions"'
+    );
+    expect(markup.match(/aria-haspopup="menu"/g)).toHaveLength(1);
+  });
+
   it('renders a saved Portainer Swarm stack tile from cached runtime and image data', () => {
     const queryClient = new QueryClient();
     const tile = {

@@ -1,6 +1,8 @@
-import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
+
+import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
 
 import { copyPullRequestLink } from './pullRequestLinkClipboard';
 
@@ -42,24 +44,5 @@ export function PullRequestGitHubLink({
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>
-  );
-}
-
-function openContextMenuFromKeyboard(
-  event: ReactKeyboardEvent<HTMLAnchorElement>
-): void {
-  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
-    return;
-  }
-
-  event.preventDefault();
-  const rect = event.currentTarget.getBoundingClientRect();
-  event.currentTarget.dispatchEvent(
-    new MouseEvent('contextmenu', {
-      bubbles: true,
-      cancelable: true,
-      clientX: rect.left + rect.width / 2,
-      clientY: rect.bottom
-    })
   );
 }

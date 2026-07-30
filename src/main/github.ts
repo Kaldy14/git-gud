@@ -25,6 +25,7 @@ import type {
   GitHubRepositoryMergeSettings,
   GitHubWorkflowRun,
   GitHubWorkflowRunConclusion,
+  GitHubWorkflowRunFailureInput,
   GitHubWorkflowRunStatus,
   GitProfile,
   GitReviewFileContext,
@@ -233,6 +234,36 @@ export async function loadGitHubActionsRuns(input: GitHubActionsRunsInput): Prom
     search.searchedRunCount,
     search.searchLimitReached
   );
+}
+
+export async function loadGitHubWorkflowRunFailedLog(
+  input: GitHubWorkflowRunFailureInput
+): Promise<string> {
+  const context = await getGitHubContext(input.profileId);
+  const log = await runGitHubText(
+    context,
+    gitHubWorkflowRunFailedLogArgs(input, context.host)
+  );
+
+  if (!log) {
+    throw new Error('GitHub did not return any failed-step logs for this workflow run.');
+  }
+
+  return log;
+}
+
+export function gitHubWorkflowRunFailedLogArgs(
+  input: GitHubWorkflowRunFailureInput,
+  host: string
+): string[] {
+  return [
+    'run',
+    'view',
+    String(input.runId),
+    '--repo',
+    `${host}/${input.owner}/${input.repository}`,
+    '--log-failed'
+  ];
 }
 
 async function loadGitHubActionsPullRequestGroups(
@@ -1936,7 +1967,7 @@ async function getGitHubContext(profileId: string): Promise<GitHubContext> {
   }
 
   if (!profile.ghConfigDir || !profile.githubLogin) {
-    throw new Error('Connect a GitHub CLI account to this Git profile before opening the pull request inbox.');
+    throw new Error('Connect a GitHub CLI account to this Git profile before using GitHub features.');
   }
 
   return {

@@ -102,10 +102,31 @@ export function repositoryMatchesPullRequest(
     return false;
   }
 
+  return remotesContainRepositoryKey(pullRequestKey, remotes);
+}
+
+export function repositoryMatchesGitHubRepository(
+  repository: {
+    host: string;
+    owner: string;
+    name: string;
+  },
+  remotes: readonly GitRemote[]
+): boolean {
+  return remotesContainRepositoryKey(
+    repositoryKey(repository.host, repository.owner, repository.name),
+    remotes
+  );
+}
+
+function remotesContainRepositoryKey(
+  repositoryKeyToMatch: string,
+  remotes: readonly GitRemote[]
+): boolean {
   return remotes.some((remote) =>
     [remote.fetchUrl, remote.pushUrl]
       .map(parseRepositoryKey)
-      .includes(pullRequestKey)
+      .includes(repositoryKeyToMatch)
   );
 }
 

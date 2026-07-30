@@ -182,6 +182,23 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('profiles:activate', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
+    expect(
+      validateIpcArgs('github:workflow-run-failed-log', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'Kaldy14',
+          repository: 'git-gud',
+          runId: 123
+        }
+      ])
+    ).toEqual([
+      {
+        profileId: 'profile:kaldy',
+        owner: 'Kaldy14',
+        repository: 'git-gud',
+        runId: 123
+      }
+    ]);
     expect(validateIpcArgs('dashboards:select', ['profile:kaldy', 'dashboard:actions'])).toEqual([
       'profile:kaldy',
       'dashboard:actions'
@@ -815,6 +832,16 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('url must be a valid HTTP or HTTPS URL.');
+    expect(() =>
+      validateIpcArgs('github:workflow-run-failed-log', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'Kaldy14',
+          repository: 'git-gud',
+          runId: 0
+        }
+      ])
+    ).toThrow('runId must be a positive integer.');
     expect(() =>
       validateIpcArgs('settings:update', [
         {

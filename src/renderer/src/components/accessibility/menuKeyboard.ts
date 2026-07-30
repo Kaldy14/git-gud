@@ -34,3 +34,22 @@ export function handleMenuKeyDown(event: KeyboardEvent<HTMLElement>, onClose: ()
   event.preventDefault();
   items[nextIndex]?.focus({ preventScroll: true });
 }
+
+export function openContextMenuFromKeyboard(
+  event: KeyboardEvent<HTMLElement>
+): void {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
+    return;
+  }
+
+  event.preventDefault();
+  const rect = event.currentTarget.getBoundingClientRect();
+  event.currentTarget.dispatchEvent(
+    new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.bottom
+    })
+  );
+}

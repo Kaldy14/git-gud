@@ -921,6 +921,13 @@ export type GitHubActionsRunsInput = {
   filters: GitHubActionsRunFilters;
 };
 
+export type GitHubWorkflowRunFailureInput = {
+  profileId: string;
+  owner: string;
+  repository: string;
+  runId: number;
+};
+
 export type GitHubActionsPullRequestGroup = {
   number: number;
   title: string;

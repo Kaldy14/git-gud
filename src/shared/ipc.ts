@@ -31,6 +31,7 @@ import type {
   GitHubCliAccount,
   GitHubActionsRuns,
   GitHubActionsRunsInput,
+  GitHubWorkflowRunFailureInput,
   GitHubPullRequestActionResult,
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
@@ -452,6 +453,10 @@ export type IpcChannelMap = {
     args: [input: GitHubActionsRunsInput];
     result: GitHubActionsRuns;
   };
+  'github:workflow-run-failed-log': {
+    args: [input: GitHubWorkflowRunFailureInput];
+    result: string;
+  };
   'github:pull-request-inbox': {
     args: [profileId: string];
     result: GitHubPullRequestInbox;
@@ -615,6 +620,7 @@ export type RendererApi = {
   ) => Promise<PortainerStackImages>;
   getGitHubRepositories: (profileId: string) => Promise<GitHubRepositorySummary[]>;
   getGitHubActionsRuns: (input: GitHubActionsRunsInput) => Promise<GitHubActionsRuns>;
+  getGitHubWorkflowRunFailedLog: (input: GitHubWorkflowRunFailureInput) => Promise<string>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
   openGitHubPullRequestInApplication: (

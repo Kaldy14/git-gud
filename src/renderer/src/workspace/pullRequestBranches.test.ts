@@ -9,6 +9,7 @@ import type {
 
 import {
   indexPullRequestsByBranch,
+  repositoryMatchesGitHubRepository,
   repositoryMatchesPullRequest
 } from './pullRequestBranches';
 
@@ -156,6 +157,28 @@ describe('pull request branch matching', () => {
       repositoryMatchesPullRequest(
         pullRequest('other', 'project', 'feature/remote-only', 7),
         [{ name: 'origin', fetchUrl: 'https://github.com/acme/widgets.git' }]
+      )
+    ).toBe(false);
+  });
+
+  it('matches a dashboard repository to an open local checkout', () => {
+    const remotes: GitRemote[] = [
+      {
+        name: 'origin',
+        fetchUrl: 'ssh://git@github.example.com/Acme/Widgets.git'
+      }
+    ];
+
+    expect(
+      repositoryMatchesGitHubRepository(
+        { host: 'github.example.com', owner: 'acme', name: 'widgets' },
+        remotes
+      )
+    ).toBe(true);
+    expect(
+      repositoryMatchesGitHubRepository(
+        { host: 'github.example.com', owner: 'acme', name: 'api' },
+        remotes
       )
     ).toBe(false);
   });

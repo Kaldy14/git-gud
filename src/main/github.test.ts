@@ -11,6 +11,7 @@ import {
   categorizePullRequest,
   createGitHubFileReviewCommentPayload,
   filterGitHubActionsRuns,
+  gitHubWorkflowRunFailedLogArgs,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
   parsePullRequestCommit,
@@ -23,6 +24,27 @@ import {
 } from './github';
 
 describe('GitHub Actions dashboards', () => {
+  it('loads only failed-step logs for the selected run and GitHub host', () => {
+    expect(
+      gitHubWorkflowRunFailedLogArgs(
+        {
+          profileId: 'profile-1',
+          owner: 'acme',
+          repository: 'widgets',
+          runId: 101
+        },
+        'github.example.com'
+      )
+    ).toEqual([
+      'run',
+      'view',
+      '101',
+      '--repo',
+      'github.example.com/acme/widgets',
+      '--log-failed'
+    ]);
+  });
+
   it('parses accessible repositories for the project selector', () => {
     expect(
       parseGitHubRepositoriesResponse([
