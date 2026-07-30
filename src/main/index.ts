@@ -133,7 +133,7 @@ app.whenReady().then(() => {
     app.dock?.setIcon(iconPath);
   }
 
-  registerIpcHandlers(repoWatchers, applicationUpdater);
+  registerIpcHandlers(repoWatchers, applicationUpdater, is.dev);
   repoWatchers.sync(getWorkspace().tabs);
 
   app.on('browser-window-created', (_event, window) => {

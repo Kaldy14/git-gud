@@ -47,6 +47,8 @@ import type {
   GitReviewGuideState,
   GitReviewProgressUpdate,
   GitReviewTarget,
+  ReviewGroupingBenchmarkPreview,
+  ReviewGroupingBenchmarkSummary,
   GitRenameBranchInput,
   GitSetBranchUpstreamInput,
   GitResetInput,
@@ -180,6 +182,14 @@ export type IpcChannelMap = {
   'repo:review-plan': {
     args: [repoPath: string, target: GitReviewTarget];
     result: GitReviewPlan;
+  };
+  'dev:review-grouping-benchmarks': {
+    args: [];
+    result: ReviewGroupingBenchmarkSummary[];
+  };
+  'dev:review-grouping-preview': {
+    args: [datasetId: string];
+    result: ReviewGroupingBenchmarkPreview;
   };
   'repo:review-guide-state': {
     args: [repoPath: string, sourceFingerprint: string];
@@ -477,6 +487,13 @@ export type IpcChannelMap = {
 
 export type IpcChannelName = keyof IpcChannelMap;
 
+export type RendererDevApi = {
+  listReviewGroupingBenchmarks: () => Promise<ReviewGroupingBenchmarkSummary[]>;
+  getReviewGroupingBenchmarkPreview: (
+    datasetId: string
+  ) => Promise<ReviewGroupingBenchmarkPreview>;
+};
+
 export type RendererApi = {
   getApplicationUpdateState: () => Promise<ApplicationUpdateState>;
   applyApplicationUpdate: () => Promise<ApplicationUpdateState>;
@@ -608,4 +625,4 @@ export type RendererApi = {
   onApplicationUpdateStateChanged: (
     listener: (state: ApplicationUpdateState) => void
   ) => () => void;
-};
+} & Partial<RendererDevApi>;

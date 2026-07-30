@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import type { IpcChannelMap, RendererApi } from '@shared/ipc';
+import type { IpcChannelMap, RendererApi, RendererDevApi } from '@shared/ipc';
 
 function invoke<TChannel extends keyof IpcChannelMap>(
   channel: TChannel,
@@ -8,6 +8,14 @@ function invoke<TChannel extends keyof IpcChannelMap>(
 ): Promise<IpcChannelMap[TChannel]['result']> {
   return ipcRenderer.invoke(channel, ...args) as Promise<IpcChannelMap[TChannel]['result']>;
 }
+
+const devApi: Partial<RendererDevApi> = import.meta.env.DEV
+  ? {
+      listReviewGroupingBenchmarks: () => invoke('dev:review-grouping-benchmarks'),
+      getReviewGroupingBenchmarkPreview: (datasetId) =>
+        invoke('dev:review-grouping-preview', datasetId)
+    }
+  : {};
 
 const api: RendererApi = {
   getApplicationUpdateState: () => invoke('updates:get-state'),
@@ -152,7 +160,8 @@ const api: RendererApi = {
 
     ipcRenderer.on(channel, wrappedListener);
     return () => ipcRenderer.removeListener(channel, wrappedListener);
-  }
+  },
+  ...devApi
 };
 
 contextBridge.exposeInMainWorld('api', api);

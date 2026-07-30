@@ -175,7 +175,8 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
 
 export function registerIpcHandlers(
   repoWatchers: RepoWatcherRegistry,
-  applicationUpdater: Pick<ApplicationUpdater, 'applyUpdate' | 'getState'>
+  applicationUpdater: Pick<ApplicationUpdater, 'applyUpdate' | 'getState'>,
+  isDevelopment = false
 ): void {
   function broadcastDashboardActionAlerts(state: DashboardActionAlertState): void {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -405,6 +406,20 @@ export function registerIpcHandlers(
       reviewedChunkIds: loadReviewedChunks(repoPath, plan.targetKey, validChunkIds)
     };
   });
+  if (import.meta.env.DEV && isDevelopment) {
+    handle('dev:review-grouping-benchmarks', async () => {
+      const { listReviewGroupingBenchmarks } = await import(
+        '../../benchmarks/review-grouping/devPreview'
+      );
+      return listReviewGroupingBenchmarks();
+    });
+    handle('dev:review-grouping-preview', async (_event, datasetId) => {
+      const { loadReviewGroupingBenchmarkPreview } = await import(
+        '../../benchmarks/review-grouping/devPreview'
+      );
+      return loadReviewGroupingBenchmarkPreview(datasetId);
+    });
+  }
   handle('repo:review-guide-state', (_event, repoPath, sourceFingerprint) => {
     getOpenRepositoryTab(repoPath);
     return reviewGuideManager.getState(repoPath, sourceFingerprint);

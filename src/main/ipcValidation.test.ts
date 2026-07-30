@@ -6,6 +6,10 @@ describe('IPC argument validation', () => {
   it('accepts valid typed command payloads', () => {
     expect(validateIpcArgs('updates:get-state', [])).toEqual([]);
     expect(validateIpcArgs('updates:apply', [])).toEqual([]);
+    expect(validateIpcArgs('dev:review-grouping-benchmarks', [])).toEqual([]);
+    expect(validateIpcArgs('dev:review-grouping-preview', ['tsx-prop-migration'])).toEqual([
+      'tsx-prop-migration'
+    ]);
 
     const branchArgs = validateIpcArgs('repo:create-branch', [
       '/repo',

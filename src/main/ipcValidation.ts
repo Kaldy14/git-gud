@@ -49,8 +49,12 @@ type IpcArgValidator<TChannel extends IpcChannelName> = (
   args: readonly unknown[]
 ) => IpcChannelMap[TChannel]['args'];
 
+type DevIpcChannelName = Extract<IpcChannelName, `dev:${string}`>;
+type RuntimeIpcChannelName = Exclude<IpcChannelName, DevIpcChannelName>;
 type IpcArgValidators = {
-  [TChannel in IpcChannelName]: IpcArgValidator<TChannel>;
+  [TChannel in RuntimeIpcChannelName]: IpcArgValidator<TChannel>;
+} & {
+  [TChannel in DevIpcChannelName]?: IpcArgValidator<TChannel>;
 };
 
 const MAX_BULK_CHERRY_PICK_COMMITS = 100;
@@ -86,6 +90,14 @@ const validators = {
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
   'repo:review-plan': (args) => readRepoPathWithObject(args, 'repo:review-plan', readReviewTarget),
+  ...(import.meta.env.DEV
+    ? {
+        'dev:review-grouping-benchmarks': (args: readonly unknown[]) =>
+          noArgs('dev:review-grouping-benchmarks', args),
+        'dev:review-grouping-preview': (args: readonly unknown[]) =>
+          readOnlyArg(args, 'dev:review-grouping-preview', 'datasetId', readNonEmptyString)
+      }
+    : {}),
   'repo:review-guide-state': (args) => readReviewGuideStateArgs(args),
   'repo:start-review-guide': (args) => readStartReviewGuideArgs(args),
   'repo:set-review-progress': (args) =>
@@ -236,7 +248,11 @@ export function validateIpcArgs<TChannel extends IpcChannelName>(
   channel: TChannel,
   args: readonly unknown[]
 ): IpcChannelMap[TChannel]['args'] {
-  return validators[channel](args) as IpcChannelMap[TChannel]['args'];
+  const validator = validators[channel] as IpcArgValidator<TChannel> | undefined;
+  if (!validator) {
+    throw new Error(`Unsupported IPC channel: ${channel}.`);
+  }
+  return validator(args);
 }
 
 function noArgs(channel: string, args: readonly unknown[]): [] {

@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  Beaker,
   FileClock,
   FolderOpen,
   FolderX,
@@ -142,6 +143,12 @@ const ReviewView = lazy(async () => {
   const module = await import('@renderer/components/review/ReviewView');
   return { default: module.ReviewView };
 });
+const ReviewBenchmarkExplorer = import.meta.env.DEV
+  ? lazy(async () => {
+      const module = await import('@renderer/components/review/ReviewBenchmarkExplorer');
+      return { default: module.ReviewBenchmarkExplorer };
+    })
+  : undefined;
 
 type InteractiveRebaseDialogState = {
   base: string;
@@ -272,6 +279,9 @@ export function WorkspaceShell(): ReactElement {
   const [gitHubWorkspaceView, setGitHubWorkspaceView] = useState<GitHubWorkspaceView>();
   const [isStartTabOpen, setIsStartTabOpen] = useState(true);
   const [isStartTabActive, setIsStartTabActive] = useState(true);
+  const [isReviewBenchmarkOpen, setIsReviewBenchmarkOpen] = useState(false);
+  const [reviewBenchmarkDiffStyle, setReviewBenchmarkDiffStyle] =
+    useState<DiffStyle>('unified');
   const initialSurfaceResolvedRef = useRef(false);
   const autoFetchCoordinatorRef = useRef(createRepositoryAutoFetchCoordinator<RepoTab>());
   const operationRetryActionsRef = useRef(
@@ -3066,6 +3076,33 @@ export function WorkspaceShell(): ReactElement {
           }
           activeOperation={checkoutTransition ? undefined : visibleActiveOperation}
         />
+      ) : null}
+      {import.meta.env.DEV && !isReviewBenchmarkOpen ? (
+        <button
+          className="fixed bottom-10 right-3 z-40 flex h-8 items-center gap-1.5 rounded-md border border-[var(--select-border)] bg-[var(--bg-popover)] px-2.5 text-[10px] font-semibold text-[var(--accent-2)] shadow-lg shadow-black/50 hover:bg-[var(--bg-hover)]"
+          type="button"
+          onClick={() => setIsReviewBenchmarkOpen(true)}
+          title="Inspect expected and current review grouping benchmark plans"
+        >
+          <Beaker size={13} />
+          Review benchmarks
+        </button>
+      ) : null}
+      {import.meta.env.DEV && isReviewBenchmarkOpen && ReviewBenchmarkExplorer ? (
+        <Suspense
+          fallback={
+            <section className="fixed inset-x-0 bottom-0 top-9 z-50 grid place-items-center bg-[var(--bg-app)] text-xs text-[var(--text-3)]">
+              Loading benchmark explorer…
+            </section>
+          }
+        >
+          <ReviewBenchmarkExplorer
+            diffStyle={reviewBenchmarkDiffStyle}
+            diffSyntaxTheme={settings.diffSyntaxTheme}
+            onSetDiffStyle={setReviewBenchmarkDiffStyle}
+            onClose={() => setIsReviewBenchmarkOpen(false)}
+          />
+        </Suspense>
       ) : null}
       <OperationLog
         entries={operationLogEntries}

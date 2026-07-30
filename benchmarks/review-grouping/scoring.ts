@@ -157,8 +157,24 @@ export function identifyReviewUnits(
   dataset: ReviewGroupingDataset,
   plan: GitReviewPlan
 ): IdentifiedReviewUnit[] {
+  const chunkByMarkerId = identifyReviewChunks(dataset, plan);
+  const markerIdByPlanChunkId = new Map(
+    [...chunkByMarkerId].map(([markerId, chunk]) => [chunk.id, markerId])
+  );
+
+  return plan.units.map((unit) => ({
+    title: unit.title,
+    chunks: unit.chunks.map((chunk) => markerIdByPlanChunkId.get(chunk.id)!)
+  }));
+}
+
+export function identifyReviewChunks(
+  dataset: ReviewGroupingDataset,
+  plan: GitReviewPlan
+): ReadonlyMap<string, GitReviewChunk> {
   const chunks = plan.units.flatMap((unit) => unit.chunks);
   const chunkIdByPlanChunkId = new Map<string, string>();
+  const chunkByMarkerId = new Map<string, GitReviewChunk>();
 
   for (const file of dataset.files) {
     for (const marker of file.hunks) {
@@ -182,6 +198,7 @@ export function identifyReviewUnits(
       }
 
       chunkIdByPlanChunkId.set(candidate.id, marker.id);
+      chunkByMarkerId.set(marker.id, candidate);
     }
   }
 
@@ -195,10 +212,7 @@ export function identifyReviewUnits(
     );
   }
 
-  return plan.units.map((unit) => ({
-    title: unit.title,
-    chunks: unit.chunks.map((chunk) => chunkIdByPlanChunkId.get(chunk.id)!)
-  }));
+  return chunkByMarkerId;
 }
 
 function matchesChunk(chunk: GitReviewChunk, contains: string | readonly string[]): boolean {

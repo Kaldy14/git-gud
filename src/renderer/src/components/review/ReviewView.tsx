@@ -98,6 +98,7 @@ type ReviewViewProps = {
   repoPath: string;
   target: GitReviewTarget;
   plan?: GitReviewPlan;
+  initialPreferences?: ReviewPreferences;
   reviewGuideProvider?: {
     getState: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
     start: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
@@ -192,6 +193,7 @@ export function ReviewView({
   repoPath,
   target,
   plan: embeddedPlan,
+  initialPreferences,
   reviewGuideProvider,
   reviewProgressKey,
   lineComments = [],
@@ -211,7 +213,9 @@ export function ReviewView({
   const workerPool = useWorkerPool();
   const queryClient = useQueryClient();
   const [preferences, setPreferences] = useState<ReviewPreferences>(() =>
-    loadReviewPreferences(window.localStorage, repoPath)
+    initialPreferences
+      ? { ...initialPreferences, filePatterns: [...initialPreferences.filePatterns] }
+      : loadReviewPreferences(window.localStorage, repoPath)
   );
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>

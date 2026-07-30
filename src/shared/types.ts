@@ -266,6 +266,24 @@ export type GitReviewPlan = {
   loadedAt: string;
 };
 
+export type ReviewGroupingBenchmarkSummary = {
+  id: string;
+  title: string;
+  description: string;
+  tags: string[];
+  expectedUnitCount: number;
+  chunkCount: number;
+};
+
+export type ReviewGroupingBenchmarkPreview = {
+  benchmark: ReviewGroupingBenchmarkSummary;
+  expectedPlan: GitReviewPlan;
+  actualPlan: GitReviewPlan;
+  score: number;
+  wronglyMerged: Array<readonly [string, string]>;
+  wronglySplit: Array<readonly [string, string]>;
+};
+
 export type GitReviewGuidePriority = 'critical' | 'review' | 'skim';
 
 export type GitReviewGuideIssue = {
