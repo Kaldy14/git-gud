@@ -5,7 +5,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactElement
 } from 'react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { prepareFileTreeInput } from '@pierre/trees';
@@ -17,6 +17,7 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Columns2,
   Clock3,
   FileCode2,
@@ -31,6 +32,7 @@ import {
   PanelRightOpen,
   Pencil,
   Rows3,
+  Search,
   Reply,
   Send,
   Settings2,
@@ -92,6 +94,14 @@ import {
 import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
 import { normalizeReviewLineSelection } from './reviewLineSelection';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
+import {
+  createReviewSearchResults,
+  normalizeReviewSearchSelection,
+  type ReviewSearchInclusion,
+  type ReviewSearchLine,
+  type ReviewSearchResults,
+  type ReviewSearchScope
+} from './reviewSearch';
 import { createReviewContexts } from './reviewSections';
 
 type ReviewViewProps = {
@@ -189,6 +199,28 @@ type ReviewCommentBodyBuffer = {
   clear: () => void;
 };
 
+type ReviewSearchSession = {
+  sourceFingerprint: string;
+  query: string;
+  scope: ReviewSearchScope;
+  inclusion: ReviewSearchInclusion;
+};
+
+type ReviewSearchViewState = ReviewSearchSession & {
+  activeLocationIndex: number;
+  focusSignal: number;
+  isSearching: boolean;
+  isSelected: boolean;
+  preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
+  results: ReviewSearchResults;
+  onActiveLocationIndexChange: (index: number) => void;
+  onClose: () => void;
+  onInclusionChange: (inclusion: ReviewSearchInclusion) => void;
+  onQueryChange: (query: string) => void;
+  onScopeChange: (scope: ReviewSearchScope) => void;
+  onSelect: () => void;
+};
+
 export function ReviewView({
   repoPath,
   target,
@@ -222,6 +254,10 @@ export function ReviewView({
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
   const [selectedUnitId, setSelectedUnitId] = useState<string>();
+  const [reviewSearch, setReviewSearch] = useState<ReviewSearchSession>();
+  const [isReviewSearchSelected, setIsReviewSearchSelected] = useState(false);
+  const [reviewSearchFocusSignal, setReviewSearchFocusSignal] = useState(0);
+  const [activeReviewSearchLocationIndex, setActiveReviewSearchLocationIndex] = useState(0);
   const [embeddedReviewedChunkIds, setEmbeddedReviewedChunkIds] = useState<string[]>(() =>
     embeddedPlan
       ? loadEmbeddedReviewProgress(window.localStorage, reviewProgressKey, embeddedPlan)
@@ -298,6 +334,37 @@ export function ReviewView({
     presentation?.units.find((candidate) => candidate.unit.id === selectedUnitId) ??
     presentation?.units.find((candidate) => !candidate.isViewed) ??
     presentation?.units[0];
+  const currentReviewSearch =
+    reviewSearch?.sourceFingerprint === reviewPlan?.sourceFingerprint
+      ? reviewSearch
+      : undefined;
+  const reviewSearchScope = currentReviewSearch?.scope;
+  const reviewSearchInclusion = currentReviewSearch?.inclusion;
+  const deferredReviewSearchQuery = useDeferredValue(currentReviewSearch?.query ?? '');
+  const reviewSearchResults = useMemo(
+    () =>
+      reviewPlan && presentation && reviewSearchScope && reviewSearchInclusion
+        ? createReviewSearchResults(
+            reviewPlan,
+            presentation.units,
+            deferredReviewSearchQuery,
+            reviewSearchScope,
+            reviewSearchInclusion
+          )
+        : {
+            files: [],
+            locationCount: 0,
+            limitReached: false,
+            fullFileFallbackCount: 0
+          },
+    [
+      deferredReviewSearchQuery,
+      presentation,
+      reviewPlan,
+      reviewSearchInclusion,
+      reviewSearchScope
+    ]
+  );
   const preparedDiffCacheKeyPrefix = `${repoPath}:${reviewPlan?.targetKey ?? targetKey(target)}`;
   const selectedPreparedDiffs = useMemo(
     () => prepareReviewUnitDiffs(
@@ -306,6 +373,14 @@ export function ReviewView({
       preparedDiffCacheKeyPrefix
     ),
     [fileContexts, preparedDiffCacheKeyPrefix, selectedUnit]
+  );
+  const reviewSearchPreparedDiffs = useMemo(
+    () => prepareReviewChunkDiffs(
+      reviewSearchResults.files.map((file) => file.chunk),
+      fileContexts,
+      preparedDiffCacheKeyPrefix
+    ),
+    [fileContexts, preparedDiffCacheKeyPrefix, reviewSearchResults.files]
   );
   const commentThreads = useMemo(
     () => createReviewCommentThreads(lineComments),
@@ -463,7 +538,11 @@ export function ReviewView({
       return;
     }
 
-    for (const prepared of selectedPreparedDiffs.values()) {
+    const activePreparedDiffs = isReviewSearchSelected
+      ? reviewSearchPreparedDiffs
+      : selectedPreparedDiffs;
+
+    for (const prepared of activePreparedDiffs.values()) {
       workerPool.primeDiffHighlightCache(prepared.fileDiff);
     }
 
@@ -490,6 +569,8 @@ export function ReviewView({
     fileContexts,
     preparedDiffCacheKeyPrefix,
     presentation,
+    isReviewSearchSelected,
+    reviewSearchPreparedDiffs,
     selectedPreparedDiffs,
     selectedUnit,
     workerPool
@@ -515,6 +596,8 @@ export function ReviewView({
   }
 
   function selectReviewUnit(unitId: string): void {
+    setIsReviewSearchSelected(false);
+
     if (
       unitId === selectedUnit?.unit.id ||
       selectedCommentTarget !== undefined ||
@@ -523,6 +606,51 @@ export function ReviewView({
       return;
     }
     setSelectedUnitId(unitId);
+  }
+
+  function openReviewSearch(selection = ''): void {
+    if (!reviewPlan) {
+      return;
+    }
+
+    const normalizedSelection = normalizeReviewSearchSelection(selection);
+
+    setReviewSearch((current) => {
+      const previous =
+        current?.sourceFingerprint === reviewPlan.sourceFingerprint
+          ? current
+          : undefined;
+
+      return {
+        sourceFingerprint: reviewPlan.sourceFingerprint,
+        query: normalizedSelection || previous?.query || '',
+        scope: previous?.scope ?? 'changed-lines',
+        inclusion: previous?.inclusion ?? 'whole-review'
+      };
+    });
+    setIsReviewSearchSelected(true);
+    setActiveReviewSearchLocationIndex(0);
+    setReviewSearchFocusSignal((signal) => signal + 1);
+  }
+
+  function closeReviewSearch(): void {
+    setReviewSearch(undefined);
+    setIsReviewSearchSelected(false);
+    setActiveReviewSearchLocationIndex(0);
+    window.requestAnimationFrame(() => sectionRef.current?.focus({ preventScroll: true }));
+  }
+
+  function updateReviewSearch(
+    next: Partial<Pick<ReviewSearchSession, 'query' | 'scope' | 'inclusion'>>
+  ): void {
+    setReviewSearch((current) => {
+      if (!current || current.sourceFingerprint !== reviewPlan?.sourceFingerprint) {
+        return current;
+      }
+
+      return { ...current, ...next };
+    });
+    setActiveReviewSearchLocationIndex(0);
   }
 
   async function startReviewGuide(): Promise<void> {
@@ -578,6 +706,36 @@ export function ReviewView({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 'f'
+    ) {
+      if (selectedCommentTarget !== undefined || commentMutation.isPending) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (isReviewSearchInput(event.target)) {
+        setIsReviewSearchSelected(true);
+        setReviewSearchFocusSignal((signal) => signal + 1);
+        return;
+      }
+
+      openReviewSearch(readSelectedReviewText());
+      return;
+    }
+
+    if (isReviewSearchSelected && event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeReviewSearch();
+      return;
+    }
+
     if (
       event.metaKey ||
       event.ctrlKey ||
@@ -780,6 +938,34 @@ export function ReviewView({
         reviewGuide={reviewGuide}
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
+        reviewSearch={
+          currentReviewSearch
+            ? {
+                ...currentReviewSearch,
+                activeLocationIndex:
+                  reviewSearchResults.locationCount === 0
+                    ? 0
+                    : Math.min(
+                        activeReviewSearchLocationIndex,
+                        reviewSearchResults.locationCount - 1
+                      ),
+                focusSignal: reviewSearchFocusSignal,
+                isSearching: deferredReviewSearchQuery !== currentReviewSearch.query,
+                isSelected: isReviewSearchSelected,
+                preparedDiffs: reviewSearchPreparedDiffs,
+                results: reviewSearchResults,
+                onActiveLocationIndexChange: setActiveReviewSearchLocationIndex,
+                onClose: closeReviewSearch,
+                onInclusionChange: (inclusion) => updateReviewSearch({ inclusion }),
+                onQueryChange: (query) => updateReviewSearch({ query }),
+                onScopeChange: (scope) => updateReviewSearch({ scope }),
+                onSelect: () => {
+                  setIsReviewSearchSelected(true);
+                  setReviewSearchFocusSignal((signal) => signal + 1);
+                }
+              }
+            : undefined
+        }
         onSelectUnit={selectReviewUnit}
         onStartReviewGuide={() => void startReviewGuide()}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
@@ -1098,6 +1284,7 @@ function ReviewBody({
   reviewGuide,
   reviewGuideUnits,
   isFileTreeOpen,
+  reviewSearch,
   onSelectUnit,
   onStartReviewGuide,
   onToggleViewed
@@ -1117,6 +1304,7 @@ function ReviewBody({
   reviewGuide?: GitReviewGuide;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
+  reviewSearch?: ReviewSearchViewState;
   onSelectUnit: (unitId: string) => void;
   onStartReviewGuide: () => void;
   onToggleViewed: () => void;
@@ -1205,7 +1393,7 @@ function ReviewBody({
     return <ReviewMessage icon={<AlertTriangle size={16} />} text={errorMessage} tone="danger" />;
   }
 
-  if (units.length === 0) {
+  if (units.length === 0 && !reviewSearch) {
     return hasReviewUnits
       ? <ReviewMessage icon={<SkipForward size={16} />} text="All changes are skipped by the current review filters." />
       : <ReviewMessage icon={<Check size={16} />} text={emptyReviewMessage} />;
@@ -1214,12 +1402,37 @@ function ReviewBody({
   return (
     <div className="review-layout">
       <nav className="review-queue" aria-label="Context review units">
+        {reviewSearch ? (
+          <button
+            className="review-unit-row review-search-unit-row"
+            type="button"
+            data-active={reviewSearch.isSelected}
+            disabled={lineCollaboration?.selectedChunkId !== undefined}
+            onClick={reviewSearch.onSelect}
+          >
+            <span className="review-unit-status review-search-unit-status">
+              <Search size={12} />
+            </span>
+            <span className="min-w-0 flex-1 text-left">
+              <span
+                className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                title={reviewSearch.query || 'Review search'}
+              >
+                Search · {compactReviewSearchQuery(reviewSearch.query)}
+              </span>
+              <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">
+                {formatReviewSearchResultCount(reviewSearch.results.locationCount)}
+              </span>
+            </span>
+            <span className="badge-mini">temporary</span>
+          </button>
+        ) : null}
         {units.map((candidate, index) => (
           <button
             key={candidate.unit.id}
             className="review-unit-row"
             type="button"
-            data-active={candidate.unit.id === selectedUnit?.unit.id}
+            data-active={!reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id}
             disabled={
               lineCollaboration?.selectedChunkId !== undefined &&
               candidate.unit.id !== selectedUnit?.unit.id
@@ -1244,7 +1457,12 @@ function ReviewBody({
       </nav>
 
       <div className="review-content">
-        {selectedUnit ? (
+        {reviewSearch?.isSelected ? (
+          <ReviewSearchPanel
+            search={reviewSearch}
+            diffOptions={diffOptions}
+          />
+        ) : selectedUnit ? (
           <>
             <header className="review-unit-header">
               <div className="review-unit-heading">
@@ -1337,6 +1555,344 @@ function ReviewBody({
       ) : null}
     </div>
   );
+}
+
+function ReviewSearchPanel({
+  search,
+  diffOptions
+}: {
+  search: ReviewSearchViewState;
+  diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
+}): ReactElement {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [collapsedChunkIds, setCollapsedChunkIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const indexedFiles = useMemo(() => {
+    let index = 0;
+
+    return search.results.files.map((file) => ({
+      file,
+      locations: file.locations.map((location) => ({
+        index: index++,
+        location
+      }))
+    }));
+  }, [search.results.files]);
+  const activeResult = useMemo(
+    () =>
+      indexedFiles
+        .flatMap(({ file, locations }) =>
+          locations.map(({ index, location }) => ({ file, index, location }))
+        )
+        .find(({ index }) => index === search.activeLocationIndex),
+    [indexedFiles, search.activeLocationIndex]
+  );
+
+  useEffect(() => {
+    const input = inputRef.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.focus({ preventScroll: true });
+    input.select();
+  }, [search.focusSignal]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 68)}px`;
+  }, [search.query]);
+
+  useEffect(() => {
+    if (!activeResult) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const result = resultsRef.current?.querySelector<HTMLElement>(
+        `[data-review-search-result="${CSS.escape(activeResult.file.id)}"]`
+      );
+      result?.scrollIntoView({ block: 'nearest' });
+
+      const matchedLine = activeResult.location.lines.find((line) => line.isMatch);
+      const diffRoot = result?.querySelector<HTMLElement>('.gg-diff')?.shadowRoot;
+
+      if (matchedLine && diffRoot) {
+        diffRoot
+          .querySelector<HTMLElement>(createReviewSearchLineSelector(matchedLine))
+          ?.scrollIntoView({ block: 'center' });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeResult]);
+
+  function toggleChunk(chunkId: string): void {
+    setCollapsedChunkIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(chunkId)) {
+        next.delete(chunkId);
+      } else {
+        next.add(chunkId);
+      }
+
+      return next;
+    });
+  }
+
+  function navigate(direction: -1 | 1): void {
+    if (search.results.locationCount === 0) {
+      return;
+    }
+
+    search.onActiveLocationIndexChange(
+      (
+        search.activeLocationIndex +
+        direction +
+        search.results.locationCount
+      ) % search.results.locationCount
+    );
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === 'f'
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.select();
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      search.onClose();
+      return;
+    }
+
+    if (event.key === 'Enter' && !event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      navigate(event.shiftKey ? -1 : 1);
+    }
+  }
+
+  const resultPosition =
+    search.results.locationCount === 0
+      ? 0
+      : Math.min(search.activeLocationIndex + 1, search.results.locationCount);
+
+  return (
+    <>
+      <header className="review-unit-header review-search-header">
+        <div className="review-unit-heading">
+          <h2>Search results</h2>
+          <span className="badge-mini review-search-temporary-badge">temporary block</span>
+          <span className="review-unit-summary">
+            {formatReviewSearchResultCount(search.results.locationCount)}
+            {search.results.limitReached ? ' · first 200 shown' : ''}
+          </span>
+        </div>
+        <button
+          className="icon-btn icon-btn-compact"
+          type="button"
+          aria-label="Close review search"
+          title="Close review search"
+          onClick={search.onClose}
+        >
+          <X size={14} />
+        </button>
+      </header>
+
+      <div className="review-search-controls" role="search" aria-label="Search review">
+        <div className="review-search-query-row">
+          <Search size={14} aria-hidden="true" />
+          <textarea
+            ref={inputRef}
+            value={search.query}
+            rows={1}
+            spellCheck={false}
+            aria-label="Search identifier or selected code"
+            placeholder="Identifier or selected code…"
+            onChange={(event) => search.onQueryChange(event.currentTarget.value)}
+            onKeyDown={handleInputKeyDown}
+          />
+          <span className="review-search-position" aria-live="polite">
+            {resultPosition} of {search.results.locationCount}
+          </span>
+          <button
+            className="review-search-nav-button"
+            type="button"
+            disabled={search.results.locationCount === 0}
+            aria-label="Previous review search result"
+            title="Previous result (Shift Enter)"
+            onClick={() => navigate(-1)}
+          >
+            <ChevronUp size={13} />
+          </button>
+          <button
+            className="review-search-nav-button"
+            type="button"
+            disabled={search.results.locationCount === 0}
+            aria-label="Next review search result"
+            title="Next result (Enter)"
+            onClick={() => navigate(1)}
+          >
+            <ChevronDown size={13} />
+          </button>
+        </div>
+
+        <div className="review-search-scope-row">
+          <label>
+            <span>Search in</span>
+            <select
+              value={search.scope}
+              aria-label="Review search scope"
+              onChange={(event) => search.onScopeChange(event.currentTarget.value as ReviewSearchScope)}
+            >
+              <option value="changed-lines">Changed lines</option>
+              <option value="full-files">Full changed files</option>
+            </select>
+          </label>
+          <label>
+            <span>Include</span>
+            <select
+              value={search.inclusion}
+              aria-label="Review search inclusion"
+              onChange={(event) =>
+                search.onInclusionChange(event.currentTarget.value as ReviewSearchInclusion)
+              }
+            >
+              <option value="visible-blocks">Visible blocks</option>
+              <option value="whole-review">Whole PR</option>
+            </select>
+          </label>
+          <span className="review-search-shortcut-hint">⌘F from selected text or code</span>
+        </div>
+      </div>
+
+      {search.results.fullFileFallbackCount > 0 && search.scope === 'full-files' ? (
+        <p className="review-search-notice">
+          {search.results.fullFileFallbackCount} changed
+          {search.results.fullFileFallbackCount === 1 ? ' file has' : ' files have'} no full-text
+          context, so changed lines are shown instead.
+        </p>
+      ) : null}
+
+      <div ref={resultsRef} className="review-chunks review-search-results">
+        {search.isSearching ? (
+          <ReviewMessage
+            icon={<Loader2 size={16} className="animate-spin" />}
+            text="Searching review…"
+          />
+        ) : !search.query.trim() ? (
+          <ReviewMessage
+            icon={<Search size={16} />}
+            text="Select an identifier or code, then press ⌘F."
+          />
+        ) : indexedFiles.length === 0 ? (
+          <ReviewMessage
+            icon={<Search size={16} />}
+            text="No matches in the selected review scope."
+          />
+        ) : (
+          indexedFiles.map(({ file, locations }) => {
+            const matchedLines = locations.flatMap(({ location }) =>
+              location.lines.filter((line) => line.isMatch)
+            );
+
+            return (
+              <section
+                className="review-search-file"
+                data-active={locations.some(
+                  ({ index }) => index === search.activeLocationIndex
+                )}
+                data-review-search-result={file.id}
+                key={file.id}
+              >
+                <div className="review-search-file-context">
+                  <span title={file.ownerUnitTitle}>{file.ownerUnitTitle}</span>
+                  <span title={file.relationship}>{file.relationship}</span>
+                  {file.isFiltered ? <span className="badge-mini">filtered</span> : null}
+                  {file.usedChangedLinesFallback
+                    ? <span className="badge-mini">changed lines</span>
+                    : null}
+                  <span>{formatReviewSearchResultCount(file.locations.length)}</span>
+                </div>
+                <ReviewChunk
+                  chunk={file.chunk}
+                  preparedDiff={search.preparedDiffs.get(file.chunk.id)}
+                  diffOptions={diffOptions}
+                  showFileComments={false}
+                  isCollapsed={collapsedChunkIds.has(file.chunk.id)}
+                  searchHighlights={matchedLines}
+                  onToggleCollapsed={() => toggleChunk(file.chunk.id)}
+                />
+              </section>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
+
+function createReviewSearchLineSelector(line: ReviewSearchLine): string {
+  const lineType = line.kind === 'addition'
+    ? '[data-line-type="change-addition"]'
+    : line.kind === 'deletion'
+      ? '[data-line-type="change-deletion"]'
+      : '';
+
+  return `[data-line="${line.number}"]${lineType}`;
+}
+
+function createReviewSearchHighlightCSS(
+  lines: readonly ReviewSearchLine[] | undefined
+): string {
+  if (!lines?.length) {
+    return '';
+  }
+
+  const lineSelectors = new Set<string>();
+  const gutterSelectors = new Set<string>();
+
+  for (const line of lines) {
+    const lineType = line.kind === 'addition'
+      ? '[data-line-type="change-addition"]'
+      : line.kind === 'deletion'
+        ? '[data-line-type="change-deletion"]'
+        : '';
+
+    lineSelectors.add(`[data-line="${line.number}"]${lineType}`);
+    gutterSelectors.add(`[data-column-number="${line.number}"]${lineType}`);
+  }
+
+  const selectors = [...lineSelectors, ...gutterSelectors].join(',\n');
+
+  return `
+    ${selectors} {
+      background-color: light-dark(rgb(214 159 34 / 0.24), rgb(235 182 60 / 0.2)) !important;
+    }
+
+    ${[...lineSelectors].join(',\n')} {
+      box-shadow: inset 3px 0 0 var(--diffs-modified-base);
+    }
+  `;
 }
 
 function ReviewFileTree({
@@ -1582,6 +2138,7 @@ function ReviewChunk({
   lineCollaboration,
   showFileComments,
   isCollapsed,
+  searchHighlights,
   onToggleCollapsed
 }: {
   chunk: GitReviewChunk;
@@ -1590,15 +2147,23 @@ function ReviewChunk({
   lineCollaboration?: ReviewLineCollaboration;
   showFileComments: boolean;
   isCollapsed: boolean;
+  searchHighlights?: readonly ReviewSearchLine[];
   onToggleCollapsed: () => void;
 }): ReactElement {
   const fileComposerId = useId();
   const expandableDiff = preparedDiff?.expandable;
   const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
-    () => expandableDiff
-      ? createReviewContextOptions(diffOptions, expandableDiff, chunk.path)
-      : diffOptions,
-    [chunk.path, diffOptions, expandableDiff]
+    () => {
+      const options = expandableDiff
+        ? createReviewContextOptions(diffOptions, expandableDiff, chunk.path)
+        : diffOptions;
+      const highlightCSS = createReviewSearchHighlightCSS(searchHighlights);
+
+      return highlightCSS
+        ? { ...options, unsafeCSS: `${options.unsafeCSS ?? ''}\n${highlightCSS}` }
+        : options;
+    },
+    [chunk.path, diffOptions, expandableDiff, searchHighlights]
   );
   const selectedLines =
     lineCollaboration?.selectedChunkId === chunk.id &&
@@ -2259,9 +2824,21 @@ function prepareReviewUnitDiffs(
   fileContexts: ReadonlyMap<string, GitReviewFileContext>,
   cacheKeyPrefix: string
 ): Map<string, PreparedReviewDiff> {
+  return prepareReviewChunkDiffs(
+    unit?.visibleChunks ?? [],
+    fileContexts,
+    cacheKeyPrefix
+  );
+}
+
+function prepareReviewChunkDiffs(
+  chunks: readonly GitReviewChunk[],
+  fileContexts: ReadonlyMap<string, GitReviewFileContext>,
+  cacheKeyPrefix: string
+): Map<string, PreparedReviewDiff> {
   const preparedDiffs = new Map<string, PreparedReviewDiff>();
 
-  for (const chunk of unit?.visibleChunks ?? []) {
+  for (const chunk of chunks) {
     if (chunk.omittedReason) {
       continue;
     }
@@ -2420,12 +2997,39 @@ function formatReviewCommentDate(value: string): string {
   }).format(new Date(value));
 }
 
+function compactReviewSearchQuery(query: string): string {
+  const compact = query.trim().replace(/\s+/g, ' ');
+
+  if (!compact) {
+    return 'Review';
+  }
+
+  return compact.length > 28 ? `${compact.slice(0, 27)}…` : compact;
+}
+
+function formatReviewSearchResultCount(count: number): string {
+  return `${count} ${count === 1 ? 'match' : 'matches'}`;
+}
+
+function readSelectedReviewText(): string {
+  const selection = window.getSelection();
+
+  return selection?.isCollapsed
+    ? ''
+    : normalizeReviewSearchSelection(selection?.toString() ?? '');
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
 
   return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function isReviewSearchInput(target: EventTarget | null): boolean {
+  return target instanceof HTMLTextAreaElement &&
+    target.getAttribute('aria-label') === 'Search identifier or selected code';
 }
 
 function isReviewFileTreeTarget(target: EventTarget | null): boolean {
