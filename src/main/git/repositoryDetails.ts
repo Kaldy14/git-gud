@@ -516,9 +516,26 @@ export async function commitChanges(tab: DetailTab, input: GitCommitInput): Prom
     throw new Error('Commit message is required.');
   }
 
+  if (input.messageOnly && !input.amend) {
+    throw new Error('Message-only updates require an amend operation.');
+  }
+
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const headBefore = await getCurrentHead(tab.path, env);
-  const args = input.amend ? ['commit', '--amend', '-m', message] : ['commit', '-m', message];
+
+  if (input.expectedHead && headBefore !== input.expectedHead) {
+    throw new Error('HEAD changed before the commit message could be updated. Refresh and try again.');
+  }
+
+  const args = input.amend
+    ? [
+        'commit',
+        '--amend',
+        ...(input.messageOnly ? ['--only', '--allow-empty'] : []),
+        '-m',
+        message
+      ]
+    : ['commit', '-m', message];
   await gitExecutor.run(args, {
     cwd: tab.path,
     kind: 'mutation',

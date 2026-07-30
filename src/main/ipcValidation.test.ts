@@ -388,6 +388,25 @@ describe('IPC argument validation', () => {
       ['newer-sha', 'older-sha']
     ]);
     expect(
+      validateIpcArgs('repo:commit', [
+        '/repo',
+        {
+          message: 'Updated commit message',
+          amend: true,
+          expectedHead: 'abc123',
+          messageOnly: true
+        }
+      ])
+    ).toEqual([
+      '/repo',
+      {
+        message: 'Updated commit message',
+        amend: true,
+        expectedHead: 'abc123',
+        messageOnly: true
+      }
+    ]);
+    expect(
       validateIpcArgs('repo:file-diff', [
         '/repo',
         { kind: 'selection', shas: ['newer-sha', 'older-sha'], path: 'src/app.ts' }

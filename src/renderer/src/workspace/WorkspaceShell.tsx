@@ -3021,6 +3021,7 @@ export function WorkspaceShell(): ReactElement {
                   row={selectedRow}
                   selectedShas={selectedCommitShas}
                   parentSha={parentSha}
+                  headSha={repositoryQuery.data?.status.branch.oid}
                   selectedFile={activeTab.selectedFile}
                   wipDirtyCount={repositoryQuery.data?.status.dirtyCount}
                   showWorkingDirectoryBanner={activeTab.gitDir !== activeTab.commonDir}
@@ -3034,6 +3035,7 @@ export function WorkspaceShell(): ReactElement {
                   onToggleCollapsed={handleToggleDetailPanel}
                   onResize={handleDetailPanelResize}
                   onResizeCommit={handleDetailPanelResizeCommit}
+                  onSelectCommit={handleSelectRow}
                   onSelectFile={handleSelectFile}
                   onSetReviewOpen={handleSetReviewOpen}
                   onOpenWipChanges={handleOpenWipChanges}

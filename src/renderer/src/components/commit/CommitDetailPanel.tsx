@@ -1,4 +1,4 @@
-import type { MouseEvent, PointerEvent, ReactElement } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,7 +23,8 @@ import {
   PanelRightOpen,
   Plus,
   RotateCcw,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 
 import {
@@ -59,6 +60,7 @@ type CommitDetailPanelProps = {
   row?: CommitGraphRow;
   selectedShas?: string[];
   parentSha?: string;
+  headSha?: string;
   selectedFile?: string;
   wipDirtyCount?: number;
   showWorkingDirectoryBanner?: boolean;
@@ -72,6 +74,7 @@ type CommitDetailPanelProps = {
   onToggleCollapsed?: () => void;
   onResize?: (width: number) => void;
   onResizeCommit?: (width: number) => void;
+  onSelectCommit: (sha: string) => void;
   onSelectFile: (path: string | undefined) => void;
   onSetReviewOpen: (open: boolean) => void;
   onOpenWipChanges: () => void;
@@ -81,11 +84,16 @@ type CommitDetailPanelProps = {
   onRevealWipFile: (file: GitFileChangeDetail) => void;
 };
 
+const DEFAULT_COMMIT_MESSAGE_EDITOR_HEIGHT = 220;
+const MIN_COMMIT_MESSAGE_EDITOR_HEIGHT = 96;
+const MAX_COMMIT_MESSAGE_EDITOR_HEIGHT = 520;
+
 export function CommitDetailPanel({
   repoPath,
   row,
   selectedShas = [],
   parentSha,
+  headSha,
   selectedFile,
   wipDirtyCount = 0,
   showWorkingDirectoryBanner = false,
@@ -99,6 +107,7 @@ export function CommitDetailPanel({
   onToggleCollapsed,
   onResize,
   onResizeCommit,
+  onSelectCommit,
   onSelectFile,
   onSetReviewOpen,
   onOpenWipChanges,
@@ -112,6 +121,8 @@ export function CommitDetailPanel({
   const [fileView, setFileView] = useState<FileViewMode>('path');
   const [showAllFiles, setShowAllFiles] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
+  const [commitMessageDraft, setCommitMessageDraft] = useState('');
+  const [editingCommitSha, setEditingCommitSha] = useState<string>();
   const [amend, setAmend] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const isWip = row?.node.kind === 'wip';
@@ -191,6 +202,31 @@ export function CommitDetailPanel({
     onSuccess: (result) => {
       if (!amend) {
         setCommitMessage('');
+      }
+
+      void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
+    }
+  });
+  const updateCommitMessageMutation = useMutation({
+    mutationKey: ['repository-mutation', repoPath],
+    mutationFn: async () => {
+      if (!repoPath || !row || row.node.kind === 'wip' || row.node.kind === 'stash') {
+        throw new Error('A checked-out commit is required.');
+      }
+
+      return window.api.commitChanges(repoPath, {
+        message: commitMessageDraft,
+        amend: true,
+        expectedHead: row.sha,
+        messageOnly: true
+      });
+    },
+    onSuccess: (result) => {
+      setEditingCommitSha(undefined);
+      setCommitMessageDraft('');
+
+      if (result.undoEntry?.headAfter) {
+        onSelectCommit(result.undoEntry.headAfter);
       }
 
       void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
@@ -303,8 +339,23 @@ export function CommitDetailPanel({
     stageAllMutation.isPending ||
     unstageAllMutation.isPending ||
     commitMutation.isPending ||
+    updateCommitMessageMutation.isPending ||
     isOperationBusy;
   const detailErrorMessage = detailError instanceof Error ? detailError.message : undefined;
+  const isEditingCommitMessage =
+    Boolean(detail?.kind === 'commit' && editingCommitSha === detail.sha);
+  const canEditCommitMessage =
+    Boolean(detail?.kind === 'commit' && headSha && detail.sha === headSha);
+
+  function beginCommitMessageEdit(): void {
+    if (detail?.kind !== 'commit') {
+      return;
+    }
+
+    setCommitMessageDraft(detail.message);
+    setEditingCommitSha(detail.sha);
+    updateCommitMessageMutation.reset();
+  }
 
   function renderFilesSection(): ReactElement | null {
     if (!detail) {
@@ -411,6 +462,9 @@ export function CommitDetailPanel({
         isMutating={activeMutation}
         isReviewOpen={isReviewOpen}
         canReview={Boolean(row && !isCommitSelection && row.node.kind !== 'stash')}
+        canEditCommitMessage={canEditCommitMessage}
+        isEditingCommitMessage={isEditingCommitMessage}
+        onEditCommitMessage={beginCommitMessageEdit}
         onDiscardAllWip={onDiscardAllWip}
         onOpenReview={() => onSetReviewOpen(true)}
         onToggleCollapsed={onToggleCollapsed}
@@ -431,7 +485,41 @@ export function CommitDetailPanel({
         </div>
       ) : detail ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <SummarySection detail={detail} parentSha={parentSha} remoteAvatars={remoteAvatars} />
+          {detail.kind === 'commit' && isEditingCommitMessage ? (
+            <>
+              <CommitMessageEditor
+                originalMessage={detail.message}
+                message={commitMessageDraft}
+                isUpdating={updateCommitMessageMutation.isPending}
+                error={
+                  updateCommitMessageMutation.error instanceof Error
+                    ? updateCommitMessageMutation.error.message
+                    : undefined
+                }
+                onChange={setCommitMessageDraft}
+                onUpdate={() => updateCommitMessageMutation.mutate()}
+                onCancel={() => {
+                  setEditingCommitSha(undefined);
+                  setCommitMessageDraft('');
+                  updateCommitMessageMutation.reset();
+                }}
+              />
+              <CommitSignatureSection
+                detail={detail}
+                parentSha={parentSha}
+                remoteAvatars={remoteAvatars}
+              />
+            </>
+          ) : (
+            <SummarySection
+              detail={detail}
+              parentSha={parentSha}
+              remoteAvatars={remoteAvatars}
+              canEditCommitMessage={canEditCommitMessage}
+              isMutating={activeMutation}
+              onEditCommitMessage={beginCommitMessageEdit}
+            />
+          )}
           {renderFilesSection()}
         </div>
       ) : null}
@@ -532,6 +620,9 @@ function PanelHeader({
   isMutating,
   isReviewOpen,
   canReview,
+  canEditCommitMessage,
+  isEditingCommitMessage,
+  onEditCommitMessage,
   onDiscardAllWip,
   onOpenReview,
   onToggleCollapsed
@@ -542,6 +633,9 @@ function PanelHeader({
   isMutating: boolean;
   isReviewOpen: boolean;
   canReview: boolean;
+  canEditCommitMessage: boolean;
+  isEditingCommitMessage: boolean;
+  onEditCommitMessage: () => void;
   onDiscardAllWip: () => void;
   onOpenReview: () => void;
   onToggleCollapsed?: () => void;
@@ -643,7 +737,21 @@ function PanelHeader({
   return (
     <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
       <span className="flex min-w-0 items-center gap-2">
-        <FilePen size={14} className="shrink-0 text-[var(--text-3)]" />
+        {canEditCommitMessage ? (
+          <button
+            className="icon-btn h-7 w-7 shrink-0"
+            type="button"
+            data-active={isEditingCommitMessage}
+            disabled={isMutating || isEditingCommitMessage}
+            onClick={onEditCommitMessage}
+            aria-label="Amend commit message"
+            title={isEditingCommitMessage ? 'Editing commit message' : 'Amend commit message'}
+          >
+            <FilePen size={14} />
+          </button>
+        ) : (
+          <FilePen size={14} className="shrink-0 text-[var(--text-3)]" />
+        )}
         <span className="shrink-0">commit:</span>
         <button
           className="mono flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-[var(--text-1)] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-2)]"
@@ -667,14 +775,238 @@ function PanelHeader({
   );
 }
 
+function CommitMessageEditor({
+  originalMessage,
+  message,
+  isUpdating,
+  error,
+  onChange,
+  onUpdate,
+  onCancel
+}: {
+  originalMessage: string;
+  message: string;
+  isUpdating: boolean;
+  error?: string;
+  onChange: (value: string) => void;
+  onUpdate: () => void;
+  onCancel: () => void;
+}): ReactElement {
+  const summaryInputRef = useRef<HTMLInputElement>(null);
+  const resizeStateRef = useRef<{ startY: number; startHeight: number } | undefined>(undefined);
+  const [descriptionHeight, setDescriptionHeight] = useState(DEFAULT_COMMIT_MESSAGE_EDITOR_HEIGHT);
+  const [isResizing, setIsResizing] = useState(false);
+  const { summary, description } = splitCommitMessage(message);
+  const canUpdate =
+    Boolean(summary.trim()) &&
+    message.trim() !== originalMessage.trim() &&
+    !isUpdating;
+
+  useEffect(() => {
+    const input = summaryInputRef.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    function handlePointerMove(event: globalThis.PointerEvent): void {
+      const state = resizeStateRef.current;
+
+      if (!state) {
+        return;
+      }
+
+      setDescriptionHeight(
+        normalizeCommitMessageEditorHeight(
+          state.startHeight + event.clientY - state.startY
+        )
+      );
+    }
+
+    function stopResize(): void {
+      resizeStateRef.current = undefined;
+      setIsResizing(false);
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizing]);
+
+  function handleEditorKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+  ): void {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && canUpdate) {
+      event.preventDefault();
+      onUpdate();
+    } else if (event.key === 'Escape' && !isUpdating) {
+      event.preventDefault();
+      onCancel();
+    }
+  }
+
+  function commitDescriptionHeight(nextHeight: number): void {
+    setDescriptionHeight(normalizeCommitMessageEditorHeight(nextHeight));
+  }
+
+  return (
+    <section
+      className="shrink-0 border-b border-[var(--border)] px-3 pb-3 pt-3"
+      aria-label="Amend commit message"
+    >
+      <div className="commit-message-editor-card">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] pr-3">
+          <input
+            ref={summaryInputRef}
+            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-[15px] font-semibold leading-5 text-[var(--text-1)] outline-none"
+            aria-label="Commit summary"
+            placeholder="Commit summary"
+            spellCheck
+            value={summary}
+            disabled={isUpdating}
+            onChange={(event) => onChange(joinCommitMessage(event.target.value, description))}
+            onKeyDown={handleEditorKeyDown}
+          />
+          <span
+            className="mono shrink-0 text-[10.5px] text-[var(--text-3)]"
+            data-over-limit={summary.length > 72 ? 'true' : undefined}
+            title="Characters remaining in the recommended 72-character summary"
+          >
+            {72 - summary.length}
+          </span>
+        </div>
+        <textarea
+          className="block w-full resize-none bg-transparent px-3 py-2.5 text-[13px] leading-5 text-[var(--text-1)] outline-none"
+          style={{ height: descriptionHeight }}
+          aria-label="Commit description"
+          placeholder="Description"
+          spellCheck
+          value={description}
+          disabled={isUpdating}
+          onChange={(event) => onChange(joinCommitMessage(summary, event.target.value))}
+          onKeyDown={handleEditorKeyDown}
+        />
+      </div>
+
+      <div
+        className="commit-message-editor-resizer"
+        role="separator"
+        tabIndex={0}
+        aria-label="Resize commit message editor"
+        aria-orientation="horizontal"
+        aria-valuemin={MIN_COMMIT_MESSAGE_EDITOR_HEIGHT}
+        aria-valuemax={MAX_COMMIT_MESSAGE_EDITOR_HEIGHT}
+        aria-valuenow={descriptionHeight}
+        data-active={isResizing ? 'true' : undefined}
+        title="Drag to resize the message editor. Double-click to reset."
+        onPointerDown={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+
+          event.preventDefault();
+          resizeStateRef.current = {
+            startY: event.clientY,
+            startHeight: descriptionHeight
+          };
+          setIsResizing(true);
+        }}
+        onDoubleClick={() => commitDescriptionHeight(DEFAULT_COMMIT_MESSAGE_EDITOR_HEIGHT)}
+        onKeyDown={(event) => {
+          const step = event.shiftKey ? 48 : 16;
+
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            commitDescriptionHeight(descriptionHeight - step);
+          } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            commitDescriptionHeight(descriptionHeight + step);
+          } else if (event.key === 'Home') {
+            event.preventDefault();
+            commitDescriptionHeight(MIN_COMMIT_MESSAGE_EDITOR_HEIGHT);
+          } else if (event.key === 'End') {
+            event.preventDefault();
+            commitDescriptionHeight(MAX_COMMIT_MESSAGE_EDITOR_HEIGHT);
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            commitDescriptionHeight(DEFAULT_COMMIT_MESSAGE_EDITOR_HEIGHT);
+          }
+        }}
+      />
+
+      <div className="shrink-0 space-y-2">
+        <div className="flex items-center justify-between gap-3 text-[10.5px] text-[var(--text-3)]">
+          <span>Updating creates a new commit SHA.</span>
+          <span className="shrink-0">⌘↵ update · Esc cancel</span>
+        </div>
+        {error ? (
+          <p className="text-[11px] text-[var(--danger-text)]" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="commit-message-action"
+            data-tone="success"
+            type="button"
+            disabled={!canUpdate}
+            onClick={onUpdate}
+          >
+            {isUpdating ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            Update Message
+          </button>
+          <button
+            className="commit-message-action"
+            data-tone="danger"
+            type="button"
+            disabled={isUpdating}
+            onClick={onCancel}
+          >
+            <X size={14} />
+            Cancel Amend
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SummarySection({
   detail,
   parentSha,
-  remoteAvatars
+  remoteAvatars,
+  canEditCommitMessage,
+  isMutating,
+  onEditCommitMessage
 }: {
   detail: GitRepositoryDetail;
   parentSha?: string;
   remoteAvatars: boolean;
+  canEditCommitMessage: boolean;
+  isMutating: boolean;
+  onEditCommitMessage: () => void;
 }): ReactElement | null {
   if (detail.kind === 'wip') {
     return null;
@@ -709,37 +1041,124 @@ function SummarySection({
 
   return (
     <>
-      <div className="max-h-40 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-2.5">
-        <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">{detail.subject}</h2>
-        {detail.body ? (
-          <div className="mt-3 pr-2 text-[13px] leading-5 text-[var(--text-2)]">
-            <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{detail.body}</p>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="shrink-0 space-y-1.5 px-5 py-2.5">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <SignatureRow
-            person={detail.author}
-            action="authored"
-            remoteAvatars={remoteAvatars}
-          />
-          {parentSha ? (
-            <p className="shrink-0 pt-1 text-right text-[11px] text-[var(--text-3)]">
-              parent: <span className="mono">{parentSha.slice(0, 8)}</span>
-            </p>
-          ) : null}
-        </div>
-        {shouldShowCommitter(detail) ? (
-          <SignatureRow
-            person={detail.committer}
-            action="committed"
-            remoteAvatars={remoteAvatars}
-          />
-        ) : null}
-      </div>
+      <CommitMessageSummary
+        subject={detail.subject}
+        body={detail.body}
+        isEditable={canEditCommitMessage}
+        isDisabled={isMutating}
+        onEdit={onEditCommitMessage}
+      />
+      <CommitSignatureSection
+        detail={detail}
+        parentSha={parentSha}
+        remoteAvatars={remoteAvatars}
+      />
     </>
+  );
+}
+
+function CommitMessageSummary({
+  subject,
+  body,
+  isEditable,
+  isDisabled,
+  onEdit
+}: {
+  subject: string;
+  body?: string;
+  isEditable: boolean;
+  isDisabled: boolean;
+  onEdit: () => void;
+}): ReactElement {
+  const content = (
+    <>
+      <span className="block text-[17px] font-semibold leading-snug text-[var(--text-1)]">
+        {subject}
+      </span>
+      {body ? (
+        <span className="mt-3 block pr-2 text-[13px] leading-5 text-[var(--text-2)]">
+          <span className="block whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</span>
+        </span>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="shrink-0 border-b border-[var(--border)] p-2.5">
+      {isEditable ? (
+        <button
+          className="commit-message-summary max-h-40 w-full overflow-x-hidden overflow-y-auto text-left"
+          type="button"
+          disabled={isDisabled}
+          aria-label="Amend commit message"
+          title="Click to amend your commit message"
+          onClick={onEdit}
+        >
+          {content}
+        </button>
+      ) : (
+        <div className="max-h-40 overflow-x-hidden overflow-y-auto px-2.5">{content}</div>
+      )}
+    </div>
+  );
+}
+
+function CommitSignatureSection({
+  detail,
+  parentSha,
+  remoteAvatars
+}: {
+  detail: Extract<GitRepositoryDetail, { kind: 'commit' }>;
+  parentSha?: string;
+  remoteAvatars: boolean;
+}): ReactElement {
+  return (
+    <div className="shrink-0 space-y-1.5 px-5 py-2.5">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <SignatureRow
+          person={detail.author}
+          action="authored"
+          remoteAvatars={remoteAvatars}
+        />
+        {parentSha ? (
+          <p className="shrink-0 pt-1 text-right text-[11px] text-[var(--text-3)]">
+            parent: <span className="mono">{parentSha.slice(0, 8)}</span>
+          </p>
+        ) : null}
+      </div>
+      {shouldShowCommitter(detail) ? (
+        <SignatureRow
+          person={detail.committer}
+          action="committed"
+          remoteAvatars={remoteAvatars}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function splitCommitMessage(message: string): { summary: string; description: string } {
+  const normalizedMessage = message.replace(/\r\n/g, '\n');
+  const firstLineBreak = normalizedMessage.indexOf('\n');
+
+  if (firstLineBreak === -1) {
+    return { summary: normalizedMessage, description: '' };
+  }
+
+  return {
+    summary: normalizedMessage.slice(0, firstLineBreak),
+    description: normalizedMessage.slice(firstLineBreak + 1).replace(/^\n/, '')
+  };
+}
+
+function joinCommitMessage(summary: string, description: string): string {
+  return description ? `${summary}\n\n${description}` : summary;
+}
+
+function normalizeCommitMessageEditorHeight(height: number): number {
+  return Math.min(
+    MAX_COMMIT_MESSAGE_EDITOR_HEIGHT,
+    Math.max(MIN_COMMIT_MESSAGE_EDITOR_HEIGHT, Math.round(height))
   );
 }
 

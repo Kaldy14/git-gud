@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { gitExecutor } from './exec';
 import {
+  commitChanges,
   discardAllChanges,
   discardFile,
   loadCommitDetail,
@@ -17,6 +18,71 @@ import {
 } from './repositoryDetails';
 
 describe('repository details integration', () => {
+  it('updates only the HEAD commit message while preserving staged changes', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await git(repoPath, ['commit', '--allow-empty', '-m', 'empty HEAD commit']);
+      const headBefore = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      const treeBefore = (await git(repoPath, ['rev-parse', 'HEAD^{tree}'])).stdout.trim();
+      await writeRepoFile(repoPath, 'ordinary.txt', 'staged change\n');
+      await git(repoPath, ['add', 'ordinary.txt']);
+
+      const result = await commitChanges(
+        { path: repoPath },
+        {
+          message: 'Renamed commit\n\nUpdated body',
+          amend: true,
+          expectedHead: headBefore,
+          messageOnly: true
+        }
+      );
+
+      const headAfter = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      expect(headAfter).not.toBe(headBefore);
+      expect((await git(repoPath, ['log', '-1', '--format=%B'])).stdout.trim()).toBe(
+        'Renamed commit\n\nUpdated body'
+      );
+      expect((await git(repoPath, ['rev-parse', 'HEAD^{tree}'])).stdout.trim()).toBe(treeBefore);
+      expect(await changedPaths(repoPath, ['diff', '--cached', '--name-only'])).toEqual([
+        'ordinary.txt'
+      ]);
+      expect(result.undoEntry).toMatchObject({
+        operation: 'amend',
+        headBefore,
+        headAfter
+      });
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a message update when HEAD no longer matches the selected commit', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      const headBefore = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await commitFile(repoPath, 'later.txt', 'later\n', 'later commit');
+
+      await expect(
+        commitChanges(
+          { path: repoPath },
+          {
+            message: 'Stale update',
+            amend: true,
+            expectedHead: headBefore,
+            messageOnly: true
+          }
+        )
+      ).rejects.toThrow('HEAD changed before the commit message could be updated');
+      expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('later commit');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('preserves staged rename detection while using path-scoped status reads', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
 

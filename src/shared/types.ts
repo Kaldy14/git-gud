@@ -389,6 +389,8 @@ export type GitPatchApplyInput = {
 export type GitCommitInput = {
   message: string;
   amend: boolean;
+  expectedHead?: string;
+  messageOnly?: boolean;
 };
 
 export type GitPullInput = {

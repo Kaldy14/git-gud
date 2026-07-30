@@ -436,7 +436,9 @@ function readCommitInput(value: unknown): GitCommitInput {
   const record = readRecord(value, 'commit input');
   return {
     message: readStringProperty(record, 'message'),
-    amend: readBooleanProperty(record, 'amend')
+    amend: readBooleanProperty(record, 'amend'),
+    expectedHead: readOptionalStringProperty(record, 'expectedHead'),
+    messageOnly: readOptionalBooleanProperty(record, 'messageOnly')
   };
 }
 
