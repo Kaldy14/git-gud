@@ -779,7 +779,6 @@ export function ReviewView({
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
         onSelectUnit={selectReviewUnit}
-        onHideFileTree={() => setFileTreeOpen(false)}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
 
@@ -1067,7 +1066,6 @@ function ReviewBody({
   reviewGuideUnits,
   isFileTreeOpen,
   onSelectUnit,
-  onHideFileTree,
   onToggleViewed
 }: {
   repoPath: string;
@@ -1085,7 +1083,6 @@ function ReviewBody({
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
   onSelectUnit: (unitId: string) => void;
-  onHideFileTree: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
@@ -1277,7 +1274,6 @@ function ReviewBody({
           units={units}
           selectedPath={selectedFilePath}
           onSelectPath={selectFile}
-          onHide={onHideFileTree}
         />
       ) : null}
     </div>
@@ -1288,14 +1284,12 @@ function ReviewFileTree({
   repoPath,
   units,
   selectedPath,
-  onSelectPath,
-  onHide
+  onSelectPath
 }: {
   repoPath: string;
   units: VisibleReviewUnit[];
   selectedPath?: string;
   onSelectPath: (path: string | undefined) => void;
-  onHide: () => void;
 }): ReactElement {
   const isSyncingSelectionRef = useRef(false);
   const resizeStateRef = useRef<
@@ -1461,17 +1455,8 @@ function ReviewFileTree({
         <span>
           <FolderTree size={13} />
           Files
+          <span className="badge-mini">{entries.length}</span>
         </span>
-        <span className="badge-mini">{entries.length}</span>
-        <button
-          className="icon-btn icon-btn-tertiary"
-          type="button"
-          onClick={onHide}
-          aria-label="Hide review file tree"
-          title="Hide file tree"
-        >
-          <PanelRightClose size={13} />
-        </button>
       </header>
       <div className="review-file-tree-body">
         <FileTree className="review-file-tree" model={model} />

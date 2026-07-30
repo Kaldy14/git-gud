@@ -1940,7 +1940,7 @@ button.ref-chip {
   align-items: center;
   gap: 7px;
   border-bottom: 1px solid var(--border);
-  padding: 0 6px 0 10px;
+  padding: 0 10px;
   color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
