@@ -59,6 +59,7 @@ import type {
 } from '@shared/types';
 
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
+import { PullRequestGitHubLink } from './PullRequestGitHubLink';
 import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
 import { pullRequestStatus } from './pullRequestInboxStatus';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
@@ -216,15 +217,7 @@ function PullRequestReviewLoading({
             <Loader2 size={12} className="animate-spin" />
             Preparing review
           </span>
-          <a
-            className="btn-subtle btn-regular"
-            href={pullRequest.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <ExternalLink size={12} />
-            GitHub
-          </a>
+          <PullRequestGitHubLink url={pullRequest.url} />
           <button
             className="icon-btn icon-btn-regular shrink-0"
             type="button"
@@ -656,10 +649,7 @@ function PullRequestReviewContent({
             <ChevronDown size={13} />
             Overview
           </button>
-          <a className="btn-subtle btn-regular" href={detail.url} target="_blank" rel="noreferrer">
-            <ExternalLink size={12} />
-            GitHub
-          </a>
+          <PullRequestGitHubLink url={detail.url} />
           <button className="btn-subtle btn-regular" type="button" onClick={() => setIsReviewDialogOpen(true)}>
             <ShieldCheck size={13} />
             {reviewDrafts.length > 0

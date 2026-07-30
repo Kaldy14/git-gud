@@ -3029,6 +3029,10 @@ button.ref-chip {
   text-decoration: none;
 }
 
+.pr-link-context-menu {
+  min-width: 128px;
+}
+
 .pr-review-header-status {
   display: flex;
   min-width: 0;
