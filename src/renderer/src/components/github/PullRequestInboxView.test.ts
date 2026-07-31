@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import type { GitHubPullRequestSummary } from '@shared/types';
 
 import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
-import { pullRequestStatus } from './pullRequestInboxStatus';
+import {
+  hasPullRequestMergeConflicts,
+  pullRequestStatus
+} from './pullRequestInboxStatus';
 
 describe('pull request inbox group expansion', () => {
   it('expands populated groups and collapses empty groups by default', () => {
@@ -18,6 +21,20 @@ describe('pull request inbox group expansion', () => {
 });
 
 describe('pull request inbox status', () => {
+  it('recognizes either GitHub conflict signal', () => {
+    expect(
+      hasPullRequestMergeConflicts(
+        pullRequestSummary({ mergeable: 'conflicting', mergeState: 'unknown' })
+      )
+    ).toBe(true);
+    expect(
+      hasPullRequestMergeConflicts(
+        pullRequestSummary({ mergeable: 'unknown', mergeState: 'dirty' })
+      )
+    ).toBe(true);
+    expect(hasPullRequestMergeConflicts(pullRequestSummary({}))).toBe(false);
+  });
+
   it('shows GitHub merge conflicts even when the viewer was requested for review', () => {
     expect(
       pullRequestStatus(

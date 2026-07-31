@@ -1,11 +1,12 @@
 import type { CSSProperties, FormEvent, ReactElement } from 'react';
 import { useId, useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronRight,
   CircleDot,
   Clock3,
   CornerDownRight,
@@ -48,6 +49,7 @@ import {
 } from '@renderer/queries/github';
 import type {
   DiffSyntaxTheme,
+  GitHubPullRequestConflictDetails,
   GitHubPullRequestDetail,
   GitHubPullRequestDraftFileComment,
   GitHubPullRequestDraftLineComment,
@@ -61,7 +63,10 @@ import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestGitHubLink } from './PullRequestGitHubLink';
 import { PullRequestHeaderActions } from './PullRequestHeaderActions';
 import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
-import { pullRequestStatus } from './pullRequestInboxStatus';
+import {
+  hasPullRequestMergeConflicts,
+  pullRequestStatus
+} from './pullRequestInboxStatus';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
 import {
   buildPullRequestTimeline,
@@ -354,6 +359,27 @@ function PullRequestReviewContent({
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; message: string }>();
+  const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
+  const conflictDetailsQuery = useQuery({
+    queryKey: [
+      'github-pull-request-conflicts',
+      codexRepoPath ?? 'unavailable',
+      detail.baseRefSha,
+      detail.headSha
+    ],
+    queryFn: async (): Promise<GitHubPullRequestConflictDetails> => {
+      if (!codexRepoPath) {
+        throw new Error('No matching local checkout is open.');
+      }
+
+      return window.api.getGitHubPullRequestConflicts(codexRepoPath, {
+        baseSha: detail.baseRefSha,
+        headSha: detail.headSha
+      });
+    },
+    enabled: hasMergeConflicts && isOverviewOpen && Boolean(codexRepoPath),
+    staleTime: 15_000
+  });
   const timeline = useMemo(
     () => buildPullRequestTimeline({
       commits: detail.commitTimeline,
@@ -494,8 +520,13 @@ function PullRequestReviewContent({
     }
   });
   const mergeMutation = useMutation({
-    mutationFn: (method: GitHubPullRequestMergeMethod) =>
-      window.api.mergeGitHubPullRequest({ ...locator, method }),
+    mutationFn: (method: GitHubPullRequestMergeMethod) => {
+      if (hasMergeConflicts) {
+        throw new Error('Resolve merge conflicts before merging this pull request.');
+      }
+
+      return window.api.mergeGitHubPullRequest({ ...locator, method });
+    },
     onSuccess: async (result) => {
       setNotice({ tone: 'success', message: result.message });
       await refreshGitHubPullRequestInboxAfterMerge(queryClient, locator);
@@ -636,7 +667,11 @@ function PullRequestReviewContent({
           </span>
         </div>
         <div className="pr-review-header-status overflow-hidden">
-          <ReviewStatus detail={detail} />
+          <ReviewStatus
+            detail={detail}
+            isOverviewOpen={isOverviewOpen}
+            onToggleConflicts={() => setIsOverviewOpen((isOpen) => !isOpen)}
+          />
         </div>
         <PullRequestHeaderActions
           detail={detail}
@@ -644,13 +679,20 @@ function PullRequestReviewContent({
           isOverviewOpen={isOverviewOpen}
           reviewDraftCount={reviewDrafts.length}
           mergeLabel={mergeMethodLabel(detail.mergeSettings.defaultMethod)}
-          mergeDisabled={!detail.canMerge || detail.isDraft || mergeMutation.isPending}
+          mergeDisabled={
+            hasMergeConflicts ||
+            !detail.canMerge ||
+            detail.isDraft ||
+            mergeMutation.isPending
+          }
           mergeTitle={
-            detail.isDraft
-              ? 'Draft pull requests cannot be merged'
-              : !detail.canMerge
-                ? 'The connected account cannot merge this pull request'
-                : 'Merge pull request'
+            hasMergeConflicts
+              ? 'Resolve merge conflicts before merging'
+              : detail.isDraft
+                ? 'Draft pull requests cannot be merged'
+                : !detail.canMerge
+                  ? 'The connected account cannot merge this pull request'
+                  : 'Merge pull request'
           }
           isMergePending={mergeMutation.isPending}
           onToggleOverview={() => setIsOverviewOpen((isOpen) => !isOpen)}
@@ -708,6 +750,20 @@ function PullRequestReviewContent({
               </span>
             </span>
           </div>
+          {hasMergeConflicts ? (
+            <PullRequestConflictPanel
+              baseRefName={detail.baseRefName}
+              headRefName={detail.headRefName}
+              hasLocalCheckout={Boolean(codexRepoPath)}
+              details={conflictDetailsQuery.data}
+              isLoading={conflictDetailsQuery.isLoading}
+              errorMessage={
+                conflictDetailsQuery.error instanceof Error
+                  ? conflictDetailsQuery.error.message
+                  : undefined
+              }
+            />
+          ) : null}
           <div className="pr-review-overview-body">
             <div className="pr-review-overview-main">
               <section className="pr-review-description" aria-labelledby="pr-review-description-heading">
@@ -1255,11 +1311,16 @@ function MergePullRequestDialog({
 }
 
 function ReviewStatus({
-  detail
+  detail,
+  isOverviewOpen,
+  onToggleConflicts
 }: {
   detail: GitHubPullRequestSummary;
+  isOverviewOpen?: boolean;
+  onToggleConflicts?: () => void;
 }): ReactElement {
   const reviewStatus = pullRequestStatus(detail);
+  const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
   const checksTone =
     detail.checks.state === 'success'
       ? 'success'
@@ -1268,15 +1329,32 @@ function ReviewStatus({
         : 'pending';
   return (
     <>
-      <span data-tone={reviewStatus.tone}>
-        <PullRequestReviewerAvatars reviewers={detail.reviewers} />
-        {reviewStatus.icon === 'check'
-          ? <Check size={12} />
-          : reviewStatus.icon === 'warning'
-            ? <AlertTriangle size={12} />
-            : <CircleDot size={11} />}
-        {reviewStatus.label}
-      </span>
+      {hasMergeConflicts && onToggleConflicts ? (
+        <button
+          className="pr-review-status-button"
+          type="button"
+          data-tone={reviewStatus.tone}
+          aria-controls="pr-review-conflict-panel"
+          aria-expanded={isOverviewOpen}
+          title={isOverviewOpen ? 'Hide merge conflict details' : 'Show merge conflict details'}
+          onClick={onToggleConflicts}
+        >
+          <PullRequestReviewerAvatars reviewers={detail.reviewers} />
+          <AlertTriangle size={12} />
+          {reviewStatus.label}
+          <ChevronRight size={11} aria-hidden="true" />
+        </button>
+      ) : (
+        <span data-tone={reviewStatus.tone}>
+          <PullRequestReviewerAvatars reviewers={detail.reviewers} />
+          {reviewStatus.icon === 'check'
+            ? <Check size={12} />
+            : reviewStatus.icon === 'warning'
+              ? <AlertTriangle size={12} />
+              : <CircleDot size={11} />}
+          {reviewStatus.label}
+        </span>
+      )}
       <span data-tone={checksTone}>
         {checksTone === 'success' ? <Check size={12} /> : checksTone === 'danger' ? <AlertTriangle size={12} /> : <CircleDot size={11} />}
         {detail.checks.total > 0
@@ -1284,6 +1362,72 @@ function ReviewStatus({
           : 'No checks reported'}
       </span>
     </>
+  );
+}
+
+function PullRequestConflictPanel({
+  baseRefName,
+  headRefName,
+  hasLocalCheckout,
+  details,
+  isLoading,
+  errorMessage
+}: {
+  baseRefName: string;
+  headRefName: string;
+  hasLocalCheckout: boolean;
+  details?: GitHubPullRequestConflictDetails;
+  isLoading: boolean;
+  errorMessage?: string;
+}): ReactElement {
+  const conflictFiles = details?.files ?? [];
+  const fileCount = conflictFiles.length;
+
+  return (
+    <section
+      className="pr-review-conflict-panel"
+      id="pr-review-conflict-panel"
+      aria-labelledby="pr-review-conflict-heading"
+    >
+      <AlertTriangle size={15} aria-hidden="true" />
+      <div>
+        <h2 id="pr-review-conflict-heading">Resolve merge conflicts before merging</h2>
+        <p>
+          <strong>{headRefName}</strong> and <strong>{baseRefName}</strong> contain overlapping
+          changes that GitHub cannot combine automatically.
+        </p>
+        {!hasLocalCheckout ? (
+          <small>Open this repository locally to inspect the affected files.</small>
+        ) : isLoading ? (
+          <small className="pr-review-conflict-loading">
+            <Loader2 size={11} className="animate-spin" />
+            Inspecting the local checkout…
+          </small>
+        ) : errorMessage ? (
+          <small>Could not inspect the conflicting files: {errorMessage}</small>
+        ) : details?.unavailableReason ? (
+          <small>
+            {details.unavailableReason} Fetch both branches locally, then reopen this overview.
+          </small>
+        ) : fileCount > 0 ? (
+          <>
+            <small>
+              {fileCount} conflicting {fileCount === 1 ? 'file' : 'files'} in this checkout
+            </small>
+            <ul aria-label="Conflicting files">
+              {conflictFiles.map((path) => (
+                <li key={path}><code>{path}</code></li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <small>
+            These local revisions merge cleanly. Refresh the pull request to update GitHub’s
+            conflict status.
+          </small>
+        )}
+      </div>
+    </section>
   );
 }
 

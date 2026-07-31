@@ -356,6 +356,21 @@ describe('IPC argument validation', () => {
       ])
     ).toEqual([{ profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }]);
     expect(
+      validateIpcArgs('github:pull-request-conflicts', [
+        '/repo',
+        {
+          baseSha: 'A'.repeat(40),
+          headSha: 'b'.repeat(40)
+        }
+      ])
+    ).toEqual([
+      '/repo',
+      {
+        baseSha: 'a'.repeat(40),
+        headSha: 'b'.repeat(40)
+      }
+    ]);
+    expect(
       validateIpcArgs('github:start-pull-request-review-guide', [
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
         'a'.repeat(64)
@@ -699,6 +714,12 @@ describe('IPC argument validation', () => {
         { profileId: 'profile:kaldy', owner: '../acme', repository: 'widgets', number: 42 }
       ])
     ).toThrow('owner contains unsupported characters.');
+    expect(() =>
+      validateIpcArgs('github:pull-request-conflicts', [
+        '/repo',
+        { baseSha: '--help', headSha: 'b'.repeat(40) }
+      ])
+    ).toThrow('baseSha must be a full Git object ID.');
     expect(() =>
       validateIpcArgs('github:submit-pull-request-review', [
         {

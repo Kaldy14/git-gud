@@ -3408,6 +3408,7 @@ button.ref-chip {
 }
 
 .pr-review-header-status > span,
+.pr-review-header-status > button,
 .pr-review-overview-stats > span {
   display: inline-flex;
   align-items: center;
@@ -3418,16 +3419,42 @@ button.ref-chip {
   white-space: nowrap;
 }
 
-.pr-review-header-status > span[data-tone='success'] {
+.pr-review-header-status > :is(span, button)[data-tone='success'] {
   color: var(--success-text);
 }
 
-.pr-review-header-status > span[data-tone='danger'] {
+.pr-review-header-status > :is(span, button)[data-tone='danger'] {
   color: var(--danger-text);
 }
 
-.pr-review-header-status > span[data-tone='pending'] {
+.pr-review-header-status > :is(span, button)[data-tone='pending'] {
   color: var(--warning-text);
+}
+
+.pr-review-status-button {
+  min-width: 0;
+  border-radius: 4px;
+  padding: 3px 5px;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.pr-review-status-button:hover {
+  background: color-mix(in srgb, var(--danger-text) 10%, transparent);
+}
+
+.pr-review-status-button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 1px;
+}
+
+.pr-review-status-button > svg:last-child {
+  transition: transform 120ms ease;
+}
+
+.pr-review-status-button[aria-expanded='true'] > svg:last-child {
+  transform: rotate(90deg);
 }
 
 .pr-review-overview-button > svg {
@@ -3736,6 +3763,77 @@ button.ref-chip {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 9.5px;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.pr-review-conflict-panel {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  gap: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--danger-text) 22%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--danger-text) 22%, var(--border));
+  background: color-mix(in srgb, var(--danger-text) 7%, var(--bg-graph-header));
+  padding: 10px 14px 10px 50px;
+  color: var(--danger-text);
+}
+
+.pr-review-conflict-panel > svg {
+  margin-top: 1px;
+}
+
+.pr-review-conflict-panel h2 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pr-review-conflict-panel p {
+  margin: 3px 0 0;
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.pr-review-conflict-panel small {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-3);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.pr-review-conflict-loading {
+  display: flex !important;
+  align-items: center;
+  gap: 5px;
+}
+
+.pr-review-conflict-panel ul {
+  display: grid;
+  max-height: 108px;
+  gap: 3px;
+  margin: 7px 0 0;
+  overflow-y: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-review-conflict-panel li {
+  min-width: 0;
+}
+
+.pr-review-conflict-panel code {
+  display: block;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--danger-text) 18%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg-field) 86%, transparent);
+  padding: 4px 7px;
+  color: var(--text-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 9.5px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

@@ -1286,6 +1286,16 @@ export type GitHubPullRequestCommit = {
 
 export type GitHubPullRequestMergeMethod = 'merge' | 'squash' | 'rebase';
 
+export type GitHubPullRequestConflictInput = {
+  baseSha: string;
+  headSha: string;
+};
+
+export type GitHubPullRequestConflictDetails = {
+  files: string[];
+  unavailableReason?: string;
+};
+
 export type GitHubRepositoryMergeSettings = {
   allowedMethods: GitHubPullRequestMergeMethod[];
   defaultMethod: GitHubPullRequestMergeMethod;
@@ -1295,6 +1305,7 @@ export type GitHubPullRequestDetail = GitHubPullRequestSummary & {
   body: string;
   headSha: string;
   baseSha: string;
+  baseRefSha: string;
   commits: number;
   commitTimeline: GitHubPullRequestCommit[];
   files: GitHubPullRequestFile[];

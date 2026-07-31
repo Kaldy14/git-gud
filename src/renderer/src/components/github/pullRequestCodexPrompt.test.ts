@@ -80,6 +80,7 @@ function pullRequest(): GitHubPullRequestDetail {
     },
     body: 'Teach the parser about empty values.',
     baseSha: 'abcdef1234567890',
+    baseRefSha: 'fedcba0987654321',
     commits: 1,
     commitTimeline: [],
     files: [],

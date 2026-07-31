@@ -834,6 +834,12 @@ export async function loadGitHubPullRequestDetail(
   const files = filesRaw.map(parsePullRequestFile);
   const headSha = readNestedString(pull, ['head', 'sha'], 'pull request head SHA');
   const baseSha = readNestedString(pull, ['base', 'sha'], 'pull request base SHA');
+  const baseRefSha = await loadGitHubBranchHeadSha(
+    context,
+    locator,
+    summary.baseRefName,
+    baseSha
+  );
   const mergeBaseSha = await loadGitHubMergeBaseSha(context, locator, baseSha, headSha);
   const patchOnlyReviewPlan = await buildGitHubPullRequestReviewPlan(
     context.host,
@@ -865,6 +871,7 @@ export async function loadGitHubPullRequestDetail(
     body: readOptionalString(pull.body) ?? '',
     headSha,
     baseSha,
+    baseRefSha,
     commits: readNumber(pull.commits, 'pull request commits'),
     commitTimeline: commitsRaw.map(parsePullRequestCommit),
     files,
@@ -912,6 +919,29 @@ export function selectGitHubReviewContextFiles(
   }
 
   return selectedFiles;
+}
+
+async function loadGitHubBranchHeadSha(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator,
+  branch: string,
+  fallbackSha: string
+): Promise<string> {
+  const endpoint =
+    `${repositoryEndpoint(locator)}/commits/${encodeURIComponent(branch)}`;
+
+  try {
+    return await runGitHubText(context, [
+      'api',
+      '--hostname',
+      context.host,
+      '--jq',
+      '.sha',
+      endpoint
+    ]) || fallbackSha;
+  } catch {
+    return fallbackSha;
+  }
 }
 
 async function loadGitHubMergeBaseSha(

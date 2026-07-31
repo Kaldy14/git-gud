@@ -20,6 +20,7 @@ import type {
   GitDeleteBranchInput,
   GitFileDiffRequest,
   GitHubPullRequestLocator,
+  GitHubPullRequestConflictInput,
   GitHubActionsRunsInput,
   GitHubActionsRunFilters,
   GitHubActionsTileView,
@@ -237,6 +238,12 @@ const validators = {
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
     readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
+  'github:pull-request-conflicts': (args) =>
+    readRepoPathWithObject(
+      args,
+      'github:pull-request-conflicts',
+      readGitHubPullRequestConflictInput
+    ),
   'github:open-pull-request-in-application': (args) =>
     readRepoPathWithObject(
       args,
@@ -1183,6 +1190,26 @@ function readConflictActionInput(value: unknown): GitConflictActionInput {
   const record = readRecord(value, 'conflict action input');
   return {
     action: readEnumProperty(record, 'action', ['continue', 'skip', 'abort'])
+  };
+}
+
+function readGitHubPullRequestConflictInput(
+  value: unknown
+): GitHubPullRequestConflictInput {
+  const record = readRecord(value, 'pull request conflict input');
+  const baseSha = readNonEmptyLimitedString(record.baseSha, 'baseSha', 64).toLowerCase();
+  const headSha = readNonEmptyLimitedString(record.headSha, 'headSha', 64).toLowerCase();
+
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(baseSha)) {
+    throw new Error('baseSha must be a full Git object ID.');
+  }
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(headSha)) {
+    throw new Error('headSha must be a full Git object ID.');
+  }
+
+  return {
+    baseSha,
+    headSha
   };
 }
 

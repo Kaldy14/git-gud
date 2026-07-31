@@ -117,6 +117,8 @@ const api: RendererApi = {
     invoke('github:workflow-run-failed-log', input),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),
   getGitHubPullRequestDetail: (locator) => invoke('github:pull-request-detail', locator),
+  getGitHubPullRequestConflicts: (repoPath, input) =>
+    invoke('github:pull-request-conflicts', repoPath, input),
   openGitHubPullRequestInApplication: (repoPath, input) =>
     invoke('github:open-pull-request-in-application', repoPath, input),
   getGitHubPullRequestReviewGuideState: (locator, sourceFingerprint) =>

@@ -6,13 +6,19 @@ export type PullRequestInboxStatus = {
   icon: 'check' | 'dot' | 'warning';
 };
 
+export function hasPullRequestMergeConflicts(
+  pullRequest: GitHubPullRequestSummary
+): boolean {
+  return pullRequest.mergeable === 'conflicting' || pullRequest.mergeState === 'dirty';
+}
+
 export function pullRequestStatus(
   pullRequest: GitHubPullRequestSummary
 ): PullRequestInboxStatus {
   if (pullRequest.isDraft) {
     return { label: 'Draft', tone: 'pending', icon: 'dot' };
   }
-  if (pullRequest.mergeable === 'conflicting' || pullRequest.mergeState === 'dirty') {
+  if (hasPullRequestMergeConflicts(pullRequest)) {
     return { label: 'Merge conflicts', tone: 'danger', icon: 'warning' };
   }
   const reviewStatus = pullRequestReviewStatus(pullRequest);

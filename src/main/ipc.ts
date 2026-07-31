@@ -22,6 +22,7 @@ import { loadCommitGraph } from './git/commitGraph';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
+import { loadPullRequestConflictDetails } from './git/pullRequestConflicts';
 import { cloneRepository, initializeRepository } from './git/repositoryCreation';
 import {
   checkoutRef,
@@ -623,6 +624,9 @@ export function registerIpcHandlers(
   );
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
+  handle('github:pull-request-conflicts', (_event, repoPath, input) =>
+    loadPullRequestConflictDetails(getOpenRepositoryTab(repoPath), input)
+  );
   handle('github:open-pull-request-in-application', (_event, repoPath, input) =>
     openPullRequestInApplication(getOpenRepositoryTab(repoPath), input)
   );

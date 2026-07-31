@@ -33,6 +33,8 @@ import type {
   GitHubActionsRunsInput,
   GitHubWorkflowRunFailureInput,
   GitHubPullRequestActionResult,
+  GitHubPullRequestConflictDetails,
+  GitHubPullRequestConflictInput,
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
@@ -465,6 +467,10 @@ export type IpcChannelMap = {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestDetail;
   };
+  'github:pull-request-conflicts': {
+    args: [repoPath: string, input: GitHubPullRequestConflictInput];
+    result: GitHubPullRequestConflictDetails;
+  };
   'github:open-pull-request-in-application': {
     args: [repoPath: string, input: OpenPullRequestInApplicationInput];
     result: OpenPullRequestInApplicationResult;
@@ -623,6 +629,10 @@ export type RendererApi = {
   getGitHubWorkflowRunFailedLog: (input: GitHubWorkflowRunFailureInput) => Promise<string>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
+  getGitHubPullRequestConflicts: (
+    repoPath: string,
+    input: GitHubPullRequestConflictInput
+  ) => Promise<GitHubPullRequestConflictDetails>;
   openGitHubPullRequestInApplication: (
     repoPath: string,
     input: OpenPullRequestInApplicationInput
