@@ -890,12 +890,14 @@ select {
   color: var(--text-1);
 }
 
-.menu-row:disabled {
+.menu-row:disabled,
+.menu-row[data-disabled] {
   color: var(--text-3);
   opacity: 0.68;
 }
 
-.menu-row:disabled:hover {
+.menu-row:disabled:hover,
+.menu-row[data-disabled]:hover {
   background: transparent;
   color: var(--text-3);
 }
@@ -963,13 +965,16 @@ select {
   color: var(--context-menu-hover-text);
 }
 
-.context-menu-surface .menu-row:disabled {
+.context-menu-surface .menu-row:disabled,
+.context-menu-surface .menu-row[data-disabled] {
   color: var(--context-menu-text-muted);
   opacity: 1;
 }
 
 .context-menu-surface .menu-row:disabled:hover,
-.context-menu-surface .menu-row:disabled:focus {
+.context-menu-surface .menu-row:disabled:focus,
+.context-menu-surface .menu-row[data-disabled]:hover,
+.context-menu-surface .menu-row[data-disabled]:focus {
   background: transparent;
   color: var(--context-menu-text-muted);
 }

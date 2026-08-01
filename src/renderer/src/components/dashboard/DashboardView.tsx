@@ -81,8 +81,8 @@ import {
 } from './workflowRunFilters';
 import { workflowRunPresentation } from './workflowRunPresentation';
 import {
-  buildWorkflowRunCodexPrompt,
-  copyWorkflowRunFailure
+  copyWorkflowRunFailure,
+  sendWorkflowRunFailureToCodex
 } from './workflowRunFailureActions';
 
 type WorkflowRunNotice = {
@@ -103,6 +103,11 @@ type DashboardViewProps = {
     owner: string;
     name: string;
   }) => string | undefined;
+  chooseRepositoryPathForCodex?: (repository: {
+    host: string;
+    owner: string;
+    name: string;
+  }) => Promise<string | undefined>;
 };
 
 type DashboardTileDialogFields = {
@@ -160,7 +165,8 @@ export function DashboardView({
   onSelectDashboard,
   onOpenProfileSettings,
   onClose,
-  resolveRepositoryPath
+  resolveRepositoryPath,
+  chooseRepositoryPathForCodex
 }: DashboardViewProps): ReactElement {
   const activeDashboardProfileId = dashboardProfileId(profile);
   const gitHubProfileId =
@@ -865,6 +871,16 @@ export function DashboardView({
                                 owner: tile.owner,
                                 name: tile.repository
                               })}
+                              chooseCodexRepoPath={
+                                chooseRepositoryPathForCodex
+                                  ? () =>
+                                      chooseRepositoryPathForCodex({
+                                        host: profile?.githubHost || 'github.com',
+                                        owner: tile.owner,
+                                        name: tile.repository
+                                      })
+                                  : undefined
+                              }
                               dragHandle={dragHandle}
                               isSaving={isSaving}
                               onWorkflowRunNotice={setWorkflowRunNotice}
@@ -1130,9 +1146,10 @@ type GitHubActionsTileProps = {
   profileId?: string;
   tile: GitHubActionsDashboardTile;
   codexRepoPath?: string;
+  chooseCodexRepoPath?: () => Promise<string | undefined>;
   dragHandle: ReactElement;
   isSaving: boolean;
-  onWorkflowRunNotice: (notice: WorkflowRunNotice) => void;
+  onWorkflowRunNotice: (notice: WorkflowRunNotice | undefined) => void;
   onEdit: () => void;
   onRemove: () => void;
 };
@@ -1141,6 +1158,7 @@ function GitHubActionsTile({
   profileId,
   tile,
   codexRepoPath,
+  chooseCodexRepoPath,
   dragHandle,
   isSaving,
   onWorkflowRunNotice,
@@ -1303,6 +1321,7 @@ function GitHubActionsTile({
                     owner: tile.owner,
                     repository: tile.repository,
                     codexRepoPath,
+                    chooseCodexRepoPath,
                     onNotice: onWorkflowRunNotice
                   }}
                   expanded={expanded}
@@ -1335,6 +1354,7 @@ function GitHubActionsTile({
                   owner: tile.owner,
                   repository: tile.repository,
                   codexRepoPath,
+                  chooseCodexRepoPath,
                   onNotice: onWorkflowRunNotice
                 }}
               />
@@ -1515,7 +1535,8 @@ type WorkflowRunFailureActionsContext = {
   owner: string;
   repository: string;
   codexRepoPath?: string;
-  onNotice: (notice: WorkflowRunNotice) => void;
+  chooseCodexRepoPath?: () => Promise<string | undefined>;
+  onNotice: (notice: WorkflowRunNotice | undefined) => void;
 };
 
 function WorkflowRunFailureContextMenu({
@@ -1577,28 +1598,33 @@ function WorkflowRunFailureContextMenu({
   }
 
   async function sendFailureToCodex(): Promise<void> {
-    if (!actions.codexRepoPath) {
-      return;
-    }
-
     actions.onNotice({
       tone: 'progress',
-      message: `Loading the failed log for ${run.name} #${run.runNumber}…`
+      message: actions.codexRepoPath
+        ? `Loading the failed log for ${run.name} #${run.runNumber}…`
+        : `Choose the local checkout for ${actions.owner}/${actions.repository}…`
     });
 
     try {
-      const failedLog = await loadFailedLog();
-      await window.api.openCodexTask(
-        actions.codexRepoPath,
-        buildWorkflowRunCodexPrompt(
-          {
-            owner: actions.owner,
-            repository: actions.repository,
-            run
-          },
-          failedLog
-        )
+      const result = await sendWorkflowRunFailureToCodex(
+        {
+          owner: actions.owner,
+          repository: actions.repository,
+          run
+        },
+        {
+          repoPath: actions.codexRepoPath,
+          chooseRepositoryPath: actions.chooseCodexRepoPath,
+          loadFailedLog,
+          openCodexTask: window.api.openCodexTask
+        }
       );
+
+      if (result === 'cancelled') {
+        actions.onNotice(undefined);
+        return;
+      }
+
       actions.onNotice({
         tone: 'success',
         message: `Opened a Codex task for ${run.name} #${run.runNumber}.`
@@ -1634,11 +1660,10 @@ function WorkflowRunFailureContextMenu({
           </ContextMenuPrimitive.Item>
           <ContextMenuPrimitive.Item
             className="menu-row"
-            disabled={!actions.codexRepoPath}
             title={
               actions.codexRepoPath
                 ? 'Open a new Codex task with the failed log'
-                : `Open ${actions.owner}/${actions.repository} in Git Gud to send this error to Codex`
+                : `Choose the local checkout for ${actions.owner}/${actions.repository}, then open a Codex task with the failed log`
             }
             onSelect={() => void sendFailureToCodex()}
           >

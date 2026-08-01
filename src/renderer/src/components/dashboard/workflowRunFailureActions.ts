@@ -10,6 +10,13 @@ type WorkflowRunFailureContext = {
   run: GitHubWorkflowRun;
 };
 
+type SendWorkflowRunFailureToCodexOptions = {
+  repoPath?: string;
+  chooseRepositoryPath?: () => Promise<string | undefined>;
+  loadFailedLog: () => Promise<string>;
+  openCodexTask: (repoPath: string, prompt: string) => Promise<void>;
+};
+
 export async function copyWorkflowRunFailure(
   failedLog: string,
   clipboard: ClipboardWriter
@@ -39,6 +46,34 @@ export function buildWorkflowRunCodexPrompt(
     details.join('\n'),
     `Failed-step log:\n${log}`
   ].join('\n\n');
+}
+
+export async function sendWorkflowRunFailureToCodex(
+  context: WorkflowRunFailureContext,
+  options: SendWorkflowRunFailureToCodexOptions
+): Promise<'opened' | 'cancelled'> {
+  let repoPath = options.repoPath;
+
+  if (!repoPath && options.chooseRepositoryPath) {
+    repoPath = await options.chooseRepositoryPath();
+
+    if (!repoPath) {
+      return 'cancelled';
+    }
+  }
+
+  if (!repoPath) {
+    throw new Error(
+      `Open the local checkout for ${context.owner}/${context.repository} to send this error to Codex.`
+    );
+  }
+
+  const failedLog = await options.loadFailedLog();
+  await options.openCodexTask(
+    repoPath,
+    buildWorkflowRunCodexPrompt(context, failedLog)
+  );
+  return 'opened';
 }
 
 function truncateFailedLog(failedLog: string): string {

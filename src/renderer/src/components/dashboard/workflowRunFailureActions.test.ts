@@ -4,7 +4,8 @@ import type { GitHubWorkflowRun } from '@shared/types';
 
 import {
   buildWorkflowRunCodexPrompt,
-  copyWorkflowRunFailure
+  copyWorkflowRunFailure,
+  sendWorkflowRunFailureToCodex
 } from './workflowRunFailureActions';
 
 const run: GitHubWorkflowRun = {
@@ -61,5 +62,83 @@ describe('workflow run failure actions', () => {
     expect(prompt).toContain('[Earlier failed-step log output omitted.]');
     expect(prompt).toContain('FINAL FAILURE');
     expect(prompt.length).toBeLessThan(20_000);
+  });
+
+  it('opens Codex directly when the dashboard repository is already open', async () => {
+    const chooseRepositoryPath = vi.fn(async () => '/repos/other');
+    const loadFailedLog = vi.fn(async () => 'Build failed');
+    const openCodexTask = vi.fn(async () => undefined);
+
+    await expect(
+      sendWorkflowRunFailureToCodex(
+        { owner: 'acme', repository: 'widgets', run },
+        {
+          repoPath: '/repos/widgets',
+          chooseRepositoryPath,
+          loadFailedLog,
+          openCodexTask
+        }
+      )
+    ).resolves.toBe('opened');
+
+    expect(chooseRepositoryPath).not.toHaveBeenCalled();
+    expect(loadFailedLog).toHaveBeenCalledOnce();
+    expect(openCodexTask).toHaveBeenCalledWith(
+      '/repos/widgets',
+      expect.stringContaining('Build failed')
+    );
+  });
+
+  it('asks for a local checkout before opening Codex when the repository is not open', async () => {
+    const chooseRepositoryPath = vi.fn(async () => '/repos/widgets');
+    const loadFailedLog = vi.fn(async () => 'Build failed');
+    const openCodexTask = vi.fn(async () => undefined);
+
+    await expect(
+      sendWorkflowRunFailureToCodex(
+        { owner: 'acme', repository: 'widgets', run },
+        { chooseRepositoryPath, loadFailedLog, openCodexTask }
+      )
+    ).resolves.toBe('opened');
+
+    expect(chooseRepositoryPath).toHaveBeenCalledOnce();
+    expect(openCodexTask).toHaveBeenCalledWith(
+      '/repos/widgets',
+      expect.stringContaining('Build failed')
+    );
+  });
+
+  it('dismisses a cancelled local checkout selection without loading the log', async () => {
+    const loadFailedLog = vi.fn(async () => 'Build failed');
+    const openCodexTask = vi.fn(async () => undefined);
+
+    await expect(
+      sendWorkflowRunFailureToCodex(
+        { owner: 'acme', repository: 'widgets', run },
+        {
+          chooseRepositoryPath: async () => undefined,
+          loadFailedLog,
+          openCodexTask
+        }
+      )
+    ).resolves.toBe('cancelled');
+    expect(loadFailedLog).not.toHaveBeenCalled();
+    expect(openCodexTask).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing local checkout when no repository chooser is available', async () => {
+    const loadFailedLog = vi.fn(async () => 'Build failed');
+    const openCodexTask = vi.fn(async () => undefined);
+
+    await expect(
+      sendWorkflowRunFailureToCodex(
+        { owner: 'acme', repository: 'widgets', run },
+        { loadFailedLog, openCodexTask }
+      )
+    ).rejects.toThrow(
+      'Open the local checkout for acme/widgets to send this error to Codex.'
+    );
+    expect(loadFailedLog).not.toHaveBeenCalled();
+    expect(openCodexTask).not.toHaveBeenCalled();
   });
 });

@@ -447,6 +447,28 @@ export function WorkspaceShell(): ReactElement {
       workspace.tabs
     ]
   );
+  const chooseDashboardRepositoryPathForCodex = useCallback(async (
+    repository: { host: string; owner: string; name: string }
+  ) => {
+    const openedWorkspace = await openRepository();
+    const selectedTab = openedWorkspace?.tabs.find(
+      (tab) => tab.id === openedWorkspace.activeTabId
+    );
+
+    if (!selectedTab) {
+      return undefined;
+    }
+
+    const overview = await window.api.getRepositoryOverview(selectedTab.path);
+
+    if (!repositoryMatchesGitHubRepository(repository, overview.remotes)) {
+      throw new Error(
+        `The selected repository is not ${repository.owner}/${repository.name}.`
+      );
+    }
+
+    return selectedTab.path;
+  }, [openRepository]);
   const dashboardsQuery = useDashboards(activeDashboardProfileId);
   const dashboardActionAlertsQuery = useDashboardActionAlerts(
     activeDashboardProfileId
@@ -2776,6 +2798,7 @@ export function WorkspaceShell(): ReactElement {
             onOpenProfileSettings={handleOpenGitProfileMenu}
             onClose={handleClosePullRequestWorkspace}
             resolveRepositoryPath={resolveDashboardRepositoryPath}
+            chooseRepositoryPathForCodex={chooseDashboardRepositoryPathForCodex}
           />
         ) : gitHubWorkspaceView ? (
           <>

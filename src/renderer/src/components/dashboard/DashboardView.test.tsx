@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +26,43 @@ import {
   WorkflowBranchFilterField
 } from './DashboardView';
 import { dashboardRepositoryOptions } from './dashboardRepositoryOptions';
+
+type CapturedContextMenuItem = {
+  disabled?: boolean;
+  onSelect?: () => void;
+  title?: string;
+};
+
+const capturedContextMenuItems = vi.hoisted(
+  () => [] as CapturedContextMenuItem[]
+);
+
+vi.mock('radix-ui', async () => {
+  const actual = await vi.importActual<typeof import('radix-ui')>('radix-ui');
+  const React = await import('react');
+  const Passthrough = ({ children }: { children?: ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+  const Item = ({
+    children,
+    ...props
+  }: CapturedContextMenuItem & { children?: ReactNode }) => {
+    capturedContextMenuItems.push(props);
+    return React.createElement('div', null, children);
+  };
+
+  return {
+    ...actual,
+    ContextMenu: {
+      ...actual.ContextMenu,
+      Root: Passthrough,
+      Trigger: Passthrough,
+      Portal: Passthrough,
+      Content: Passthrough,
+      Label: Passthrough,
+      Item
+    }
+  };
+});
 
 const profile: GitProfile = {
   id: 'profile:dashboard-tabs',
@@ -523,6 +561,59 @@ describe('DashboardView', () => {
     expect(markup.match(/aria-haspopup="menu"/g)).toHaveLength(1);
   });
 
+  it('routes the Send error to Codex menu item through the repository chooser', async () => {
+    capturedContextMenuItems.length = 0;
+    const chooseRepositoryPathForCodex = vi.fn(
+      async () => '/repos/widgets'
+    );
+    const getGitHubWorkflowRunFailedLog = vi.fn(async () => 'Build failed');
+    const openCodexTask = vi.fn(async () => undefined);
+    vi.stubGlobal('window', {
+      api: { getGitHubWorkflowRunFailedLog, openCodexTask }
+    });
+
+    try {
+      const markup = renderActionsDashboard(
+        [
+          workflowRun({
+            status: 'completed',
+            conclusion: 'failure'
+          })
+        ],
+        { chooseRepositoryPathForCodex }
+      );
+      const sendItem = capturedContextMenuItems.find((item) =>
+        item.title?.startsWith('Choose the local checkout for acme/widgets')
+      );
+
+      expect(markup).toContain('Send error to Codex');
+      expect(sendItem?.disabled).not.toBe(true);
+      expect(sendItem?.onSelect).toBeTypeOf('function');
+
+      sendItem?.onSelect?.();
+
+      await vi.waitFor(() => {
+        expect(openCodexTask).toHaveBeenCalledWith(
+          '/repos/widgets',
+          expect.stringContaining('Build failed')
+        );
+      });
+      expect(chooseRepositoryPathForCodex).toHaveBeenCalledWith({
+        host: 'github.com',
+        owner: 'acme',
+        name: 'widgets'
+      });
+      expect(getGitHubWorkflowRunFailedLog).toHaveBeenCalledWith({
+        profileId: profile.id,
+        owner: 'acme',
+        repository: 'widgets',
+        runId: 101
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders a saved Portainer Swarm stack tile from cached runtime and image data', () => {
     const queryClient = new QueryClient();
     const tile = {
@@ -617,7 +708,16 @@ function createDashboard(id: string, name: string): Dashboard {
   };
 }
 
-function renderActionsDashboard(runs: GitHubWorkflowRun[]): string {
+function renderActionsDashboard(
+  runs: GitHubWorkflowRun[],
+  options: {
+    chooseRepositoryPathForCodex?: (repository: {
+      host: string;
+      owner: string;
+      name: string;
+    }) => Promise<string | undefined>;
+  } = {}
+): string {
   const queryClient = new QueryClient();
   const filters = {
     branches: [],
@@ -674,6 +774,7 @@ function renderActionsDashboard(runs: GitHubWorkflowRun[]): string {
         onSelectDashboard={vi.fn()}
         onOpenProfileSettings={vi.fn()}
         onClose={vi.fn()}
+        chooseRepositoryPathForCodex={options.chooseRepositoryPathForCodex}
       />
     </QueryClientProvider>
   );
