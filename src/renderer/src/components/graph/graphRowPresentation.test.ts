@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommitGraphRow } from '@shared/types';
 
-import { graphRowAriaLabel } from './graphRowPresentation';
+import { graphRowAriaLabel, isGraphBranchCheckedOut } from './graphRowPresentation';
 
 const baseRow: CommitGraphRow = {
   sha: 'a'.repeat(40),
@@ -37,5 +37,29 @@ describe('graph row accessible labels', () => {
     expect(graphRowAriaLabel(baseRow)).toBe(
       `Initial state, WIP Counts Test, Today, ${'a'.repeat(7)}`
     );
+  });
+});
+
+describe('graph branch checkout presentation', () => {
+  it('treats current and linked-worktree branches as checked out', () => {
+    const linkedWorktrees = new Set(['feature/linked']);
+
+    expect(
+      isGraphBranchCheckedOut({ kind: 'branch', label: 'main', current: true }, linkedWorktrees)
+    ).toBe(true);
+    expect(
+      isGraphBranchCheckedOut({ kind: 'branch', label: 'feature/linked' }, linkedWorktrees)
+    ).toBe(true);
+  });
+
+  it('leaves ordinary local and non-branch refs inactive', () => {
+    const linkedWorktrees = new Set(['feature/linked']);
+
+    expect(
+      isGraphBranchCheckedOut({ kind: 'branch', label: 'feature/local' }, linkedWorktrees)
+    ).toBe(false);
+    expect(
+      isGraphBranchCheckedOut({ kind: 'remote', label: 'origin/feature/linked' }, linkedWorktrees)
+    ).toBe(false);
   });
 });

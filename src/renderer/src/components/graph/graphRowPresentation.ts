@@ -1,5 +1,5 @@
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
-import type { CommitGraphRow, GraphFile, GraphFileStatus } from '@shared/types';
+import type { CommitGraphRow, GraphFile, GraphFileStatus, GraphRefChip } from '@shared/types';
 
 export const GRAPH_FILE_STATUS_ORDER = ['modified', 'added', 'deleted'] as const;
 
@@ -17,6 +17,13 @@ export function countGraphFileStatuses(files: readonly GraphFile[]): GraphFileSt
 
 export function graphFileStatusCountLabel(status: GraphFileStatus, count: number): string {
   return `${count} ${status} file${count === 1 ? '' : 's'}`;
+}
+
+export function isGraphBranchCheckedOut(
+  ref: Pick<GraphRefChip, 'current' | 'kind' | 'label'>,
+  linkedWorktreeBranches: ReadonlySet<string>
+): boolean {
+  return ref.kind === 'branch' && (Boolean(ref.current) || linkedWorktreeBranches.has(ref.label));
 }
 
 export function graphRowAriaLabel(row: CommitGraphRow): string {
