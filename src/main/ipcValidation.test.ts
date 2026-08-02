@@ -175,6 +175,9 @@ describe('IPC argument validation', () => {
       'repo:/project',
       '/project-worktree'
     ]);
+    expect(validateIpcArgs('repo:recover-missing-worktree', ['repo:/project-worktree'])).toEqual([
+      'repo:/project-worktree'
+    ]);
     expect(validateIpcArgs('tabs:reorder', ['repo:/project', 0])).toEqual([
       'repo:/project',
       0

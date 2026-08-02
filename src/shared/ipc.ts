@@ -127,6 +127,10 @@ export type IpcChannelMap = {
     args: [tabId: string, repoPath: string];
     result: WorkspaceState;
   };
+  'repo:recover-missing-worktree': {
+    args: [tabId: string];
+    result: WorkspaceState | null;
+  };
   'tabs:activate': {
     args: [tabId: string];
     result: WorkspaceState;
@@ -528,6 +532,7 @@ export type RendererApi = {
   cloneRepository: (input: RepositoryCloneInput) => Promise<WorkspaceState>;
   openRepositoryAtPath: (repoPath: string) => Promise<WorkspaceState>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState>;
+  recoverMissingWorktree: (tabId: string) => Promise<WorkspaceState | null>;
   activateTab: (tabId: string) => Promise<WorkspaceState>;
   reorderTab: (tabId: string, targetIndex: number) => Promise<WorkspaceState>;
   closeTab: (tabId: string) => Promise<WorkspaceState>;

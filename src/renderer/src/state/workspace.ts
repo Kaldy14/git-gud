@@ -23,6 +23,7 @@ type WorkspaceStore = {
   initializeRepository: (input: RepositoryInitializeInput) => Promise<WorkspaceState | undefined>;
   cloneRepository: (input: RepositoryCloneInput) => Promise<WorkspaceState | undefined>;
   replaceRepositoryAtPath: (tabId: string, repoPath: string) => Promise<WorkspaceState | undefined>;
+  recoverMissingWorktree: (tabId: string) => Promise<WorkspaceState | undefined>;
   activateTab: (tabId: string) => Promise<WorkspaceState | undefined>;
   reorderTab: (tabId: string, targetIndex: number) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
@@ -69,6 +70,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   },
   async replaceRepositoryAtPath(tabId, repoPath) {
     return runWorkspaceAction(set, () => window.api.replaceRepositoryAtPath(tabId, repoPath));
+  },
+  async recoverMissingWorktree(tabId) {
+    return runWorkspaceAction(set, () => window.api.recoverMissingWorktree(tabId));
   },
   async activateTab(tabId) {
     return runWorkspaceAction(set, () => window.api.activateTab(tabId));

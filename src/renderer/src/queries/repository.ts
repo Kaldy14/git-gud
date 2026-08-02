@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
+import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import type {
   CommitGraphPage,
   GitCommitDetail,
@@ -86,6 +87,7 @@ export function useRepositoryOverview(repoPath: string | undefined) {
       return window.api.getRepositoryOverview(repoPath);
     },
     enabled: Boolean(repoPath),
+    retry: shouldRetryRepositoryQuery,
     staleTime: 1500
   });
 }
@@ -106,6 +108,7 @@ export function useCommitGraph(
       return window.api.getCommitGraph(repoPath, limit);
     },
     enabled: Boolean(repoPath),
+    retry: shouldRetryRepositoryQuery,
     staleTime: 1500,
     placeholderData: (previousData) =>
       repoPath ? placeholderGraphForRepository(previousData, repoPath, relatedRepoPaths) : undefined
@@ -124,6 +127,10 @@ export function useCommitGraph(
   }, [limit, query.data?.limit, query.isPlaceholderData, queryClient, repoPath]);
 
   return query;
+}
+
+export function shouldRetryRepositoryQuery(failureCount: number, error: unknown): boolean {
+  return failureCount < 3 && !isRepositoryUnavailableError(error);
 }
 
 export function placeholderGraphForRepository(

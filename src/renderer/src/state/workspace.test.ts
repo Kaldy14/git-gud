@@ -113,6 +113,38 @@ describe('workspace selection', () => {
     ]);
     expect(useWorkspaceStore.getState().errorMessage).toBeUndefined();
   });
+
+  it('replaces a removed worktree with the recovered base repository', async () => {
+    const initialWorkspace = createWorkspace();
+    const recoveredWorkspace: WorkspaceState = {
+      ...initialWorkspace,
+      tabs: [
+        {
+          ...initialWorkspace.tabs[0]!,
+          id: 'repo:/base',
+          path: '/base',
+          name: 'base',
+          gitDir: '/base/.git',
+          commonDir: '/base/.git'
+        }
+      ],
+      activeTabId: 'repo:/base'
+    };
+    const recoverMissingWorktree = vi.fn(async () => recoveredWorkspace);
+    vi.stubGlobal('window', { api: { recoverMissingWorktree } });
+    useWorkspaceStore.setState({
+      workspace: initialWorkspace,
+      isLoading: false,
+      errorMessage: undefined
+    });
+
+    await useWorkspaceStore.getState().recoverMissingWorktree('repo-tab');
+
+    expect(recoverMissingWorktree).toHaveBeenCalledWith('repo-tab');
+    expect(useWorkspaceStore.getState().workspace).toEqual(recoveredWorkspace);
+    expect(useWorkspaceStore.getState().isLoading).toBe(false);
+    expect(useWorkspaceStore.getState().errorMessage).toBeUndefined();
+  });
 });
 
 function createWorkspace(): WorkspaceState {

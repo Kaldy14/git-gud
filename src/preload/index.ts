@@ -27,6 +27,7 @@ const api: RendererApi = {
   cloneRepository: (input) => invoke('repo:clone', input),
   openRepositoryAtPath: (repoPath) => invoke('repo:open-path', repoPath),
   replaceRepositoryAtPath: (tabId, repoPath) => invoke('repo:replace-path', tabId, repoPath),
+  recoverMissingWorktree: (tabId) => invoke('repo:recover-missing-worktree', tabId),
   activateTab: (tabId) => invoke('tabs:activate', tabId),
   reorderTab: (tabId, targetIndex) => invoke('tabs:reorder', tabId, targetIndex),
   closeTab: (tabId) => invoke('tabs:close', tabId),

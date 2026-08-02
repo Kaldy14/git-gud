@@ -234,6 +234,7 @@ export function WorkspaceShell(): ReactElement {
     initializeRepository,
     cloneRepository,
     replaceRepositoryAtPath,
+    recoverMissingWorktree,
     activateTab,
     reorderTab,
     closeTab,
@@ -283,7 +284,9 @@ export function WorkspaceShell(): ReactElement {
   const [isReviewBenchmarkOpen, setIsReviewBenchmarkOpen] = useState(false);
   const [reviewBenchmarkDiffStyle, setReviewBenchmarkDiffStyle] =
     useState<DiffStyle>('unified');
+  const [recoveringRepoPath, setRecoveringRepoPath] = useState<string>();
   const initialSurfaceResolvedRef = useRef(false);
+  const recoveryAttemptsRef = useRef(new Set<string>());
   const autoFetchCoordinatorRef = useRef(createRepositoryAutoFetchCoordinator<RepoTab>());
   const operationRetryActionsRef = useRef(
     new Map<
@@ -479,6 +482,13 @@ export function WorkspaceShell(): ReactElement {
   const repositoryUnavailable =
     isRepositoryUnavailableError(repositoryQuery.error) ||
     isRepositoryUnavailableError(graphQuery.error);
+  const shouldRecoverRepository = Boolean(
+    repositoryUnavailable &&
+      activeTab &&
+      !recoveryAttemptsRef.current.has(activeTab.path)
+  );
+  const isRecoveringRepository =
+    recoveringRepoPath === activeTab?.path || shouldRecoverRepository;
   const graphRows = useMemo(
     () => syncWipGraphRow(graphQuery.data?.rows ?? emptyGraphRows, repositoryQuery.data?.status),
     [graphQuery.data?.rows, repositoryQuery.data?.status]
@@ -567,6 +577,38 @@ export function WorkspaceShell(): ReactElement {
   useEffect(() => {
     void initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (!repositoryUnavailable || !activeTab || recoveryAttemptsRef.current.has(activeTab.path)) {
+      return;
+    }
+
+    const missingRepoPath = activeTab.path;
+    recoveryAttemptsRef.current.add(missingRepoPath);
+    setRecoveringRepoPath(missingRepoPath);
+
+    void recoverMissingWorktree(activeTab.id)
+      .then((recoveredWorkspace) => {
+        if (recoveredWorkspace) {
+          clearRepositoryQueries(queryClient, missingRepoPath);
+        }
+      })
+      .finally(() => {
+        setRecoveringRepoPath((currentPath) =>
+          currentPath === missingRepoPath ? undefined : currentPath
+        );
+      });
+  }, [activeTab, queryClient, recoverMissingWorktree, repositoryUnavailable]);
+
+  useEffect(() => {
+    if (
+      activeTab &&
+      !repositoryUnavailable &&
+      (repositoryQuery.isSuccess || graphQuery.isSuccess)
+    ) {
+      recoveryAttemptsRef.current.delete(activeTab.path);
+    }
+  }, [activeTab, graphQuery.isSuccess, repositoryQuery.isSuccess, repositoryUnavailable]);
 
   useEffect(() => {
     if (isLoading || initialSurfaceResolvedRef.current) {
@@ -2890,7 +2932,9 @@ export function WorkspaceShell(): ReactElement {
             onCloneRepository={handleCloneRepositoryFromStart}
           />
         ) : activeTab ? (
-          repositoryUnavailable ? (
+          isRecoveringRepository ? (
+            <RepositoryRecoveryView repoPath={activeTab.path} />
+          ) : repositoryUnavailable ? (
             <UnavailableRepositoryView
               repoPath={activeTab.path}
               isOpening={isLoading}
@@ -3290,6 +3334,18 @@ function UnavailableRepositoryView({
             Close tab
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function RepositoryRecoveryView({ repoPath }: { repoPath: string }): ReactElement {
+  return (
+    <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] px-8 py-12">
+      <div className="text-center" role="status">
+        <RefreshCw className="mx-auto animate-spin text-[var(--accent)]" size={22} />
+        <p className="mt-3 text-sm font-medium text-[var(--text-1)]">Opening the base repository…</p>
+        <p className="mono mt-1 max-w-xl break-all text-xs text-[var(--text-3)]">{repoPath}</p>
       </div>
     </section>
   );

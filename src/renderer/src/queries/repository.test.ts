@@ -1,6 +1,7 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
+import { repositoryUnavailableErrorMessage } from '@shared/repositoryAvailability';
 import type { RepoChangedEvent } from '@shared/types';
 
 import {
@@ -11,6 +12,7 @@ import {
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   scopesForRepositoryChange,
+  shouldRetryRepositoryQuery,
   shouldPruneLowerGraphQueries
 } from './repository';
 
@@ -117,6 +119,19 @@ describe('graph cache pruning', () => {
 });
 
 describe('repository query invalidation', () => {
+  it('does not retry a repository whose working directory disappeared', () => {
+    expect(
+      shouldRetryRepositoryQuery(
+        0,
+        new Error(
+          `Error invoking remote method 'repo:overview': Error: ${repositoryUnavailableErrorMessage('/repo-linked')}`
+        )
+      )
+    ).toBe(false);
+    expect(shouldRetryRepositoryQuery(0, new Error('temporary failure'))).toBe(true);
+    expect(shouldRetryRepositoryQuery(3, new Error('temporary failure'))).toBe(false);
+  });
+
   it('drops cached data for a closed repository without touching other repositories', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(['commit-graph', '/repo', 1500], { rows: [] });

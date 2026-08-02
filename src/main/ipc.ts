@@ -64,6 +64,7 @@ import {
 } from './git/repositoryDetails';
 import { loadRepositoryOverview } from './git/repositoryOverview';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
+import { findBaseRepositoryForMissingWorktree } from './git/repositoryRecovery';
 import { listExternalApplications } from './externalApplications';
 import {
   loadGitHubActionsRuns,
@@ -258,6 +259,23 @@ export function registerIpcHandlers(
     );
   }
 
+  async function recoverMissingWorktree(tabId: string): Promise<WorkspaceState | null> {
+    const tab = getWorkspace().tabs.find((candidate) => candidate.id === tabId);
+
+    if (!tab) {
+      return null;
+    }
+
+    const repository = await findBaseRepositoryForMissingWorktree(tab);
+
+    if (!repository) {
+      return null;
+    }
+
+    clearReviewSyntaxCacheForRepository(tab.path);
+    return syncWorkspaceWatchers(replaceWorkspaceRepository(tab.id, repository), repoWatchers);
+  }
+
   gitExecutor.onProgress((event) => {
     const operation = activeOperations.get(event.cwd);
 
@@ -285,7 +303,14 @@ export function registerIpcHandlers(
 
   handle('updates:get-state', () => applicationUpdater.getState());
   handle('updates:apply', () => applicationUpdater.applyUpdate());
-  handle('workspace:get', () => getWorkspace());
+  handle('workspace:get', async () => {
+    const workspace = getWorkspace();
+    const recoveredWorkspace = workspace.activeTabId
+      ? await recoverMissingWorktree(workspace.activeTabId)
+      : null;
+
+    return syncWorkspaceWatchers(recoveredWorkspace ?? workspace, repoWatchers);
+  });
 
   handle('repo:open-dialog', async (event) => {
     const browserWindow = BrowserWindow.fromWebContents(event.sender);
@@ -352,6 +377,8 @@ export function registerIpcHandlers(
 
     return workspace;
   });
+
+  handle('repo:recover-missing-worktree', async (_event, tabId) => recoverMissingWorktree(tabId));
 
   handle('tabs:activate', (_event, tabId) => activateWorkspaceTab(tabId));
   handle('tabs:reorder', (_event, tabId, targetIndex) =>

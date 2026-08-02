@@ -75,6 +75,8 @@ const validators = {
   'repo:clone': (args) => readOnlyArg(args, 'repo:clone', 'input', readRepositoryCloneInput),
   'repo:open-path': (args) => readOnlyArg(args, 'repo:open-path', 'repoPath', readString),
   'repo:replace-path': (args) => readStringPair(args, 'repo:replace-path', 'tabId', 'repoPath'),
+  'repo:recover-missing-worktree': (args) =>
+    readOnlyArg(args, 'repo:recover-missing-worktree', 'tabId', readString),
   'tabs:activate': (args) => readOnlyArg(args, 'tabs:activate', 'tabId', readString),
   'tabs:reorder': (args) =>
     readStringAndNonNegativeInteger(args, 'tabs:reorder', 'tabId', 'targetIndex'),
