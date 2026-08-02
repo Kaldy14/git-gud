@@ -254,7 +254,7 @@ export function registerIpcHandlers(
     operation: (tab: WorkspaceState['tabs'][number]) => Promise<T>
   ): Promise<T> {
     const tab = getOpenRepositoryTab(repoPath);
-    return gitExecutor.transaction(repoPath, () =>
+    return gitExecutor.transaction(tab.commonDir, () =>
       repoWatchers.runDuringMutation(repoPath, () => operation(tab))
     );
   }

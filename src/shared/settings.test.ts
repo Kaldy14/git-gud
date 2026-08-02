@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { createDefaultAppSettings, normalizeAppSettings } from './settings';
+import {
+  DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
+  createDefaultAppSettings,
+  normalizeAppSettings
+} from './settings';
 
 describe('app settings', () => {
   it('defaults to a focused commit graph and Gravatar author images', () => {
     expect(createDefaultAppSettings()).toMatchObject({
       diffSyntaxTheme: 'git-gud-dark',
+      autoFetchIntervalMinutes: DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
       graphColumns: {
         author: false,
         date: false,
@@ -14,6 +19,19 @@ describe('app settings', () => {
       confirmForcePush: true,
       remoteAvatars: true
     });
+  });
+
+  it('defaults auto-fetch to one minute and accepts zero as disabled', () => {
+    expect(normalizeAppSettings({}).autoFetchIntervalMinutes).toBe(1);
+    expect(normalizeAppSettings({ autoFetchIntervalMinutes: 0 }).autoFetchIntervalMinutes).toBe(0);
+    expect(normalizeAppSettings({ autoFetchIntervalMinutes: 60 }).autoFetchIntervalMinutes).toBe(60);
+  });
+
+  it('normalizes auto-fetch intervals to the supported whole-minute range', () => {
+    expect(normalizeAppSettings({ autoFetchIntervalMinutes: -1 }).autoFetchIntervalMinutes).toBe(0);
+    expect(normalizeAppSettings({ autoFetchIntervalMinutes: 2.6 }).autoFetchIntervalMinutes).toBe(3);
+    expect(normalizeAppSettings({ autoFetchIntervalMinutes: 61 }).autoFetchIntervalMinutes).toBe(60);
+    expect(normalizeAppSettings({ autoFetchIntervalMinutes: Number.NaN }).autoFetchIntervalMinutes).toBe(1);
   });
 
   it('keeps valid syntax themes and repairs unknown persisted values', () => {

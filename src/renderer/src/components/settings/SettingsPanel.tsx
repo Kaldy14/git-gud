@@ -1,9 +1,27 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useState } from 'react';
-import { Check, Gauge, GitGraph, Palette, Rows3, Settings, ShieldAlert, SplitSquareHorizontal, X } from 'lucide-react';
+import {
+  Check,
+  Gauge,
+  GitGraph,
+  Palette,
+  RefreshCw,
+  Rows3,
+  Settings,
+  ShieldAlert,
+  SplitSquareHorizontal,
+  X
+} from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
-import { MAX_GRAPH_PAGE_SIZE, MIN_GRAPH_PAGE_SIZE, clampGraphPageSize } from '@shared/settings';
+import {
+  MAX_AUTO_FETCH_INTERVAL_MINUTES,
+  MAX_GRAPH_PAGE_SIZE,
+  MIN_AUTO_FETCH_INTERVAL_MINUTES,
+  MIN_GRAPH_PAGE_SIZE,
+  clampAutoFetchIntervalMinutes,
+  clampGraphPageSize
+} from '@shared/settings';
 import type { AppSettings, DiffSyntaxTheme } from '@shared/types';
 
 type SettingsPanelProps = {
@@ -23,6 +41,9 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
     event.preventDefault();
     void onSave({
       ...draft,
+      autoFetchIntervalMinutes: clampAutoFetchIntervalMinutes(
+        draft.autoFetchIntervalMinutes
+      ),
       graphPageSize: clampGraphPageSize(draft.graphPageSize)
     });
   }
@@ -163,6 +184,35 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
               <span className="min-w-0">
                 <span className="block font-semibold text-[var(--text-1)]">Load remote author avatars</span>
                 <span className="mt-1 block leading-5 text-[var(--text-3)]">Uses GitHub identities for GitHub repositories, then falls back to Gravatar. Disable to keep author identities local.</span>
+              </span>
+            </label>
+          </section>
+
+          <section className="space-y-3 border-b border-[var(--border)] py-4">
+            <SettingHeading icon={<RefreshCw size={15} />} label="Repositories" />
+            <label className="block text-xs text-[var(--text-2)]">
+              <span className="mb-1.5 block font-semibold text-[var(--text-1)]">
+                Auto-fetch interval (minutes)
+              </span>
+              <input
+                className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+                type="number"
+                min={MIN_AUTO_FETCH_INTERVAL_MINUTES}
+                max={MAX_AUTO_FETCH_INTERVAL_MINUTES}
+                step={1}
+                value={draft.autoFetchIntervalMinutes}
+                onChange={(event) =>
+                  setDraft((value) => ({
+                    ...value,
+                    autoFetchIntervalMinutes:
+                      Number.parseInt(event.target.value, 10) ||
+                      MIN_AUTO_FETCH_INTERVAL_MINUTES
+                  }))
+                }
+              />
+              <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
+                Fetch remote updates while a repository is active. Use 0 to turn off
+                auto-fetch. This never pulls or changes working files.
               </span>
             </label>
           </section>

@@ -702,6 +702,7 @@ export type DiffSyntaxTheme = 'git-gud-dark' | 'tokyo-night-storm';
 export type AppSettings = {
   defaultDiffStyle: 'unified' | 'split';
   diffSyntaxTheme: DiffSyntaxTheme;
+  autoFetchIntervalMinutes: number;
   graphPageSize: number;
   largeRepoMode: boolean;
   confirmForcePush: boolean;

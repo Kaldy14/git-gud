@@ -1274,6 +1274,10 @@ function readSettingsInput(value: unknown): AppSettingsInput {
   return {
     defaultDiffStyle: readOptionalEnumProperty(record, 'defaultDiffStyle', ['unified', 'split']),
     diffSyntaxTheme: readOptionalEnumProperty(record, 'diffSyntaxTheme', ['git-gud-dark', 'tokyo-night-storm']),
+    autoFetchIntervalMinutes: readOptionalNonNegativeIntegerProperty(
+      record,
+      'autoFetchIntervalMinutes'
+    ),
     graphPageSize: readOptionalPositiveIntegerProperty(record, 'graphPageSize'),
     largeRepoMode: readOptionalBooleanProperty(record, 'largeRepoMode'),
     confirmForcePush: readOptionalBooleanProperty(record, 'confirmForcePush'),
@@ -1403,6 +1407,14 @@ function readOptionalEnumProperty<TValue extends string>(
 
 function readOptionalPositiveIntegerProperty(record: Record<string, unknown>, property: string): number | undefined {
   return readOptionalPositiveInteger(record[property], property);
+}
+
+function readOptionalNonNegativeIntegerProperty(
+  record: Record<string, unknown>,
+  property: string
+): number | undefined {
+  const value = record[property];
+  return value === undefined ? undefined : readNonNegativeInteger(value, property);
 }
 
 function readOptionalStringArrayProperty(record: Record<string, unknown>, property: string): string[] | undefined {

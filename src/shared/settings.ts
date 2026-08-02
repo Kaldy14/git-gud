@@ -2,11 +2,15 @@ import type { AppSettings } from './types';
 
 export const MIN_GRAPH_PAGE_SIZE = 250;
 export const MAX_GRAPH_PAGE_SIZE = 12000;
+export const MIN_AUTO_FETCH_INTERVAL_MINUTES = 0;
+export const MAX_AUTO_FETCH_INTERVAL_MINUTES = 60;
+export const DEFAULT_AUTO_FETCH_INTERVAL_MINUTES = 1;
 
 export function createDefaultAppSettings(): AppSettings {
   return {
     defaultDiffStyle: 'unified',
     diffSyntaxTheme: 'git-gud-dark',
+    autoFetchIntervalMinutes: DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
     graphPageSize: 1500,
     largeRepoMode: false,
     confirmForcePush: true,
@@ -32,6 +36,11 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
       settings.diffSyntaxTheme === 'git-gud-dark' || settings.diffSyntaxTheme === 'tokyo-night-storm'
         ? settings.diffSyntaxTheme
         : fallback.diffSyntaxTheme,
+    autoFetchIntervalMinutes: clampAutoFetchIntervalMinutes(
+      typeof settings.autoFetchIntervalMinutes === 'number'
+        ? settings.autoFetchIntervalMinutes
+        : fallback.autoFetchIntervalMinutes
+    ),
     graphPageSize: clampGraphPageSize(
       typeof settings.graphPageSize === 'number' ? settings.graphPageSize : fallback.graphPageSize
     ),
@@ -57,6 +66,17 @@ export function clampGraphPageSize(value: number): number {
   }
 
   return Math.min(MAX_GRAPH_PAGE_SIZE, Math.max(MIN_GRAPH_PAGE_SIZE, Math.round(value)));
+}
+
+export function clampAutoFetchIntervalMinutes(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_AUTO_FETCH_INTERVAL_MINUTES;
+  }
+
+  return Math.min(
+    MAX_AUTO_FETCH_INTERVAL_MINUTES,
+    Math.max(MIN_AUTO_FETCH_INTERVAL_MINUTES, Math.round(value))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

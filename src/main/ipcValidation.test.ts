@@ -164,6 +164,7 @@ describe('IPC argument validation', () => {
       {
         defaultDiffStyle: undefined,
         diffSyntaxTheme: undefined,
+        autoFetchIntervalMinutes: undefined,
         graphPageSize: undefined,
         largeRepoMode: undefined,
         confirmForcePush: false,
@@ -536,6 +537,7 @@ describe('IPC argument validation', () => {
         {
           defaultDiffStyle: 'split',
           diffSyntaxTheme: 'tokyo-night-storm',
+          autoFetchIntervalMinutes: 0,
           graphPageSize: 750,
           largeRepoMode: true,
           graphColumns: {
@@ -549,6 +551,7 @@ describe('IPC argument validation', () => {
     ).toMatchObject({
       defaultDiffStyle: 'split',
       diffSyntaxTheme: 'tokyo-night-storm',
+      autoFetchIntervalMinutes: 0,
       graphPageSize: 750,
       largeRepoMode: true,
       graphColumns: {
@@ -876,5 +879,8 @@ describe('IPC argument validation', () => {
     expect(() =>
       validateIpcArgs('settings:update', [{ confirmForcePush: 'never' }])
     ).toThrow('confirmForcePush must be a boolean.');
+    expect(() =>
+      validateIpcArgs('settings:update', [{ autoFetchIntervalMinutes: -1 }])
+    ).toThrow('autoFetchIntervalMinutes must be a non-negative integer.');
   });
 });

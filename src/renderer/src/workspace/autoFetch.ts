@@ -1,6 +1,5 @@
 import type { GitRemote } from '@shared/types';
 
-export const AUTO_FETCH_STALE_AFTER_MS = 5 * 60 * 1000;
 export type AutoFetchResult = 'skipped' | 'succeeded' | 'failed';
 
 type RepositoryFetchState = {
@@ -9,19 +8,21 @@ type RepositoryFetchState = {
 };
 
 type AutoFetchRepositoryOptions = {
+  intervalMinutes: number;
   loadRepository: () => Promise<RepositoryFetchState>;
   fetchRepository: () => Promise<boolean>;
   now?: number;
 };
 
-export async function autoFetchRepositoryOnTabActivation({
+export async function autoFetchRepository({
+  intervalMinutes,
   loadRepository,
   fetchRepository,
   now = Date.now()
 }: AutoFetchRepositoryOptions): Promise<AutoFetchResult> {
   const repository = await loadRepository();
 
-  if (!shouldAutoFetchRepository(repository, now)) {
+  if (!shouldAutoFetchRepository(repository, intervalMinutes, now)) {
     return 'skipped';
   }
 
@@ -46,12 +47,17 @@ export function createRepositoryAutoFetchCoordinator<
   function schedule(
     repository: TRepository,
     run: (repository: TRepository) => Promise<AutoFetchResult>
-  ): void {
+  ): () => void {
     const commonDir = repository.commonDir;
+    const queuedRequest = { repository, run };
 
     if (inFlight.has(commonDir)) {
-      queued.set(commonDir, { repository, run });
-      return;
+      queued.set(commonDir, queuedRequest);
+      return () => {
+        if (queued.get(commonDir) === queuedRequest) {
+          queued.delete(commonDir);
+        }
+      };
     }
 
     const request = run(repository).catch((): AutoFetchResult => 'failed');
@@ -69,6 +75,8 @@ export function createRepositoryAutoFetchCoordinator<
         schedule(next.repository, next.run);
       }
     });
+
+    return () => undefined;
   }
 
   return { schedule };
@@ -76,9 +84,10 @@ export function createRepositoryAutoFetchCoordinator<
 
 export function shouldAutoFetchRepository(
   repository: RepositoryFetchState,
+  intervalMinutes: number,
   now = Date.now()
 ): boolean {
-  if (repository.remotes.length === 0) {
+  if (intervalMinutes <= 0 || repository.remotes.length === 0) {
     return false;
   }
 
@@ -87,5 +96,12 @@ export function shouldAutoFetchRepository(
   }
 
   const lastFetchedAt = Date.parse(repository.lastFetchedAt);
-  return Number.isNaN(lastFetchedAt) || now - lastFetchedAt >= AUTO_FETCH_STALE_AFTER_MS;
+  return (
+    Number.isNaN(lastFetchedAt) ||
+    now - lastFetchedAt >= autoFetchIntervalMilliseconds(intervalMinutes)
+  );
+}
+
+export function autoFetchIntervalMilliseconds(intervalMinutes: number): number {
+  return intervalMinutes * 60 * 1000;
 }

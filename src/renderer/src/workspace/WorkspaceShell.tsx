@@ -88,7 +88,8 @@ import {
 } from '@renderer/workspace/branchActivation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import {
-  autoFetchRepositoryOnTabActivation,
+  autoFetchIntervalMilliseconds,
+  autoFetchRepository,
   createRepositoryAutoFetchCoordinator
 } from '@renderer/workspace/autoFetch';
 import {
@@ -182,6 +183,12 @@ type RepositoryOperationOptions = {
   onFailure?: (failure: { repoPath: string; message: string }) => void;
 };
 
+type RepositoryOperationRunner = (
+  label: string,
+  action: (repoPath: string) => Promise<GitOperationResult>,
+  options?: RepositoryOperationOptions
+) => Promise<boolean>;
+
 type ActiveRepositoryOperation = {
   id: string;
   repoPath: string;
@@ -263,6 +270,7 @@ export function WorkspaceShell(): ReactElement {
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
   const [pushRejectionPrompt, setPushRejectionPrompt] = useState<PushRejectionPrompt>();
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
+  const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [profiles, setProfiles] = useState<GitProfile[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
@@ -287,7 +295,10 @@ export function WorkspaceShell(): ReactElement {
   const [recoveringRepoPath, setRecoveringRepoPath] = useState<string>();
   const initialSurfaceResolvedRef = useRef(false);
   const recoveryAttemptsRef = useRef(new Set<string>());
-  const autoFetchCoordinatorRef = useRef(createRepositoryAutoFetchCoordinator<RepoTab>());
+  const autoFetchCoordinatorRef = useRef(
+    createRepositoryAutoFetchCoordinator<Pick<RepoTab, 'commonDir' | 'path'>>()
+  );
+  const runRepositoryOperationRef = useRef<RepositoryOperationRunner | undefined>(undefined);
   const operationRetryActionsRef = useRef(
     new Map<
       string,
@@ -316,6 +327,8 @@ export function WorkspaceShell(): ReactElement {
     [workspace.activeTabId, workspace.tabs]
   );
   const activeTab = isStartTabActive ? undefined : workspaceActiveTab;
+  const autoFetchRepositoryPath = activeTab?.path;
+  const autoFetchRepositoryCommonDir = activeTab?.commonDir;
   const localMutationCount = useIsMutating({ mutationKey: ['repository-mutation', activeTab?.path] });
   const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? settings.graphPageSize) : settings.graphPageSize;
   const relatedRepoPaths = useMemo(
@@ -656,7 +669,8 @@ export function WorkspaceShell(): ReactElement {
       .then(setSettings)
       .catch((error: unknown) => {
         setSettingsErrorMessage(error instanceof Error ? error.message : 'Unable to load settings.');
-      });
+      })
+      .finally(() => setHasLoadedSettings(true));
   }, []);
 
   useEffect(() => {
@@ -1117,51 +1131,7 @@ export function WorkspaceShell(): ReactElement {
   async function handleActivateRepositoryTab(tabId: string): Promise<void> {
     setGitHubWorkspaceView(undefined);
     setIsStartTabActive(false);
-    const activatedWorkspace = await activateTab(tabId);
-    const activatedTab = activatedWorkspace?.tabs.find((tab) => tab.id === tabId);
-
-    if (!activatedTab) {
-      return;
-    }
-
-    autoFetchCoordinatorRef.current.schedule(activatedTab, (repository) =>
-      autoFetchRepositoryOnTabActivation({
-        loadRepository: () =>
-          queryClient.fetchQuery({
-            queryKey: repositoryOverviewQueryKey(repository.path),
-            queryFn: () => window.api.getRepositoryOverview(repository.path),
-            staleTime: 1500,
-            retry: false
-          }),
-        fetchRepository: async () => {
-          const completed = await runRepositoryOperation(
-            'Fetch',
-            (repoPath) => window.api.fetchRepository(repoPath),
-            {
-              repoPath: repository.path,
-              retryable: true
-            }
-          );
-
-          if (completed) {
-            await Promise.all(
-              workspace.tabs
-                .filter(
-                  (tab) =>
-                    tab.commonDir === repository.commonDir && tab.path !== repository.path
-                )
-                .map((tab) =>
-                  queryClient.invalidateQueries({
-                    queryKey: repositoryOverviewQueryKey(tab.path)
-                  })
-                )
-            );
-          }
-
-          return completed;
-        }
-      })
-    );
+    await activateTab(tabId);
   }
 
   function completeStartPageAction(): void {
@@ -1489,6 +1459,105 @@ export function WorkspaceShell(): ReactElement {
       });
     }
   }
+
+  useEffect(() => {
+    runRepositoryOperationRef.current = runRepositoryOperation;
+  });
+
+  useEffect(() => {
+    if (
+      isLoading ||
+      !hasLoadedSettings ||
+      isStartTabActive ||
+      gitHubWorkspaceView ||
+      !autoFetchRepositoryPath ||
+      !autoFetchRepositoryCommonDir ||
+      settings.autoFetchIntervalMinutes === 0
+    ) {
+      return;
+    }
+
+    const repository = {
+      commonDir: autoFetchRepositoryCommonDir,
+      path: autoFetchRepositoryPath
+    };
+    let active = true;
+    let cancelQueuedAutoFetch = (): void => {};
+
+    function scheduleAutoFetch(): void {
+      cancelQueuedAutoFetch();
+      cancelQueuedAutoFetch = autoFetchCoordinatorRef.current.schedule(
+        repository,
+        (scheduledRepository) => {
+          if (!active) {
+            return Promise.resolve('skipped');
+          }
+
+          return autoFetchRepository({
+            intervalMinutes: settings.autoFetchIntervalMinutes,
+            loadRepository: () =>
+              queryClient.fetchQuery({
+                queryKey: repositoryOverviewQueryKey(scheduledRepository.path),
+                queryFn: () => window.api.getRepositoryOverview(scheduledRepository.path),
+                staleTime: 1500,
+                retry: false
+              }),
+            fetchRepository: async () => {
+              const completed =
+                (await runRepositoryOperationRef.current?.(
+                  'Fetch',
+                  (repoPath) => window.api.fetchRepository(repoPath),
+                  {
+                    repoPath: scheduledRepository.path,
+                    retryable: true
+                  }
+                )) ?? false;
+
+              if (completed) {
+                await Promise.all(
+                  useWorkspaceStore
+                    .getState()
+                    .workspace.tabs.filter(
+                      (tab) =>
+                        tab.commonDir === scheduledRepository.commonDir &&
+                        tab.path !== scheduledRepository.path
+                    )
+                    .map((tab) =>
+                      queryClient.invalidateQueries({
+                        queryKey: repositoryOverviewQueryKey(tab.path)
+                      })
+                    )
+                );
+              }
+
+              return completed;
+            }
+          });
+        }
+      );
+    }
+
+    scheduleAutoFetch();
+    const intervalId = window.setInterval(
+      scheduleAutoFetch,
+      autoFetchIntervalMilliseconds(settings.autoFetchIntervalMinutes)
+    );
+
+    return () => {
+      active = false;
+      cancelQueuedAutoFetch();
+      window.clearInterval(intervalId);
+    };
+  }, [
+    autoFetchRepositoryCommonDir,
+    autoFetchRepositoryPath,
+    gitHubWorkspaceView,
+    hasLoadedSettings,
+    isLoading,
+    isStartTabActive,
+    queryClient,
+    settings.autoFetchIntervalMinutes
+  ]);
 
   function handleDismissOperation(id: string): void {
     operationRetryActionsRef.current.delete(id);
