@@ -21,8 +21,16 @@ const REVIEW_CONTEXT_SEPARATOR_CSS = `
 
   [data-separator="line-info"] [data-separator-content],
   [data-separator="line-info"] [data-expand-button] {
-    background: var(--diffs-bg-separator);
+    border: 1px solid var(--select-border);
+    background: var(--select-bg);
     border-radius: 0;
+    color: var(--diffs-modified-base);
+  }
+
+  [data-separator="line-info"] [data-separator-content]:focus-visible,
+  [data-separator="line-info"] [data-expand-button]:focus-visible {
+    outline: 2px solid var(--diffs-modified-base);
+    outline-offset: -2px;
   }
 
   [data-separator="line-info"] [data-unmodified-lines]::after {
@@ -36,13 +44,18 @@ const REVIEW_CONTEXT_SEPARATOR_CSS = `
 export function createReviewContextOptions<LAnnotation>(
   options: FileDiffOptions<LAnnotation>,
   diff: ExpandableReviewDiff,
-  filePath: string
+  filePath: string,
+  hideLeadingSeparator = false
 ): FileDiffOptions<LAnnotation> {
+  const continuationCSS = hideLeadingSeparator
+    ? '[data-separator="line-info"][data-separator-first] { display: none; }'
+    : '';
+
   return {
     ...options,
     hunkSeparators: 'line-info',
     onPostRender: createReviewContextPostRender(diff, filePath),
-    unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_CONTEXT_SEPARATOR_CSS}`
+    unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_CONTEXT_SEPARATOR_CSS}\n${continuationCSS}`
   };
 }
 
@@ -55,6 +68,7 @@ function createReviewContextPostRender<LAnnotation>(
 
     if (previousListener) {
       previousListener.root.removeEventListener('click', previousListener.handler, true);
+      previousListener.root.removeEventListener('keydown', previousListener.handler, true);
       reviewExpansionListeners.delete(node);
     }
 
@@ -65,6 +79,14 @@ function createReviewContextPostRender<LAnnotation>(
     }
 
     const handler: EventListener = (event) => {
+      if (event instanceof KeyboardEvent) {
+        if (!isReviewExpansionKey(event.key)) {
+          return;
+        }
+        if (event.target instanceof Element && event.target.matches('button, input')) {
+          return;
+        }
+      }
       const target = event.target;
 
       if (!(target instanceof Element)) {
@@ -90,9 +112,14 @@ function createReviewContextPostRender<LAnnotation>(
     };
 
     root.addEventListener('click', handler, true);
+    root.addEventListener('keydown', handler, true);
     reviewExpansionListeners.set(node, { root, handler });
     decorateReviewContextSeparators(root, diff, filePath);
   };
+}
+
+export function isReviewExpansionKey(key: string): boolean {
+  return key === 'Enter' || key === ' ';
 }
 
 function decorateReviewContextSeparators(
@@ -109,12 +136,18 @@ function decorateReviewContextSeparators(
 
     const title = `Expand ${request.lineCount} nearby line${request.lineCount === 1 ? '' : 's'} as one code block`;
     const content = separator.querySelector<HTMLElement>('[data-separator-content]');
+    const buttons = separator.querySelectorAll<HTMLElement>('[data-expand-button]');
 
     content?.setAttribute('title', title);
     content?.setAttribute('aria-label', title);
-    for (const button of separator.querySelectorAll<HTMLElement>('[data-expand-button]')) {
+    if (content && buttons.length === 0) {
+      content.setAttribute('role', 'button');
+      content.tabIndex = 0;
+    }
+    for (const button of buttons) {
       button.setAttribute('title', title);
       button.setAttribute('aria-label', title);
+      button.tabIndex = 0;
     }
   }
 }

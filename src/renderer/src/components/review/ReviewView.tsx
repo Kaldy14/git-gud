@@ -1391,15 +1391,9 @@ function ReviewBody({
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
-  const [collapsedChunkIds, setCollapsedChunkIds] = useState<ReadonlySet<string>>(
+  const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(
     () => new Set()
   );
-  const firstChunkIdByPath = new Map<string, string>();
-  for (const chunk of selectedUnit?.visibleChunks ?? []) {
-    if (!firstChunkIdByPath.has(chunk.path)) {
-      firstChunkIdByPath.set(chunk.path, chunk.id);
-    }
-  }
   const selectedGuideUnit = selectedUnit
     ? reviewGuideUnits.get(selectedUnit.unit.id)
     : undefined;
@@ -1431,20 +1425,23 @@ function ReviewBody({
     });
   }, [selectedFilePath, selectedUnit?.unit.id]);
 
-  function toggleChunk(chunkId: string): void {
-    const isCollapsing = !collapsedChunkIds.has(chunkId);
+  function toggleFile(fileKey: string, chunks: readonly GitReviewChunk[]): void {
+    const isCollapsing = !collapsedFileKeys.has(fileKey);
 
-    if (isCollapsing && lineCollaboration?.selectedChunkId === chunkId) {
-      lineCollaboration.onCancel();
+    if (
+      isCollapsing &&
+      chunks.some((chunk) => chunk.id === lineCollaboration?.selectedChunkId)
+    ) {
+      lineCollaboration?.onCancel();
     }
 
-    setCollapsedChunkIds((current) => {
+    setCollapsedFileKeys((current) => {
       const next = new Set(current);
 
-      if (next.has(chunkId)) {
-        next.delete(chunkId);
+      if (next.has(fileKey)) {
+        next.delete(fileKey);
       } else {
-        next.add(chunkId);
+        next.add(fileKey);
       }
 
       return next;
@@ -1578,21 +1575,31 @@ function ReviewBody({
                   {sections.length > 1 ? (
                     <div className="review-section-header">
                       <span>{section.label}</span>
-                      <span>{section.chunks.length}</span>
+                      <span>{section.files.length}</span>
                     </div>
                   ) : null}
-                  {section.chunks.map((chunk) => (
-                    <ReviewChunk
-                      key={chunk.id}
-                      chunk={chunk}
-                      preparedDiff={preparedDiffs.get(chunk.id)}
-                      diffOptions={diffOptions}
-                      lineCollaboration={lineCollaboration}
-                      showFileComments={firstChunkIdByPath.get(chunk.path) === chunk.id}
-                      isCollapsed={collapsedChunkIds.has(chunk.id)}
-                      onToggleCollapsed={() => toggleChunk(chunk.id)}
-                    />
-                  ))}
+                  {section.files.flatMap((file) => {
+                    const isCollapsed = collapsedFileKeys.has(file.key);
+
+                    return file.chunks
+                      .filter((_chunk, chunkIndex) => !isCollapsed || chunkIndex === 0)
+                      .map((chunk, chunkIndex) => (
+                        <ReviewChunk
+                          key={chunk.id}
+                          chunk={chunk}
+                          preparedDiff={preparedDiffs.get(chunk.id)}
+                          diffOptions={diffOptions}
+                          lineCollaboration={lineCollaboration}
+                          showFileComments={chunkIndex === 0}
+                          showHeader={chunkIndex === 0}
+                          headerAdditions={file.additions}
+                          headerDeletions={file.deletions}
+                          hideLeadingExpansion={chunkIndex > 0}
+                          isCollapsed={isCollapsed}
+                          onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
+                        />
+                      ));
+                  })}
                 </section>
               ))}
             </div>
@@ -2193,6 +2200,10 @@ function ReviewChunk({
   diffOptions,
   lineCollaboration,
   showFileComments,
+  showHeader = true,
+  headerAdditions,
+  headerDeletions,
+  hideLeadingExpansion = false,
   isCollapsed,
   searchHighlights,
   onToggleCollapsed
@@ -2202,6 +2213,10 @@ function ReviewChunk({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   showFileComments: boolean;
+  showHeader?: boolean;
+  headerAdditions?: number;
+  headerDeletions?: number;
+  hideLeadingExpansion?: boolean;
   isCollapsed: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
   onToggleCollapsed: () => void;
@@ -2211,7 +2226,12 @@ function ReviewChunk({
   const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
     () => {
       const options = expandableDiff
-        ? createReviewContextOptions(diffOptions, expandableDiff, chunk.path)
+        ? createReviewContextOptions(
+            diffOptions,
+            expandableDiff,
+            chunk.path,
+            hideLeadingExpansion
+          )
         : diffOptions;
       const highlightCSS = createReviewSearchHighlightCSS(searchHighlights);
 
@@ -2219,7 +2239,7 @@ function ReviewChunk({
         ? { ...options, unsafeCSS: `${options.unsafeCSS ?? ''}\n${highlightCSS}` }
         : options;
     },
-    [chunk.path, diffOptions, expandableDiff, searchHighlights]
+    [chunk.path, diffOptions, expandableDiff, hideLeadingExpansion, searchHighlights]
   );
   const selectedLines =
     lineCollaboration?.selectedChunkId === chunk.id &&
@@ -2280,7 +2300,7 @@ function ReviewChunk({
       data-collapsed={isCollapsed}
       data-review-path={chunk.path}
     >
-      <div className="review-chunk-header">
+      {showHeader ? <div className="review-chunk-header">
         <button
           className="review-chunk-toggle"
           type="button"
@@ -2297,8 +2317,8 @@ function ReviewChunk({
           <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{chunk.path}</span>
           <span className="badge-mini" title={chunk.relationship}>{chunk.role}</span>
           {chunk.source !== 'commit' ? <span className="badge-mini">{chunk.source}</span> : null}
-          <span className="text-[var(--success-text)]">+{chunk.additions}</span>
-          <span className="text-[var(--danger-text)]">-{chunk.deletions}</span>
+          <span className="text-[var(--success-text)]">+{headerAdditions ?? chunk.additions}</span>
+          <span className="text-[var(--danger-text)]">-{headerDeletions ?? chunk.deletions}</span>
         </button>
         {lineCollaboration && showFileComments ? (
           <button
@@ -2322,7 +2342,7 @@ function ReviewChunk({
             Comment on file
           </button>
         ) : null}
-      </div>
+      </div> : null}
       {!isCollapsed && showFileComments && (fileThreads.length > 0 || isFileComposerOpen) ? (
         <div className="review-file-comments">
           {fileThreads.map((thread) => (

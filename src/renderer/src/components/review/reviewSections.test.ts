@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GitReviewChunk } from '@shared/types';
 
-import { createReviewSections } from './reviewSections';
+import { createReviewSections, groupReviewFiles } from './reviewSections';
 
 describe('review sections', () => {
   it('keeps dependency-ordered chunks in semantic subgroups', () => {
@@ -15,7 +15,7 @@ describe('review sections', () => {
       chunk('definition', 'definition')
     ]);
 
-    expect(sections.map((section) => [section.label, section.chunks.map((item) => item.id)])).toEqual([
+    expect(sections.map((section) => [section.label, section.files.flatMap((file) => file.chunks.map((item) => item.id))])).toEqual([
       ['Storage and migrations', ['migration']],
       ['Definitions', ['definition']],
       ['API and GraphQL', ['schema']],
@@ -35,12 +35,45 @@ describe('review sections', () => {
 
     expect(createReviewSections([definition, consumer, schema]).map((section) => ({
       label: section.label,
-      chunks: section.chunks.map((item) => item.id)
+      chunks: section.files.flatMap((file) => file.chunks.map((item) => item.id))
     }))).toEqual([
       { label: 'Definitions', chunks: ['definition'] },
       { label: 'API and GraphQL', chunks: ['schema'] },
       { label: 'Implementations and consumers', chunks: ['consumer'] }
     ]);
+  });
+
+  it('groups every hunk for a file once and aggregates its change counts', () => {
+    const first = chunk('first-hunk', 'implementation');
+    const other = chunk('other-file', 'tests');
+    const second = chunk('second-hunk', 'tests');
+    first.fileContextId = 'file-1';
+    second.fileContextId = 'file-1';
+    second.path = first.path;
+    second.additions = 4;
+    second.deletions = 2;
+
+    const sections = createReviewSections([first, other, second]);
+
+    expect(sections.map((section) => ({
+      label: section.label,
+      files: section.files.map((file) => file.chunks.map((item) => item.id))
+    }))).toEqual([
+      { label: 'Implementations and consumers', files: [['first-hunk', 'second-hunk']] },
+      { label: 'Tests and specs', files: [['other-file']] }
+    ]);
+    expect(sections[0].files[0]).toMatchObject({ additions: 5, deletions: 2 });
+  });
+
+  it('falls back to source, original path, and path for file identity', () => {
+    const first = chunk('first', 'implementation');
+    const same = { ...chunk('same', 'implementation'), path: first.path };
+    const otherSource = { ...same, id: 'staged', source: 'staged' as const };
+    const renamed = { ...same, id: 'renamed', originalPath: 'legacy.ts' };
+
+    expect(groupReviewFiles([first, same, otherSource, renamed]).map((file) =>
+      file.chunks.map((item) => item.id)
+    )).toEqual([['first', 'same'], ['staged'], ['renamed']]);
   });
 });
 
