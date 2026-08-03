@@ -5,17 +5,33 @@ import type { GitTagRef } from '@shared/types';
 import { suggestNextTagName } from './tagSuggestion';
 
 describe('tag suggestion', () => {
+  it('uses the current year and month for monthly release tags', () => {
+    expect(
+      suggestNextTagName(
+        tags(['v2026.7.14', 'v2026.7.13', 'v2026.7.12']),
+        new Date(2026, 7, 3)
+      )
+    ).toBe('v2026.8.1');
+  });
+
   it.each([
     [['v1.4.3', 'v1.4.2', 'v1.4.1'], 'v1.4.4'],
     [['1.4.3', '1.4.2', '1.4.1'], '1.4.4'],
-    [['v2026.7.3', 'v2026.7.2', 'v2026.7.1'], 'v2026.7.4'],
     [['release-2026-03', 'release-2026-02', 'release-2026-01'], 'release-2026-04'],
     [['build-0012', 'build-0011', 'build-0010'], 'build-0013'],
     [['v3.6.0', 'v3.4.0', 'v3.2.0'], 'v3.7.0'],
-    [['v2026.7.7', 'v2026.7.5', 'v2026.7.2'], 'v2026.7.8'],
     [['deploy-42', 'deploy-39'], 'deploy-43']
   ])('increments the uniquely varying numeric part in %j', (names, expected) => {
     expect(suggestNextTagName(tags(names))).toBe(expected);
+  });
+
+  it('increments the highest release number already used in the current month', () => {
+    expect(
+      suggestNextTagName(
+        tags(['v2026.8.3', 'v2026.8.1', 'v2026.7.14']),
+        new Date(2026, 7, 3)
+      )
+    ).toBe('v2026.8.4');
   });
 
   it('uses the repository natural tag ordering instead of incomparable Git creator dates', () => {

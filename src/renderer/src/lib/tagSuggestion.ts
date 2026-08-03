@@ -3,6 +3,7 @@ import type { GitTagRef } from '@shared/types';
 const RECENT_TAG_LIMIT = 10;
 const MIN_PATTERN_LENGTH = 2;
 const NUMBER_PART = /^\d+$/;
+const MONTHLY_RELEASE_TAG = /^v(\d{4})\.(\d{1,2})\.(\d+)$/;
 
 type ParsedTagName = {
   name: string;
@@ -11,7 +12,16 @@ type ParsedTagName = {
   signature: string;
 };
 
-export function suggestNextTagName(tags: readonly GitTagRef[]): string | undefined {
+type MonthlyReleaseTag = {
+  year: bigint;
+  month: bigint;
+  release: bigint;
+};
+
+export function suggestNextTagName(
+  tags: readonly GitTagRef[],
+  now: Date = new Date()
+): string | undefined {
   const recentTags = [...tags]
     .sort((left, right) => right.name.localeCompare(left.name, 'en', { numeric: true, sensitivity: 'base' }))
     .slice(0, RECENT_TAG_LIMIT);
@@ -19,6 +29,12 @@ export function suggestNextTagName(tags: readonly GitTagRef[]): string | undefin
 
   if (!latest) {
     return undefined;
+  }
+
+  const monthlyReleaseSuggestion = suggestMonthlyReleaseTag(tags, latest.name, now);
+
+  if (monthlyReleaseSuggestion) {
+    return monthlyReleaseSuggestion;
   }
 
   const matchingTags = recentTags
@@ -51,6 +67,58 @@ export function suggestNextTagName(tags: readonly GitTagRef[]): string | undefin
   const suggestion = replaceNumberPart(latest, index, latestValue + 1n);
 
   return tags.some((tag) => tag.name === suggestion) ? undefined : suggestion;
+}
+
+function suggestMonthlyReleaseTag(
+  tags: readonly GitTagRef[],
+  latestName: string,
+  now: Date
+): string | undefined {
+  if (!parseMonthlyReleaseTag(latestName)) {
+    return undefined;
+  }
+
+  const matchingTags = tags
+    .map((tag) => parseMonthlyReleaseTag(tag.name))
+    .filter((tag): tag is MonthlyReleaseTag => tag !== undefined);
+
+  if (matchingTags.length < MIN_PATTERN_LENGTH) {
+    return undefined;
+  }
+
+  const year = BigInt(now.getFullYear());
+  const month = BigInt(now.getMonth() + 1);
+  const currentMonthTags = matchingTags.filter(
+    (tag) => tag.year === year && tag.month === month
+  );
+  const nextRelease = currentMonthTags.reduce(
+    (highest, tag) => (tag.release > highest ? tag.release : highest),
+    0n
+  ) + 1n;
+
+  return `v${year}.${month}.${nextRelease}`;
+}
+
+function parseMonthlyReleaseTag(name: string): MonthlyReleaseTag | undefined {
+  const match = MONTHLY_RELEASE_TAG.exec(name);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [, yearPart, monthPart, releasePart] = match;
+
+  if (yearPart === undefined || monthPart === undefined || releasePart === undefined) {
+    return undefined;
+  }
+
+  const year = BigInt(yearPart);
+  const month = BigInt(monthPart);
+  const release = BigInt(releasePart);
+
+  return year >= 2000n && month >= 1n && month <= 12n && release >= 1n
+    ? { year, month, release }
+    : undefined;
 }
 
 function parseTagName(name: string): ParsedTagName | undefined {

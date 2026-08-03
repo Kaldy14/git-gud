@@ -518,10 +518,7 @@ export function WorkspaceShell(): ReactElement {
   const tagPushRemote =
     repositoryQuery.data?.remotes.find((remote) => remote.name === 'origin')?.name ??
     repositoryQuery.data?.remotes[0]?.name;
-  const suggestedTagName = useMemo(
-    () => suggestNextTagName(repositoryQuery.data?.refs.tags ?? []),
-    [repositoryQuery.data?.refs.tags]
-  );
+  const suggestedTagName = suggestNextTagName(repositoryQuery.data?.refs.tags ?? []);
   const selectedSha = activeTab?.selectedCommit;
   const conflictedPaths = useMemo(
     () => repositoryQuery.data?.conflictState.files.map((file) => file.path) ?? [],
