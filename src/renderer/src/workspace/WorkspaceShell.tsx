@@ -2787,6 +2787,9 @@ export function WorkspaceShell(): ReactElement {
             '⌘\\  Toggle diff layout',
             '⌘⌥F  Focus sidebar filter',
             '↑ / ↓  Select graph rows or files',
+            'J / K  Next / previous review block',
+            '] / [  Next / previous file in a review block',
+            'Page Down / Page Up  Read through long review files',
             'Shift F10  Open the selected context menu',
             'Esc  Close the current dialog or file view'
           ].join('\n'),

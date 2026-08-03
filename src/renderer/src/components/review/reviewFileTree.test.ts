@@ -5,6 +5,7 @@ import type { GitReviewChunk, GitReviewUnit } from '@shared/types';
 import {
   createReviewFileTreeEntries,
   DEFAULT_REVIEW_FILE_TREE_WIDTH,
+  findAdjacentReviewFilePath,
   findReviewUnitIdForPath,
   loadReviewFileTreeOpen,
   loadReviewFileTreeWidth,
@@ -44,6 +45,36 @@ describe('review file tree', () => {
 
     expect(findReviewUnitIdForPath(units, 'src/api.test.ts')).toBe('tests');
     expect(findReviewUnitIdForPath(units, 'README.md')).toBeUndefined();
+  });
+
+  it('moves between unique files inside a review group', () => {
+    const chunks = [
+      chunk('src/api.ts', 'modified'),
+      { ...chunk('src/api.ts', 'modified'), id: 'src/api.ts:second' },
+      chunk('src/api.test.ts', 'added')
+    ];
+
+    expect(findAdjacentReviewFilePath(chunks, 'src/api.ts', 1)).toBe(
+      'src/api.test.ts'
+    );
+    expect(findAdjacentReviewFilePath(chunks, 'src/api.test.ts', -1)).toBe(
+      'src/api.ts'
+    );
+    expect(findAdjacentReviewFilePath(chunks, 'src/api.test.ts', 1)).toBeUndefined();
+    expect(findAdjacentReviewFilePath(chunks, 'src/api.ts', -1)).toBeUndefined();
+  });
+
+  it('chooses an edge file when no file is selected', () => {
+    const chunks = [
+      chunk('src/api.ts', 'modified'),
+      chunk('src/api.test.ts', 'added')
+    ];
+
+    expect(findAdjacentReviewFilePath(chunks, undefined, 1)).toBe('src/api.ts');
+    expect(findAdjacentReviewFilePath(chunks, undefined, -1)).toBe(
+      'src/api.test.ts'
+    );
+    expect(findAdjacentReviewFilePath([], undefined, 1)).toBeUndefined();
   });
 
   it('defaults to open and persists hidden state per repository', () => {

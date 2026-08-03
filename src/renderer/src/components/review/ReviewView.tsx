@@ -5,7 +5,15 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactElement
 } from 'react';
-import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { prepareFileTreeInput } from '@pierre/trees';
@@ -81,6 +89,7 @@ import { createReviewContextOptions } from './reviewContextExpansion';
 import {
   createReviewFileTreeEntries,
   DEFAULT_REVIEW_FILE_TREE_WIDTH,
+  findAdjacentReviewFilePath,
   findReviewUnitIdForPath,
   loadReviewFileTreeOpen,
   loadReviewFileTreeWidth,
@@ -254,6 +263,7 @@ export function ReviewView({
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
   const [selectedUnitId, setSelectedUnitId] = useState<string>();
+  const [requestedFilePath, setRequestedFilePath] = useState<string>();
   const [reviewSearch, setReviewSearch] = useState<ReviewSearchSession>();
   const [isReviewSearchSelected, setIsReviewSearchSelected] = useState(false);
   const [reviewSearchFocusSignal, setReviewSearchFocusSignal] = useState(0);
@@ -334,6 +344,11 @@ export function ReviewView({
     presentation?.units.find((candidate) => candidate.unit.id === selectedUnitId) ??
     presentation?.units.find((candidate) => !candidate.isViewed) ??
     presentation?.units[0];
+  const selectedFilePath =
+    requestedFilePath &&
+    selectedUnit?.visibleChunks.some((chunk) => chunk.path === requestedFilePath)
+      ? requestedFilePath
+      : selectedUnit?.visibleChunks[0]?.path;
   const currentReviewSearch =
     reviewSearch?.sourceFingerprint === reviewPlan?.sourceFingerprint
       ? reviewSearch
@@ -705,6 +720,54 @@ export function ReviewView({
     }
   }
 
+  function selectFile(path: string | undefined): void {
+    setRequestedFilePath(path);
+
+    if (!path) {
+      return;
+    }
+
+    const unitId = selectedUnit?.visibleChunks.some((chunk) => chunk.path === path)
+      ? selectedUnit.unit.id
+      : findReviewUnitIdForPath(presentation?.units ?? [], path);
+
+    if (unitId) {
+      selectReviewUnit(unitId);
+    }
+  }
+
+  function navigateFiles(direction: -1 | 1): void {
+    if (
+      isReviewSearchSelected ||
+      !selectedUnit ||
+      selectedCommentTarget !== undefined ||
+      commentMutation.isPending
+    ) {
+      return;
+    }
+
+    const path = findAdjacentReviewFilePath(
+      selectedUnit.visibleChunks,
+      selectedFilePath,
+      direction
+    );
+
+    if (path) {
+      selectFile(path);
+    }
+  }
+
+  function scrollReviewPage(direction: -1 | 1): void {
+    const scroller = sectionRef.current?.querySelector<HTMLElement>('.review-chunks');
+
+    if (!scroller) {
+      return;
+    }
+
+    scroller.scrollTop +=
+      direction * Math.max(1, Math.round(scroller.clientHeight * 0.85));
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
     if (
       (event.metaKey || event.ctrlKey) &&
@@ -756,6 +819,18 @@ export function ReviewView({
     } else if (event.key === 'k' || event.key === 'ArrowUp') {
       event.preventDefault();
       navigateUnits(-1);
+    } else if (event.key === ']') {
+      event.preventDefault();
+      navigateFiles(1);
+    } else if (event.key === '[') {
+      event.preventDefault();
+      navigateFiles(-1);
+    } else if (
+      (event.key === 'PageDown' || event.key === 'PageUp') &&
+      !isReviewUnitRowTarget(event.target)
+    ) {
+      event.preventDefault();
+      scrollReviewPage(event.key === 'PageDown' ? 1 : -1);
     } else if (
       event.key === 'Enter' &&
       (event.target === event.currentTarget || isReviewUnitRowTarget(event.target))
@@ -938,6 +1013,7 @@ export function ReviewView({
         reviewGuide={reviewGuide}
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
+        selectedFilePath={selectedFilePath}
         reviewSearch={
           currentReviewSearch
             ? {
@@ -967,6 +1043,7 @@ export function ReviewView({
             : undefined
         }
         onSelectUnit={selectReviewUnit}
+        onSelectFile={selectFile}
         onStartReviewGuide={() => void startReviewGuide()}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
@@ -1284,8 +1361,10 @@ function ReviewBody({
   reviewGuide,
   reviewGuideUnits,
   isFileTreeOpen,
+  selectedFilePath,
   reviewSearch,
   onSelectUnit,
+  onSelectFile,
   onStartReviewGuide,
   onToggleViewed
 }: {
@@ -1304,21 +1383,17 @@ function ReviewBody({
   reviewGuide?: GitReviewGuide;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
+  selectedFilePath?: string;
   reviewSearch?: ReviewSearchViewState;
   onSelectUnit: (unitId: string) => void;
+  onSelectFile: (path: string | undefined) => void;
   onStartReviewGuide: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
-  const [requestedFilePath, setRequestedFilePath] = useState<string>();
   const [collapsedChunkIds, setCollapsedChunkIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
-  const selectedFilePath =
-    requestedFilePath &&
-    selectedUnit?.visibleChunks.some((chunk) => chunk.path === requestedFilePath)
-      ? requestedFilePath
-      : selectedUnit?.visibleChunks[0]?.path;
   const firstChunkIdByPath = new Map<string, string>();
   for (const chunk of selectedUnit?.visibleChunks ?? []) {
     if (!firstChunkIdByPath.has(chunk.path)) {
@@ -1333,20 +1408,27 @@ function ReviewBody({
     reviewChunksRef.current?.scrollTo({ top: 0 });
   }, [selectedUnit?.unit.id]);
 
-  useEffect(() => {
-    if (!selectedFilePath) {
+  useLayoutEffect(() => {
+    const scroller = reviewChunksRef.current;
+
+    if (!scroller || !selectedFilePath) {
       return;
     }
 
-    const frame = window.requestAnimationFrame(() => {
-      reviewChunksRef.current
-        ?.querySelector<HTMLElement>(
-          `[data-review-path="${CSS.escape(selectedFilePath)}"]`
-        )
-        ?.scrollIntoView({ block: 'start' });
-    });
+    const target = scroller.querySelector<HTMLElement>(
+      `[data-review-path="${CSS.escape(selectedFilePath)}"]`
+    );
 
-    return () => window.cancelAnimationFrame(frame);
+    if (!target) {
+      return;
+    }
+
+    scroller.scrollTo({
+      top:
+        scroller.scrollTop +
+        target.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top
+    });
   }, [selectedFilePath, selectedUnit?.unit.id]);
 
   function toggleChunk(chunkId: string): void {
@@ -1367,22 +1449,6 @@ function ReviewBody({
 
       return next;
     });
-  }
-
-  function selectFile(path: string | undefined): void {
-    setRequestedFilePath(path);
-
-    if (!path) {
-      return;
-    }
-
-    const unitId = selectedUnit?.visibleChunks.some((chunk) => chunk.path === path)
-      ? selectedUnit.unit.id
-      : findReviewUnitIdForPath(units, path);
-
-    if (unitId) {
-      onSelectUnit(unitId);
-    }
   }
 
   if (isLoading) {
@@ -1540,7 +1606,7 @@ function ReviewBody({
           repoPath={repoPath}
           units={units}
           selectedPath={selectedFilePath}
-          onSelectPath={selectFile}
+          onSelectPath={onSelectFile}
         />
       ) : null}
     </div>

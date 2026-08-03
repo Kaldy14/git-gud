@@ -1,5 +1,7 @@
 import type { GitStatusEntry } from '@pierre/trees';
 
+import type { GitReviewChunk } from '@shared/types';
+
 import type { VisibleReviewUnit } from './reviewFilters';
 
 export type ReviewFileTreeEntry = GitStatusEntry & {
@@ -42,6 +44,26 @@ export function findReviewUnitIdForPath(
   return units.find((unit) =>
     unit.visibleChunks.some((chunk) => chunk.path === path)
   )?.unit.id;
+}
+
+export function findAdjacentReviewFilePath(
+  chunks: readonly GitReviewChunk[],
+  selectedPath: string | undefined,
+  direction: -1 | 1
+): string | undefined {
+  const paths = [...new Set(chunks.map((chunk) => chunk.path))];
+
+  if (paths.length === 0) {
+    return undefined;
+  }
+
+  const selectedIndex = selectedPath ? paths.indexOf(selectedPath) : -1;
+
+  if (selectedIndex === -1) {
+    return direction === 1 ? paths[0] : paths[paths.length - 1];
+  }
+
+  return paths[selectedIndex + direction];
 }
 
 export function loadReviewFileTreeOpen(
