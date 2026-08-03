@@ -1794,7 +1794,7 @@ export function WorkspaceShell(): ReactElement {
       },
       {
         repoPath: prompt.repoPath,
-        checkout: { targetBranch: prompt.branchName }
+        checkout: { targetRef: { kind: 'branch', name: prompt.branchName } }
       }
     );
   }
@@ -2026,7 +2026,7 @@ export function WorkspaceShell(): ReactElement {
     void runRepositoryOperation(
       `Checkout ${name}`,
       (repoPath) => window.api.checkoutRef(repoPath, { kind: 'local', name }),
-      { checkout: { targetBranch: name } }
+      { checkout: { targetRef: { kind: 'branch', name } } }
     );
   }
 
@@ -2060,7 +2060,7 @@ export function WorkspaceShell(): ReactElement {
               name,
               localName
             }),
-          { checkout: { targetBranch: localName } }
+          { checkout: { targetRef: { kind: 'remote', name } } }
         );
       }
     });
@@ -2079,7 +2079,11 @@ export function WorkspaceShell(): ReactElement {
     }
 
     if (activation.kind === 'checkout-local') {
-      handleCheckoutBranch(activation.branchName);
+      void runRepositoryOperation(
+        `Checkout ${activation.branchName}`,
+        (repoPath) => window.api.checkoutRef(repoPath, { kind: 'local', name: activation.branchName }),
+        { checkout: { targetRef: { kind: 'remote', name } } }
+      );
       return;
     }
 
@@ -2092,7 +2096,7 @@ export function WorkspaceShell(): ReactElement {
       void runRepositoryOperation(
         `Pull ${activation.branchName}`,
         (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }),
-        { checkout: { targetBranch: activation.branchName } }
+        { checkout: { targetRef: { kind: 'remote', name } } }
       );
       return;
     }
@@ -2113,7 +2117,7 @@ export function WorkspaceShell(): ReactElement {
         await window.api.checkoutRef(repoPath, { kind: 'local', name: activation.branchName });
         return window.api.pullRepository(repoPath, { mode: 'ff-only' });
       },
-      { checkout: { targetBranch: activation.branchName } }
+      { checkout: { targetRef: { kind: 'remote', name } } }
     );
   }
 
@@ -2147,7 +2151,7 @@ export function WorkspaceShell(): ReactElement {
             name: remoteName,
             localName
           }),
-          { checkout: { targetBranch: localName } }
+          { checkout: { targetRef: { kind: 'remote', name: remoteName } } }
         );
       }
     });

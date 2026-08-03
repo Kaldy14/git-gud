@@ -1,4 +1,7 @@
 export type CheckoutTransition = {
-  targetBranch: string;
+  targetRef: {
+    kind: 'branch' | 'remote';
+    name: string;
+  };
   phase: 'running' | 'refreshing';
 };

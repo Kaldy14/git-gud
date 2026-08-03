@@ -850,7 +850,7 @@ export function GraphView({
                       gridTemplateColumns={gridTemplateColumns}
                       visibleColumns={visibleColumns}
                       remoteAvatars={remoteAvatars}
-                      pendingBranchName={checkoutTransition?.targetBranch}
+                      pendingRef={checkoutTransition?.targetRef}
                       dateSeparatorLabel={dateSeparatorLabelsByRow[virtualRow.index]}
                       isSelected={row.sha === selectedSha}
                       isBulkSelected={bulkSelection.has(row.sha)}
@@ -994,7 +994,7 @@ type GraphRowViewProps = {
   gridTemplateColumns: string;
   visibleColumns: GraphColumnVisibility;
   remoteAvatars: boolean;
-  pendingBranchName?: string;
+  pendingRef?: CheckoutTransition['targetRef'];
   dateSeparatorLabel?: string;
   isSelected: boolean;
   isBulkSelected: boolean;
@@ -1097,7 +1097,7 @@ function GraphRowView({
   gridTemplateColumns,
   visibleColumns,
   remoteAvatars,
-  pendingBranchName,
+  pendingRef,
   dateSeparatorLabel,
   isSelected,
   isBulkSelected,
@@ -1185,7 +1185,7 @@ function GraphRowView({
             currentColor={currentRefColor}
             remoteAvatarUrl={remoteAvatars ? row.author.avatarUrl : undefined}
             remoteAvatarFallbackUrl={remoteAvatars ? row.author.fallbackAvatarUrl : undefined}
-            pendingBranchName={pendingBranchName}
+            pendingRef={pendingRef}
             onRefClick={onRefClick}
             onBranchContextMenu={onBranchContextMenu}
             onTagContextMenu={onTagContextMenu}
@@ -1674,7 +1674,7 @@ function RefChipStack({
   currentColor,
   remoteAvatarUrl,
   remoteAvatarFallbackUrl,
-  pendingBranchName,
+  pendingRef,
   onRefClick,
   onBranchContextMenu,
   onTagContextMenu
@@ -1685,7 +1685,7 @@ function RefChipStack({
   currentColor: string;
   remoteAvatarUrl?: string;
   remoteAvatarFallbackUrl?: string;
-  pendingBranchName?: string;
+  pendingRef?: CheckoutTransition['targetRef'];
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
   onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
@@ -1710,7 +1710,7 @@ function RefChipStack({
           currentColor={currentColor}
           remoteAvatarUrl={remoteAvatarUrl}
           remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
-          pendingBranchName={pendingBranchName}
+          pendingRef={pendingRef}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
           onTagContextMenu={onTagContextMenu}
@@ -1735,7 +1735,7 @@ function RefChipStack({
             currentColor={currentColor}
             remoteAvatarUrl={remoteAvatarUrl}
             remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
-            pendingBranchName={pendingBranchName}
+            pendingRef={pendingRef}
             onRefClick={onRefClick}
             onBranchContextMenu={onBranchContextMenu}
             onTagContextMenu={onTagContextMenu}
@@ -1753,7 +1753,7 @@ function RefChipView({
   currentColor,
   remoteAvatarUrl,
   remoteAvatarFallbackUrl,
-  pendingBranchName,
+  pendingRef,
   onRefClick,
   onBranchContextMenu,
   onTagContextMenu
@@ -1764,7 +1764,7 @@ function RefChipView({
   currentColor: string;
   remoteAvatarUrl?: string;
   remoteAvatarFallbackUrl?: string;
-  pendingBranchName?: string;
+  pendingRef?: CheckoutTransition['targetRef'];
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
   onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
@@ -1773,7 +1773,7 @@ function RefChipView({
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
   const isLinkedWorktree = kind === 'branch' && linkedWorktreeBranches.has(label);
   const isCheckedOut = isGraphBranchCheckedOut(chip, linkedWorktreeBranches);
-  const isPending = kind === 'branch' && label === pendingBranchName;
+  const isPending = kind === pendingRef?.kind && label === pendingRef.name;
   const displayLabel = kind === 'remote' ? branchNameFromRemoteRef(label) : label;
   const title = refChipTitle(chip, isCheckedOut);
   const ariaLabel = `${label}${isPending ? ', checkout in progress' : current ? ', checked out' : isLinkedWorktree ? ', checked out in a linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
