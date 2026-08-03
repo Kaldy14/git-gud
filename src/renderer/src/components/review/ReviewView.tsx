@@ -26,7 +26,6 @@ import {
   GitBranch,
   Loader2,
   MessageSquare,
-  MessageSquarePlus,
   PackageOpen,
   PanelRightClose,
   PanelRightOpen,
@@ -2195,29 +2194,6 @@ function ReviewChunk({
   const isFileComposerOpen =
     lineCollaboration?.selectedChunkId === chunk.id &&
     lineCollaboration.selectedSubject === 'file';
-  const renderGutterUtility = lineCollaboration?.selectedChunkId === undefined
-    ? (getHoveredLine: () => { lineNumber: number; side: 'additions' | 'deletions' } | undefined) => (
-        <button
-          className="review-line-comment-trigger"
-          type="button"
-          aria-label="Add review comment on this line"
-          title="Add review comment"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => {
-            const hoveredLine = getHoveredLine();
-            if (hoveredLine) {
-              lineCollaboration?.onSelectLines(chunk.id, chunk.path, {
-                start: hoveredLine.lineNumber,
-                end: hoveredLine.lineNumber,
-                side: hoveredLine.side
-              });
-            }
-          }}
-        >
-          <MessageSquarePlus size={13} strokeWidth={2.2} aria-hidden="true" />
-        </button>
-      )
-    : undefined;
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? {
         ...contextualDiffOptions,
@@ -2225,6 +2201,8 @@ function ReviewChunk({
         controlledSelection: true,
         lineHoverHighlight: 'both',
         enableGutterUtility: lineCollaboration.selectedChunkId === undefined,
+        onGutterUtilityClick: (range) =>
+          lineCollaboration.onSelectLines(chunk.id, chunk.path, range),
         onLineSelected: (range) =>
           lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
       }
@@ -2313,7 +2291,6 @@ function ReviewChunk({
             options={interactiveDiffOptions}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
-            renderGutterUtility={renderGutterUtility}
             renderAnnotation={(annotation) => (
               annotation.metadata.kind === 'composer' && lineCollaboration
                 ? <ReviewInlineComposer collaboration={lineCollaboration} />
@@ -2334,7 +2311,6 @@ function ReviewChunk({
             options={interactiveDiffOptions}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
-            renderGutterUtility={renderGutterUtility}
             renderAnnotation={(annotation) => (
               annotation.metadata.kind === 'composer' && lineCollaboration
                 ? <ReviewInlineComposer collaboration={lineCollaboration} />
@@ -2361,12 +2337,21 @@ function ReviewInlineComposer({
 }): ReactElement {
   const [initialBody] = useState(collaboration.getBody);
   const [hasBody, setHasBody] = useState(() => Boolean(initialBody.trim()));
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const normalizedSelection = normalizeReviewLineSelection(collaboration.selectedLines);
   const canSubmitSelection = Boolean(
     collaboration.selectedSubject === 'file' ||
       (normalizedSelection && normalizedSelection.side === normalizedSelection.startSide)
   );
   const canSubmitLineComment = hasBody && canSubmitSelection;
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   return (
     <form
@@ -2383,6 +2368,7 @@ function ReviewInlineComposer({
           : 'Select lines from only one side of the diff to comment.'}
       </div>
       <textarea
+        ref={textareaRef}
         rows={3}
         defaultValue={initialBody}
         placeholder={collaboration.selectedSubject === 'file'
