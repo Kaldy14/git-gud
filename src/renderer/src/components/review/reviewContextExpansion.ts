@@ -15,6 +15,7 @@ const reviewExpansionListeners = new WeakMap<HTMLElement, ReviewExpansionListene
 
 const REVIEW_CONTEXT_SEPARATOR_CSS = `
   [data-separator="line-info"] {
+    height: 1lh;
     margin-block: 0;
   }
 

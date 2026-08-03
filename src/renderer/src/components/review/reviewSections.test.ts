@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GitReviewChunk } from '@shared/types';
 
-import { createReviewContexts, createReviewSections } from './reviewSections';
+import { createReviewSections } from './reviewSections';
 
 describe('review sections', () => {
   it('keeps dependency-ordered chunks in semantic subgroups', () => {
@@ -25,7 +25,7 @@ describe('review sections', () => {
     ]);
   });
 
-  it('keeps merged stories split into their original review contexts', () => {
+  it('does not split visible sections by review context', () => {
     const definition = chunk('definition', 'definition');
     const consumer = chunk('consumer', 'implementation');
     const schema = chunk('schema', 'api');
@@ -33,13 +33,13 @@ describe('review sections', () => {
     consumer.reviewContext = 'Rename request';
     schema.reviewContext = 'GraphQL contract';
 
-    expect(createReviewContexts([definition, consumer, schema]).map((context) => ({
-      label: context.label,
-      count: context.chunkCount,
-      sections: context.sections.map((section) => section.label)
+    expect(createReviewSections([definition, consumer, schema]).map((section) => ({
+      label: section.label,
+      chunks: section.chunks.map((item) => item.id)
     }))).toEqual([
-      { label: 'Rename request', count: 2, sections: ['Definitions', 'Implementations and consumers'] },
-      { label: 'GraphQL contract', count: 1, sections: ['API and GraphQL'] }
+      { label: 'Definitions', chunks: ['definition'] },
+      { label: 'API and GraphQL', chunks: ['schema'] },
+      { label: 'Implementations and consumers', chunks: ['consumer'] }
     ]);
   });
 });

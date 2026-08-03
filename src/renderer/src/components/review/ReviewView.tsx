@@ -103,7 +103,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewContexts } from './reviewSections';
+import { createReviewSections } from './reviewSections';
 
 type ReviewViewProps = {
   repoPath: string;
@@ -1508,35 +1508,25 @@ function ReviewBody({
             </header>
             {mutationError ? <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">{mutationError}</p> : null}
             <div ref={reviewChunksRef} className="review-chunks">
-              {createReviewContexts(selectedUnit.visibleChunks).map((contextGroup, _contextIndex, contexts) => (
-                <section className="review-context-group" key={contextGroup.key}>
-                  {contexts.length > 1 ? (
-                    <div className="review-context-header">
-                      <span>{contextGroup.label}</span>
-                      <span>{contextGroup.chunkCount}</span>
+              {createReviewSections(selectedUnit.visibleChunks).map((section, _sectionIndex, sections) => (
+                <section className="review-chunk-section" data-only={sections.length === 1} key={section.key}>
+                  {sections.length > 1 ? (
+                    <div className="review-section-header">
+                      <span>{section.label}</span>
+                      <span>{section.chunks.length}</span>
                     </div>
                   ) : null}
-                  {contextGroup.sections.map((section, _sectionIndex, sections) => (
-                    <section className="review-chunk-section" data-only={sections.length === 1} key={section.key}>
-                      {sections.length > 1 ? (
-                        <div className="review-section-header">
-                          <span>{section.label}</span>
-                          <span>{section.chunks.length}</span>
-                        </div>
-                      ) : null}
-                      {section.chunks.map((chunk) => (
-                        <ReviewChunk
-                          key={chunk.id}
-                          chunk={chunk}
-                          preparedDiff={preparedDiffs.get(chunk.id)}
-                          diffOptions={diffOptions}
-                          lineCollaboration={lineCollaboration}
-                          showFileComments={firstChunkIdByPath.get(chunk.path) === chunk.id}
-                          isCollapsed={collapsedChunkIds.has(chunk.id)}
-                          onToggleCollapsed={() => toggleChunk(chunk.id)}
-                        />
-                      ))}
-                    </section>
+                  {section.chunks.map((chunk) => (
+                    <ReviewChunk
+                      key={chunk.id}
+                      chunk={chunk}
+                      preparedDiff={preparedDiffs.get(chunk.id)}
+                      diffOptions={diffOptions}
+                      lineCollaboration={lineCollaboration}
+                      showFileComments={firstChunkIdByPath.get(chunk.path) === chunk.id}
+                      isCollapsed={collapsedChunkIds.has(chunk.id)}
+                      onToggleCollapsed={() => toggleChunk(chunk.id)}
+                    />
                   ))}
                 </section>
               ))}

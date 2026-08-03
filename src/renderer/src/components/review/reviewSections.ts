@@ -6,13 +6,6 @@ export type VisibleReviewSection = {
   chunks: GitReviewChunk[];
 };
 
-export type VisibleReviewContext = {
-  key: string;
-  label: string;
-  sections: VisibleReviewSection[];
-  chunkCount: number;
-};
-
 const sectionLabels: Record<GitReviewChunk['reviewSection'], string> = {
   storage: 'Storage and migrations',
   definition: 'Definitions',
@@ -49,22 +42,4 @@ export function createReviewSections(chunks: readonly GitReviewChunk[]): Visible
 
     return sectionChunks ? [{ key, label: sectionLabels[key], chunks: sectionChunks }] : [];
   });
-}
-
-export function createReviewContexts(chunks: readonly GitReviewChunk[]): VisibleReviewContext[] {
-  const chunksByContext = new Map<string, GitReviewChunk[]>();
-
-  for (const chunk of chunks) {
-    const key = chunk.reviewContext ?? chunk.relationship;
-    const contextChunks = chunksByContext.get(key) ?? [];
-    contextChunks.push(chunk);
-    chunksByContext.set(key, contextChunks);
-  }
-
-  return [...chunksByContext.entries()].map(([label, contextChunks]) => ({
-    key: label,
-    label,
-    sections: createReviewSections(contextChunks),
-    chunkCount: contextChunks.length
-  }));
 }
