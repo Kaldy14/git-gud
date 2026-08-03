@@ -26,7 +26,7 @@ export function prepareReviewDiff(
   context: GitReviewFileContext | undefined,
   cacheKeyPrefix: string
 ): PreparedReviewDiff | undefined {
-  const cacheKey = `review:${cacheKeyPrefix}:${chunk.id}`;
+  const cacheKey = createReviewDiffCacheKey(cacheKeyPrefix, chunk, context);
   const expandable = context ? createExpandableReviewDiff(chunk, context) : undefined;
 
   if (expandable) {
@@ -44,6 +44,35 @@ export function prepareReviewDiff(
   } catch {
     return undefined;
   }
+}
+
+function createReviewDiffCacheKey(
+  prefix: string,
+  chunk: GitReviewChunk,
+  context: GitReviewFileContext | undefined
+): string {
+  const contentFingerprint = context
+    ? `${fingerprintString(context.oldContents)}:${fingerprintString(context.newContents)}`
+    : fingerprintString(chunk.patch);
+
+  return `review:${prefix}:${chunk.id}:${contentFingerprint}`;
+}
+
+function fingerprintString(value: string): string {
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
+    second = (second << 13) | (second >>> 19);
+  }
+
+  first = Math.imul(first ^ value.length, 0x01000193);
+  second = Math.imul(second ^ value.length, 0x85ebca6b);
+
+  return `${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}`;
 }
 
 export function createExpandableReviewDiff(

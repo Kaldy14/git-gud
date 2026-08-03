@@ -144,9 +144,37 @@ describe('review context diffs', () => {
     const contextual = prepareReviewDiff(chunk, context, 'repo:commit-1');
     const patchOnly = prepareReviewDiff(chunk, undefined, 'repo:commit-1');
 
-    expect(contextual?.fileDiff.cacheKey).toBe(`review:repo:commit-1:${chunk.id}`);
-    expect(contextual?.expandable?.fileDiff.cacheKey).toBe(`review:repo:commit-1:${chunk.id}`);
-    expect(patchOnly?.fileDiff.cacheKey).toBe(`review:repo:commit-1:${chunk.id}`);
+    expect(contextual?.fileDiff.cacheKey).toMatch(
+      new RegExp(`^review:repo:commit-1:${chunk.id}:`)
+    );
+    expect(contextual?.expandable?.fileDiff.cacheKey).toBe(contextual?.fileDiff.cacheKey);
+    expect(patchOnly?.fileDiff.cacheKey).toMatch(
+      new RegExp(`^review:repo:commit-1:${chunk.id}:`)
+    );
+    expect(patchOnly?.fileDiff.cacheKey).not.toBe(contextual?.fileDiff.cacheKey);
+  });
+
+  it('invalidates the worker-cache entry when surrounding file context changes', () => {
+    const chunk = reviewChunk(
+      '@@ -1,4 +1,4 @@\n line 1\n-line 2\n+line two\n line 3\n line 4\n'
+    );
+    const originalContext: GitReviewFileContext = {
+      id: 'context-1',
+      path: chunk.path,
+      source: 'commit',
+      oldContents: numberedLines(4),
+      newContents: numberedLines(4).replace('line 2\n', 'line two\n')
+    };
+    const refreshedContext: GitReviewFileContext = {
+      ...originalContext,
+      oldContents: `${originalContext.oldContents}shared trailing line\n`,
+      newContents: `${originalContext.newContents}shared trailing line\n`
+    };
+
+    const original = prepareReviewDiff(chunk, originalContext, 'repo:branch:feature');
+    const refreshed = prepareReviewDiff(chunk, refreshedContext, 'repo:branch:feature');
+
+    expect(original?.fileDiff.cacheKey).not.toBe(refreshed?.fileDiff.cacheKey);
   });
 });
 
