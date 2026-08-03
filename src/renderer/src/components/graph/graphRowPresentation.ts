@@ -19,11 +19,21 @@ export function graphFileStatusCountLabel(status: GraphFileStatus, count: number
   return `${count} ${status} file${count === 1 ? '' : 's'}`;
 }
 
-export function isGraphBranchCheckedOut(
+export type GraphBranchCheckoutLocation = 'current' | 'linked-worktree';
+
+export function graphBranchCheckoutLocation(
   ref: Pick<GraphRefChip, 'current' | 'kind' | 'label'>,
   linkedWorktreeBranches: ReadonlySet<string>
-): boolean {
-  return ref.kind === 'branch' && (Boolean(ref.current) || linkedWorktreeBranches.has(ref.label));
+): GraphBranchCheckoutLocation | undefined {
+  if (ref.kind !== 'branch') {
+    return undefined;
+  }
+
+  if (ref.current) {
+    return 'current';
+  }
+
+  return linkedWorktreeBranches.has(ref.label) ? 'linked-worktree' : undefined;
 }
 
 export function graphRowAriaLabel(row: CommitGraphRow): string {

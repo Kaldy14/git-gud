@@ -44,8 +44,9 @@ import {
   roundedRailCurveOutPath
 } from '@renderer/components/graph/graphGeometry';
 import {
+  graphBranchCheckoutLocation,
   graphRowAriaLabel,
-  isGraphBranchCheckedOut
+  type GraphBranchCheckoutLocation
 } from '@renderer/components/graph/graphRowPresentation';
 import { WipStatusCounts } from '@renderer/components/graph/WipStatusCounts';
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
@@ -1131,8 +1132,8 @@ function GraphRowView({
   const refColor = row.colorOverride ? hexToRgba(nodeColor, 0.3) : laneRefColor(row.node.lane);
   const currentRefColor = row.colorOverride ? hexToRgba(nodeColor, 0.78) : laneRefColor(row.node.lane, true);
   const hasRefConnector = visibleRefs.some((ref) => ref.kind === 'branch' || ref.kind === 'remote' || ref.kind === 'tag');
-  const hasCheckedOutBranch = visibleRefs.some((ref) =>
-    isGraphBranchCheckedOut(ref, linkedWorktreeBranches)
+  const hasCurrentBranch = visibleRefs.some(
+    (ref) => graphBranchCheckoutLocation(ref, linkedWorktreeBranches) === 'current'
   );
   return (
     <div
@@ -1176,8 +1177,8 @@ function GraphRowView({
           style={{
             left: 12,
             width: Math.max(0, refCellWidth + graphLaneX - 12),
-            height: hasCheckedOutBranch ? GRAPH_RAIL_STROKE_WIDTH : undefined,
-            background: hasCheckedOutBranch ? nodeColor : refColor
+            height: hasCurrentBranch ? GRAPH_RAIL_STROKE_WIDTH : undefined,
+            background: hasCurrentBranch ? nodeColor : refColor
           }}
           aria-hidden="true"
         />
@@ -1778,18 +1779,19 @@ function RefChipView({
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
   onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
 }): ReactElement {
-  const { current, kind, label, remotePeerLabels } = chip;
+  const { kind, label, remotePeerLabels } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
-  const isLinkedWorktree = kind === 'branch' && linkedWorktreeBranches.has(label);
-  const isCheckedOut = isGraphBranchCheckedOut(chip, linkedWorktreeBranches);
+  const checkoutLocation = graphBranchCheckoutLocation(chip, linkedWorktreeBranches);
+  const isCurrentBranch = checkoutLocation === 'current';
+  const isLinkedWorktree = checkoutLocation === 'linked-worktree';
   const isPending = kind === pendingRef?.kind && label === pendingRef.name;
   const displayLabel = kind === 'remote' ? branchNameFromRemoteRef(label) : label;
-  const title = refChipTitle(chip, isCheckedOut);
-  const ariaLabel = `${label}${isPending ? ', checkout in progress' : current ? ', checked out' : isLinkedWorktree ? ', checked out in a linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
+  const title = refChipTitle(chip, checkoutLocation);
+  const ariaLabel = `${label}${isPending ? ', checkout in progress' : isCurrentBranch ? ', current branch' : isLinkedWorktree ? ', linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
   const leadingIcon =
     isPending ? (
       <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-    ) : isCheckedOut ? (
+    ) : isCurrentBranch ? (
       <Check size={12} />
     ) : kind === 'tag' ? (
       <Tag size={10} />
@@ -1800,8 +1802,8 @@ function RefChipView({
     );
 
   const style = {
-    background: isCheckedOut ? currentColor : color,
-    color: isCheckedOut ? 'var(--graph-ref-current-text)' : 'var(--graph-ref-text)'
+    background: isCurrentBranch ? currentColor : color,
+    color: isCurrentBranch ? 'var(--graph-ref-current-text)' : 'var(--graph-ref-text)'
   };
   const content = (
     <>
@@ -1811,7 +1813,11 @@ function RefChipView({
         <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
       ) : null}
       {kind === 'branch' ? (
-        <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+        isLinkedWorktree ? (
+          <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+        ) : (
+          <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
+        )
       ) : null}
       {hasRemotePeer ? (
         <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
@@ -1840,11 +1846,9 @@ function RefChipView({
             ? `${title}\nRight-click for tag actions.`
           : isLinkedWorktree
             ? `${title}\nDouble-click to open its worktree. Right-click for branch actions.`
-            : isCheckedOut && kind === 'branch'
+            : isCurrentBranch
               ? `${title}\nRight-click for branch actions.`
-              : isCheckedOut
-                ? title
-                : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
+              : `${title}\nDouble-click to ${kind === 'remote' ? 'pull or checkout' : 'checkout'}.${kind === 'branch' ? ' Right-click for branch actions.' : ''}`
       }
       aria-label={ariaLabel}
       aria-haspopup={kind === 'tag' ? 'menu' : undefined}
@@ -1901,15 +1905,26 @@ function coalesceRemotePeers(refs: GraphRefChip[]): RefChipDisplay[] {
   });
 }
 
-function refChipTitle(chip: RefChipDisplay, isCheckedOut = Boolean(chip.current)): string {
+function refChipTitle(
+  chip: RefChipDisplay,
+  checkoutLocation: GraphBranchCheckoutLocation | undefined = chip.current ? 'current' : undefined
+): string {
   const peerLabels = chip.remotePeerLabels ?? [];
 
-  if (isCheckedOut && peerLabels.length > 0) {
-    return `${chip.label} (checked out, tracks ${peerLabels.join(', ')})`;
+  if (checkoutLocation === 'current' && peerLabels.length > 0) {
+    return `${chip.label} (current branch, tracks ${peerLabels.join(', ')})`;
   }
 
-  if (isCheckedOut) {
-    return `${chip.label} (checked out)`;
+  if (checkoutLocation === 'current') {
+    return `${chip.label} (current branch)`;
+  }
+
+  if (checkoutLocation === 'linked-worktree' && peerLabels.length > 0) {
+    return `${chip.label} (linked worktree, tracks ${peerLabels.join(', ')})`;
+  }
+
+  if (checkoutLocation === 'linked-worktree') {
+    return `${chip.label} (linked worktree)`;
   }
 
   if (peerLabels.length > 0) {

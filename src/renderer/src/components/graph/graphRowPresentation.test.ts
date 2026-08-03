@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommitGraphRow } from '@shared/types';
 
-import { graphRowAriaLabel, isGraphBranchCheckedOut } from './graphRowPresentation';
+import { graphBranchCheckoutLocation, graphRowAriaLabel } from './graphRowPresentation';
 
 const baseRow: CommitGraphRow = {
   sha: 'a'.repeat(40),
@@ -41,25 +41,25 @@ describe('graph row accessible labels', () => {
 });
 
 describe('graph branch checkout presentation', () => {
-  it('treats current and linked-worktree branches as checked out', () => {
+  it('distinguishes the current branch from branches owned by linked worktrees', () => {
     const linkedWorktrees = new Set(['feature/linked']);
 
     expect(
-      isGraphBranchCheckedOut({ kind: 'branch', label: 'main', current: true }, linkedWorktrees)
-    ).toBe(true);
+      graphBranchCheckoutLocation({ kind: 'branch', label: 'main', current: true }, linkedWorktrees)
+    ).toBe('current');
     expect(
-      isGraphBranchCheckedOut({ kind: 'branch', label: 'feature/linked' }, linkedWorktrees)
-    ).toBe(true);
+      graphBranchCheckoutLocation({ kind: 'branch', label: 'feature/linked' }, linkedWorktrees)
+    ).toBe('linked-worktree');
   });
 
-  it('leaves ordinary local and non-branch refs inactive', () => {
+  it('does not mark ordinary local or non-branch refs as checked out', () => {
     const linkedWorktrees = new Set(['feature/linked']);
 
     expect(
-      isGraphBranchCheckedOut({ kind: 'branch', label: 'feature/local' }, linkedWorktrees)
-    ).toBe(false);
+      graphBranchCheckoutLocation({ kind: 'branch', label: 'feature/local' }, linkedWorktrees)
+    ).toBeUndefined();
     expect(
-      isGraphBranchCheckedOut({ kind: 'remote', label: 'origin/feature/linked' }, linkedWorktrees)
-    ).toBe(false);
+      graphBranchCheckoutLocation({ kind: 'remote', label: 'origin/feature/linked' }, linkedWorktrees)
+    ).toBeUndefined();
   });
 });
