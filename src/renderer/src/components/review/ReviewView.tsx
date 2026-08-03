@@ -85,7 +85,10 @@ import {
   prepareReviewDiff,
   type PreparedReviewDiff
 } from './reviewContextDiff';
-import { createReviewContextOptions } from './reviewContextExpansion';
+import {
+  createReviewContextOptions,
+  shareReviewExpansionBoundary
+} from './reviewContextExpansion';
 import {
   createReviewFileTreeEntries,
   DEFAULT_REVIEW_FILE_TREE_WIDTH,
@@ -1594,7 +1597,12 @@ function ReviewBody({
                           showHeader={chunkIndex === 0}
                           headerAdditions={file.additions}
                           headerDeletions={file.deletions}
-                          hideLeadingExpansion={chunkIndex > 0}
+                          hideLeadingExpansion={shareReviewExpansionBoundary(
+                            chunkIndex > 0
+                              ? preparedDiffs.get(file.chunks[chunkIndex - 1]!.id)?.expandable
+                              : undefined,
+                            preparedDiffs.get(chunk.id)?.expandable
+                          )}
                           isCollapsed={isCollapsed}
                           onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
                         />

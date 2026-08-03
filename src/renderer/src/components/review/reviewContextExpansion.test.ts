@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { ExpandableReviewDiff } from './reviewContextDiff';
 import {
   createReviewContextOptions,
-  isReviewExpansionKey
+  isReviewExpansionKey,
+  resolveReviewExpansionDirection,
+  shareReviewExpansionBoundary
 } from './reviewContextExpansion';
 
 describe('review context expansion', () => {
@@ -23,18 +25,28 @@ describe('review context expansion', () => {
     expect(options.unsafeCSS).toContain(':focus-visible');
   });
 
-  it('hides only the leading separator for a continuation chunk', () => {
-    const options = createReviewContextOptions(
-      {},
-      {} as ExpandableReviewDiff,
-      'src/example.ts',
-      true
-    );
+  it('keeps leading separators visible for grouped continuation chunks', () => {
+    const options = createReviewContextOptions({}, {} as ExpandableReviewDiff, 'src/example.ts');
 
-    expect(options.unsafeCSS).toContain(
-      '[data-separator="line-info"][data-separator-first] { display: none; }'
-    );
-    expect(options.unsafeCSS).not.toContain('[data-separator-last] { display: none; }');
+    expect(options.unsafeCSS).not.toContain('display: none');
+  });
+
+  it('hides a duplicate leading separator only when the preceding chunk owns the same gap', () => {
+    const previous = expandable({
+      trailingContextStartLine: 20,
+      trailingContextLines: ['20\n', '21\n']
+    });
+    const current = expandable({
+      leadingContextStartLine: 20,
+      leadingContextLines: ['20\n', '21\n']
+    });
+
+    expect(shareReviewExpansionBoundary(previous, current)).toBe(true);
+    expect(shareReviewExpansionBoundary(undefined, current)).toBe(false);
+    expect(shareReviewExpansionBoundary(previous, expandable({
+      leadingContextStartLine: 30,
+      leadingContextLines: ['30\n']
+    }))).toBe(false);
   });
 
   it('activates expansion from Enter and Space only', () => {
@@ -42,4 +54,39 @@ describe('review context expansion', () => {
     expect(isReviewExpansionKey(' ')).toBe(true);
     expect(isReviewExpansionKey('ArrowDown')).toBe(false);
   });
+
+  it('uses the clicked control direction before separator position', () => {
+    expect(resolveReviewExpansionDirection({
+      expandUp: true,
+      expandDown: false,
+      separatorFirst: true,
+      separatorLast: false
+    })).toBe('up');
+    expect(resolveReviewExpansionDirection({
+      expandUp: false,
+      expandDown: true,
+      separatorFirst: false,
+      separatorLast: true
+    })).toBe('down');
+    expect(resolveReviewExpansionDirection({
+      expandUp: false,
+      expandDown: false,
+      separatorFirst: true,
+      separatorLast: false
+    })).toBe('down');
+  });
 });
+
+function expandable(
+  overrides: Partial<ExpandableReviewDiff>
+): ExpandableReviewDiff {
+  return {
+    fileDiff: {} as ExpandableReviewDiff['fileDiff'],
+    leadingContextLines: [],
+    trailingContextLines: [],
+    leadingContextStartLine: 1,
+    trailingContextStartLine: 1,
+    syntaxNodes: [],
+    ...overrides
+  };
+}

@@ -59,6 +59,23 @@ export function createReviewContextOptions<LAnnotation>(
   };
 }
 
+export function shareReviewExpansionBoundary(
+  previous: ExpandableReviewDiff | undefined,
+  current: ExpandableReviewDiff | undefined
+): boolean {
+  if (!previous || !current ||
+    previous.trailingContextLines.length === 0 || current.leadingContextLines.length === 0) {
+    return false;
+  }
+
+  const previousStart = previous.trailingContextStartLine;
+  const previousEnd = previousStart + previous.trailingContextLines.length;
+  const currentStart = current.leadingContextStartLine;
+  const currentEnd = currentStart + current.leadingContextLines.length;
+
+  return previousStart === currentStart && previousEnd === currentEnd;
+}
+
 function createReviewContextPostRender<LAnnotation>(
   diff: ExpandableReviewDiff,
   filePath: string
@@ -100,7 +117,12 @@ function createReviewContextPostRender<LAnnotation>(
         return;
       }
 
-      const request = getReviewExpansionRequest(separator, diff, filePath);
+      const request = getReviewExpansionRequest(
+        separator,
+        interactiveTarget ?? undefined,
+        diff,
+        filePath
+      );
 
       if (!request) {
         return;
@@ -128,7 +150,7 @@ function decorateReviewContextSeparators(
   filePath: string
 ): void {
   for (const separator of root.querySelectorAll<HTMLElement>('[data-separator][data-expand-index]')) {
-    const request = getReviewExpansionRequest(separator, diff, filePath);
+    const request = getReviewExpansionRequest(separator, undefined, diff, filePath);
 
     if (!request) {
       continue;
@@ -154,6 +176,7 @@ function decorateReviewContextSeparators(
 
 function getReviewExpansionRequest(
   separator: HTMLElement,
+  control: Element | undefined,
   diff: ExpandableReviewDiff,
   filePath: string
 ): { hunkIndex: number; direction: 'up' | 'down'; lineCount: number } | undefined {
@@ -162,11 +185,12 @@ function getReviewExpansionRequest(
     separator.querySelector('[data-unmodified-lines]')?.textContent ?? '',
     10
   );
-  const direction = separator.hasAttribute('data-separator-first')
-    ? 'down'
-    : separator.hasAttribute('data-separator-last')
-      ? 'up'
-      : undefined;
+  const direction = resolveReviewExpansionDirection({
+    expandUp: control?.hasAttribute('data-expand-up') ?? false,
+    expandDown: control?.hasAttribute('data-expand-down') ?? false,
+    separatorFirst: separator.hasAttribute('data-separator-first'),
+    separatorLast: separator.hasAttribute('data-separator-last')
+  });
 
   if (Number.isNaN(hunkIndex) || Number.isNaN(remainingLineCount) || remainingLineCount <= 0 || !direction) {
     return undefined;
@@ -194,4 +218,26 @@ function getReviewExpansionRequest(
   );
 
   return { hunkIndex, direction, lineCount };
+}
+
+export function resolveReviewExpansionDirection({
+  expandUp,
+  expandDown,
+  separatorFirst,
+  separatorLast
+}: {
+  expandUp: boolean;
+  expandDown: boolean;
+  separatorFirst: boolean;
+  separatorLast: boolean;
+}): 'up' | 'down' | undefined {
+  if (expandUp) {
+    return 'up';
+  }
+
+  if (expandDown) {
+    return 'down';
+  }
+
+  return separatorFirst ? 'down' : separatorLast ? 'up' : undefined;
 }
