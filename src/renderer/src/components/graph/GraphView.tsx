@@ -8,6 +8,7 @@ import type {
 } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   Archive,
   BookOpenCheck,
   Cherry,
@@ -793,7 +794,15 @@ export function GraphView({
         <span className="flex h-full min-w-0 items-center justify-between pl-4 pr-3">
           <span className="leading-none tracking-[0.02em]">Commit message</span>
           <span className="flex items-center gap-2">
-            {isFetching && rows.length > 0 ? <Loader2 size={13} className="animate-spin text-[var(--text-3)]" /> : null}
+            {errorMessage && rows.length > 0 ? (
+              <span
+                className="flex items-center gap-1 normal-case tracking-normal text-[var(--danger-text)]"
+                title={errorMessage}
+              >
+                <AlertCircle size={12} />
+                Refresh failed
+              </span>
+            ) : null}
             {currentDateMarker ? <span className="truncate normal-case tracking-normal text-[var(--text-2)]">{currentDateMarker}</span> : null}
           </span>
         </span>
@@ -815,8 +824,8 @@ export function GraphView({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
       >
         {isLoading && rows.length === 0 ? (
-          <GraphMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading commit graph..." />
-        ) : errorMessage ? (
+          <GraphMessage icon={<GitCommit size={15} />} label="Loading commit history…" />
+        ) : errorMessage && rows.length === 0 ? (
           <GraphMessage icon={<RefreshCw size={15} />} label={errorMessage} />
         ) : rows.length === 0 ? (
           <GraphMessage icon={<GitCommit size={15} />} label="No commits found." />
@@ -877,8 +886,8 @@ export function GraphView({
             {hasMore ? (
               <div className="flex items-center justify-center gap-3 border-t border-[var(--border)] px-3 py-3">
                 <button className="btn-primary h-8 text-xs" type="button" onClick={onLoadMore} disabled={isFetching}>
-                  {isFetching ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                  <span>Load more</span>
+                  <RefreshCw size={13} />
+                  <span>{isFetching ? 'Loading more…' : 'Load more'}</span>
                 </button>
                 <span className="text-[11px] text-[var(--text-3)]">{rows.length.toLocaleString()} rows loaded</span>
               </div>
