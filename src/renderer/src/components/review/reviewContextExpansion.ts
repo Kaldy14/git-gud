@@ -15,29 +15,74 @@ const reviewExpansionListeners = new WeakMap<HTMLElement, ReviewExpansionListene
 
 const REVIEW_CONTEXT_SEPARATOR_CSS = `
   [data-separator="line-info"] {
+    --review-context-border: color-mix(in srgb, var(--border) 72%, transparent);
+    --review-context-surface: color-mix(in srgb, var(--diffs-bg) 94%, var(--text-3));
     height: 1lh;
     margin-block: 0;
+    background: var(--diffs-bg);
+  }
+
+  [data-separator="line-info"] [data-separator-wrapper] {
+    grid-template-columns: 28px minmax(0, 1fr);
+    border-block: 1px solid var(--review-context-border);
+    background: var(--review-context-surface);
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
   }
 
   [data-separator="line-info"] [data-separator-content],
   [data-separator="line-info"] [data-expand-button] {
-    border: 1px solid var(--select-border);
-    background: var(--select-bg);
+    border: 0;
+    background: transparent;
     border-radius: 0;
-    color: var(--diffs-modified-base);
+    color: var(--text-3);
+  }
+
+  [data-separator="line-info"] [data-expand-button] {
+    min-width: 28px;
+    border-right: 1px solid var(--review-context-border);
+    color: var(--accent-2);
+    opacity: 0.78;
+    transition:
+      color 120ms ease,
+      opacity 120ms ease;
+  }
+
+  [data-separator="line-info"] [data-separator-content] {
+    padding-inline: 10px;
+    font-size: 10px;
+  }
+
+  [data-separator="line-info"] [data-separator-wrapper]:hover {
+    --review-context-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
+    --review-context-surface: color-mix(in srgb, var(--diffs-bg) 90%, var(--text-3));
+  }
+
+  [data-separator="line-info"] [data-separator-wrapper]:hover [data-expand-button] {
+    color: var(--accent-2);
+    opacity: 1;
+  }
+
+  [data-separator="line-info"][data-expand-index] [data-separator-content]:hover {
+    text-decoration: none;
   }
 
   [data-separator="line-info"] [data-separator-content]:focus-visible,
   [data-separator="line-info"] [data-expand-button]:focus-visible {
-    outline: 2px solid var(--diffs-modified-base);
+    outline: 2px solid var(--accent-2);
     outline-offset: -2px;
   }
 
-  [data-separator="line-info"] [data-unmodified-lines]::after {
-    content: " · Expand nearby block";
-    color: var(--diffs-modified-base);
-    font-size: 10px;
+  [data-separator="line-info"] [data-unmodified-lines] {
+    color: var(--text-3);
     font-weight: 600;
+  }
+
+  [data-separator="line-info"] [data-unmodified-lines]::after {
+    content: "  ·  Expand block";
+    color: var(--text-2);
+    font-weight: 500;
   }
 `;
 

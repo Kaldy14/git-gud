@@ -20,8 +20,10 @@ describe('review context expansion', () => {
     expect(options.unsafeCSS).toMatch(
       /\[data-separator="line-info"\]\s*\{[^}]*height:\s*1lh;/
     );
-    expect(options.unsafeCSS).toMatch(/border:\s*1px solid var\(--select-border\)/);
-    expect(options.unsafeCSS).toMatch(/background:\s*var\(--select-bg\)/);
+    expect(options.unsafeCSS).toMatch(/border-block:\s*1px solid var\(--review-context-border\)/);
+    expect(options.unsafeCSS).toMatch(/background:\s*var\(--review-context-surface\)/);
+    expect(options.unsafeCSS).toContain('content: "  ·  Expand block"');
+    expect(options.unsafeCSS).toContain('text-decoration: none');
     expect(options.unsafeCSS).toContain(':focus-visible');
   });
 
