@@ -12,6 +12,7 @@ import {
   gitHubActionsRunsRefetchInterval,
   gitHubPullRequestInboxRefetchInterval,
   gitHubPullRequestInboxQueryKey,
+  gitHubPullRequestReviewPlanQueryKey,
   refreshGitHubPullRequestInboxAfterMerge
 } from './github';
 
@@ -103,6 +104,26 @@ describe('GitHub pull request inbox refresh', () => {
       inbox([pullRequest(2), pullRequest(3)], 'fresh')
     );
     queryClient.clear();
+  });
+});
+
+describe('GitHub pull request review plan queries', () => {
+  it('keys background context by pull request revision', () => {
+    const locator = {
+      profileId: 'profile',
+      owner: 'owner',
+      repository: 'repository',
+      number: 42
+    };
+
+    expect(gitHubPullRequestReviewPlanQueryKey(locator, 'head-sha')).toEqual([
+      'github-pull-request-review-plan',
+      'profile',
+      'owner',
+      'repository',
+      42,
+      'head-sha'
+    ]);
   });
 });
 

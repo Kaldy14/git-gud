@@ -360,6 +360,15 @@ describe('IPC argument validation', () => {
       ])
     ).toEqual([{ profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }]);
     expect(
+      validateIpcArgs('github:pull-request-review-plan', [
+        { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
+        'A'.repeat(40)
+      ])
+    ).toEqual([
+      { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
+      'a'.repeat(40)
+    ]);
+    expect(
       validateIpcArgs('github:pull-request-conflicts', [
         '/repo',
         {
@@ -720,6 +729,12 @@ describe('IPC argument validation', () => {
         { profileId: 'profile:kaldy', owner: '../acme', repository: 'widgets', number: 42 }
       ])
     ).toThrow('owner contains unsupported characters.');
+    expect(() =>
+      validateIpcArgs('github:pull-request-review-plan', [
+        { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
+        '--help'
+      ])
+    ).toThrow('headSha must be a full Git object ID.');
     expect(() =>
       validateIpcArgs('github:pull-request-conflicts', [
         '/repo',

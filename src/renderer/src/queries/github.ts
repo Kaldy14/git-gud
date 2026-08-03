@@ -8,7 +8,8 @@ import type {
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
-  GitHubRepositorySummary
+  GitHubRepositorySummary,
+  GitReviewPlan
 } from '@shared/types';
 
 const GITHUB_ACTIONS_REFETCH_INTERVAL_MS = 15_000;
@@ -61,6 +62,18 @@ export const gitHubPullRequestDetailQueryKey = (
   locator.owner,
   locator.repository,
   locator.number
+];
+
+export const gitHubPullRequestReviewPlanQueryKey = (
+  locator: GitHubPullRequestLocator,
+  headSha: string
+): readonly ['github-pull-request-review-plan', string, string, string, number, string] => [
+  'github-pull-request-review-plan',
+  locator.profileId,
+  locator.owner,
+  locator.repository,
+  locator.number,
+  headSha
 ];
 
 export async function refreshGitHubPullRequestInboxAfterMerge(
@@ -195,5 +208,24 @@ export function useGitHubPullRequestDetail(locator: GitHubPullRequestLocator | u
     },
     enabled: Boolean(locator),
     staleTime: 15_000
+  });
+}
+
+export function useGitHubPullRequestReviewPlan(
+  locator: GitHubPullRequestLocator | undefined,
+  headSha: string | undefined
+) {
+  return useQuery({
+    queryKey: locator && headSha
+      ? gitHubPullRequestReviewPlanQueryKey(locator, headSha)
+      : ['github-pull-request-review-plan', 'none', 'none', 'none', 0, 'none'],
+    queryFn: async (): Promise<GitReviewPlan> => {
+      if (!locator || !headSha) {
+        throw new Error('A pull request revision is required.');
+      }
+      return window.api.getGitHubPullRequestReviewPlan(locator, headSha);
+    },
+    enabled: Boolean(locator && headSha),
+    staleTime: Number.POSITIVE_INFINITY
   });
 }

@@ -5,6 +5,7 @@ import type { GitHubPullRequestSummary } from '@shared/types';
 import { analyzeReviewPatchSyntax } from './git/reviewSyntax';
 import {
   buildCompleteFilePatch,
+  buildGitHubFileTextBatchQuery,
   buildGitHubActionsPullRequestGroups,
   buildGitHubPullRequestReviewPlan,
   canReuseGitHubPullRequestInbox,
@@ -12,8 +13,10 @@ import {
   createGitHubFileReviewCommentPayload,
   filterGitHubActionsRuns,
   gitHubWorkflowRunFailedLogArgs,
+  mergeGitHubPullRequestReviewPlanContext,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
+  parseGitHubFileTextBatchResponse,
   parsePullRequestCommit,
   parseGitHubRepositoriesResponse,
   parseGitHubRepositoryMergeSettings,
@@ -22,6 +25,73 @@ import {
   searchGitHubActionsRunPages,
   selectGitHubReviewContextFiles
 } from './github';
+
+describe('GitHub pull request file context', () => {
+  it('batches file contents into one GraphQL repository query', () => {
+    const result = buildGitHubFileTextBatchQuery('acme', 'widgets', [
+      { path: 'src/old name.ts', ref: 'base-sha' },
+      { path: 'src/new:name.ts', ref: 'head-sha' }
+    ]);
+
+    expect(result.query).toContain('content0: object(expression: $expression0)');
+    expect(result.query).toContain('content1: object(expression: $expression1)');
+    expect(result.variables).toEqual({
+      owner: 'acme',
+      repository: 'widgets',
+      expression0: 'base-sha:src/old name.ts',
+      expression1: 'head-sha:src/new:name.ts'
+    });
+  });
+
+  it('keeps complete text blobs and rejects binary, truncated, or missing blobs', () => {
+    expect(
+      parseGitHubFileTextBatchResponse(
+        {
+          data: {
+            repository: {
+              content0: { text: 'complete', isBinary: false, isTruncated: false },
+              content1: { text: null, isBinary: true, isTruncated: false },
+              content2: { text: 'partial', isBinary: false, isTruncated: true },
+              content3: null
+            }
+          }
+        },
+        4
+      )
+    ).toEqual(['complete', undefined, undefined, undefined]);
+  });
+
+  it('adds background file context without reordering the visible review', async () => {
+    const pullRequest = pullRequestSummary();
+    const file = pullRequestFile('src/product.ts');
+    const initialPlan = await buildGitHubPullRequestReviewPlan(
+      'github.com',
+      pullRequest,
+      'head-sha',
+      [file]
+    );
+    const enrichedPlan = await buildGitHubPullRequestReviewPlan(
+      'github.com',
+      pullRequest,
+      'head-sha',
+      [file],
+      [{ path: file.path, oldContents: 'old\n', newContents: 'new\n' }]
+    );
+    const mergedPlan = mergeGitHubPullRequestReviewPlanContext(initialPlan, enrichedPlan);
+
+    expect(mergedPlan.sourceFingerprint).toBe(initialPlan.sourceFingerprint);
+    expect(mergedPlan.units.map((unit) => unit.id)).toEqual(
+      initialPlan.units.map((unit) => unit.id)
+    );
+    expect(mergedPlan.units.flatMap((unit) => unit.chunks).map((chunk) => chunk.id)).toEqual(
+      initialPlan.units.flatMap((unit) => unit.chunks).map((chunk) => chunk.id)
+    );
+    expect(mergedPlan.fileContexts).toEqual(enrichedPlan.fileContexts);
+    expect(mergedPlan.units[0]?.chunks[0]?.fileContextId).toBe(
+      enrichedPlan.fileContexts[0]?.id
+    );
+  });
+});
 
 describe('GitHub Actions dashboards', () => {
   it('loads only failed-step logs for the selected run and GitHub host', () => {
@@ -829,7 +899,7 @@ describe('GitHub pull request inbox', () => {
     });
   });
 
-  it('selects every textual pull request file for context analysis', async () => {
+  it('bounds textual context files in review priority order', async () => {
     const pullRequest = pullRequestSummary();
     const files = [
       ...Array.from({ length: 30 }, (_, index) => pullRequestFile(`src/file-${index}.ts`)),
@@ -844,10 +914,11 @@ describe('GitHub pull request inbox', () => {
       files
     );
     const selectedPaths = selectGitHubReviewContextFiles(reviewPlan, files).map((file) => file.path);
+    const firstTwoPaths = selectGitHubReviewContextFiles(reviewPlan, files, 2)
+      .map((file) => file.path);
 
-    expect(selectedPaths).toHaveLength(32);
-    expect(selectedPaths).toContain('src/added.ts');
-    expect(selectedPaths).toContain('src/removed.ts');
+    expect(selectedPaths).toHaveLength(24);
+    expect(firstTwoPaths).toEqual(selectedPaths.slice(0, 2));
     expect(selectedPaths).not.toContain('assets/logo.png');
   });
 

@@ -45,7 +45,8 @@ import {
   gitHubPullRequestDetailQueryKey,
   gitHubPullRequestInboxQueryKey,
   refreshGitHubPullRequestInboxAfterMerge,
-  useGitHubPullRequestDetail
+  useGitHubPullRequestDetail,
+  useGitHubPullRequestReviewPlan
 } from '@renderer/queries/github';
 import type {
   DiffSyntaxTheme,
@@ -119,7 +120,14 @@ export function PullRequestReviewView({
     number: pullRequest.number
   };
   const detailQuery = useGitHubPullRequestDetail(locator);
-  const detail = detailQuery.data;
+  const initialDetail = detailQuery.data;
+  const reviewPlanQuery = useGitHubPullRequestReviewPlan(locator, initialDetail?.headSha);
+  const detail = useMemo(
+    () => initialDetail && reviewPlanQuery.data
+      ? { ...initialDetail, reviewPlan: reviewPlanQuery.data }
+      : initialDetail,
+    [initialDetail, reviewPlanQuery.data]
+  );
 
   if (detailQuery.isLoading && !detail) {
     return (
@@ -171,6 +179,7 @@ export function PullRequestReviewView({
       onOpenCommit={onOpenCommit}
       onClose={onClose}
       onMerged={onMerged}
+      isReviewPlanEnriching={reviewPlanQuery.isFetching && !reviewPlanQuery.data}
     />
   );
 }
@@ -317,7 +326,8 @@ function PullRequestReviewContent({
   onBackToInbox,
   onOpenCommit,
   onClose,
-  onMerged
+  onMerged,
+  isReviewPlanEnriching
 }: {
   detail: GitHubPullRequestDetail;
   codexRepoPath?: string;
@@ -328,6 +338,7 @@ function PullRequestReviewContent({
   onOpenCommit?: (sha: string) => void;
   onClose: () => void;
   onMerged: () => void;
+  isReviewPlanEnriching: boolean;
 }): ReactElement {
   const locator = {
     profileId: detail.profileId,
@@ -673,6 +684,12 @@ function PullRequestReviewContent({
             onToggleConflicts={() => setIsOverviewOpen((isOpen) => !isOpen)}
           />
         </div>
+        {isReviewPlanEnriching ? (
+          <span className="pr-review-loading-progress" role="status" aria-live="polite">
+            <Loader2 size={12} className="animate-spin" />
+            Adding context
+          </span>
+        ) : null}
         <PullRequestHeaderActions
           detail={detail}
           repoPath={codexRepoPath}

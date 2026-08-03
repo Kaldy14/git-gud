@@ -240,6 +240,8 @@ const validators = {
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
     readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
+  'github:pull-request-review-plan': (args) =>
+    readGitHubPullRequestReviewPlanArgs(args),
   'github:pull-request-conflicts': (args) =>
     readRepoPathWithObject(
       args,
@@ -617,6 +619,19 @@ function readGitHubPullRequestReviewGuideArgs(
     readGitHubPullRequestLocator(args[0]),
     readReviewSourceFingerprint(args[1])
   ];
+}
+
+function readGitHubPullRequestReviewPlanArgs(
+  args: readonly unknown[]
+): [GitHubPullRequestLocator, string] {
+  assertArgCount('github:pull-request-review-plan', args, 2);
+  const headSha = readNonEmptyLimitedString(args[1], 'headSha', 64).toLowerCase();
+
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(headSha)) {
+    throw new Error('headSha must be a full Git object ID.');
+  }
+
+  return [readGitHubPullRequestLocator(args[0]), headSha];
 }
 
 function readDashboardInput(value: unknown): DashboardInput {

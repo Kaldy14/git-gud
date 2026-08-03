@@ -49,12 +49,15 @@ const GITHUB_API_TIMEOUT_MS = 30_000;
 const GITHUB_API_MAX_BUFFER = 32 * 1024 * 1024;
 const GITHUB_REVIEW_RETAINED_CONTEXT_MAX_BYTES = 32 * 1024 * 1024;
 const GITHUB_REVIEW_CONTEXT_CONCURRENCY = 6;
+const GITHUB_REVIEW_CONTEXT_BATCH_SIZE = 12;
+const GITHUB_REVIEW_CONTEXT_MAX_FILES = 24;
 const GITHUB_ACTIONS_FILTERED_PAGE_SIZE = 100;
 const GITHUB_ACTIONS_FILTERED_RUN_CAP = 500;
 const GITHUB_ACTIONS_PR_AUTHOR_BATCH_SIZE = 100;
 const GITHUB_ACTIONS_METADATA_CACHE_TTL_MS = 10 * 60_000;
 const GITHUB_ACTIONS_TAG_PAGE_CAP = 5;
 const GITHUB_PULL_REQUEST_INBOX_CACHE_TTL_MS = 30_000;
+const GITHUB_PULL_REQUEST_REVIEW_SEED_LIMIT = 8;
 
 export type GitHubTag = {
   name: string;
@@ -84,6 +87,34 @@ type GitHubReviewFileContext = Pick<
 type GitHubReviewFileAnalysis = {
   fileContexts: GitHubReviewFileContext[];
   syntaxByPath: Map<string, ReviewPatchSyntax | undefined>;
+};
+
+type GitHubReviewPlanPreparation = {
+  reviewPlan: GitReviewPlan;
+  syntaxByPath: Map<string, ReviewPatchSyntax | undefined>;
+};
+
+type GitHubPullRequestReviewSeed = {
+  context: GitHubContext;
+  locator: GitHubPullRequestLocator;
+  pullRequest: GitHubPullRequestSummary;
+  headSha: string;
+  files: GitHubPullRequestFile[];
+  initialPreparation: GitHubReviewPlanPreparation;
+  mergeBaseSha: Promise<string | undefined>;
+  enrichment?: Promise<GitReviewPlan>;
+};
+
+const gitHubPullRequestReviewSeeds = new Map<string, GitHubPullRequestReviewSeed>();
+
+type GitHubFileTextRequest = {
+  path: string;
+  ref: string;
+};
+
+type GitHubFileTextBatchQuery = {
+  query: string;
+  variables: Record<string, string>;
 };
 
 const INBOX_QUERY = `
@@ -834,36 +865,27 @@ export async function loadGitHubPullRequestDetail(
   const files = filesRaw.map(parsePullRequestFile);
   const headSha = readNestedString(pull, ['head', 'sha'], 'pull request head SHA');
   const baseSha = readNestedString(pull, ['base', 'sha'], 'pull request base SHA');
-  const baseRefSha = await loadGitHubBranchHeadSha(
+  const baseRefShaRequest = loadGitHubBranchHeadSha(
     context,
     locator,
     summary.baseRefName,
     baseSha
   );
-  const mergeBaseSha = await loadGitHubMergeBaseSha(context, locator, baseSha, headSha);
-  const patchOnlyReviewPlan = await buildGitHubPullRequestReviewPlan(
-    context.host,
-    summary,
-    headSha,
-    files
-  );
-  const analysis = mergeBaseSha
-    ? await loadGitHubPullRequestFileAnalysis(
-        context,
-        locator,
-        mergeBaseSha,
-        headSha,
-        selectGitHubReviewContextFiles(patchOnlyReviewPlan, files)
-      )
-    : emptyGitHubReviewFileAnalysis();
-  const reviewPlan = await buildGitHubPullRequestReviewPlan(
-    context.host,
-    summary,
+  const mergeBaseSha = loadGitHubMergeBaseSha(context, locator, baseSha, headSha);
+  const [baseRefSha, initialPreparation] = await Promise.all([
+    baseRefShaRequest,
+    prepareGitHubPullRequestReviewPlan(context.host, summary, headSha, files)
+  ]);
+  const reviewPlan = initialPreparation.reviewPlan;
+  rememberGitHubPullRequestReviewSeed({
+    context,
+    locator,
+    pullRequest: summary,
     headSha,
     files,
-    analysis.fileContexts,
-    analysis.syntaxByPath
-  );
+    initialPreparation,
+    mergeBaseSha
+  });
   githubPullRequestReviewPlans.remember(locator, reviewPlan);
 
   return {
@@ -885,6 +907,107 @@ export async function loadGitHubPullRequestDetail(
   };
 }
 
+export async function loadGitHubPullRequestReviewPlan(
+  locator: GitHubPullRequestLocator,
+  headSha: string
+): Promise<GitReviewPlan> {
+  const seed = gitHubPullRequestReviewSeeds.get(pullRequestReviewSeedKey(locator));
+
+  if (!seed || seed.headSha !== headSha) {
+    throw new Error('Reload the pull request before loading its full review context.');
+  }
+
+  seed.enrichment ??= enrichGitHubPullRequestReviewPlan(seed);
+  return seed.enrichment;
+}
+
+async function enrichGitHubPullRequestReviewPlan(
+  seed: GitHubPullRequestReviewSeed
+): Promise<GitReviewPlan> {
+  const mergeBaseSha = await seed.mergeBaseSha;
+
+  if (!mergeBaseSha) {
+    return seed.initialPreparation.reviewPlan;
+  }
+
+  const analysis = await loadGitHubPullRequestFileAnalysis(
+    seed.context,
+    seed.locator,
+    mergeBaseSha,
+    seed.headSha,
+    selectGitHubReviewContextFiles(seed.initialPreparation.reviewPlan, seed.files)
+  );
+  const preparedSyntaxByPath = new Map(seed.initialPreparation.syntaxByPath);
+
+  for (const [path, syntax] of analysis.syntaxByPath) {
+    preparedSyntaxByPath.set(path, syntax);
+  }
+
+  const enrichedPlan = await buildGitHubPullRequestReviewPlan(
+    seed.context.host,
+    seed.pullRequest,
+    seed.headSha,
+    seed.files,
+    analysis.fileContexts,
+    preparedSyntaxByPath
+  );
+  const reviewPlan = mergeGitHubPullRequestReviewPlanContext(
+    seed.initialPreparation.reviewPlan,
+    enrichedPlan
+  );
+
+  if (gitHubPullRequestReviewSeeds.get(pullRequestReviewSeedKey(seed.locator)) === seed) {
+    githubPullRequestReviewPlans.remember(seed.locator, reviewPlan);
+  }
+
+  return reviewPlan;
+}
+
+export function mergeGitHubPullRequestReviewPlanContext(
+  initialPlan: GitReviewPlan,
+  enrichedPlan: GitReviewPlan
+): GitReviewPlan {
+  const contextIdByPath = new Map(
+    enrichedPlan.fileContexts.map((context) => [context.path, context.id])
+  );
+
+  return {
+    ...initialPlan,
+    units: initialPlan.units.map((unit) => ({
+      ...unit,
+      chunks: unit.chunks.map((chunk) => {
+        const fileContextId = contextIdByPath.get(chunk.path);
+        return fileContextId ? { ...chunk, fileContextId } : chunk;
+      })
+    })),
+    fileContexts: enrichedPlan.fileContexts
+  };
+}
+
+function rememberGitHubPullRequestReviewSeed(seed: GitHubPullRequestReviewSeed): void {
+  const key = pullRequestReviewSeedKey(seed.locator);
+  gitHubPullRequestReviewSeeds.delete(key);
+  gitHubPullRequestReviewSeeds.set(key, seed);
+
+  while (gitHubPullRequestReviewSeeds.size > GITHUB_PULL_REQUEST_REVIEW_SEED_LIMIT) {
+    const oldestKey = gitHubPullRequestReviewSeeds.keys().next().value;
+
+    if (typeof oldestKey !== 'string') {
+      return;
+    }
+    gitHubPullRequestReviewSeeds.delete(oldestKey);
+  }
+}
+
+function pullRequestReviewSeedKey(locator: GitHubPullRequestLocator): string {
+  return [
+    locator.profileId,
+    locator.owner.toLowerCase(),
+    locator.repository.toLowerCase(),
+    locator.number
+  ].join(':');
+}
+
 export function canReuseGitHubPullRequestInbox(
   inbox: GitHubPullRequestInbox,
   now = Date.now()
@@ -897,14 +1020,15 @@ export function canReuseGitHubPullRequestInbox(
 
 export function selectGitHubReviewContextFiles(
   reviewPlan: GitReviewPlan,
-  files: GitHubPullRequestFile[]
+  files: GitHubPullRequestFile[],
+  limit = GITHUB_REVIEW_CONTEXT_MAX_FILES
 ): GitHubPullRequestFile[] {
   const fileByPath = new Map(files.map((file) => [file.path, file]));
   const selectedPaths = new Set<string>();
   const selectedFiles: GitHubPullRequestFile[] = [];
 
   for (const chunk of reviewPlan.units.flatMap((unit) => unit.chunks)) {
-    if (selectedPaths.has(chunk.path)) {
+    if (selectedFiles.length >= limit || selectedPaths.has(chunk.path)) {
       continue;
     }
 
@@ -974,6 +1098,26 @@ export async function buildGitHubPullRequestReviewPlan(
   fileContexts: GitHubReviewFileContext[] = [],
   preparedSyntaxByPath?: ReadonlyMap<string, ReviewPatchSyntax | undefined>
 ): Promise<GitReviewPlan> {
+  const preparation = await prepareGitHubPullRequestReviewPlan(
+    host,
+    pullRequest,
+    headSha,
+    files,
+    fileContexts,
+    preparedSyntaxByPath
+  );
+
+  return preparation.reviewPlan;
+}
+
+async function prepareGitHubPullRequestReviewPlan(
+  host: string,
+  pullRequest: GitHubPullRequestSummary,
+  headSha: string,
+  files: GitHubPullRequestFile[],
+  fileContexts: GitHubReviewFileContext[] = [],
+  preparedSyntaxByPath?: ReadonlyMap<string, ReviewPatchSyntax | undefined>
+): Promise<GitHubReviewPlanPreparation> {
   const repoPath = `github://${host}/${pullRequest.owner}/${pullRequest.repository}`;
   const target = {
     kind: 'branch' as const,
@@ -998,8 +1142,11 @@ export async function buildGitHubPullRequestReviewPlan(
   const plan = buildReviewPlan(repoPath, target, patches);
 
   return {
-    ...plan,
-    targetKey: `github-pr:${pullRequest.profileId}:${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}:${headSha}`
+    reviewPlan: {
+      ...plan,
+      targetKey: `github-pr:${pullRequest.profileId}:${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}:${headSha}`
+    },
+    syntaxByPath: new Map(patches.map((patch) => [patch.path, patch.syntax]))
   };
 }
 
@@ -1071,17 +1218,30 @@ async function loadGitHubPullRequestFileAnalysis(
   const repoPath = `github://${context.host}/${locator.owner}/${locator.repository}`;
   let retainedBytes = 0;
 
-  for (let index = 0; index < files.length; index += GITHUB_REVIEW_CONTEXT_CONCURRENCY) {
-    const batch = files.slice(index, index + GITHUB_REVIEW_CONTEXT_CONCURRENCY);
-    const loadedBatch = await Promise.all(
-      batch.map(async (file) => {
-        const fileContext = await loadGitHubPullRequestFileContext(
-          context,
-          locator,
-          baseSha,
-          headSha,
-          file
-        );
+  for (let index = 0; index < files.length; index += GITHUB_REVIEW_CONTEXT_BATCH_SIZE) {
+    const batch = files.slice(index, index + GITHUB_REVIEW_CONTEXT_BATCH_SIZE);
+    const batchedContexts = await loadGitHubPullRequestFileContextBatch(
+      context,
+      locator,
+      baseSha,
+      headSha,
+      batch
+    );
+    const loadedBatch = await mapWithConcurrency(
+      batch,
+      GITHUB_REVIEW_CONTEXT_CONCURRENCY,
+      async (file, batchIndex) => {
+        let fileContext = batchedContexts?.[batchIndex];
+
+        if (!fileContext) {
+          fileContext = await loadGitHubPullRequestFileContext(
+            context,
+            locator,
+            baseSha,
+            headSha,
+            file
+          );
+        }
 
         if (!fileContext) {
           return undefined;
@@ -1093,7 +1253,7 @@ async function loadGitHubPullRequestFileAnalysis(
         );
 
         return { fileContext, syntax: input.syntax };
-      })
+      }
     );
 
     for (const loaded of loadedBatch) {
@@ -1116,6 +1276,130 @@ async function loadGitHubPullRequestFileAnalysis(
   }
 
   return analysis;
+}
+
+async function loadGitHubPullRequestFileContextBatch(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator,
+  baseSha: string,
+  headSha: string,
+  files: GitHubPullRequestFile[]
+): Promise<Array<GitHubReviewFileContext | undefined> | undefined> {
+  const requests = files.flatMap((file): GitHubFileTextRequest[] => {
+    if (file.omittedReason || !file.patch) {
+      return [];
+    }
+
+    return [
+      ...(file.status === 'added'
+        ? []
+        : [{ path: file.previousPath ?? file.path, ref: baseSha }]),
+      ...(file.status === 'removed' ? [] : [{ path: file.path, ref: headSha }])
+    ];
+  });
+
+  if (requests.length === 0) {
+    return files.map(() => undefined);
+  }
+
+  try {
+    const { query, variables } = buildGitHubFileTextBatchQuery(
+      locator.owner,
+      locator.repository,
+      requests
+    );
+    const raw = await runGitHubJson(
+      context,
+      ['api', '--hostname', context.host, 'graphql', '--input', '-'],
+      { query, variables }
+    );
+    const contents = parseGitHubFileTextBatchResponse(raw, requests.length);
+    let requestIndex = 0;
+
+    return files.map((file): GitHubReviewFileContext | undefined => {
+      if (file.omittedReason || !file.patch) {
+        return undefined;
+      }
+
+      const oldContents = file.status === 'added' ? '' : contents[requestIndex++];
+      const newContents = file.status === 'removed' ? '' : contents[requestIndex++];
+
+      if (oldContents === undefined || newContents === undefined) {
+        return undefined;
+      }
+
+      return {
+        path: file.path,
+        originalPath: file.previousPath,
+        oldContents,
+        newContents
+      };
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildGitHubFileTextBatchQuery(
+  owner: string,
+  repository: string,
+  requests: GitHubFileTextRequest[]
+): GitHubFileTextBatchQuery {
+  const expressionVariables = requests
+    .map((_, index) => `$expression${index}: String!`)
+    .join(', ');
+  const objects = requests
+    .map(
+      (_, index) =>
+        `content${index}: object(expression: $expression${index}) { ... on Blob { text isBinary isTruncated } }`
+    )
+    .join('\n');
+  const variables = Object.fromEntries([
+    ['owner', owner],
+    ['repository', repository],
+    ...requests.map((request, index) => [
+      `expression${index}`,
+      `${request.ref}:${request.path}`
+    ])
+  ]);
+
+  return {
+    query: `
+query GitGudPullRequestFileContents(
+  $owner: String!
+  $repository: String!
+  ${expressionVariables}
+) {
+  repository(owner: $owner, name: $repository) {
+    ${objects}
+  }
+}`,
+    variables
+  };
+}
+
+export function parseGitHubFileTextBatchResponse(
+  value: unknown,
+  requestCount: number
+): Array<string | undefined> {
+  const response = readRecord(value, 'GitHub file contents response');
+  const data = readRecord(response.data, 'GitHub file contents data');
+  const repository = readRecord(data.repository, 'GitHub file contents repository');
+
+  return Array.from({ length: requestCount }, (_, index) => {
+    const blob = repository[`content${index}`];
+
+    if (!blob || typeof blob !== 'object' || Array.isArray(blob)) {
+      return undefined;
+    }
+
+    const record = blob as Record<string, unknown>;
+    return record.isBinary === false &&
+      record.isTruncated === false &&
+      typeof record.text === 'string'
+      ? record.text
+      : undefined;
+  });
 }
 
 async function loadGitHubPullRequestFileContext(

@@ -471,6 +471,10 @@ export type IpcChannelMap = {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestDetail;
   };
+  'github:pull-request-review-plan': {
+    args: [locator: GitHubPullRequestLocator, headSha: string];
+    result: GitReviewPlan;
+  };
   'github:pull-request-conflicts': {
     args: [repoPath: string, input: GitHubPullRequestConflictInput];
     result: GitHubPullRequestConflictDetails;
@@ -634,6 +638,10 @@ export type RendererApi = {
   getGitHubWorkflowRunFailedLog: (input: GitHubWorkflowRunFailureInput) => Promise<string>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
+  getGitHubPullRequestReviewPlan: (
+    locator: GitHubPullRequestLocator,
+    headSha: string
+  ) => Promise<GitReviewPlan>;
   getGitHubPullRequestConflicts: (
     repoPath: string,
     input: GitHubPullRequestConflictInput

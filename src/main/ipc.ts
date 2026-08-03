@@ -71,6 +71,7 @@ import {
   loadGitHubWorkflowRunFailedLog,
   loadGitHubPullRequestDetail,
   loadGitHubPullRequestInbox,
+  loadGitHubPullRequestReviewPlan,
   loadGitHubRepositories,
   mergeGitHubPullRequest,
   submitGitHubPullRequestReview,
@@ -651,6 +652,9 @@ export function registerIpcHandlers(
   );
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
+  handle('github:pull-request-review-plan', (_event, locator, headSha) =>
+    loadGitHubPullRequestReviewPlan(locator, headSha)
+  );
   handle('github:pull-request-conflicts', (_event, repoPath, input) =>
     loadPullRequestConflictDetails(getOpenRepositoryTab(repoPath), input)
   );
