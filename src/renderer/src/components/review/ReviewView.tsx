@@ -115,6 +115,12 @@ import {
   type ReviewSearchScope
 } from './reviewSearch';
 import { createReviewSections } from './reviewSections';
+import {
+  createReviewViewState,
+  selectReviewViewUnit,
+  setReviewViewScrollTop,
+  type ReviewViewState
+} from './reviewViewState';
 
 type ReviewViewProps = {
   repoPath: string;
@@ -138,6 +144,8 @@ type ReviewViewProps = {
   onClose: () => void;
   closeLabel?: string;
   showCloseButton?: boolean;
+  initialViewState?: ReviewViewState;
+  onViewStateChange?: (state: ReviewViewState) => void;
 };
 
 export type ReviewLineComment = {
@@ -251,9 +259,12 @@ export function ReviewView({
   onSetDiffStyle,
   onClose,
   closeLabel = 'Close review',
-  showCloseButton = true
+  showCloseButton = true,
+  initialViewState,
+  onViewStateChange
 }: ReviewViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
+  const viewStateRef = useRef(createReviewViewState(initialViewState));
   const workerPool = useWorkerPool();
   const queryClient = useQueryClient();
   const [preferences, setPreferences] = useState<ReviewPreferences>(() =>
@@ -265,8 +276,24 @@ export function ReviewView({
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
-  const [selectedUnitId, setSelectedUnitId] = useState<string>();
-  const [requestedFilePath, setRequestedFilePath] = useState<string>();
+  const [selectedUnitId, setSelectedUnitId] = useState<string | undefined>(
+    () => initialViewState?.selectedUnitId
+  );
+  const [requestedFilePath, setRequestedFilePath] = useState<string | undefined>(
+    () => initialViewState?.requestedFilePath
+  );
+  const [scrollRestoration, setScrollRestoration] = useState<
+    { scrollTop: number; unitId: string } | undefined
+  >(() => {
+    const unitId = initialViewState?.selectedUnitId;
+    const scrollTop = unitId
+      ? initialViewState?.scrollTopByUnit[unitId]
+      : undefined;
+
+    return unitId !== undefined && scrollTop !== undefined
+      ? { scrollTop, unitId }
+      : undefined;
+  });
   const [reviewSearch, setReviewSearch] = useState<ReviewSearchSession>();
   const [isReviewSearchSelected, setIsReviewSearchSelected] = useState(false);
   const [reviewSearchFocusSignal, setReviewSearchFocusSignal] = useState(0);
@@ -474,6 +501,20 @@ export function ReviewView({
   }, []);
 
   useEffect(() => {
+    if (!selectedUnit) {
+      return;
+    }
+
+    const nextState = selectReviewViewUnit(
+      viewStateRef.current,
+      selectedUnit.unit.id,
+      requestedFilePath
+    );
+    viewStateRef.current = nextState;
+    onViewStateChange?.(nextState);
+  }, [onViewStateChange, requestedFilePath, selectedUnit]);
+
+  useEffect(() => {
     const sourceFingerprint = reviewPlan?.sourceFingerprint;
 
     if (!isReviewGuideEnabled || !sourceFingerprint) {
@@ -623,6 +664,10 @@ export function ReviewView({
     ) {
       return;
     }
+    const scrollTop = viewStateRef.current.scrollTopByUnit[unitId];
+    setScrollRestoration(
+      scrollTop === undefined ? undefined : { scrollTop, unitId }
+    );
     setSelectedUnitId(unitId);
   }
 
@@ -769,6 +814,12 @@ export function ReviewView({
 
     scroller.scrollTop +=
       direction * Math.max(1, Math.round(scroller.clientHeight * 0.85));
+  }
+
+  function saveReviewScrollTop(unitId: string, scrollTop: number): void {
+    const nextState = setReviewViewScrollTop(viewStateRef.current, unitId, scrollTop);
+    viewStateRef.current = nextState;
+    onViewStateChange?.(nextState);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
@@ -1017,6 +1068,13 @@ export function ReviewView({
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
         selectedFilePath={selectedFilePath}
+        restoredScrollTop={
+          selectedUnit &&
+          scrollRestoration &&
+          selectedUnit.unit.id === scrollRestoration.unitId
+            ? scrollRestoration.scrollTop
+            : undefined
+        }
         reviewSearch={
           currentReviewSearch
             ? {
@@ -1047,6 +1105,7 @@ export function ReviewView({
         }
         onSelectUnit={selectReviewUnit}
         onSelectFile={selectFile}
+        onScrollTopChange={saveReviewScrollTop}
         onStartReviewGuide={() => void startReviewGuide()}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
       />
@@ -1365,9 +1424,11 @@ function ReviewBody({
   reviewGuideUnits,
   isFileTreeOpen,
   selectedFilePath,
+  restoredScrollTop,
   reviewSearch,
   onSelectUnit,
   onSelectFile,
+  onScrollTopChange,
   onStartReviewGuide,
   onToggleViewed
 }: {
@@ -1387,13 +1448,16 @@ function ReviewBody({
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
   selectedFilePath?: string;
+  restoredScrollTop?: number;
   reviewSearch?: ReviewSearchViewState;
   onSelectUnit: (unitId: string) => void;
   onSelectFile: (path: string | undefined) => void;
+  onScrollTopChange: (unitId: string, scrollTop: number) => void;
   onStartReviewGuide: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
+  const renderedLocationRef = useRef<{ filePath?: string; unitId?: string }>({});
   const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(
     () => new Set()
   );
@@ -1401,14 +1465,29 @@ function ReviewBody({
     ? reviewGuideUnits.get(selectedUnit.unit.id)
     : undefined;
 
-  useEffect(() => {
-    reviewChunksRef.current?.scrollTo({ top: 0 });
-  }, [selectedUnit?.unit.id]);
-
   useLayoutEffect(() => {
     const scroller = reviewChunksRef.current;
+    const unitId = selectedUnit?.unit.id;
+    const previousLocation = renderedLocationRef.current;
+    const unitChanged = unitId !== previousLocation.unitId;
+    const fileChanged = selectedFilePath !== previousLocation.filePath;
 
-    if (!scroller || !selectedFilePath) {
+    renderedLocationRef.current = { filePath: selectedFilePath, unitId };
+
+    if (!scroller || !unitId || (!unitChanged && !fileChanged)) {
+      return;
+    }
+
+    if (unitChanged && restoredScrollTop !== undefined) {
+      scroller.scrollTo({ top: restoredScrollTop });
+      return;
+    }
+
+    if (unitChanged) {
+      scroller.scrollTo({ top: 0 });
+    }
+
+    if (!selectedFilePath) {
       return;
     }
 
@@ -1426,7 +1505,7 @@ function ReviewBody({
         target.getBoundingClientRect().top -
         scroller.getBoundingClientRect().top
     });
-  }, [selectedFilePath, selectedUnit?.unit.id]);
+  }, [restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
 
   function toggleFile(fileKey: string, chunks: readonly GitReviewChunk[]): void {
     const isCollapsing = !collapsedFileKeys.has(fileKey);
@@ -1572,7 +1651,13 @@ function ReviewBody({
               </button>
             </header>
             {mutationError ? <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">{mutationError}</p> : null}
-            <div ref={reviewChunksRef} className="review-chunks">
+            <div
+              ref={reviewChunksRef}
+              className="review-chunks"
+              onScroll={(event) =>
+                onScrollTopChange(selectedUnit.unit.id, event.currentTarget.scrollTop)
+              }
+            >
               {createReviewSections(selectedUnit.visibleChunks).map((section, _sectionIndex, sections) => (
                 <section className="review-chunk-section" data-only={sections.length === 1} key={section.key}>
                   {sections.length > 1 ? (

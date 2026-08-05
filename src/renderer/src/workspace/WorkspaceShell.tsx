@@ -28,6 +28,7 @@ import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
+import type { ReviewViewState } from '@renderer/components/review/reviewViewState';
 import { DashboardView } from '@renderer/components/dashboard/DashboardView';
 import { applyDiffSyntaxTheme } from '@renderer/components/diff/diffTheme';
 import { GraphView } from '@renderer/components/graph/GraphView';
@@ -262,6 +263,7 @@ export function WorkspaceShell(): ReactElement {
   const [commitComposerFocusByTab, setCommitComposerFocusByTab] = useState<Record<string, number>>({});
   const [fileFocusByTab, setFileFocusByTab] = useState<Record<string, number>>({});
   const [reviewTargetByTab, setReviewTargetByTab] = useState<Partial<Record<string, GitReviewTarget>>>({});
+  const reviewViewStateByTabRef = useRef<Partial<Record<string, ReviewViewState>>>({});
   const [operationLogEntries, setOperationLogEntries] = useState<OperationLogEntry[]>([]);
   const [activeRepositoryOperations, setActiveRepositoryOperations] = useState<
     Record<string, ActiveRepositoryOperation>
@@ -800,6 +802,8 @@ export function WorkspaceShell(): ReactElement {
           ? { ...next, [worktreeTab.id]: { kind: 'wip', scope: 'all' } }
           : next;
       });
+      delete reviewViewStateByTabRef.current[previousTab.id];
+      delete reviewViewStateByTabRef.current[worktreeTab.id];
     }
 
     setBulkSelectionByTab((value) => ({ ...value, [worktreeTab.id]: [] }));
@@ -907,6 +911,7 @@ export function WorkspaceShell(): ReactElement {
 
     setBulkSelectionByTab((value) => ({ ...value, [tab.id]: [] }));
     setReviewTargetByTab((value) => withoutRecordKey(value, tab.id));
+    delete reviewViewStateByTabRef.current[tab.id];
     setGitHubWorkspaceView(undefined);
     setIsStartTabActive(false);
     setCompactDetailOpen(false);
@@ -1057,6 +1062,7 @@ export function WorkspaceShell(): ReactElement {
       setCommitComposerFocusByTab({});
       setFileFocusByTab({});
       setReviewTargetByTab({});
+      reviewViewStateByTabRef.current = {};
 
       const nextTab = nextWorkspace.tabs.find((tab) => tab.id === nextWorkspace.activeTabId);
 
@@ -1103,6 +1109,7 @@ export function WorkspaceShell(): ReactElement {
     setCommitComposerFocusByTab((value) => withoutRecordKey(value, tabId));
     setFileFocusByTab((value) => withoutRecordKey(value, tabId));
     setReviewTargetByTab((value) => withoutRecordKey(value, tabId));
+    delete reviewViewStateByTabRef.current[tabId];
   }
 
   function handleOpenStartTab(): void {
@@ -1260,10 +1267,12 @@ export function WorkspaceShell(): ReactElement {
             ? { kind: 'wip', scope: 'all' }
             : { kind: 'commit', sha: selectedRow.sha }
       }));
+      delete reviewViewStateByTabRef.current[activeTab.id];
       return;
     }
 
     setReviewTargetByTab((value) => withoutRecordKey(value, activeTab.id));
+    delete reviewViewStateByTabRef.current[activeTab.id];
   }
 
   function handleOpenBranchReview(name: string, sha: string): void {
@@ -1279,6 +1288,7 @@ export function WorkspaceShell(): ReactElement {
       ...value,
       [activeTab.id]: { kind: 'branch', name, sha }
     }));
+    delete reviewViewStateByTabRef.current[activeTab.id];
   }
 
   async function handleStageAllWip(): Promise<void> {
@@ -1333,6 +1343,7 @@ export function WorkspaceShell(): ReactElement {
     if (path) {
       setIsCommitSearchOpen(false);
       setReviewTargetByTab((value) => withoutRecordKey(value, activeTab.id));
+      delete reviewViewStateByTabRef.current[activeTab.id];
       setFileFocusByTab((value) => ({
         ...value,
         [activeTab.id]: (value[activeTab.id] ?? 0) + 1
@@ -3081,6 +3092,10 @@ export function WorkspaceShell(): ReactElement {
                     key={`${activeTab.path}:${activeReviewTarget.kind}:${activeReviewTarget.kind === 'wip' ? activeReviewTarget.scope : activeReviewTarget.sha}`}
                     repoPath={activeTab.path}
                     target={activeReviewTarget}
+                    initialViewState={reviewViewStateByTabRef.current[activeTab.id]}
+                    onViewStateChange={(state) => {
+                      reviewViewStateByTabRef.current[activeTab.id] = state;
+                    }}
                     diffStyle={activeDiffStyle}
                     diffSyntaxTheme={settings.diffSyntaxTheme}
                     onSetDiffStyle={handleSetDiffStyle}
