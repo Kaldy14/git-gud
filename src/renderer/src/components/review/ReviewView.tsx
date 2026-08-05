@@ -1594,7 +1594,6 @@ function ReviewBody({
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
                           showFileComments={chunkIndex === 0}
-                          showHeader={chunkIndex === 0}
                           headerAdditions={file.additions}
                           headerDeletions={file.deletions}
                           hideLeadingExpansion={shareReviewExpansionBoundary(
@@ -2208,7 +2207,6 @@ function ReviewChunk({
   diffOptions,
   lineCollaboration,
   showFileComments,
-  showHeader = true,
   headerAdditions,
   headerDeletions,
   hideLeadingExpansion = false,
@@ -2221,7 +2219,6 @@ function ReviewChunk({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   showFileComments: boolean;
-  showHeader?: boolean;
   headerAdditions?: number;
   headerDeletions?: number;
   hideLeadingExpansion?: boolean;
@@ -2308,7 +2305,7 @@ function ReviewChunk({
       data-collapsed={isCollapsed}
       data-review-path={chunk.path}
     >
-      {showHeader ? <div className="review-chunk-header">
+      <div className="review-chunk-header">
         <button
           className="review-chunk-toggle"
           type="button"
@@ -2350,7 +2347,7 @@ function ReviewChunk({
             Comment on file
           </button>
         ) : null}
-      </div> : null}
+      </div>
       {!isCollapsed && showFileComments && (fileThreads.length > 0 || isFileComposerOpen) ? (
         <div className="review-file-comments">
           {fileThreads.map((thread) => (
