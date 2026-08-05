@@ -1,4 +1,4 @@
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -1646,6 +1646,120 @@ describe('git operations', () => {
     }
   });
 
+  it('lets Git LFS skip redundant work when an SSH tag target is already on the remote', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await configureTestSshRemote(repoPath, remotePath, rootPath);
+      await git(repoPath, ['push', '-u', 'origin', 'main']);
+      const hookOutputPath = await installLfsSkipProbe(repoPath, rootPath);
+      await createTag(tab, { name: 'release/v1', annotated: true });
+
+      await pushTag(tab, { name: 'release/v1', remote: 'origin' });
+
+      expect(await readFile(hookOutputPath, 'utf8')).toBe('1\n');
+      expect((await git(remotePath, ['rev-parse', '--verify', 'refs/tags/release/v1'])).stdout.trim()).not.toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps Git LFS enabled when an SSH tag push introduces a new commit', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await configureTestSshRemote(repoPath, remotePath, rootPath);
+      await git(repoPath, ['push', '-u', 'origin', 'main']);
+      await commitFile(repoPath, 'release.txt', 'release\n', 'release');
+      const hookOutputPath = await installLfsSkipProbe(repoPath, rootPath);
+      await createTag(tab, { name: 'release/v2' });
+
+      await pushTag(tab, { name: 'release/v2', remote: 'origin' });
+
+      expect(await readFile(hookOutputPath, 'utf8')).toBe('unset\n');
+      expect((await git(remotePath, ['rev-parse', '--verify', 'refs/tags/release/v2'])).stdout.trim()).not.toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps Git LFS enabled when an SSH remote-tracking ref is stale', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await configureTestSshRemote(repoPath, remotePath, rootPath);
+      await git(repoPath, ['push', '-u', 'origin', 'main']);
+      await git(remotePath, ['update-ref', '-d', 'refs/heads/main']);
+      const hookOutputPath = await installLfsSkipProbe(repoPath, rootPath);
+      await createTag(tab, { name: 'release/stale-remote' });
+
+      await pushTag(tab, { name: 'release/stale-remote', remote: 'origin' });
+
+      expect(await readFile(hookOutputPath, 'utf8')).toBe('unset\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('checks the SSH push destination rather than a different fetch repository', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const fetchRemotePath = join(rootPath, 'fetch.git');
+      const pushRemotePath = join(rootPath, 'push.git');
+      await git(rootPath, ['init', '--bare', fetchRemotePath]);
+      await git(rootPath, ['init', '--bare', pushRemotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await configureTestSplitSshRemote(repoPath, fetchRemotePath, pushRemotePath, rootPath);
+      await git(repoPath, ['push', '-u', 'origin', 'main']);
+      await git(repoPath, ['config', 'remote.origin.pushurl', 'git@github.com:acme/push.git']);
+      const hookOutputPath = await installLfsSkipProbe(repoPath, rootPath);
+      await createTag(tab, { name: 'release/split-remote' });
+
+      await pushTag(tab, { name: 'release/split-remote', remote: 'origin' });
+
+      expect(await readFile(hookOutputPath, 'utf8')).toBe('unset\n');
+      expect((await git(pushRemotePath, ['rev-parse', '--verify', 'refs/tags/release/split-remote'])).stdout.trim()).not.toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps Git LFS enabled for non-SSH tag pushes even when the target is already remote', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['push', '-u', 'origin', 'main']);
+      const hookOutputPath = await installLfsSkipProbe(repoPath, rootPath);
+      await createTag(tab, { name: 'release/v3' });
+
+      await pushTag(tab, { name: 'release/v3', remote: 'origin' });
+
+      expect(await readFile(hookOutputPath, 'utf8')).toBe('unset\n');
+      expect((await git(remotePath, ['rev-parse', '--verify', 'refs/tags/release/v3'])).stdout.trim()).not.toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('creates an empty-message annotated tag and pushes it to the requested remote', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 
@@ -1976,6 +2090,54 @@ async function createBaseRepository(rootPath: string): Promise<string> {
   await git(repoPath, ['commit', '-m', 'base']);
   await git(repoPath, ['checkout', '-B', 'main']);
   return repoPath;
+}
+
+async function configureTestSshRemote(repoPath: string, remotePath: string, rootPath: string): Promise<void> {
+  const sshPath = join(rootPath, 'ssh-test-transport');
+  await writeFile(
+    sshPath,
+    `#!/bin/sh\ncase "$*" in\n  *git-upload-pack*) exec git-upload-pack ${shellQuote(remotePath)} ;;\n  *) exec git-receive-pack ${shellQuote(remotePath)} ;;\nesac\n`,
+    'utf8'
+  );
+  await chmod(sshPath, 0o755);
+  await git(repoPath, ['config', 'core.sshCommand', sshPath]);
+  await git(repoPath, ['remote', 'add', 'origin', 'git@github.com:acme/widgets.git']);
+}
+
+async function configureTestSplitSshRemote(
+  repoPath: string,
+  fetchRemotePath: string,
+  pushRemotePath: string,
+  rootPath: string
+): Promise<void> {
+  const sshPath = join(rootPath, 'ssh-test-split-transport');
+  await writeFile(
+    sshPath,
+    `#!/bin/sh\ncase "$*" in\n  *acme/push.git*) remote=${shellQuote(pushRemotePath)} ;;\n  *) remote=${shellQuote(fetchRemotePath)} ;;\nesac\ncase "$*" in\n  *git-upload-pack*) exec git-upload-pack "$remote" ;;\n  *) exec git-receive-pack "$remote" ;;\nesac\n`,
+    'utf8'
+  );
+  await chmod(sshPath, 0o755);
+  await git(repoPath, ['config', 'core.sshCommand', sshPath]);
+  await git(repoPath, ['remote', 'add', 'origin', 'git@github.com:acme/fetch.git']);
+}
+
+async function installLfsSkipProbe(repoPath: string, rootPath: string): Promise<string> {
+  const hooksPath = join(rootPath, 'hooks');
+  const hookPath = join(hooksPath, 'pre-push');
+  const outputPath = join(rootPath, 'lfs-skip-probe.txt');
+  await mkdir(hooksPath, { recursive: true });
+  await writeFile(
+    hookPath,
+    `#!/bin/sh\nprintf '%s\\n' "\${GIT_LFS_SKIP_PUSH-unset}" > ${shellQuote(outputPath)}\n`,
+    'utf8'
+  );
+  await chmod(hookPath, 0o755);
+  await git(repoPath, ['config', 'core.hooksPath', hooksPath]);
+  return outputPath;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 async function createPullRepositoryPair(

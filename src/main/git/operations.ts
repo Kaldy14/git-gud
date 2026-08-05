@@ -1596,13 +1596,90 @@ async function pushTagRef(
   const tagRef = `refs/tags/${tagName}`;
   await revParse(repoPath, tagRef, env);
   await assertRemoteExists(repoPath, remoteName, env);
+  // A tag at an existing SSH remote tip introduces no Git or LFS objects. Keep
+  // every pre-push hook, but let Git LFS avoid its otherwise redundant HTTPS
+  // authentication and upload pass.
+  const skipRedundantLfsPush = await tagTargetMatchesEverySshPushDestination(
+    repoPath,
+    tagRef,
+    remoteName,
+    env
+  );
+  const pushEnv = skipRedundantLfsPush
+    ? { ...env, GIT_LFS_SKIP_PUSH: '1' }
+    : env;
   await gitExecutor.run(['push', '--', remoteName, `${tagRef}:${tagRef}`], {
     cwd: repoPath,
     kind: 'mutation',
-    env,
+    env: pushEnv,
     cancellable: true,
     timeoutMs: NETWORK_GIT_TIMEOUT_MS
   });
+}
+
+function isSshRemoteUrl(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  if (/^(?:ssh|git\+ssh|ssh\+git):\/\//iu.test(value)) {
+    return true;
+  }
+
+  if (/^[a-z][a-z\d+.-]*::/iu.test(value)) {
+    return false;
+  }
+
+  if (/^[a-z][a-z\d+.-]*:\//iu.test(value)) {
+    return false;
+  }
+
+  return /^(?:[^@/:\s]+@)?[^/:\s]+:.+/u.test(value);
+}
+
+async function tagTargetMatchesEverySshPushDestination(
+  repoPath: string,
+  tagRef: string,
+  remoteName: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<boolean> {
+  try {
+    const targetCommit = await revParse(repoPath, `${tagRef}^{commit}`, env);
+    const pushUrlsResult = await gitExecutor.run(
+      ['remote', 'get-url', '--push', '--all', remoteName],
+      { cwd: repoPath, env }
+    );
+    const pushUrls = pushUrlsResult.stdout
+      .split('\n')
+      .map((url) => url.trim())
+      .filter(Boolean);
+
+    if (pushUrls.length === 0 || pushUrls.some((url) => !isSshRemoteUrl(url))) {
+      return false;
+    }
+
+    for (const pushUrl of pushUrls) {
+      const remoteHeads = await gitExecutor.run(
+        ['ls-remote', '--heads', '--', pushUrl],
+        { cwd: repoPath, env, timeoutMs: NETWORK_GIT_TIMEOUT_MS }
+      );
+      const targetIsRemoteTip = remoteHeads.stdout
+        .split('\n')
+        .some((line) => line.split(/\s+/u, 1)[0]?.toLowerCase() === targetCommit.toLowerCase());
+
+      if (!targetIsRemoteTip) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 function capitalize(value: string): string {
