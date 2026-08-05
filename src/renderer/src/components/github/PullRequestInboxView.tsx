@@ -10,7 +10,6 @@ import {
   Inbox,
   Loader2,
   MessageSquare,
-  RefreshCw,
   Search,
   ShieldCheck,
   X
@@ -24,6 +23,7 @@ import type {
 } from '@shared/types';
 
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
+import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
 import { pullRequestStatus } from './pullRequestInboxStatus';
 
@@ -151,15 +151,12 @@ export function PullRequestInboxView({
           <p>Review requests and authored pull requests, prioritized by what needs you next.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            className="btn-subtle h-8 shrink-0 text-xs"
-            type="button"
-            onClick={onRefresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : undefined} />
-            {isRefreshing ? 'Refreshing' : 'Refresh'}
-          </button>
+          <PullRequestRefreshControl
+            lastRefreshedAt={inbox?.loadedAt}
+            isRefreshing={isRefreshing}
+            errorMessage={errorMessage}
+            onRefresh={onRefresh}
+          />
           <button
             className="icon-btn h-8 w-8"
             type="button"

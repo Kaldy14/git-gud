@@ -11,6 +11,7 @@ import {
   gitHubActionsRunsQueryOptions,
   gitHubActionsRunsRefetchInterval,
   gitHubPullRequestInboxRefetchInterval,
+  gitHubPullRequestInboxQueryOptions,
   gitHubPullRequestInboxQueryKey,
   gitHubPullRequestReviewPlanQueryKey,
   refreshGitHubPullRequestInboxAfterMerge
@@ -79,8 +80,16 @@ describe('GitHub Actions run queries', () => {
     expect(
       gitHubActionsRunsQueryOptions(input, 'background-monitor').refetchInterval
     ).toBe(5 * 60_000);
-    expect(gitHubPullRequestInboxRefetchInterval('interactive')).toBe(60_000);
+    expect(gitHubPullRequestInboxRefetchInterval('interactive')).toBe(15_000);
     expect(gitHubPullRequestInboxRefetchInterval('background-monitor')).toBe(5 * 60_000);
+  });
+
+  it('refreshes the active pull request workspace on focus without polling hidden windows', () => {
+    const options = gitHubPullRequestInboxQueryOptions('profile');
+
+    expect(options.refetchOnWindowFocus).toBe('always');
+    expect(options.refetchIntervalInBackground).toBe(false);
+    expect(options.refetchInterval).toBe(15_000);
   });
 });
 

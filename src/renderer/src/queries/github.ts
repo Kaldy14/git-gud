@@ -15,6 +15,7 @@ import type {
 const GITHUB_ACTIONS_REFETCH_INTERVAL_MS = 15_000;
 const GITHUB_ACTIONS_FILTERED_REFETCH_INTERVAL_MS = 60_000;
 const GITHUB_ACTIONS_BACKGROUND_MONITOR_INTERVAL_MS = 5 * 60_000;
+const GITHUB_PULL_REQUEST_INTERACTIVE_REFETCH_INTERVAL_MS = 15_000;
 
 export type GitHubPollingMode = 'interactive' | 'background-monitor';
 
@@ -171,7 +172,14 @@ export function useGitHubPullRequestInbox(
   profileId: string | undefined,
   pollingMode: GitHubPollingMode = 'interactive'
 ) {
-  return useQuery({
+  return useQuery(gitHubPullRequestInboxQueryOptions(profileId, pollingMode));
+}
+
+export function gitHubPullRequestInboxQueryOptions(
+  profileId: string | undefined,
+  pollingMode: GitHubPollingMode = 'interactive'
+) {
+  return {
     queryKey: profileId
       ? gitHubPullRequestInboxQueryKey(profileId)
       : ['github-pull-request-inbox', 'none'],
@@ -183,8 +191,10 @@ export function useGitHubPullRequestInbox(
     },
     enabled: Boolean(profileId),
     staleTime: 30_000,
+    refetchOnWindowFocus: 'always' as const,
+    refetchIntervalInBackground: false,
     refetchInterval: gitHubPullRequestInboxRefetchInterval(pollingMode)
-  });
+  };
 }
 
 export function gitHubPullRequestInboxRefetchInterval(
@@ -192,7 +202,7 @@ export function gitHubPullRequestInboxRefetchInterval(
 ): number {
   return pollingMode === 'background-monitor'
     ? GITHUB_ACTIONS_BACKGROUND_MONITOR_INTERVAL_MS
-    : 60_000;
+    : GITHUB_PULL_REQUEST_INTERACTIVE_REFETCH_INTERVAL_MS;
 }
 
 export function useGitHubPullRequestDetail(locator: GitHubPullRequestLocator | undefined) {

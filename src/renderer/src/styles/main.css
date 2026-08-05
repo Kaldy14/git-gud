@@ -2880,6 +2880,86 @@ button.ref-chip {
   font-size: 11.5px;
 }
 
+.pr-refresh-control {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-3);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.pr-refresh-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+  font-weight: 650;
+}
+
+.pr-refresh-live > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-text) 12%, transparent);
+}
+
+.pr-refresh-control[data-state='refreshing'] .pr-refresh-live > i {
+  animation: pr-refresh-pulse 1.2s ease-in-out infinite;
+}
+
+.pr-refresh-control[data-state='activity'] .pr-refresh-live,
+.pr-refresh-control[data-state='activity'] > button {
+  color: var(--accent-2);
+}
+
+.pr-refresh-control[data-state='activity'] .pr-refresh-live > i {
+  background: var(--accent-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 14%, transparent);
+}
+
+.pr-refresh-control[data-state='error'] .pr-refresh-live,
+.pr-refresh-control[data-state='error'] > button {
+  color: var(--danger-text);
+}
+
+.pr-refresh-control[data-state='error'] .pr-refresh-live > i {
+  background: var(--danger-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger-text) 14%, transparent);
+}
+
+.pr-refresh-control time {
+  color: var(--text-3);
+}
+
+.pr-refresh-control[data-compact='true'] {
+  gap: 5px;
+}
+
+.pr-refresh-control[data-compact='true'] time {
+  display: none;
+}
+
+.pr-refresh-control > button > span {
+  display: inline-grid;
+  place-items: center;
+}
+
+@keyframes pr-refresh-pulse {
+  50% {
+    opacity: 0.45;
+    transform: scale(0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pr-refresh-control[data-state='refreshing'] .pr-refresh-live > i {
+    animation: none;
+  }
+}
+
 .pr-inbox-controls {
   display: flex;
   min-height: 48px;

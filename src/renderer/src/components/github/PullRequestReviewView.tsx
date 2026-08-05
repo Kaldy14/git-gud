@@ -45,6 +45,7 @@ import {
   gitHubPullRequestDetailQueryKey,
   gitHubPullRequestInboxQueryKey,
   refreshGitHubPullRequestInboxAfterMerge,
+  useGitHubPullRequestInbox,
   useGitHubPullRequestDetail,
   useGitHubPullRequestReviewPlan
 } from '@renderer/queries/github';
@@ -61,6 +62,7 @@ import type {
 } from '@shared/types';
 
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
+import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { PullRequestGitHubLink } from './PullRequestGitHubLink';
 import { PullRequestHeaderActions } from './PullRequestHeaderActions';
 import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
@@ -120,14 +122,36 @@ export function PullRequestReviewView({
     number: pullRequest.number
   };
   const detailQuery = useGitHubPullRequestDetail(locator);
+  const inboxQuery = useGitHubPullRequestInbox(locator.profileId, 'interactive');
+  const livePullRequest = inboxQuery.data?.pullRequests.find(
+    (candidate) =>
+      candidate.owner === locator.owner &&
+      candidate.repository === locator.repository &&
+      candidate.number === locator.number
+  ) ?? pullRequest;
   const initialDetail = detailQuery.data;
   const reviewPlanQuery = useGitHubPullRequestReviewPlan(locator, initialDetail?.headSha);
   const detail = useMemo(
-    () => initialDetail && reviewPlanQuery.data
-      ? { ...initialDetail, reviewPlan: reviewPlanQuery.data }
-      : initialDetail,
-    [initialDetail, reviewPlanQuery.data]
+    () => {
+      if (!initialDetail) {
+        return undefined;
+      }
+
+      return {
+        ...initialDetail,
+        ...livePullRequest,
+        reviewPlan: reviewPlanQuery.data ?? initialDetail.reviewPlan
+      };
+    },
+    [initialDetail, livePullRequest, reviewPlanQuery.data]
   );
+  const hasNewActivity = Boolean(
+    initialDetail && Date.parse(livePullRequest.updatedAt) > Date.parse(initialDetail.updatedAt)
+  );
+
+  const refreshPullRequest = (): void => {
+    void Promise.all([inboxQuery.refetch(), detailQuery.refetch()]);
+  };
 
   if (detailQuery.isLoading && !detail) {
     return (
@@ -180,6 +204,20 @@ export function PullRequestReviewView({
       onClose={onClose}
       onMerged={onMerged}
       isReviewPlanEnriching={reviewPlanQuery.isFetching && !reviewPlanQuery.data}
+      isRefreshing={
+        inboxQuery.isFetching ||
+        (detailQuery.isFetching && !detailQuery.isLoading)
+      }
+      hasNewActivity={hasNewActivity}
+      refreshErrorMessage={
+        inboxQuery.error instanceof Error
+          ? inboxQuery.error.message
+          : detailQuery.error instanceof Error
+            ? detailQuery.error.message
+            : undefined
+      }
+      lastRefreshedAt={inboxQuery.data?.loadedAt ?? detail.loadedAt}
+      onRefresh={refreshPullRequest}
     />
   );
 }
@@ -327,7 +365,12 @@ function PullRequestReviewContent({
   onOpenCommit,
   onClose,
   onMerged,
-  isReviewPlanEnriching
+  isReviewPlanEnriching,
+  isRefreshing,
+  hasNewActivity,
+  refreshErrorMessage,
+  lastRefreshedAt,
+  onRefresh
 }: {
   detail: GitHubPullRequestDetail;
   codexRepoPath?: string;
@@ -339,6 +382,11 @@ function PullRequestReviewContent({
   onClose: () => void;
   onMerged: () => void;
   isReviewPlanEnriching: boolean;
+  isRefreshing: boolean;
+  hasNewActivity: boolean;
+  refreshErrorMessage?: string;
+  lastRefreshedAt: string;
+  onRefresh: () => void;
 }): ReactElement {
   const locator = {
     profileId: detail.profileId,
@@ -690,6 +738,14 @@ function PullRequestReviewContent({
             Adding context
           </span>
         ) : null}
+        <PullRequestRefreshControl
+          lastRefreshedAt={lastRefreshedAt}
+          isRefreshing={isRefreshing}
+          hasNewActivity={hasNewActivity}
+          errorMessage={refreshErrorMessage}
+          compact
+          onRefresh={onRefresh}
+        />
         <PullRequestHeaderActions
           detail={detail}
           repoPath={codexRepoPath}
