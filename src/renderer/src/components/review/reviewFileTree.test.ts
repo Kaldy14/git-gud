@@ -21,12 +21,12 @@ describe('review file tree', () => {
   it('deduplicates visible files and preserves their git status', () => {
     const units = [
       visibleUnit('api', [
-        chunk('src/api.ts', 'modified'),
-        chunk('src/new.ts', 'added')
+        chunk('src/api.ts', 'modified', 'modified'),
+        chunk('src/new.ts', 'added', 'added')
       ]),
       visibleUnit('tests', [
-        chunk('src/api.ts', 'modified'),
-        { ...chunk('src/current.ts', 'modified'), originalPath: 'src/legacy.ts' }
+        chunk('src/api.ts', 'modified', 'modified'),
+        { ...chunk('src/current.ts', 'modified', 'renamed'), originalPath: 'src/legacy.ts' }
       ])
     ];
 
@@ -34,6 +34,30 @@ describe('review file tree', () => {
       { path: 'src/api.ts', status: 'modified' },
       { path: 'src/new.ts', status: 'added' },
       { path: 'src/current.ts', status: 'renamed' }
+    ]);
+  });
+
+  it('uses the file status when a modified file contains a deletion-only chunk', () => {
+    const units = [
+      visibleUnit('cleanup', [
+        chunk('src/cleanup.ts', 'deleted', 'modified'),
+        chunk('src/removed.ts', 'deleted', 'deleted')
+      ])
+    ];
+
+    expect(createReviewFileTreeEntries(units)).toEqual([
+      { path: 'src/cleanup.ts', status: 'modified' },
+      { path: 'src/removed.ts', status: 'deleted' }
+    ]);
+  });
+
+  it('presents an untracked review file as added', () => {
+    const units = [
+      visibleUnit('new file', [chunk('src/new.ts', 'added', 'untracked')])
+    ];
+
+    expect(createReviewFileTreeEntries(units)).toEqual([
+      { path: 'src/new.ts', status: 'added' }
     ]);
   });
 
@@ -155,7 +179,8 @@ function visibleUnit(id: string, chunks: GitReviewChunk[]): VisibleReviewUnit {
 
 function chunk(
   path: string,
-  changeType: GitReviewChunk['changeType']
+  changeType: GitReviewChunk['changeType'],
+  fileStatus?: GitReviewChunk['fileStatus']
 ): GitReviewChunk {
   return {
     id: `${path}:${changeType}`,
@@ -170,6 +195,7 @@ function chunk(
     reviewSection: 'implementation',
     category: 'source',
     changeType,
+    fileStatus,
     contentKind: 'code',
     source: 'commit'
   };

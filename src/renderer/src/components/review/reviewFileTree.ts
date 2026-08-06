@@ -18,23 +18,60 @@ export const MAX_REVIEW_FILE_TREE_WIDTH = 520;
 export function createReviewFileTreeEntries(
   units: readonly VisibleReviewUnit[]
 ): ReviewFileTreeEntry[] {
-  const entries = new Map<string, ReviewFileTreeEntry>();
+  const chunksByPath = new Map<string, GitReviewChunk[]>();
 
   for (const unit of units) {
     for (const chunk of unit.visibleChunks) {
-      if (!entries.has(chunk.path)) {
-        entries.set(chunk.path, {
-          path: chunk.path,
-          status:
-            chunk.originalPath && chunk.originalPath !== chunk.path
-              ? 'renamed'
-              : chunk.changeType
-        });
-      }
+      const chunks = chunksByPath.get(chunk.path) ?? [];
+      chunks.push(chunk);
+      chunksByPath.set(chunk.path, chunks);
     }
   }
 
-  return [...entries.values()];
+  return [...chunksByPath].map(([path, chunks]) => ({
+    path,
+    status: reviewFileTreeStatus(chunks)
+  }));
+}
+
+function reviewFileTreeStatus(
+  chunks: readonly GitReviewChunk[]
+): ReviewFileTreeEntry['status'] {
+  if (chunks.some((chunk) => chunk.originalPath && chunk.originalPath !== chunk.path)) {
+    return 'renamed';
+  }
+
+  const fileStatuses = new Set(
+    chunks.flatMap((chunk) => {
+      switch (chunk.fileStatus) {
+        case 'added':
+        case 'deleted':
+        case 'ignored':
+        case 'modified':
+        case 'renamed':
+          return [chunk.fileStatus];
+        case 'untracked':
+          return ['added' as const];
+        case 'conflicted':
+        case 'copied':
+        case 'unmodified':
+          return ['modified' as const];
+        default:
+          return [];
+      }
+    })
+  );
+
+  if (fileStatuses.size === 1) {
+    return [...fileStatuses][0]!;
+  }
+
+  if (fileStatuses.size > 1) {
+    return 'modified';
+  }
+
+  const chunkTypes = new Set(chunks.map((chunk) => chunk.changeType));
+  return chunkTypes.size === 1 ? [...chunkTypes][0]! : 'modified';
 }
 
 export function findReviewUnitIdForPath(

@@ -186,6 +186,8 @@ describe('context review plans', () => {
     expect(chunks.find((chunk) => chunk.path === 'src/deleted.ts')?.changeType).toBe('deleted');
     expect(chunks.find((chunk) => chunk.path === 'src/cleanup.ts')?.changeType).toBe('deleted');
     expect(chunks.find((chunk) => chunk.path === 'src/mixed.ts')?.changeType).toBe('modified');
+    expect(chunks.find((chunk) => chunk.path === 'src/deleted.ts')?.fileStatus).toBe('deleted');
+    expect(chunks.find((chunk) => chunk.path === 'src/cleanup.ts')?.fileStatus).toBe('modified');
   });
 
   it('classifies import-only hunks while keeping mixed and dynamic imports visible', () => {

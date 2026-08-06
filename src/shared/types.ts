@@ -224,6 +224,7 @@ export type GitReviewChunk = {
   id: string;
   path: string;
   originalPath?: string;
+  fileStatus?: GitStatusCode;
   fileContextId?: string;
   patch: string;
   header: string;
