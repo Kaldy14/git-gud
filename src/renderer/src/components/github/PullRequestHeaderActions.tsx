@@ -102,7 +102,7 @@ export function PullRequestHeaderActions({
           Overview
         </button>
         <OpenApplicationSplitButton controller={openApplication} />
-        <PullRequestGitHubLink url={detail.url} />
+        <PullRequestGitHubLink url={detail.url} onNotice={onNotice} />
         <button className="btn-subtle btn-regular" type="button" onClick={onFinishReview}>
           <ShieldCheck size={13} />
           {finishReviewLabel}

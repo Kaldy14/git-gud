@@ -4,6 +4,7 @@ import { validateIpcArgs } from './ipcValidation';
 
 describe('IPC argument validation', () => {
   it('accepts valid typed command payloads', () => {
+    expect(validateIpcArgs('app:pull-request-deep-links-ready', [])).toEqual([]);
     expect(validateIpcArgs('updates:get-state', [])).toEqual([]);
     expect(validateIpcArgs('updates:apply', [])).toEqual([]);
     expect(validateIpcArgs('dev:review-grouping-benchmarks', [])).toEqual([]);

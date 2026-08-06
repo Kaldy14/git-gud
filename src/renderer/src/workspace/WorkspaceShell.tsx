@@ -68,6 +68,8 @@ import {
 } from '@renderer/queries/repository';
 import {
   dashboardsQueryKey,
+  gitHubPullRequestDetailQueryOptions,
+  gitHubPullRequestInboxQueryOptions,
   useDashboards,
   useGitHubPullRequestInbox
 } from '@renderer/queries/github';
@@ -107,6 +109,7 @@ import {
 import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import { dashboardProfileId } from '@shared/dashboard';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
+import type { PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
 import type {
   AppSettings,
   CommitGraphRow,
@@ -131,6 +134,12 @@ import type {
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
+import {
+  appendPullRequestDeepLinkTarget,
+  findPullRequestForDeepLink,
+  profilesForPullRequestDeepLink,
+  pullRequestDeepLinkTargetKey
+} from '@renderer/workspace/pullRequestDeepLinkNavigation';
 
 const emptyGraphRows: CommitGraphRow[] = [];
 const emptySelectedShas: string[] = [];
@@ -274,6 +283,11 @@ export function WorkspaceShell(): ReactElement {
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [profiles, setProfiles] = useState<GitProfile[]>([]);
+  const [hasLoadedProfiles, setHasLoadedProfiles] = useState(false);
+  const [pullRequestDeepLinkQueue, setPullRequestDeepLinkQueue] = useState<
+    PullRequestDeepLinkTarget[]
+  >([]);
+  const [pullRequestDeepLinkError, setPullRequestDeepLinkError] = useState<string>();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
@@ -301,6 +315,7 @@ export function WorkspaceShell(): ReactElement {
     createRepositoryAutoFetchCoordinator<Pick<RepoTab, 'commonDir' | 'path'>>()
   );
   const runRepositoryOperationRef = useRef<RepositoryOperationRunner | undefined>(undefined);
+  const openingPullRequestDeepLinkRef = useRef<string | undefined>(undefined);
   const operationRetryActionsRef = useRef(
     new Map<
       string,
@@ -676,7 +691,38 @@ export function WorkspaceShell(): ReactElement {
     window.api
       .listProfiles()
       .then(setProfiles)
-      .catch(() => setProfiles([]));
+      .catch(() => setProfiles([]))
+      .finally(() => setHasLoadedProfiles(true));
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+    const enqueue = (target: PullRequestDeepLinkTarget): void => {
+      if (!isActive) {
+        return;
+      }
+
+      setPullRequestDeepLinkQueue((targets) =>
+        appendPullRequestDeepLinkTarget(targets, target)
+      );
+    };
+    const unsubscribe = window.api.onOpenPullRequestDeepLink(enqueue);
+
+    void window.api
+      .readyForPullRequestDeepLinks()
+      .then((targets) => targets.forEach(enqueue))
+      .catch(() => {
+        if (isActive) {
+          setPullRequestDeepLinkError(
+            'Git Gud could not start listening for pull request links.'
+          );
+        }
+      });
+
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -1030,10 +1076,10 @@ export function WorkspaceShell(): ReactElement {
     void repositoryQuery.refetch();
   }
 
-  async function handleActivateProfile(
+  const handleActivateProfile = useCallback(async (
     profileId: string | undefined,
     targetProfile?: GitProfile
-  ): Promise<void> {
+  ): Promise<void> => {
     const startedAt = window.performance.now();
     const nextProfile = targetProfile ?? profiles.find((profile) => profile.id === profileId);
     setProfileTransition({
@@ -1082,7 +1128,124 @@ export function WorkspaceShell(): ReactElement {
       await delay(PROFILE_TRANSITION_EXIT_MS);
       setProfileTransition(undefined);
     }
-  }
+  }, [
+    activeWorkspaceProfile,
+    activateProfile,
+    profiles,
+    queryClient,
+    settings.graphPageSize
+  ]);
+
+  useEffect(() => {
+    const target = pullRequestDeepLinkQueue[0];
+
+    if (!target || !hasLoadedProfiles) {
+      return;
+    }
+
+    const targetKey = pullRequestDeepLinkTargetKey(target);
+
+    if (openingPullRequestDeepLinkRef.current === targetKey) {
+      return;
+    }
+
+    openingPullRequestDeepLinkRef.current = targetKey;
+    setPullRequestDeepLinkError(undefined);
+
+    void (async () => {
+      const matchingProfiles = profilesForPullRequestDeepLink(
+        target,
+        profiles,
+        workspace.activeProfileId
+      );
+
+      if (matchingProfiles.length === 0) {
+        throw new Error(`Connect a GitHub profile for ${target.host} first.`);
+      }
+
+      let match:
+        | { profile: GitProfile; pullRequest: GitHubPullRequestSummary }
+        | undefined;
+      let lastProfileError: unknown;
+
+      for (const profile of matchingProfiles) {
+        let pullRequest: GitHubPullRequestSummary | undefined;
+
+        try {
+          const inbox = await queryClient.fetchQuery(
+            gitHubPullRequestInboxQueryOptions(profile.id, 'interactive')
+          );
+          pullRequest = findPullRequestForDeepLink(target, inbox);
+        } catch (error: unknown) {
+          lastProfileError = error;
+        }
+
+        if (!pullRequest) {
+          try {
+            pullRequest = await queryClient.fetchQuery(
+              gitHubPullRequestDetailQueryOptions({
+                profileId: profile.id,
+                owner: target.owner,
+                repository: target.repository,
+                number: target.number
+              })
+            );
+          } catch (error: unknown) {
+            // A different connected profile for this host may still have access.
+            lastProfileError = error;
+          }
+        }
+
+        if (pullRequest) {
+          match = { profile, pullRequest };
+          break;
+        }
+      }
+
+      if (!match) {
+        if (lastProfileError) {
+          throw lastProfileError;
+        }
+
+        throw new Error(
+          'This pull request is not accessible from any connected GitHub account.'
+        );
+      }
+
+      if (workspace.activeProfileId !== match.profile.id) {
+        await handleActivateProfile(match.profile.id, match.profile);
+      }
+
+      setIsStartTabActive(false);
+      setGitHubWorkspaceView({ kind: 'review', pullRequest: match.pullRequest });
+      setCompactDetailOpen(false);
+      setCompactSidebarOpen(false);
+    })()
+      .catch((error: unknown) => {
+        const message = error instanceof Error
+          ? error.message
+          : 'The pull request could not be opened.';
+
+        setPullRequestDeepLinkError(
+          `Could not open ${target.owner}/${target.repository}#${target.number}: ${message}`
+        );
+      })
+      .finally(() => {
+        openingPullRequestDeepLinkRef.current = undefined;
+        setPullRequestDeepLinkQueue((targets) =>
+          targets.filter(
+            (candidate) => pullRequestDeepLinkTargetKey(candidate) !== targetKey
+          )
+        );
+      });
+  }, [
+    handleActivateProfile,
+    hasLoadedProfiles,
+    profiles,
+    pullRequestDeepLinkQueue,
+    queryClient,
+    workspace.activeProfileId
+  ]);
 
   async function handleSaveAndActivateProfile(profile: GitProfile): Promise<void> {
     const nextProfiles = await window.api.saveProfile(profile);
@@ -2880,6 +3043,23 @@ export function WorkspaceShell(): ReactElement {
           onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
           onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
         />
+      ) : null}
+
+      {pullRequestDeepLinkError ? (
+        <div
+          className="flex shrink-0 items-center justify-between border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]"
+          role="alert"
+        >
+          <span>{pullRequestDeepLinkError}</span>
+          <button
+            className="icon-btn h-6 w-6"
+            type="button"
+            onClick={() => setPullRequestDeepLinkError(undefined)}
+            aria-label="Dismiss pull request link error"
+          >
+            <X size={13} />
+          </button>
+        </div>
       ) : null}
 
       {!gitHubWorkspaceView && !repositoryUnavailable && (errorMessage || repositoryError) ? (

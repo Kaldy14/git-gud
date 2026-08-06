@@ -85,6 +85,7 @@ import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
 import { requestOperationCancellation } from './operationCancellation';
 import { openPullRequestInApplication } from './managedPullRequestWorktrees';
+import { pullRequestDeepLinkQueue } from './pullRequestDeepLinks';
 import {
   loadPortainerStackCatalog,
   loadPortainerStackImages,
@@ -187,6 +188,10 @@ export function registerIpcHandlers(
   applicationUpdater: Pick<ApplicationUpdater, 'applyUpdate' | 'getState'>,
   isDevelopment = false
 ): void {
+  handle('app:pull-request-deep-links-ready', () =>
+    pullRequestDeepLinkQueue.markRendererReady()
+  );
+
   function broadcastDashboardActionAlerts(state: DashboardActionAlertState): void {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('dashboards:alerts-changed', state);

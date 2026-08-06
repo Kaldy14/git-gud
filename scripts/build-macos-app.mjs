@@ -23,6 +23,7 @@ const packageJson = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf
 const productName = packageJson.productName ?? 'Git Gud';
 const appVersion = env.GIT_GUD_VERSION?.trim().replace(/^v/, '') || '0.0.0';
 const bundleId = 'dev.kaldy.git-gud';
+const deepLinkProtocol = 'git-gud';
 const iconFileName = 'icon.icns';
 const electronBinary = require('electron');
 const electronAppPath = findAncestorAppBundle(electronBinary);
@@ -115,6 +116,32 @@ function updateInfoPlist() {
   setPlistValue('CFBundleVersion', 'string', appVersion);
   setPlistValue('LSApplicationCategoryType', 'string', 'public.app-category.developer-tools');
   setPlistValue('NSHighResolutionCapable', 'bool', 'true');
+  setUrlProtocol();
+}
+
+function setUrlProtocol() {
+  const plistBuddy = '/usr/libexec/PlistBuddy';
+
+  try {
+    execFileSync(plistBuddy, ['-c', 'Delete :CFBundleURLTypes', infoPlistPath], {
+      stdio: 'ignore'
+    });
+  } catch {
+    // The Electron template does not normally define URL protocols.
+  }
+
+  execFileSync(
+    plistBuddy,
+    [
+      '-c', 'Add :CFBundleURLTypes array',
+      '-c', 'Add :CFBundleURLTypes:0 dict',
+      '-c', `Add :CFBundleURLTypes:0:CFBundleURLName string ${bundleId}`,
+      '-c', 'Add :CFBundleURLTypes:0:CFBundleURLSchemes array',
+      '-c', `Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ${deepLinkProtocol}`,
+      infoPlistPath
+    ],
+    { stdio: 'ignore' }
+  );
 }
 
 function setPlistValue(key, type, value) {

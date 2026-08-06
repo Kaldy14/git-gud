@@ -200,6 +200,48 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
   }
 }`.trim();
 
+const DIRECT_PULL_REQUEST_QUERY = `
+query GitGudPullRequest($owner: String!, $repository: String!, $number: Int!) {
+  viewer { login }
+  repository(owner: $owner, name: $repository) {
+    pullRequest(number: $number) {
+      id number title url updatedAt isDraft state reviewDecision mergeStateStatus mergeable
+      viewerCanUpdate viewerCanClose changedFiles additions deletions headRefName headRefOid baseRefName
+      author { login avatarUrl }
+      repository { nameWithOwner }
+      headRepository { nameWithOwner }
+      totalCommentsCount
+      latestReviews(first: 20) {
+        nodes {
+          state
+          submittedAt
+          author { login avatarUrl }
+        }
+      }
+      reviewRequests(first: 20) {
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on User { login avatarUrl }
+            ... on Team { slug name organization { login } }
+          }
+        }
+      }
+      statusCheckRollup {
+        state
+        contexts(first: 100) {
+          totalCount
+          nodes {
+            __typename
+            ... on CheckRun { status conclusion }
+            ... on StatusContext { state }
+          }
+        }
+      }
+    }
+  }
+}`.trim();
+
 const CATEGORY_ORDER: GitHubPullRequestCategory[] = [
   'needs-your-review',
   'needs-team-review',
@@ -400,6 +442,28 @@ async function loadGitHubPullRequestInboxForContext(
 
   gitHubPullRequestInboxCache.set(profileId, inbox);
   return inbox;
+}
+
+async function loadGitHubPullRequestSummaryForContext(
+  context: GitHubContext,
+  locator: GitHubPullRequestLocator
+): Promise<{ pullRequest: GitHubPullRequestSummary; viewerLogin: string }> {
+  const raw = await runGitHubJson(context, [
+    'api',
+    'graphql',
+    '--hostname',
+    context.host,
+    '-f',
+    `query=${DIRECT_PULL_REQUEST_QUERY}`,
+    '-F',
+    `owner=${locator.owner}`,
+    '-F',
+    `repository=${locator.repository}`,
+    '-F',
+    `number=${locator.number}`
+  ]);
+
+  return parseGitHubPullRequestResponse(raw, locator.profileId);
 }
 
 export function parseGitHubRepositoriesResponse(raw: unknown): GitHubRepositorySummary[] {
@@ -829,12 +893,8 @@ export async function loadGitHubPullRequestDetail(
 ): Promise<GitHubPullRequestDetail> {
   const context = await getGitHubContext(locator.profileId);
   const endpoint = pullRequestEndpoint(locator);
-  const cachedInbox = gitHubPullRequestInboxCache.get(locator.profileId);
-  const inboxRequest = cachedInbox && canReuseGitHubPullRequestInbox(cachedInbox)
-    ? Promise.resolve(cachedInbox)
-    : loadGitHubPullRequestInboxForContext(context, locator.profileId);
   const [
-    inbox,
+    summaryResult,
     pullRaw,
     repositoryRaw,
     filesRaw,
@@ -843,8 +903,15 @@ export async function loadGitHubPullRequestDetail(
     conversationCommentsRaw,
     reviewsRaw
   ] = await Promise.all([
-    inboxRequest,
-    runGitHubJson(context, ['api', '--hostname', context.host, endpoint]),
+    loadGitHubPullRequestSummaryForContext(context, locator),
+    runGitHubJson(context, [
+      'api',
+      '--hostname',
+      context.host,
+      '-H',
+      'Accept: application/vnd.github.full+json',
+      endpoint
+    ]),
     runGitHubJson(context, ['api', '--hostname', context.host, repositoryEndpoint(locator)]),
     runGitHubPaginatedArray(context, `${endpoint}/files?per_page=100`),
     runGitHubPaginatedArray(context, `${endpoint}/commits?per_page=100`),
@@ -855,11 +922,7 @@ export async function loadGitHubPullRequestDetail(
     ),
     runGitHubPaginatedArray(context, `${endpoint}/reviews?per_page=100`)
   ]);
-  const summary = inbox.pullRequests.find((pullRequest) => samePullRequest(pullRequest, locator));
-
-  if (!summary) {
-    throw new Error('This pull request is no longer in the selected account inbox. Refresh the inbox and try again.');
-  }
+  const { pullRequest: summary, viewerLogin } = summaryResult;
 
   const pull = readRecord(pullRaw, 'pull request');
   const files = filesRaw.map(parsePullRequestFile);
@@ -891,6 +954,10 @@ export async function loadGitHubPullRequestDetail(
   return {
     ...summary,
     body: readOptionalString(pull.body) ?? '',
+    bodyImageUrls: parseGitHubBodyImageUrls(
+      readOptionalString(pull.body) ?? '',
+      readOptionalString(pull.body_html) ?? ''
+    ),
     headSha,
     baseSha,
     baseRefSha,
@@ -899,7 +966,7 @@ export async function loadGitHubPullRequestDetail(
     files,
     reviewPlan,
     mergeSettings: parseGitHubRepositoryMergeSettings(repositoryRaw),
-    viewerLogin: inbox.viewerLogin,
+    viewerLogin,
     reviewComments: reviewCommentsRaw.map(parseReviewComment),
     conversationComments: conversationCommentsRaw.map(parseConversationComment),
     reviews: reviewsRaw.map(parseReview),
@@ -1783,6 +1850,29 @@ export function parseGitHubInboxResponse(
   };
 }
 
+export function parseGitHubPullRequestResponse(
+  value: unknown,
+  profileId: string
+): { pullRequest: GitHubPullRequestSummary; viewerLogin: string } {
+  const root = readRecord(value, 'GitHub GraphQL response');
+  const data = readRecord(root.data, 'GitHub GraphQL data');
+  const viewer = readRecord(data.viewer, 'GitHub viewer');
+  const viewerLogin = readString(viewer.login, 'GitHub viewer login');
+  const repository = readRecord(data.repository, 'GitHub repository');
+  const pullRequest = readRecord(repository.pullRequest, 'pull request');
+  const author = readNestedString(pullRequest, ['author', 'login'], 'pull request author');
+
+  return {
+    pullRequest: parsePullRequestSummary(
+      pullRequest,
+      profileId,
+      viewerLogin,
+      author.toLowerCase() === viewerLogin.toLowerCase() ? 'authored' : 'review'
+    ),
+    viewerLogin
+  };
+}
+
 function parsePullRequestSummary(
   value: unknown,
   profileId: string,
@@ -1832,6 +1922,7 @@ function parsePullRequestSummary(
     author: readNestedString(pullRequest, ['author', 'login'], 'pull request author'),
     authorAvatarUrl: readNestedOptionalString(pullRequest, ['author', 'avatarUrl']),
     updatedAt: readString(pullRequest.updatedAt, 'pull request updated time'),
+    state: normalizePullRequestState(readOptionalString(pullRequest.state)),
     category,
     isDraft: pullRequest.isDraft === true,
     reviewDecision,
@@ -2053,6 +2144,88 @@ export function parseReviewComment(value: unknown): GitHubPullRequestReviewComme
   };
 }
 
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))/gu;
+const HTML_IMAGE_PATTERN = /<img\b[^>]*>/giu;
+
+export function parseGitHubBodyImageUrls(
+  body: string,
+  renderedBody: string
+): Record<string, string> {
+  const sourceUrls = extractBodyImageUrls(body);
+  const renderedUrls = [...renderedBody.matchAll(HTML_IMAGE_PATTERN)]
+    .map((match) => readHtmlAttribute(match[0], 'src'))
+    .filter((url): url is string => Boolean(url));
+  const urls: Record<string, string> = {};
+
+  for (const [index, sourceUrl] of sourceUrls.entries()) {
+    const renderedUrl = renderedUrls[index];
+    if (
+      renderedUrl &&
+      renderedUrl !== sourceUrl &&
+      isGitHubRenderedImageUrl(renderedUrl)
+    ) {
+      urls[sourceUrl] = renderedUrl;
+    }
+  }
+
+  return urls;
+}
+
+function extractBodyImageUrls(body: string): string[] {
+  const images: Array<{ index: number; url: string }> = [];
+
+  for (const match of body.matchAll(HTML_IMAGE_PATTERN)) {
+    const url = readHtmlAttribute(match[0], 'src');
+    if (url) {
+      images.push({ index: match.index, url });
+    }
+  }
+
+  for (const match of body.matchAll(MARKDOWN_IMAGE_PATTERN)) {
+    const url = match[1] ?? match[2];
+    if (url) {
+      images.push({ index: match.index, url: decodeHtmlAttribute(url) });
+    }
+  }
+
+  return images
+    .sort((left, right) => left.index - right.index)
+    .map((image) => image.url);
+}
+
+function readHtmlAttribute(tag: string, name: string): string | undefined {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const match = new RegExp(
+    `\\b${escapedName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    'iu'
+  ).exec(tag);
+  const value = match?.[1] ?? match?.[2] ?? match?.[3];
+  return value ? decodeHtmlAttribute(value) : undefined;
+}
+
+function decodeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll('&amp;', '&')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>');
+}
+
+function isGitHubRenderedImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && (
+      url.hostname === 'private-user-images.githubusercontent.com' ||
+      url.hostname === 'user-images.githubusercontent.com' ||
+      url.hostname === 'raw.githubusercontent.com' ||
+      url.hostname === 'github.com'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function parsePullRequestCommit(value: unknown): GitHubPullRequestCommit {
   const pullRequestCommit = readRecord(value, 'pull request commit');
   const commit = readRecord(pullRequestCommit.commit, 'pull request commit detail');
@@ -2193,6 +2366,16 @@ function normalizeReviewDecision(value: string | undefined): GitHubPullRequestSu
     return 'review-required';
   }
   return 'unknown';
+}
+
+function normalizePullRequestState(
+  value: string | undefined
+): GitHubPullRequestSummary['state'] {
+  const normalized = value?.toLowerCase();
+
+  return normalized === 'open' || normalized === 'closed' || normalized === 'merged'
+    ? normalized
+    : undefined;
 }
 
 function normalizeMergeState(value: string | undefined): GitHubPullRequestSummary['mergeState'] {
@@ -2419,18 +2602,6 @@ function pullRequestEndpoint(locator: GitHubPullRequestLocator): string {
 
 function repositoryEndpoint(locator: GitHubPullRequestLocator): string {
   return `repos/${encodeURIComponent(locator.owner)}/${encodeURIComponent(locator.repository)}`;
-}
-
-function samePullRequest(
-  pullRequest: GitHubPullRequestLocator,
-  locator: GitHubPullRequestLocator
-): boolean {
-  return (
-    pullRequest.profileId === locator.profileId &&
-    pullRequest.owner === locator.owner &&
-    pullRequest.repository === locator.repository &&
-    pullRequest.number === locator.number
-  );
 }
 
 function readSearchNodes(value: unknown, label: string): unknown[] {

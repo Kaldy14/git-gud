@@ -77,6 +77,7 @@ import type {
   OpenPullRequestInApplicationInput,
   OpenPullRequestInApplicationResult
 } from './externalApplications';
+import type { PullRequestDeepLinkTarget } from './pullRequestDeepLink';
 
 export type RepositoryInitializeInput = {
   parentDirectory: string;
@@ -91,6 +92,10 @@ export type RepositoryCloneInput = {
 };
 
 export type IpcChannelMap = {
+  'app:pull-request-deep-links-ready': {
+    args: [];
+    result: PullRequestDeepLinkTarget[];
+  };
   'updates:get-state': {
     args: [];
     result: ApplicationUpdateState;
@@ -527,6 +532,7 @@ export type RendererDevApi = {
 };
 
 export type RendererApi = {
+  readyForPullRequestDeepLinks: () => Promise<PullRequestDeepLinkTarget[]>;
   getApplicationUpdateState: () => Promise<ApplicationUpdateState>;
   applyApplicationUpdate: () => Promise<ApplicationUpdateState>;
   getWorkspace: () => Promise<WorkspaceState>;
@@ -671,5 +677,8 @@ export type RendererApi = {
   ) => () => void;
   onApplicationUpdateStateChanged: (
     listener: (state: ApplicationUpdateState) => void
+  ) => () => void;
+  onOpenPullRequestDeepLink: (
+    listener: (target: PullRequestDeepLinkTarget) => void
   ) => () => void;
 } & Partial<RendererDevApi>;

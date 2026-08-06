@@ -1199,6 +1199,7 @@ export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   author: string;
   authorAvatarUrl?: string;
   updatedAt: string;
+  state?: 'open' | 'closed' | 'merged';
   category: GitHubPullRequestCategory;
   isDraft: boolean;
   reviewDecision: 'approved' | 'changes-requested' | 'review-required' | 'unknown';
@@ -1304,6 +1305,7 @@ export type GitHubRepositoryMergeSettings = {
 
 export type GitHubPullRequestDetail = GitHubPullRequestSummary & {
   body: string;
+  bodyImageUrls?: Record<string, string>;
   headSha: string;
   baseSha: string;
   baseRefSha: string;

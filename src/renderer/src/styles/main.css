@@ -3888,6 +3888,19 @@ button.ref-chip {
   white-space: nowrap;
 }
 
+.pr-review-change-stat[data-change='addition'] {
+  color: var(--success-text);
+}
+
+.pr-review-change-stat[data-change='deletion'] {
+  color: var(--danger-text);
+}
+
+.pr-review-overview-copy-link {
+  flex: 0 0 auto;
+  font-family: var(--font-ui);
+}
+
 .pr-review-overview-body {
   display: grid;
   max-height: min(620px, 64vh);

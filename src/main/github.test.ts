@@ -16,6 +16,8 @@ import {
   mergeGitHubPullRequestReviewPlanContext,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
+  parseGitHubBodyImageUrls,
+  parseGitHubPullRequestResponse,
   parseGitHubFileTextBatchResponse,
   parsePullRequestCommit,
   parseGitHubRepositoriesResponse,
@@ -584,6 +586,37 @@ describe('GitHub pull request inbox', () => {
     });
   });
 
+  it('parses a merged pull request outside the open inbox', () => {
+    const response = parseGitHubPullRequestResponse(
+      {
+        data: {
+          viewer: { login: 'octocat' },
+          repository: {
+            pullRequest: pullRequestNode({
+              number: 699,
+              state: 'MERGED',
+              title: 'Fix price, SEO, and sitemap edge cases',
+              url: 'https://github.com/VosoBrands/hive/pull/699',
+              repository: { nameWithOwner: 'VosoBrands/hive' },
+              headRepository: { nameWithOwner: 'VosoBrands/hive' },
+              author: { login: 'octocat' }
+            })
+          }
+        }
+      },
+      'work'
+    );
+
+    expect(response.viewerLogin).toBe('octocat');
+    expect(response.pullRequest).toMatchObject({
+      profileId: 'work',
+      owner: 'VosoBrands',
+      repository: 'hive',
+      number: 699,
+      state: 'merged'
+    });
+  });
+
   it('keeps approved work waiting while checks are pending', () => {
     expect(
       categorizePullRequest({
@@ -681,6 +714,18 @@ describe('GitHub pull request inbox', () => {
       committedAt: '2026-07-29T08:00:00Z',
       url: 'https://github.com/acme/widgets/commit/abcdef1234567890'
     });
+  });
+
+  it('pairs GitHub attachment sources with authenticated rendered image URLs', () => {
+    const sourceUrl = 'https://github.com/user-attachments/assets/image-id';
+    const renderedUrl = 'https://private-user-images.githubusercontent.com/1/image-id.png?jwt=signed';
+
+    expect(
+      parseGitHubBodyImageUrls(
+        `<img width="900" alt="Overview" src="${sourceUrl}" />`,
+        `<p><img alt="Overview" src="${renderedUrl}" /></p>`
+      )
+    ).toEqual({ [sourceUrl]: renderedUrl });
   });
 
   it('quotes paths with spaces in reconstructed patches', () => {

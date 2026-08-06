@@ -15,6 +15,12 @@ export function hasPullRequestMergeConflicts(
 export function pullRequestStatus(
   pullRequest: GitHubPullRequestSummary
 ): PullRequestInboxStatus {
+  if (pullRequest.state === 'merged') {
+    return { label: 'Merged', tone: 'success', icon: 'check' };
+  }
+  if (pullRequest.state === 'closed') {
+    return { label: 'Closed', tone: 'danger', icon: 'warning' };
+  }
   if (pullRequest.isDraft) {
     return { label: 'Draft', tone: 'pending', icon: 'dot' };
   }

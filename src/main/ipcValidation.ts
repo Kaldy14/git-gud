@@ -66,6 +66,8 @@ type IpcArgValidators = {
 const MAX_BULK_CHERRY_PICK_COMMITS = 100;
 
 const validators = {
+  'app:pull-request-deep-links-ready': (args) =>
+    noArgs('app:pull-request-deep-links-ready', args),
   'updates:get-state': (args) => noArgs('updates:get-state', args),
   'updates:apply': (args) => noArgs('updates:apply', args),
   'workspace:get': (args) => noArgs('workspace:get', args),

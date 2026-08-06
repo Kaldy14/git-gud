@@ -19,6 +19,12 @@ import { isTrustedRendererUrl } from './ipcSecurity';
 import { flushPendingWorkspaceWrites, getWorkspace } from './store';
 import { reviewGuideManager } from './reviewGuide';
 import {
+  GIT_GUD_PROTOCOL,
+  parsePullRequestDeepLink,
+  PULL_REQUEST_DEEP_LINK_EVENT
+} from '@shared/pullRequestDeepLink';
+import { pullRequestDeepLinkQueue } from './pullRequestDeepLinks';
+import {
   ApplicationUpdater,
   hasCompatibleMacOsUpdateSignature,
   type UpdateTransport,
@@ -30,6 +36,7 @@ const hardQuitTimeoutMs = 3000;
 const updateInstallHardQuitTimeoutMs = 10_000;
 const appDisplayName = 'Git Gud';
 let isQuitting = false;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 const repoWatchers = new RepoWatcherRegistry((event) => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -63,6 +70,10 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show();
+  });
+
+  mainWindow.webContents.on('did-start-loading', () => {
+    pullRequestDeepLinkQueue.markRendererUnavailable();
   });
 
   mainWindow.on('close', (event) => {
@@ -103,6 +114,36 @@ function createWindow(): void {
   }
 }
 
+function openPullRequestDeepLink(value: string): boolean {
+  const target = parsePullRequestDeepLink(value);
+
+  if (!target) {
+    return false;
+  }
+
+  const immediateTarget = pullRequestDeepLinkQueue.enqueue(target);
+  const windows = BrowserWindow.getAllWindows();
+
+  for (const window of windows) {
+    if (immediateTarget) {
+      window.webContents.send(PULL_REQUEST_DEEP_LINK_EVENT, immediateTarget);
+    }
+
+    if (window.isMinimized()) {
+      window.restore();
+    }
+
+    window.show();
+    window.focus();
+  }
+
+  return true;
+}
+
+function openPullRequestDeepLinkFromArguments(arguments_: readonly string[]): boolean {
+  return arguments_.some(openPullRequestDeepLink);
+}
+
 function resolveAppIconPath(): string | undefined {
   const candidatePaths = [
     join(process.resourcesPath, 'icon.png'),
@@ -122,9 +163,34 @@ function isSafeExternalUrl(value: string): boolean {
   }
 }
 
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    openPullRequestDeepLinkFromArguments(commandLine);
+  });
+
+  app.on('open-url', (event, url) => {
+    if (openPullRequestDeepLink(url)) {
+      event.preventDefault();
+    }
+  });
+
+  openPullRequestDeepLinkFromArguments(process.argv);
+}
+
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
+
   app.setName(appDisplayName);
   electronApp.setAppUserModelId('dev.kaldy.git-gud');
+
+  if (app.isPackaged && !app.setAsDefaultProtocolClient(GIT_GUD_PROTOCOL)) {
+    console.warn(`Could not register the ${GIT_GUD_PROTOCOL} URL protocol.`);
+  }
+
   const applicationUpdater = createApplicationUpdater();
   installApplicationMenu(
     () => applicationUpdater.checkForUpdates(true),

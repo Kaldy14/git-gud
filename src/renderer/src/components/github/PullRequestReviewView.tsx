@@ -16,10 +16,9 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  Link2,
   Loader2,
   MessageSquare,
-  Minus,
-  Plus,
   Send,
   ShieldCheck,
   Sparkles,
@@ -71,6 +70,7 @@ import {
   pullRequestStatus
 } from './pullRequestInboxStatus';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
+import { copyGitGudPullRequestLink } from './pullRequestLinkClipboard';
 import {
   buildPullRequestTimeline,
   type PullRequestTimelineEntry
@@ -418,6 +418,33 @@ function PullRequestReviewContent({
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; message: string }>();
+
+  function copyGitGudLink(): void {
+    void copyGitGudPullRequestLink(detail.url, navigator.clipboard)
+      .then(() => {
+        setNotice({ tone: 'success', message: 'Git Gud link copied.' });
+      })
+      .catch(() => {
+        setNotice({
+          tone: 'danger',
+          message: 'The Git Gud link could not be copied.'
+        });
+      });
+  }
+
+  function toggleOverview(): void {
+    const willOpen = !isOverviewOpen;
+    setIsOverviewOpen(willOpen);
+
+    if (
+      willOpen &&
+      Object.keys(detail.bodyImageUrls ?? {}).length > 0 &&
+      Date.now() - Date.parse(detail.loadedAt) >= 4 * 60 * 1_000
+    ) {
+      onRefresh();
+    }
+  }
+
   const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
   const conflictDetailsQuery = useQuery({
     queryKey: [
@@ -729,7 +756,7 @@ function PullRequestReviewContent({
           <ReviewStatus
             detail={detail}
             isOverviewOpen={isOverviewOpen}
-            onToggleConflicts={() => setIsOverviewOpen((isOpen) => !isOpen)}
+            onToggleConflicts={toggleOverview}
           />
         </div>
         {isReviewPlanEnriching ? (
@@ -753,22 +780,27 @@ function PullRequestReviewContent({
           reviewDraftCount={reviewDrafts.length}
           mergeLabel={mergeMethodLabel(detail.mergeSettings.defaultMethod)}
           mergeDisabled={
+            (detail.state !== undefined && detail.state !== 'open') ||
             hasMergeConflicts ||
             !detail.canMerge ||
             detail.isDraft ||
             mergeMutation.isPending
           }
           mergeTitle={
-            hasMergeConflicts
-              ? 'Resolve merge conflicts before merging'
-              : detail.isDraft
-                ? 'Draft pull requests cannot be merged'
-                : !detail.canMerge
-                  ? 'The connected account cannot merge this pull request'
-                  : 'Merge pull request'
+            detail.state === 'merged'
+              ? 'This pull request is already merged'
+              : detail.state === 'closed'
+                ? 'Closed pull requests cannot be merged'
+                : hasMergeConflicts
+                  ? 'Resolve merge conflicts before merging'
+                  : detail.isDraft
+                    ? 'Draft pull requests cannot be merged'
+                    : !detail.canMerge
+                      ? 'The connected account cannot merge this pull request'
+                      : 'Merge pull request'
           }
           isMergePending={mergeMutation.isPending}
-          onToggleOverview={() => setIsOverviewOpen((isOpen) => !isOpen)}
+          onToggleOverview={toggleOverview}
           onFinishReview={() => setIsReviewDialogOpen(true)}
           onOpenMerge={() => setIsMergeDialogOpen(true)}
           onClose={onClose}
@@ -809,11 +841,11 @@ function PullRequestReviewContent({
             <GitCommitHorizontal size={11} />
             <span>{detail.commits} {detail.commits === 1 ? 'commit' : 'commits'}</span>
             <span className="pr-review-overview-stats">
-              <span className="pr-review-change-stat">
-                <Plus size={11} /> {detail.additions.toLocaleString()}
+              <span className="pr-review-change-stat" data-change="addition">
+                +{detail.additions.toLocaleString()}
               </span>
-              <span className="pr-review-change-stat">
-                <Minus size={11} /> {detail.deletions.toLocaleString()}
+              <span className="pr-review-change-stat" data-change="deletion">
+                -{detail.deletions.toLocaleString()}
               </span>
               <span className="pr-review-comment-stat">
                 <MessageSquare size={11} /> {detail.comments} comments
@@ -822,6 +854,14 @@ function PullRequestReviewContent({
                 {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'}
               </span>
             </span>
+            <button
+              className="btn-subtle btn-compact pr-review-overview-copy-link"
+              type="button"
+              onClick={copyGitGudLink}
+            >
+              <Link2 size={12} />
+              Copy Git Gud link
+            </button>
           </div>
           {hasMergeConflicts ? (
             <PullRequestConflictPanel
@@ -841,7 +881,11 @@ function PullRequestReviewContent({
             <div className="pr-review-overview-main">
               <section className="pr-review-description" aria-labelledby="pr-review-description-heading">
                 <h2 id="pr-review-description-heading">Description</h2>
-                <ReviewCommentBody body={detail.body || 'No pull request description was provided.'} />
+                <ReviewCommentBody
+                  body={detail.body || 'No pull request description was provided.'}
+                  imageUrls={detail.bodyImageUrls}
+                  imageLoading="eager"
+                />
               </section>
             </div>
             <section className="pr-review-timeline" aria-labelledby="pr-review-timeline-heading">

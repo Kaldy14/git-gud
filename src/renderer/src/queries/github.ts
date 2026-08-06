@@ -65,6 +65,15 @@ export const gitHubPullRequestDetailQueryKey = (
   locator.number
 ];
 
+export const gitHubPullRequestDetailQueryOptions = (
+  locator: GitHubPullRequestLocator
+) => ({
+  queryKey: gitHubPullRequestDetailQueryKey(locator),
+  queryFn: async (): Promise<GitHubPullRequestDetail> =>
+    window.api.getGitHubPullRequestDetail(locator),
+  staleTime: 15_000
+});
+
 export const gitHubPullRequestReviewPlanQueryKey = (
   locator: GitHubPullRequestLocator,
   headSha: string

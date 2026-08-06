@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import type { IpcChannelMap, RendererApi, RendererDevApi } from '@shared/ipc';
+import { PULL_REQUEST_DEEP_LINK_EVENT } from '@shared/pullRequestDeepLink';
 
 function invoke<TChannel extends keyof IpcChannelMap>(
   channel: TChannel,
@@ -18,6 +19,7 @@ const devApi: Partial<RendererDevApi> = import.meta.env.DEV
   : {};
 
 const api: RendererApi = {
+  readyForPullRequestDeepLinks: () => invoke('app:pull-request-deep-links-ready'),
   getApplicationUpdateState: () => invoke('updates:get-state'),
   applyApplicationUpdate: () => invoke('updates:apply'),
   getWorkspace: () => invoke('workspace:get'),
@@ -170,6 +172,18 @@ const api: RendererApi = {
 
     ipcRenderer.on(channel, wrappedListener);
     return () => ipcRenderer.removeListener(channel, wrappedListener);
+  },
+  onOpenPullRequestDeepLink: (listener) => {
+    const wrappedListener = (
+      _event: Electron.IpcRendererEvent,
+      target: Parameters<typeof listener>[0]
+    ): void => {
+      listener(target);
+    };
+
+    ipcRenderer.on(PULL_REQUEST_DEEP_LINK_EVENT, wrappedListener);
+    return () =>
+      ipcRenderer.removeListener(PULL_REQUEST_DEEP_LINK_EVENT, wrappedListener);
   },
   ...devApi
 };

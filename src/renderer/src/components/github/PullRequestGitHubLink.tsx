@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { Copy, ExternalLink } from 'lucide-react';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 
 import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
@@ -8,11 +8,29 @@ import { copyPullRequestLink } from './pullRequestLinkClipboard';
 
 type PullRequestGitHubLinkProps = {
   url: string;
+  onNotice?: (notice: { tone: 'success' | 'danger'; message: string }) => void;
 };
 
 export function PullRequestGitHubLink({
-  url
+  url,
+  onNotice
 }: PullRequestGitHubLinkProps): ReactElement {
+  function copyLink(): void {
+    void copyPullRequestLink(url, navigator.clipboard)
+      .then(() => {
+        onNotice?.({
+          tone: 'success',
+          message: 'GitHub link copied.'
+        });
+      })
+      .catch(() => {
+        onNotice?.({
+          tone: 'danger',
+          message: 'The pull request link could not be copied.'
+        });
+      });
+  }
+
   return (
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
@@ -37,9 +55,10 @@ export function PullRequestGitHubLink({
         >
           <ContextMenuPrimitive.Item
             className="menu-row"
-            onSelect={() => void copyPullRequestLink(url, navigator.clipboard)}
+            onSelect={copyLink}
           >
-            <span>Copy link</span>
+            <Copy size={14} />
+            <span>Copy GitHub link</span>
           </ContextMenuPrimitive.Item>
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>

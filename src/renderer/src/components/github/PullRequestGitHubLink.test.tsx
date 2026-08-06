@@ -2,7 +2,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PullRequestGitHubLink } from './PullRequestGitHubLink';
-import { copyPullRequestLink } from './pullRequestLinkClipboard';
+import {
+  copyGitGudPullRequestLink,
+  copyPullRequestLink
+} from './pullRequestLinkClipboard';
 
 describe('PullRequestGitHubLink', () => {
   it('keeps the GitHub button as a normal external link', () => {
@@ -28,6 +31,21 @@ describe('PullRequestGitHubLink', () => {
     expect(clipboard.writeText).toHaveBeenCalledOnce();
     expect(clipboard.writeText).toHaveBeenCalledWith(
       'https://github.com/Kaldy14/git-gud/pull/123'
+    );
+  });
+
+  it('copies a shareable Git Gud pull request URL', async () => {
+    const clipboard = {
+      writeText: vi.fn(async () => undefined)
+    };
+
+    await copyGitGudPullRequestLink(
+      'https://github.com/Kaldy14/git-gud/pull/123',
+      clipboard
+    );
+
+    expect(clipboard.writeText).toHaveBeenCalledWith(
+      'git-gud://https://github.com/Kaldy14/git-gud/pull/123'
     );
   });
 });
