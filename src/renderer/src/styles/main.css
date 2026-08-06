@@ -2405,6 +2405,15 @@ button.ref-chip {
   text-transform: uppercase;
 }
 
+.review-file {
+  overflow: clip;
+  background: var(--bg-field);
+}
+
+.review-file + .review-file {
+  border-top: 1px solid var(--border-strong);
+}
+
 .review-chunk {
   overflow: clip;
   background: var(--bg-field);
@@ -2414,7 +2423,7 @@ button.ref-chip {
   border-top: 1px solid var(--border-strong);
 }
 
-.review-chunk-header {
+.review-file-header {
   position: sticky;
   top: 0;
   z-index: 3;
@@ -2446,7 +2455,7 @@ button.ref-chip {
   background: var(--bg-hover);
 }
 
-.review-chunk[data-collapsed='true'] .review-chunk-header {
+.review-file[data-collapsed='true'] .review-file-header {
   border-bottom-color: var(--border-strong);
 }
 

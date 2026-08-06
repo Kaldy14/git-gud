@@ -114,7 +114,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewSections } from './reviewSections';
+import { createReviewSections, type VisibleReviewFile } from './reviewSections';
 import {
   createReviewViewState,
   selectReviewViewUnit,
@@ -1666,32 +1666,17 @@ function ReviewBody({
                       <span>{section.files.length}</span>
                     </div>
                   ) : null}
-                  {section.files.flatMap((file) => {
-                    const isCollapsed = collapsedFileKeys.has(file.key);
-
-                    return file.chunks
-                      .filter((_chunk, chunkIndex) => !isCollapsed || chunkIndex === 0)
-                      .map((chunk, chunkIndex) => (
-                        <ReviewChunk
-                          key={chunk.id}
-                          chunk={chunk}
-                          preparedDiff={preparedDiffs.get(chunk.id)}
-                          diffOptions={diffOptions}
-                          lineCollaboration={lineCollaboration}
-                          showFileComments={chunkIndex === 0}
-                          headerAdditions={file.additions}
-                          headerDeletions={file.deletions}
-                          hideLeadingExpansion={shareReviewExpansionBoundary(
-                            chunkIndex > 0
-                              ? preparedDiffs.get(file.chunks[chunkIndex - 1]!.id)?.expandable
-                              : undefined,
-                            preparedDiffs.get(chunk.id)?.expandable
-                          )}
-                          isCollapsed={isCollapsed}
-                          onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
-                        />
-                      ));
-                  })}
+                  {section.files.map((file) => (
+                    <ReviewFile
+                      key={file.key}
+                      file={file}
+                      preparedDiffs={preparedDiffs}
+                      diffOptions={diffOptions}
+                      lineCollaboration={lineCollaboration}
+                      isCollapsed={collapsedFileKeys.has(file.key)}
+                      onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
+                    />
+                  ))}
                 </section>
               ))}
             </div>
@@ -1988,13 +1973,17 @@ function ReviewSearchPanel({
                     : null}
                   <span>{formatReviewSearchResultCount(file.locations.length)}</span>
                 </div>
-                <ReviewChunk
-                  chunk={file.chunk}
-                  preparedDiff={search.preparedDiffs.get(file.chunk.id)}
+                <ReviewFile
+                  file={{
+                    key: file.id,
+                    chunks: [file.chunk],
+                    additions: file.chunk.additions,
+                    deletions: file.chunk.deletions
+                  }}
+                  preparedDiffs={search.preparedDiffs}
                   diffOptions={diffOptions}
-                  showFileComments={false}
                   isCollapsed={collapsedChunkIds.has(file.chunk.id)}
-                  searchHighlights={matchedLines}
+                  searchHighlightsByChunk={new Map([[file.chunk.id, matchedLines]])}
                   onToggleCollapsed={() => toggleChunk(file.chunk.id)}
                 />
               </section>
@@ -2286,32 +2275,136 @@ function ReviewFileTreeResizeHandle({
   );
 }
 
+function ReviewFile({
+  file,
+  preparedDiffs,
+  diffOptions,
+  lineCollaboration,
+  isCollapsed,
+  searchHighlightsByChunk,
+  onToggleCollapsed
+}: {
+  file: VisibleReviewFile;
+  preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
+  diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
+  lineCollaboration?: ReviewLineCollaboration;
+  isCollapsed: boolean;
+  searchHighlightsByChunk?: ReadonlyMap<string, readonly ReviewSearchLine[]>;
+  onToggleCollapsed: () => void;
+}): ReactElement {
+  const fileComposerId = useId();
+  const firstChunk = file.chunks[0]!;
+  const fileThreads = lineCollaboration?.threads.filter(
+    (thread) => thread.subjectType === 'file' && thread.path === firstChunk.path
+  ) ?? [];
+  const isFileComposerOpen =
+    lineCollaboration?.selectedChunkId === firstChunk.id &&
+    lineCollaboration.selectedSubject === 'file';
+
+  return (
+    <section
+      className="review-file"
+      data-collapsed={isCollapsed}
+      data-review-path={firstChunk.path}
+    >
+      <div className="review-file-header">
+        <button
+          className="review-chunk-toggle"
+          type="button"
+          aria-expanded={!isCollapsed}
+          aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${firstChunk.path}`}
+          onClick={onToggleCollapsed}
+        >
+          {isCollapsed ? (
+            <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
+          ) : (
+            <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
+          )}
+          <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{firstChunk.path}</span>
+          <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>
+          {firstChunk.source !== 'commit' ? <span className="badge-mini">{firstChunk.source}</span> : null}
+          <span className="text-[var(--success-text)]">+{file.additions}</span>
+          <span className="text-[var(--danger-text)]">-{file.deletions}</span>
+        </button>
+        {lineCollaboration ? (
+          <button
+            className="review-comment-action review-file-comment-action"
+            type="button"
+            data-active={isFileComposerOpen}
+            aria-controls={fileComposerId}
+            aria-expanded={isFileComposerOpen}
+            onClick={() => {
+              if (isFileComposerOpen) {
+                lineCollaboration.onCancel();
+                return;
+              }
+              if (isCollapsed) {
+                onToggleCollapsed();
+              }
+              lineCollaboration.onSelectFile(firstChunk.id, firstChunk.path);
+            }}
+          >
+            <MessageSquare size={11} />
+            Comment on file
+          </button>
+        ) : null}
+      </div>
+      {!isCollapsed && (fileThreads.length > 0 || isFileComposerOpen) ? (
+        <div className="review-file-comments">
+          {fileThreads.map((thread) => (
+            <ReviewCommentAnnotation
+              key={thread.id}
+              thread={thread}
+              onAddDraftReply={lineCollaboration?.onAddDraftReply}
+              onUpdateComment={lineCollaboration?.onUpdateComment}
+              onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
+            />
+          ))}
+          {isFileComposerOpen && lineCollaboration ? (
+            <div id={fileComposerId}>
+              <ReviewInlineComposer collaboration={lineCollaboration} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {!isCollapsed
+        ? file.chunks.map((chunk, chunkIndex) => (
+            <ReviewChunk
+              key={chunk.id}
+              chunk={chunk}
+              preparedDiff={preparedDiffs.get(chunk.id)}
+              diffOptions={diffOptions}
+              lineCollaboration={lineCollaboration}
+              hideLeadingExpansion={shareReviewExpansionBoundary(
+                chunkIndex > 0
+                  ? preparedDiffs.get(file.chunks[chunkIndex - 1]!.id)?.expandable
+                  : undefined,
+                preparedDiffs.get(chunk.id)?.expandable
+              )}
+              searchHighlights={searchHighlightsByChunk?.get(chunk.id)}
+            />
+          ))
+        : null}
+    </section>
+  );
+}
+
 function ReviewChunk({
   chunk,
   preparedDiff,
   diffOptions,
   lineCollaboration,
-  showFileComments,
-  headerAdditions,
-  headerDeletions,
   hideLeadingExpansion = false,
-  isCollapsed,
-  searchHighlights,
-  onToggleCollapsed
+  searchHighlights
 }: {
   chunk: GitReviewChunk;
   preparedDiff?: PreparedReviewDiff;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
-  showFileComments: boolean;
-  headerAdditions?: number;
-  headerDeletions?: number;
   hideLeadingExpansion?: boolean;
-  isCollapsed: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
-  onToggleCollapsed: () => void;
 }): ReactElement {
-  const fileComposerId = useId();
   const expandableDiff = preparedDiff?.expandable;
   const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
     () => {
@@ -2362,14 +2455,6 @@ function ReviewChunk({
     ],
     [chunk.patch, chunk.path, lineCollaboration?.threads, normalizedSelection]
   );
-  const fileThreads = showFileComments
-    ? lineCollaboration?.threads.filter(
-        (thread) => thread.subjectType === 'file' && thread.path === chunk.path
-      ) ?? []
-    : [];
-  const isFileComposerOpen =
-    lineCollaboration?.selectedChunkId === chunk.id &&
-    lineCollaboration.selectedSubject === 'file';
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? {
         ...contextualDiffOptions,
@@ -2385,73 +2470,8 @@ function ReviewChunk({
     : contextualDiffOptions;
 
   return (
-    <section
-      className="review-chunk"
-      data-collapsed={isCollapsed}
-      data-review-path={chunk.path}
-    >
-      <div className="review-chunk-header">
-        <button
-          className="review-chunk-toggle"
-          type="button"
-          aria-expanded={!isCollapsed}
-          aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${chunk.path}`}
-          onClick={onToggleCollapsed}
-        >
-          {isCollapsed ? (
-            <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
-          ) : (
-            <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-          )}
-          <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
-          <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{chunk.path}</span>
-          <span className="badge-mini" title={chunk.relationship}>{chunk.role}</span>
-          {chunk.source !== 'commit' ? <span className="badge-mini">{chunk.source}</span> : null}
-          <span className="text-[var(--success-text)]">+{headerAdditions ?? chunk.additions}</span>
-          <span className="text-[var(--danger-text)]">-{headerDeletions ?? chunk.deletions}</span>
-        </button>
-        {lineCollaboration && showFileComments ? (
-          <button
-            className="review-comment-action review-file-comment-action"
-            type="button"
-            data-active={isFileComposerOpen}
-            aria-controls={fileComposerId}
-            aria-expanded={isFileComposerOpen}
-            onClick={() => {
-              if (isFileComposerOpen) {
-                lineCollaboration.onCancel();
-                return;
-              }
-              if (isCollapsed) {
-                onToggleCollapsed();
-              }
-              lineCollaboration.onSelectFile(chunk.id, chunk.path);
-            }}
-          >
-            <MessageSquare size={11} />
-            Comment on file
-          </button>
-        ) : null}
-      </div>
-      {!isCollapsed && showFileComments && (fileThreads.length > 0 || isFileComposerOpen) ? (
-        <div className="review-file-comments">
-          {fileThreads.map((thread) => (
-            <ReviewCommentAnnotation
-              key={thread.id}
-              thread={thread}
-              onAddDraftReply={lineCollaboration?.onAddDraftReply}
-              onUpdateComment={lineCollaboration?.onUpdateComment}
-              onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
-            />
-          ))}
-          {isFileComposerOpen && lineCollaboration ? (
-            <div id={fileComposerId}>
-              <ReviewInlineComposer collaboration={lineCollaboration} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {!isCollapsed && chunk.omittedReason ? (
+    <section className="review-chunk">
+      {chunk.omittedReason ? (
         <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
           {chunk.omittedReason === 'binary'
             ? 'Binary changes cannot be previewed.'
@@ -2459,7 +2479,7 @@ function ReviewChunk({
               ? 'This change exceeds the review preview limit.'
               : 'No textual diff is available for this change.'}
         </div>
-      ) : !isCollapsed ? (
+      ) : (
         preparedDiff ? (
           <FileDiff<ReviewDiffAnnotation>
             className="gg-diff"
@@ -2501,7 +2521,7 @@ function ReviewChunk({
             )}
           />
         )
-      ) : null}
+      )}
     </section>
   );
 }
