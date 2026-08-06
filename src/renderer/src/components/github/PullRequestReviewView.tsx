@@ -30,6 +30,10 @@ import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import type { DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import {
+  ReviewImageGalleryDialog,
+  type ReviewImageGallerySelection
+} from '@renderer/components/review/ReviewImageGalleryDialog';
+import {
   ReviewView,
   type ReviewFileCommentInput,
   type ReviewLineComment,
@@ -417,6 +421,7 @@ function PullRequestReviewContent({
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
+  const [imageGallery, setImageGallery] = useState<ReviewImageGallerySelection>();
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; message: string }>();
 
   function copyGitGudLink(): void {
@@ -885,6 +890,7 @@ function PullRequestReviewContent({
                   body={detail.body || 'No pull request description was provided.'}
                   imageUrls={detail.bodyImageUrls}
                   imageLoading="eager"
+                  onOpenImage={setImageGallery}
                 />
               </section>
             </div>
@@ -983,6 +989,12 @@ function PullRequestReviewContent({
           isMerging={mergeMutation.isPending}
           onClose={() => setIsMergeDialogOpen(false)}
           onMerge={(method) => mergeMutation.mutate(method)}
+        />
+      ) : null}
+      {imageGallery ? (
+        <ReviewImageGalleryDialog
+          selection={imageGallery}
+          onClose={() => setImageGallery(undefined)}
         />
       ) : null}
     </section>

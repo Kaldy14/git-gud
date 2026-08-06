@@ -49,4 +49,26 @@ describe('review comment Markdown', () => {
     expect(markup).not.toContain('alert(1)');
     expect(markup).not.toContain('javascript:');
   });
+
+  it('renders GitHub HTML image tags with authenticated attachment URLs', () => {
+    const sourceUrl = 'https://github.com/user-attachments/assets/image-id';
+    const resolvedUrl = 'https://private-user-images.githubusercontent.com/1/image-id.png?jwt=signed';
+    const markup = renderToStaticMarkup(
+      createElement(ReviewCommentBody, {
+        body: `Screenshot\n\n<img width="900" alt="Permissions overview" src="${sourceUrl}" />`,
+        imageUrls: { [sourceUrl]: resolvedUrl },
+        imageLoading: 'eager',
+        onOpenImage: () => undefined
+      })
+    );
+
+    expect(markup).toContain('<p>Screenshot</p>');
+    expect(markup).toContain(`src="${resolvedUrl.replaceAll('&', '&amp;')}"`);
+    expect(markup).toContain('alt="Permissions overview"');
+    expect(markup).toContain('loading="eager"');
+    expect(markup).toContain('role="button"');
+    expect(markup).toContain('tabindex="0"');
+    expect(markup).toContain('aria-label="Open Permissions overview preview"');
+    expect(markup).not.toContain('<img width=');
+  });
 });
