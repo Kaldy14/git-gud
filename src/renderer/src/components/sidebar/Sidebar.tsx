@@ -346,7 +346,6 @@ export function Sidebar({
           </span>
         </button>
         <div className="sidebar-collapsed-items">
-          {COLLAPSED_SECTIONS.slice(0, 4).map(renderCollapsedSection)}
           <button
             className="sidebar-collapsed-item"
             type="button"
@@ -358,7 +357,7 @@ export function Sidebar({
             {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
             <span>{formatCollapsedCount(pullRequestCount)}</span>
           </button>
-          {COLLAPSED_SECTIONS.slice(4).map(renderCollapsedSection)}
+          {COLLAPSED_SECTIONS.map(renderCollapsedSection)}
         </div>
       </aside>
     );
