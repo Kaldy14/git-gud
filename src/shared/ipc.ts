@@ -192,6 +192,10 @@ export type IpcChannelMap = {
     args: [repoPath: string];
     result: GitWipDetail;
   };
+  'repo:generate-commit-message': {
+    args: [repoPath: string];
+    result: string;
+  };
   'repo:file-diff': {
     args: [repoPath: string, request: GitFileDiffRequest];
     result: GitFileDiff;
@@ -557,6 +561,7 @@ export type RendererApi = {
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;
+  generateCommitMessage: (repoPath: string) => Promise<string>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
   getReviewPlan: (repoPath: string, target: GitReviewTarget) => Promise<GitReviewPlan>;
   getReviewGuideState: (repoPath: string, sourceFingerprint: string) => Promise<GitReviewGuideState>;

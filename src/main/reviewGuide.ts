@@ -1,8 +1,4 @@
-import { constants } from 'node:fs';
-import { access } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 import type {
   GitReviewGuide,
@@ -13,8 +9,9 @@ import type {
   GitReviewUnit
 } from '@shared/types';
 
+import { runPiPrompt, shutdownPiProcesses } from './piHarness';
+
 const MAX_PROMPT_PATCH_CHARACTERS = 400_000;
-const MAX_OUTPUT_CHARACTERS = 2_000_000;
 const REVIEW_GUIDE_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_CACHED_GUIDES = 30;
 
@@ -30,53 +27,20 @@ export interface ReviewGuideEngine {
 }
 
 export class PiReviewGuideEngine implements ReviewGuideEngine {
-  private readonly activeProcesses = new Set<ChildProcessWithoutNullStreams>();
-
   async generate(plan: GitReviewPlan): Promise<GitReviewGuide> {
-    const executable = await resolvePiExecutable();
     const isRemoteReview = plan.repoPath.startsWith('github://');
-    const child = spawn(
-      executable,
-      [
-        '--print',
-        '--no-session',
-        '--mode',
-        'text',
-        ...(isRemoteReview ? ['--no-tools'] : ['--tools', 'read,grep,find,ls']),
-        '--no-extensions',
-        '--no-skills',
-        '--no-prompt-templates',
-        '--no-context-files',
-        '--no-approve'
-      ],
-      {
-        cwd: isRemoteReview ? homedir() : plan.repoPath,
-        env: {
-          ...process.env,
-          NO_COLOR: '1'
-        },
-        stdio: 'pipe'
-      }
-    );
-    this.activeProcesses.add(child);
-
-    try {
-      const output = await collectProcessOutput(
-        child,
-        buildReviewGuidePrompt(plan),
-        REVIEW_GUIDE_TIMEOUT_MS
-      );
-      return parseReviewGuideOutput(output, plan);
-    } finally {
-      this.activeProcesses.delete(child);
-    }
+    const output = await runPiPrompt({
+      cwd: isRemoteReview ? homedir() : plan.repoPath,
+      prompt: buildReviewGuidePrompt(plan),
+      timeoutMs: REVIEW_GUIDE_TIMEOUT_MS,
+      tools: isRemoteReview ? undefined : 'read,grep,find,ls',
+      errorLabel: 'AI guide generation'
+    });
+    return parseReviewGuideOutput(output, plan);
   }
 
   shutdown(): void {
-    for (const child of this.activeProcesses) {
-      child.kill('SIGTERM');
-    }
-    this.activeProcesses.clear();
+    shutdownPiProcesses();
   }
 }
 
@@ -277,93 +241,6 @@ function createPromptPayload(plan: GitReviewPlan): {
       })
     }))
   };
-}
-
-async function resolvePiExecutable(): Promise<string> {
-  const configuredPath = process.env.PI_EXECUTABLE_PATH?.trim();
-  const pathCandidates = (process.env.PATH ?? '')
-    .split(delimiter)
-    .filter(Boolean)
-    .map((directory) => join(directory, 'pi'));
-  const candidates = configuredPath
-    ? [configuredPath]
-    : [
-        ...pathCandidates,
-        join(homedir(), 'Library/pnpm/pi'),
-        join(homedir(), '.local/bin/pi'),
-        '/opt/homebrew/bin/pi',
-        '/usr/local/bin/pi'
-      ];
-
-  for (const candidate of new Set(candidates)) {
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Continue through the known installation locations.
-    }
-  }
-
-  throw new Error('The configured AI review engine is unavailable. Install Pi or configure its executable path.');
-}
-
-function collectProcessOutput(
-  child: ChildProcessWithoutNullStreams,
-  prompt: string,
-  timeoutMs: number
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-    const timeout = setTimeout(() => {
-      child.kill('SIGTERM');
-      finish(new Error('AI guide generation timed out.'));
-    }, timeoutMs);
-    timeout.unref();
-
-    function finish(error?: Error, output?: string): void {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      if (error) {
-        reject(error);
-      } else {
-        resolve(output ?? '');
-      }
-    }
-
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
-      stdout += chunk;
-      if (stdout.length > MAX_OUTPUT_CHARACTERS) {
-        child.kill('SIGTERM');
-        finish(new Error('AI guide output exceeded the safe size limit.'));
-      }
-    });
-    child.stderr.on('data', (chunk: string) => {
-      stderr = `${stderr}${chunk}`.slice(-4_000);
-    });
-    child.stdin.on('error', (error: NodeJS.ErrnoException) => {
-      if (error.code !== 'EPIPE') {
-        finish(error);
-      }
-    });
-    child.on('error', (error) => finish(error));
-    child.on('close', (code) => {
-      if (code === 0) {
-        finish(undefined, stdout);
-        return;
-      }
-
-      const detail = stripAnsi(stderr).trim();
-      finish(new Error(detail || `AI guide engine exited with code ${code ?? 'unknown'}.`));
-    });
-    child.stdin.end(prompt);
-  });
 }
 
 function parseJsonObject(output: string): Record<string, unknown> {

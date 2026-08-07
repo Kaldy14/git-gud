@@ -98,6 +98,8 @@ const validators = {
   'repo:commit-selection-detail': (args) =>
     readStringAndStringArray(args, 'repo:commit-selection-detail', 'repoPath', 'shas'),
   'repo:wip-detail': (args) => readOnlyArg(args, 'repo:wip-detail', 'repoPath', readString),
+  'repo:generate-commit-message': (args) =>
+    readOnlyArg(args, 'repo:generate-commit-message', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
   'repo:review-plan': (args) => readRepoPathWithObject(args, 'repo:review-plan', readReviewTarget),
   ...(import.meta.env.DEV

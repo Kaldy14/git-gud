@@ -44,6 +44,7 @@ const api: RendererApi = {
   getCommitDetail: (repoPath, sha) => invoke('repo:commit-detail', repoPath, sha),
   getCommitSelectionDetail: (repoPath, shas) => invoke('repo:commit-selection-detail', repoPath, shas),
   getWipDetail: (repoPath) => invoke('repo:wip-detail', repoPath),
+  generateCommitMessage: (repoPath) => invoke('repo:generate-commit-message', repoPath),
   getFileDiff: (repoPath, request) => invoke('repo:file-diff', repoPath, request),
   getReviewPlan: (repoPath, target) => invoke('repo:review-plan', repoPath, target),
   getReviewGuideState: (repoPath, sourceFingerprint) =>

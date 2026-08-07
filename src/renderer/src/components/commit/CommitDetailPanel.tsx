@@ -23,6 +23,7 @@ import {
   PanelRightOpen,
   Plus,
   RotateCcw,
+  Sparkles,
   Trash2,
   X
 } from 'lucide-react';
@@ -120,11 +121,19 @@ export function CommitDetailPanel({
   const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(undefined);
   const [fileView, setFileView] = useState<FileViewMode>('path');
   const [showAllFiles, setShowAllFiles] = useState(false);
-  const [commitMessage, setCommitMessage] = useState('');
+  const [commitMessageState, setCommitMessageState] = useState<{ repoPath?: string; value: string }>({
+    repoPath,
+    value: ''
+  });
   const [commitMessageDraft, setCommitMessageDraft] = useState('');
   const [editingCommitSha, setEditingCommitSha] = useState<string>();
-  const [amend, setAmend] = useState(false);
+  const [amendState, setAmendState] = useState<{ repoPath?: string; value: boolean }>({
+    repoPath,
+    value: false
+  });
   const [isResizing, setIsResizing] = useState(false);
+  const commitMessage = commitMessageState.repoPath === repoPath ? commitMessageState.value : '';
+  const amend = amendState.repoPath === repoPath ? amendState.value : false;
   const isWip = row?.node.kind === 'wip';
   const isCommitSelection = !isWip && selectedShas.length > 1;
   const commitQuery = useCommitDetail(repoPath, row && !isWip && !isCommitSelection ? row.sha : undefined);
@@ -205,6 +214,24 @@ export function CommitDetailPanel({
       }
 
       void invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
+    }
+  });
+  const generateCommitMessageMutation = useMutation({
+    mutationKey: ['generate-commit-message', repoPath],
+    mutationFn: async () => {
+      if (!repoPath) {
+        throw new Error('Repository path is required.');
+      }
+
+      return {
+        repoPath,
+        message: await window.api.generateCommitMessage(repoPath)
+      };
+    },
+    onSuccess: (result) => {
+      if (result.repoPath === repoPath) {
+        setCommitMessage(result.message);
+      }
     }
   });
   const updateCommitMessageMutation = useMutation({
@@ -339,6 +366,7 @@ export function CommitDetailPanel({
     stageAllMutation.isPending ||
     unstageAllMutation.isPending ||
     commitMutation.isPending ||
+    generateCommitMessageMutation.isPending ||
     updateCommitMessageMutation.isPending ||
     isOperationBusy;
   const detailErrorMessage = detailError instanceof Error ? detailError.message : undefined;
@@ -355,6 +383,14 @@ export function CommitDetailPanel({
     setCommitMessageDraft(detail.message);
     setEditingCommitSha(detail.sha);
     updateCommitMessageMutation.reset();
+  }
+
+  function setCommitMessage(value: string): void {
+    setCommitMessageState({ repoPath, value });
+  }
+
+  function setAmend(value: boolean): void {
+    setAmendState({ repoPath, value });
   }
 
   function renderFilesSection(): ReactElement | null {
@@ -431,7 +467,14 @@ export function CommitDetailPanel({
         focusSignal={commitFocusSignal}
         amend={amend}
         isCommitting={commitMutation.isPending}
-        commitError={commitMutation.error instanceof Error ? commitMutation.error.message : undefined}
+        isGeneratingMessage={generateCommitMessageMutation.isPending}
+        commitError={
+          commitMutation.error instanceof Error
+            ? commitMutation.error.message
+            : generateCommitMessageMutation.error instanceof Error
+              ? generateCommitMessageMutation.error.message
+              : undefined
+        }
         onChangeMessage={setCommitMessage}
         onChangeAmend={(value) => {
           setAmend(value);
@@ -441,6 +484,7 @@ export function CommitDetailPanel({
           }
         }}
         onCommit={() => commitMutation.mutate()}
+        onGenerateMessage={() => generateCommitMessageMutation.mutate()}
       />
     );
   }
@@ -1235,10 +1279,12 @@ type WipCommitSectionProps = {
   focusSignal: number;
   amend: boolean;
   isCommitting: boolean;
+  isGeneratingMessage: boolean;
   commitError?: string;
   onChangeMessage: (value: string) => void;
   onChangeAmend: (value: boolean) => void;
   onCommit: () => void;
+  onGenerateMessage: () => void;
 };
 
 function WipCommitSection({
@@ -1248,10 +1294,12 @@ function WipCommitSection({
   focusSignal,
   amend,
   isCommitting,
+  isGeneratingMessage,
   commitError,
   onChangeMessage,
   onChangeAmend,
-  onCommit
+  onCommit,
+  onGenerateMessage
 }: WipCommitSectionProps): ReactElement | null {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1283,19 +1331,42 @@ function WipCommitSection({
         </span>
         <span className="shrink-0">{identity?.source ?? 'unknown'}</span>
       </div>
-      <textarea
-        ref={textareaRef}
-        className="h-20 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2.5 py-2 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
-        placeholder={amend ? 'Amend commit message' : 'Commit summary'}
-        value={commitMessage}
-        onChange={(event) => onChangeMessage(event.target.value)}
-        onKeyDown={(event) => {
-          if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && canCommit) {
-            event.preventDefault();
-            onCommit();
-          }
-        }}
-      />
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          className="h-20 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--bg-field)] py-2 pl-2.5 pr-11 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
+          placeholder={amend ? 'Amend commit message' : 'Commit summary'}
+          value={commitMessage}
+          disabled={isGeneratingMessage}
+          onChange={(event) => onChangeMessage(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && canCommit) {
+              event.preventDefault();
+              onCommit();
+            }
+          }}
+        />
+        <span
+          className="commit-message-ai-control"
+          tabIndex={!hasStagedFiles ? 0 : undefined}
+          aria-describedby={!hasStagedFiles ? 'commit-message-ai-tooltip' : undefined}
+        >
+          <button
+            className="commit-message-ai-button"
+            type="button"
+            aria-label="Generate commit message with AI"
+            disabled={!hasStagedFiles || isGeneratingMessage || isCommitting}
+            onClick={onGenerateMessage}
+          >
+            {isGeneratingMessage ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+          </button>
+          {!hasStagedFiles ? (
+            <span id="commit-message-ai-tooltip" className="commit-message-ai-tooltip" role="tooltip">
+              You must have staged changes to generate a commit message.
+            </span>
+          ) : null}
+        </span>
+      </div>
       <div className="flex items-center justify-between gap-2">
         <label className="flex min-w-0 items-center gap-2 text-xs text-[var(--text-2)]">
           <input

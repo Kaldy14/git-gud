@@ -19,6 +19,7 @@ import type {
 } from '@shared/types';
 
 import { loadCommitGraph } from './git/commitGraph';
+import { generateCommitMessage } from './commitMessage';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
@@ -437,6 +438,9 @@ export function registerIpcHandlers(
     loadCommitSelectionDetail(getOpenRepositoryTab(repoPath), shas)
   );
   handle('repo:wip-detail', async (_event, repoPath) => loadWipDetail(getOpenRepositoryTab(repoPath)));
+  handle('repo:generate-commit-message', async (_event, repoPath) =>
+    generateCommitMessage(getOpenRepositoryTab(repoPath))
+  );
   handle('repo:file-diff', async (_event, repoPath, request) => loadFileDiff(getOpenRepositoryTab(repoPath), request));
   handle('repo:review-plan', async (_event, repoPath, target) => {
     const plan = await loadReviewPlan(getOpenRepositoryTab(repoPath), target);
