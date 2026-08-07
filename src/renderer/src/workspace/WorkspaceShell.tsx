@@ -3109,7 +3109,6 @@ export function WorkspaceShell(): ReactElement {
         ) : gitHubWorkspaceView ? (
           <>
             <Sidebar
-              activeTab={activeTab}
               repositoryOverview={repositoryQuery.data}
               isLoading={repositoryQuery.isLoading}
               isRefreshing={repositoryQuery.isFetching && !repositoryQuery.isLoading}
@@ -3221,7 +3220,6 @@ export function WorkspaceShell(): ReactElement {
           ) : (
             <>
               <Sidebar
-                activeTab={activeTab}
                 repositoryOverview={repositoryQuery.data}
                 isLoading={repositoryQuery.isLoading}
                 isRefreshing={repositoryQuery.isFetching && !repositoryQuery.isLoading}

@@ -38,13 +38,11 @@ import type {
   GitStashEntry,
   GitStashRefInput,
   GitTagDeleteInput,
-  GitTagRef,
-  RepoTab
+  GitTagRef
 } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 type SidebarProps = {
-  activeTab?: RepoTab;
   repositoryOverview?: GitRepositoryOverview;
   isLoading: boolean;
   isRefreshing: boolean;
@@ -138,7 +136,6 @@ function formatCollapsedCount(count: number): string {
 }
 
 export function Sidebar({
-  activeTab,
   repositoryOverview,
   isLoading,
   isRefreshing,
@@ -470,16 +467,6 @@ export function Sidebar({
         })}
       </div>
 
-      {activeTab ? (
-        <div className="border-t border-[var(--border)] px-4 py-2.5">
-          <p className="truncate text-xs font-medium text-[var(--text-2)]" title={activeTab.path}>
-            {activeTab.name}
-          </p>
-          <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]" title={activeTab.path}>
-            {activeTab.path}
-          </p>
-        </div>
-      ) : null}
       {contextMenu ? (
         <SidebarContextMenu
           state={contextMenu}
