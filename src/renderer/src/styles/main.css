@@ -280,6 +280,47 @@ select {
   text-align: left;
 }
 
+.repo-tab--repository {
+  padding-right: 0;
+}
+
+.repo-tab--repository .repo-tab-main {
+  padding-right: 13px;
+}
+
+.repo-tab-close {
+  position: absolute;
+  z-index: 2;
+  right: 7px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--bg-titlebar);
+  color: var(--text-3);
+  opacity: 0;
+  transition: color 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.repo-tab--repository:hover .repo-tab-close,
+.repo-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.repo-tab--repository:hover .repo-tab-close {
+  background: var(--bg-surface);
+}
+
+.repo-tab--repository[data-active='true'] .repo-tab-close {
+  background: var(--bg-toolbar);
+}
+
+.repo-tab--repository .repo-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
 .repo-tab:hover {
   color: var(--text-1);
   background: var(--bg-surface);

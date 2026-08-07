@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { FilePlus2, GitBranch, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
+import { FilePlus2, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
 
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
 import {
@@ -201,7 +201,7 @@ export function TabStrip({
             return (
               <div
                 key={tab.id}
-                className="no-drag repo-tab group"
+                className="no-drag repo-tab repo-tab--repository group"
                 data-active={isActive}
                 data-dragging={draggedTabId === tab.id}
                 data-drop-position={
@@ -237,7 +237,6 @@ export function TabStrip({
                     handleTabKeyDown(event, tabIndex, navigationTabIds, activateNavigationTab)
                   }
                 >
-                  <GitBranch size={13} className={isActive ? 'shrink-0 text-[var(--accent-2)]' : 'shrink-0'} />
                   <span className="min-w-0 truncate">{tab.name}</span>
                   {isActive && activeRepoDirty ? (
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
@@ -246,7 +245,7 @@ export function TabStrip({
                 <button
                   type="button"
                   aria-label={`Close ${tab.name}`}
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-[var(--text-3)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] focus:opacity-100 group-hover:opacity-100 group-data-[active=true]:opacity-100"
+                  className="repo-tab-close"
                   onClick={() => onCloseTab(tab.id)}
                 >
                   <X size={11} />

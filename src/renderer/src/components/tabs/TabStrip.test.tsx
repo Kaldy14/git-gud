@@ -109,6 +109,32 @@ describe('TabStrip', () => {
     expect(markup).toContain(`data-tab-id="${secondRepositoryTab.id}"`);
   });
 
+  it('gives repository names the full tab width until the close control overlays them', () => {
+    const markup = renderToStaticMarkup(
+      <TabStrip
+        tabs={[repositoryTab]}
+        activeTabId={repositoryTab.id}
+        isStartTabOpen={false}
+        isStartTabActive={false}
+        isDashboardsTabActive={false}
+        onActivateTab={vi.fn()}
+        onReorderTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onOpenStartTab={vi.fn()}
+        onActivateStartTab={vi.fn()}
+        onCloseStartTab={vi.fn()}
+        onActivateDashboardsTab={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onActivateProfile={vi.fn(async () => {})}
+        onSaveAndActivateProfile={vi.fn(async () => {})}
+      />
+    );
+
+    expect(markup).toContain('class="no-drag repo-tab repo-tab--repository group"');
+    expect(markup).toContain('class="repo-tab-close"');
+    expect(markup).not.toContain('lucide-git-branch');
+  });
+
   it('resolves before and after drops to final tab indexes', () => {
     const tabIds = ['alpha', 'beta', 'gamma'];
 
