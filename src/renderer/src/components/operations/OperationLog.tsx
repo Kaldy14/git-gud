@@ -61,7 +61,7 @@ export function OperationLog({
 
   return (
     <div
-      className="pointer-events-none fixed bottom-8 right-4 z-40 flex w-[340px] max-w-[calc(100vw-32px)] flex-col gap-2"
+      className="pointer-events-none fixed bottom-8 left-4 z-40 flex w-[340px] max-w-[calc(100vw-32px)] flex-col gap-2"
     >
       <span className="sr-only" role="status" aria-live="polite">
         {entries[0] ? operationAnnouncement(entries[0]) : ''}
@@ -69,8 +69,9 @@ export function OperationLog({
       {entries.slice(0, 5).map((entry) => (
         <div
           key={entry.id}
-          className="pointer-events-auto rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] p-3 shadow-2xl shadow-black/40"
+          className="pointer-events-auto relative overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] p-3 shadow-2xl shadow-black/40"
         >
+          <span className={`absolute inset-y-0 left-0 w-1 ${operationStripeClass(entry.status)}`} aria-hidden="true" />
           <div className="flex min-w-0 items-start gap-2.5">
             <span className={operationIconClass(entry.status)}>{operationIcon(entry.status)}</span>
             <div className="min-w-0 flex-1">
@@ -143,11 +144,39 @@ function operationIconClass(status: OperationLogStatus): string {
     return 'mt-0.5 shrink-0 text-[var(--success-text)]';
   }
 
-  if (status === 'conflict' || status === 'error' || status === 'cancelled') {
+  if (status === 'conflict') {
+    return 'mt-0.5 shrink-0 text-[var(--warning-text)]';
+  }
+
+  if (status === 'error') {
     return 'mt-0.5 shrink-0 text-[var(--danger-text)]';
   }
 
+  if (status === 'cancelled') {
+    return 'mt-0.5 shrink-0 text-[var(--text-3)]';
+  }
+
   return 'mt-0.5 shrink-0 text-[var(--accent-2)]';
+}
+
+function operationStripeClass(status: OperationLogStatus): string {
+  if (status === 'success') {
+    return 'bg-[var(--success-text)]';
+  }
+
+  if (status === 'conflict') {
+    return 'bg-[var(--warning-text)]';
+  }
+
+  if (status === 'error') {
+    return 'bg-[var(--danger-text)]';
+  }
+
+  if (status === 'cancelled') {
+    return 'bg-[var(--text-3)]';
+  }
+
+  return 'bg-[var(--accent-2)]';
 }
 
 function useOperationClock(enabled: boolean): number {
