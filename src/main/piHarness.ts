@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
-import { access } from 'node:fs/promises';
+import { access, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 const DEFAULT_MAX_OUTPUT_CHARACTERS = 2_000_000;
@@ -17,8 +17,9 @@ export type PiPromptOptions = {
 };
 
 export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
+  const executable = await resolvePiExecutable();
   const child = spawn(
-    await resolvePiExecutable(),
+    executable,
     [
       '--print',
       '--no-session',
@@ -33,7 +34,7 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
     ],
     {
       cwd: options.cwd,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: await buildPiEnvironment(executable),
       stdio: 'pipe'
     }
   );
@@ -49,6 +50,43 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
     );
   } finally {
     activeProcesses.delete(child);
+  }
+}
+
+async function buildPiEnvironment(executable: string): Promise<NodeJS.ProcessEnv> {
+  const home = homedir();
+  const existingPath = (process.env.PATH ?? '').split(delimiter).filter(Boolean);
+  const nvmDirectory = process.env.NVM_DIR?.trim() || join(home, '.nvm');
+  const nvmNodeDirectories = await listNvmNodeDirectories(nvmDirectory);
+  const path = [
+    dirname(executable),
+    ...nvmNodeDirectories,
+    join(home, '.volta/bin'),
+    join(home, '.local/share/mise/shims'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    ...existingPath
+  ];
+
+  return {
+    ...process.env,
+    PATH: [...new Set(path)].join(delimiter),
+    NO_COLOR: '1'
+  };
+}
+
+async function listNvmNodeDirectories(nvmDirectory: string): Promise<string[]> {
+  const versionsDirectory = join(nvmDirectory, 'versions/node');
+
+  try {
+    const entries = await readdir(versionsDirectory, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+      .map((version) => join(versionsDirectory, version, 'bin'));
+  } catch {
+    return [];
   }
 }
 
