@@ -499,6 +499,7 @@ export class GitExecutor {
       ...process.env,
       ...options.env
     };
+    addKnownMacExecutableDirectoriesToPath(env);
     const resolutionKey = gitResolutionKey(env);
     const cachedExecutable = resolutionKey
       ? this.resolvedGitExecutables.get(resolutionKey)
@@ -812,7 +813,20 @@ const forceTerminationDelayMs = 750;
 const defaultReadTimeoutMs = 120_000;
 type GitProgressEventOutputStream = Extract<GitProgressEvent, { type: 'output' }>['stream'];
 const progressStreamOrder: readonly GitProgressEventOutputStream[] = ['stdout', 'stderr'];
-const knownMacGitPaths = ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git'];
+const knownMacExecutableDirectories = ['/opt/homebrew/bin', '/usr/local/bin'];
+const knownMacGitPaths = [
+  ...knownMacExecutableDirectories.map((directory) => join(directory, 'git')),
+  '/usr/bin/git'
+];
+
+function addKnownMacExecutableDirectoriesToPath(env: NodeJS.ProcessEnv): void {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  const directories = (env.PATH ?? '').split(delimiter).filter(Boolean);
+  env.PATH = [...new Set([...directories, ...knownMacExecutableDirectories])].join(delimiter);
+}
 
 function gitResolutionKey(env: NodeJS.ProcessEnv): string | undefined {
   return process.platform === 'darwin'

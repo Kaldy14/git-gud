@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -162,6 +162,20 @@ describe('GitExecutor coordination', () => {
     ).resolves.toMatchObject({
       exitCode: 0
     });
+  });
+
+  it.runIf(process.platform === 'darwin')('adds Homebrew tools to a GUI-style PATH for Git hooks', async () => {
+    const result = await new GitExecutor().run(
+      ['-c', 'alias.show-path=!printf "%s\\n" "$PATH"', 'show-path'],
+      {
+        cwd: process.cwd(),
+        env: { PATH: '/usr/bin:/bin' }
+      }
+    );
+
+    expect(result.stdout.trim().split(delimiter)).toEqual(
+      expect.arrayContaining(['/opt/homebrew/bin', '/usr/local/bin'])
+    );
   });
 
   it.runIf(process.platform === 'darwin')('skips executable directories named git while resolving PATH', async () => {
