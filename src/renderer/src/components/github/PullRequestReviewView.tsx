@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleDot,
   Clock3,
+  Copy,
   CornerDownRight,
   ExternalLink,
   FileText,
@@ -21,7 +22,6 @@ import {
   MessageSquare,
   Send,
   ShieldCheck,
-  Sparkles,
   Trash2,
   X
 } from 'lucide-react';
@@ -68,7 +68,7 @@ import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { PullRequestGitHubLink } from './PullRequestGitHubLink';
 import { PullRequestHeaderActions } from './PullRequestHeaderActions';
-import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
+import { copyPullRequestCodexPrompt } from './pullRequestCodexPrompt';
 import {
   hasPullRequestMergeConflicts,
   pullRequestStatus
@@ -591,21 +591,13 @@ function PullRequestReviewContent({
       await queryClient.invalidateQueries({ queryKey: gitHubPullRequestDetailQueryKey(locator) });
     }
   });
-  const codexMutation = useMutation({
-    mutationFn: async (summary: string) => {
-      if (!codexRepoPath) {
-        throw new Error('Open the pull request repository locally before handing this review to Codex.');
-      }
-
-      await window.api.openCodexTask(
-        codexRepoPath,
-        buildPullRequestCodexPrompt(detail, reviewDrafts, summary)
-      );
-    },
+  const copyPromptMutation = useMutation({
+    mutationFn: (summary: string) =>
+      copyPullRequestCodexPrompt(detail, reviewDrafts, summary, navigator.clipboard),
     onSuccess: () => {
       setNotice({
         tone: 'success',
-        message: 'Opened a Codex task. Your draft comments are still local and were not posted to GitHub.'
+        message: 'Review prompt copied. Your draft comments are still local and were not posted to GitHub.'
       });
       setIsReviewDialogOpen(false);
     }
@@ -964,22 +956,17 @@ function PullRequestReviewContent({
         <ReviewSubmissionDialog
           drafts={reviewDrafts}
           isSubmitting={reviewMutation.isPending}
-          isOpeningCodex={codexMutation.isPending}
-          codexUnavailableMessage={
-            codexRepoPath
-              ? undefined
-              : `Open ${detail.owner}/${detail.repository} locally to hand this review to Codex.`
-          }
+          isCopyingPrompt={copyPromptMutation.isPending}
           errorMessage={
-            codexMutation.error instanceof Error
-              ? codexMutation.error.message
+            copyPromptMutation.error instanceof Error
+              ? copyPromptMutation.error.message
               : reviewMutation.error instanceof Error
                 ? reviewMutation.error.message
                 : undefined
           }
           onRemoveDraft={removeDraft}
           onClose={() => setIsReviewDialogOpen(false)}
-          onOpenCodex={(summary) => codexMutation.mutate(summary)}
+          onCopyPrompt={(summary) => copyPromptMutation.mutate(summary)}
           onSubmit={submitReview}
         />
       ) : null}
@@ -1203,22 +1190,20 @@ function ReviewTimelineComment({
 function ReviewSubmissionDialog({
   drafts,
   isSubmitting,
-  isOpeningCodex,
-  codexUnavailableMessage,
+  isCopyingPrompt,
   errorMessage,
   onRemoveDraft,
   onClose,
-  onOpenCodex,
+  onCopyPrompt,
   onSubmit
 }: {
   drafts: PullRequestReviewDraft[];
   isSubmitting: boolean;
-  isOpeningCodex: boolean;
-  codexUnavailableMessage?: string;
+  isCopyingPrompt: boolean;
   errorMessage?: string;
   onRemoveDraft: (id: string) => void;
   onClose: () => void;
-  onOpenCodex: (body: string) => void;
+  onCopyPrompt: (body: string) => void;
   onSubmit: (event: ReviewEvent, body: string) => void;
 }): ReactElement {
   const titleId = useId();
@@ -1227,8 +1212,8 @@ function ReviewSubmissionDialog({
   const requiresBody =
     event === 'request-changes' ||
     (event === 'comment' && drafts.length === 0);
-  const hasCodexContext = drafts.length > 0 || body.trim().length > 0;
-  const isBusy = isSubmitting || isOpeningCodex;
+  const hasPromptContext = drafts.length > 0 || body.trim().length > 0;
+  const isBusy = isSubmitting || isCopyingPrompt;
 
   function handleSubmit(submitEvent: FormEvent<HTMLFormElement>): void {
     submitEvent.preventDefault();
@@ -1342,23 +1327,22 @@ function ReviewSubmissionDialog({
         </div>
         <footer>
           <span className="pr-review-submit-note">
-            Codex keeps drafts local. GitHub publishes them.
+            Copying keeps drafts local. GitHub publishes them.
           </span>
           <button className="btn-subtle btn-regular" type="button" disabled={isBusy} onClick={onClose}>Cancel</button>
           <button
             className="btn-subtle btn-regular"
             type="button"
-            disabled={isBusy || !hasCodexContext || Boolean(codexUnavailableMessage)}
+            disabled={isBusy || !hasPromptContext}
             title={
-              codexUnavailableMessage ??
-              (hasCodexContext
-                ? 'Open a new Codex task with these local review comments'
-                : 'Add a draft comment or review summary first')
+              hasPromptContext
+                ? 'Copy a prompt containing these local review comments and summary'
+                : 'Add a draft comment or review summary first'
             }
-            onClick={() => onOpenCodex(body.trim())}
+            onClick={() => onCopyPrompt(body.trim())}
           >
-            {isOpeningCodex ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            Open in Codex
+            {isCopyingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+            Copy review prompt
           </button>
           <button className="btn-primary btn-regular" type="submit" disabled={isBusy || (requiresBody && !body.trim())}>
             {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}

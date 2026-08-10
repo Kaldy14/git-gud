@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { GitHubPullRequestDetail } from '@shared/types';
 
-import { buildPullRequestCodexPrompt } from './pullRequestCodexPrompt';
+import {
+  buildPullRequestCodexPrompt,
+  copyPullRequestCodexPrompt
+} from './pullRequestCodexPrompt';
 
 describe('pull request Codex handoff prompt', () => {
   it('includes local line, file, and reply drafts without implying they were published', () => {
@@ -43,6 +46,32 @@ describe('pull request Codex handoff prompt', () => {
     expect(prompt).toContain('Reply to @octocat on `src/parser.ts`, line 24');
     expect(prompt).toContain('Existing GitHub comment:\n> Could this throw for an empty value?');
     expect(prompt).toContain('Do not post, edit, or resolve any GitHub comments.');
+  });
+
+  it('copies the complete review prompt', async () => {
+    const clipboard = { writeText: vi.fn(async () => undefined) };
+
+    await copyPullRequestCodexPrompt(
+      pullRequest(),
+      [
+        {
+          id: 'file-draft',
+          kind: 'file',
+          body: 'Please add focused tests for the parser.',
+          path: 'src/parser.test.ts'
+        }
+      ],
+      'Keep the change backwards compatible.',
+      clipboard
+    );
+
+    expect(clipboard.writeText).toHaveBeenCalledOnce();
+    expect(clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining('`src/parser.test.ts` (whole file)')
+    );
+    expect(clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining('Review summary:\n> Keep the change backwards compatible.')
+    );
   });
 });
 

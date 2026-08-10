@@ -10,6 +10,8 @@ export type PullRequestCodexDraft =
   | ({ kind: 'file' } & GitHubPullRequestDraftFileComment)
   | ({ kind: 'reply' } & GitHubPullRequestDraftReply);
 
+type ClipboardWriter = Pick<Clipboard, 'writeText'>;
+
 type PullRequestCodexContext = Pick<
   GitHubPullRequestDetail,
   | 'owner'
@@ -57,6 +59,15 @@ export function buildPullRequestCodexPrompt(
   }
 
   return sections.join('\n\n');
+}
+
+export async function copyPullRequestCodexPrompt(
+  pullRequest: PullRequestCodexContext,
+  drafts: readonly PullRequestCodexDraft[],
+  summary: string,
+  clipboard: ClipboardWriter
+): Promise<void> {
+  await clipboard.writeText(buildPullRequestCodexPrompt(pullRequest, drafts, summary));
 }
 
 function formatDraft(
