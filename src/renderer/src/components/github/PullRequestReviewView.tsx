@@ -74,6 +74,7 @@ import {
   pullRequestStatus
 } from './pullRequestInboxStatus';
 import { retainUnsubmittedOrFailedDrafts } from './pullRequestReviewDrafts';
+import { isReviewSummaryRequired } from './pullRequestReviewSubmission';
 import { copyGitGudPullRequestLink } from './pullRequestLinkClipboard';
 import {
   buildPullRequestTimeline,
@@ -1209,9 +1210,7 @@ function ReviewSubmissionDialog({
   const titleId = useId();
   const [event, setEvent] = useState<ReviewEvent>('comment');
   const [body, setBody] = useState('');
-  const requiresBody =
-    event === 'request-changes' ||
-    (event === 'comment' && drafts.length === 0);
+  const requiresBody = isReviewSummaryRequired(event, drafts.length);
   const hasPromptContext = drafts.length > 0 || body.trim().length > 0;
   const isBusy = isSubmitting || isCopyingPrompt;
 
@@ -1305,9 +1304,7 @@ function ReviewSubmissionDialog({
           ) : null}
           <label>
             <span>
-              {event === 'approve' || (event === 'comment' && drafts.length > 0)
-                ? 'Review summary (optional)'
-                : 'Review summary'}
+              {requiresBody ? 'Review summary' : 'Review summary (optional)'}
             </span>
             <textarea
               rows={4}
