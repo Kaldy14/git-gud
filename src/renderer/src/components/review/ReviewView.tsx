@@ -6,6 +6,7 @@ import type {
   ReactElement
 } from 'react';
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useId,
@@ -14,7 +15,12 @@ import {
   useRef,
   useState
 } from 'react';
-import type { DiffLineAnnotation, FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
+import type {
+  DiffLineAnnotation,
+  DiffTokenEventBaseProps,
+  FileDiffOptions,
+  SelectedLineRange
+} from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { prepareFileTreeInput } from '@pierre/trees';
 import { FileTree, useFileTree } from '@pierre/trees/react';
@@ -72,7 +78,8 @@ import type {
   GitReviewGuideState,
   GitReviewGuideUnit,
   GitReviewPlan,
-  GitReviewTarget
+  GitReviewTarget,
+  GitReviewTypeDefinitionResult
 } from '@shared/types';
 
 import {
@@ -90,6 +97,12 @@ import {
   createReviewContextOptions,
   shareReviewExpansionBoundary
 } from './reviewContextExpansion';
+import { ReviewTypeDefinitionDialog } from './ReviewTypeDefinitionDialog';
+import {
+  createReviewTypeDefinitionInput,
+  getReviewTypeDefinitionCharacter,
+  isReviewTypeDefinitionGesture
+} from './reviewTypeDefinitionInteraction';
 import {
   createReviewFileTreeEntries,
   DEFAULT_REVIEW_FILE_TREE_WIDTH,
@@ -249,6 +262,21 @@ type ReviewSearchViewState = ReviewSearchSession & {
   onSelect: () => void;
 };
 
+type ReviewTypeDefinitionPreview = {
+  token: string;
+  sourcePath: string;
+  sourceFingerprint: string;
+  isLoading: boolean;
+  result?: GitReviewTypeDefinitionResult;
+  errorMessage?: string;
+};
+
+type ReviewTypeDefinitionRequest = (
+  chunk: GitReviewChunk,
+  token: DiffTokenEventBaseProps,
+  event: MouseEvent
+) => void;
+
 export function ReviewView({
   repoPath,
   target,
@@ -314,6 +342,8 @@ export function ReviewView({
   const [selectedCommentTarget, setSelectedCommentTarget] = useState<ReviewCommentTarget>();
   const [lineCommentBody] = useState<ReviewCommentBodyBuffer>(createReviewCommentBodyBuffer);
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
+  const [typeDefinitionPreview, setTypeDefinitionPreview] = useState<ReviewTypeDefinitionPreview>();
+  const typeDefinitionRequestRef = useRef(0);
   const reviewQuery = useReviewPlan(
     embeddedPlan ? undefined : repoPath,
     embeddedPlan ? undefined : target
@@ -331,6 +361,9 @@ export function ReviewView({
       reviewedChunkIds: embeddedReviewedChunkIds.filter((chunkId) => validChunkIds.has(chunkId))
     };
   }, [embeddedPlan, embeddedReviewedChunkIds, reviewQuery.data]);
+  useEffect(() => {
+    typeDefinitionRequestRef.current += 1;
+  }, [repoPath, reviewPlan?.sourceFingerprint]);
   const reviewedChunkIds = useMemo(
     () => new Set(reviewPlan?.reviewedChunkIds ?? []),
     [reviewPlan?.reviewedChunkIds]
@@ -377,6 +410,16 @@ export function ReviewView({
   ].filter(Boolean).length;
   const fileContexts = useMemo(
     () => new Map(reviewPlan?.fileContexts.map((context) => [context.id, context]) ?? []),
+    [reviewPlan?.fileContexts]
+  );
+  const typeDefinitionPaths = useMemo(
+    () => new Set(
+      reviewPlan?.fileContexts
+        .filter((context) =>
+          context.syntax?.language === 'typescript' || context.syntax?.language === 'tsx'
+        )
+        .map((context) => context.path) ?? []
+    ),
     [reviewPlan?.fileContexts]
   );
   const selectedUnit =
@@ -963,6 +1006,73 @@ export function ReviewView({
     });
   }
 
+  const handleTypeDefinitionRequest = useCallback<ReviewTypeDefinitionRequest>(
+    (chunk, token, event) => {
+      if (!isReviewTypeDefinitionGesture(event)) {
+        return;
+      }
+
+      const sourceFingerprint = reviewPlan?.sourceFingerprint ?? '';
+      const request = createReviewTypeDefinitionInput(
+        chunk.path,
+        token.side === 'deletions' ? 'old' : 'new',
+        token.lineNumber,
+        getReviewTypeDefinitionCharacter(token, event),
+        target,
+        sourceFingerprint,
+        reviewPlan?.fileContexts ?? []
+      );
+
+      if (!request) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const requestId = ++typeDefinitionRequestRef.current;
+      setTypeDefinitionPreview({
+        token: token.tokenText,
+        sourcePath: request.filePath,
+        sourceFingerprint,
+        isLoading: true
+      });
+
+      void window.api.getReviewTypeDefinition(repoPath, request)
+        .then((result) => {
+          if (requestId !== typeDefinitionRequestRef.current) {
+            return;
+          }
+
+          setTypeDefinitionPreview({
+            token: token.tokenText,
+            sourcePath: request.filePath,
+            sourceFingerprint,
+            isLoading: false,
+            result,
+            errorMessage: result
+              ? undefined
+              : 'No TypeScript definition was found in the available review context.'
+          });
+        })
+        .catch((error: unknown) => {
+          if (requestId !== typeDefinitionRequestRef.current) {
+            return;
+          }
+
+          setTypeDefinitionPreview({
+            token: token.tokenText,
+            sourcePath: request.filePath,
+            sourceFingerprint,
+            isLoading: false,
+            errorMessage: error instanceof Error
+              ? error.message
+              : 'Unable to resolve this TypeScript definition.'
+          });
+        });
+    },
+    [repoPath, reviewPlan?.fileContexts, reviewPlan?.sourceFingerprint, target]
+  );
+
   const lineCollaboration: ReviewLineCollaboration | undefined =
     onAddDraftLineComment && onAddDraftFileComment
     ? {
@@ -1116,6 +1226,8 @@ export function ReviewView({
               }
             : undefined
         }
+        typeDefinitionPaths={typeDefinitionPaths}
+        onTypeDefinitionRequest={handleTypeDefinitionRequest}
         onSelectUnit={selectReviewUnit}
         onSelectFile={selectFile}
         onScrollTopChange={saveReviewScrollTop}
@@ -1135,6 +1247,16 @@ export function ReviewView({
               skipFilePatterns: filePatterns.length > 0
             });
             setIsPatternEditorOpen(false);
+          }}
+        />
+      ) : null}
+      {typeDefinitionPreview?.sourceFingerprint === reviewPlan?.sourceFingerprint ? (
+        <ReviewTypeDefinitionDialog
+          {...typeDefinitionPreview}
+          syntaxTheme={diffSyntaxTheme}
+          onClose={() => {
+            typeDefinitionRequestRef.current += 1;
+            setTypeDefinitionPreview(undefined);
           }}
         />
       ) : null}
@@ -1460,6 +1582,8 @@ function ReviewBody({
   selectedFilePath,
   restoredScrollTop,
   reviewSearch,
+  typeDefinitionPaths,
+  onTypeDefinitionRequest,
   onSelectUnit,
   onSelectFile,
   onScrollTopChange,
@@ -1484,6 +1608,8 @@ function ReviewBody({
   selectedFilePath?: string;
   restoredScrollTop?: number;
   reviewSearch?: ReviewSearchViewState;
+  typeDefinitionPaths: ReadonlySet<string>;
+  onTypeDefinitionRequest: ReviewTypeDefinitionRequest;
   onSelectUnit: (unitId: string) => void;
   onSelectFile: (path: string | undefined) => void;
   onScrollTopChange: (unitId: string, scrollTop: number) => void;
@@ -1640,6 +1766,8 @@ function ReviewBody({
           <ReviewSearchPanel
             search={reviewSearch}
             diffOptions={diffOptions}
+            typeDefinitionPaths={typeDefinitionPaths}
+            onTypeDefinitionRequest={onTypeDefinitionRequest}
           />
         ) : selectedUnit ? (
           <>
@@ -1707,6 +1835,8 @@ function ReviewBody({
                       preparedDiffs={preparedDiffs}
                       diffOptions={diffOptions}
                       lineCollaboration={lineCollaboration}
+                      typeDefinitionPaths={typeDefinitionPaths}
+                      onTypeDefinitionRequest={onTypeDefinitionRequest}
                       isCollapsed={collapsedFileKeys.has(file.key)}
                       onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
                     />
@@ -1733,10 +1863,14 @@ function ReviewBody({
 
 function ReviewSearchPanel({
   search,
-  diffOptions
+  diffOptions,
+  typeDefinitionPaths,
+  onTypeDefinitionRequest
 }: {
   search: ReviewSearchViewState;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
+  typeDefinitionPaths: ReadonlySet<string>;
+  onTypeDefinitionRequest: ReviewTypeDefinitionRequest;
 }): ReactElement {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -2016,6 +2150,8 @@ function ReviewSearchPanel({
                   }}
                   preparedDiffs={search.preparedDiffs}
                   diffOptions={diffOptions}
+                  typeDefinitionPaths={typeDefinitionPaths}
+                  onTypeDefinitionRequest={onTypeDefinitionRequest}
                   isCollapsed={collapsedChunkIds.has(file.chunk.id)}
                   searchHighlightsByChunk={new Map([[file.chunk.id, matchedLines]])}
                   onToggleCollapsed={() => toggleChunk(file.chunk.id)}
@@ -2322,6 +2458,8 @@ function ReviewFile({
   preparedDiffs,
   diffOptions,
   lineCollaboration,
+  typeDefinitionPaths,
+  onTypeDefinitionRequest,
   isCollapsed,
   searchHighlightsByChunk,
   onToggleCollapsed
@@ -2330,6 +2468,8 @@ function ReviewFile({
   preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
+  typeDefinitionPaths: ReadonlySet<string>;
+  onTypeDefinitionRequest: ReviewTypeDefinitionRequest;
   isCollapsed: boolean;
   searchHighlightsByChunk?: ReadonlyMap<string, readonly ReviewSearchLine[]>;
   onToggleCollapsed: () => void;
@@ -2425,6 +2565,9 @@ function ReviewFile({
               preparedDiff={preparedDiffs.get(chunk.id)}
               diffOptions={diffOptions}
               lineCollaboration={lineCollaboration}
+              onTypeDefinitionRequest={
+                typeDefinitionPaths.has(chunk.path) ? onTypeDefinitionRequest : undefined
+              }
               hideLeadingExpansion={shareReviewExpansionBoundary(
                 chunkIndex > 0
                   ? preparedDiffs.get(file.chunks[chunkIndex - 1]!.id)?.expandable
@@ -2444,6 +2587,7 @@ function ReviewChunk({
   preparedDiff,
   diffOptions,
   lineCollaboration,
+  onTypeDefinitionRequest,
   hideLeadingExpansion = false,
   searchHighlights
 }: {
@@ -2451,6 +2595,7 @@ function ReviewChunk({
   preparedDiff?: PreparedReviewDiff;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
+  onTypeDefinitionRequest?: ReviewTypeDefinitionRequest;
   hideLeadingExpansion?: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
 }): ReactElement {
@@ -2465,13 +2610,30 @@ function ReviewChunk({
             hideLeadingExpansion
           )
         : diffOptions;
+      const interactiveOptions = onTypeDefinitionRequest
+        ? {
+            ...options,
+            onTokenClick: (token: DiffTokenEventBaseProps, event: MouseEvent) =>
+              onTypeDefinitionRequest(chunk, token, event)
+          }
+        : options;
       const highlightCSS = createReviewSearchHighlightCSS(searchHighlights);
 
       return highlightCSS
-        ? { ...options, unsafeCSS: `${options.unsafeCSS ?? ''}\n${highlightCSS}` }
-        : options;
+        ? {
+            ...interactiveOptions,
+            unsafeCSS: `${interactiveOptions.unsafeCSS ?? ''}\n${highlightCSS}`
+          }
+        : interactiveOptions;
     },
-    [chunk.path, diffOptions, expandableDiff, hideLeadingExpansion, searchHighlights]
+    [
+      chunk,
+      diffOptions,
+      expandableDiff,
+      hideLeadingExpansion,
+      onTypeDefinitionRequest,
+      searchHighlights
+    ]
   );
   const selectedLines =
     lineCollaboration?.selectedChunkId === chunk.id &&

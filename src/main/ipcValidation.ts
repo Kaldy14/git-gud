@@ -38,6 +38,7 @@ import type {
   GitRebaseInput,
   GitReviewProgressUpdate,
   GitReviewTarget,
+  GitReviewTypeDefinitionInput,
   GitRenameBranchInput,
   GitSetBranchUpstreamInput,
   GitResetInput,
@@ -102,6 +103,12 @@ const validators = {
     readOnlyArg(args, 'repo:generate-commit-message', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
   'repo:review-plan': (args) => readRepoPathWithObject(args, 'repo:review-plan', readReviewTarget),
+  'repo:review-type-definition': (args) =>
+    readRepoPathWithObject(
+      args,
+      'repo:review-type-definition',
+      readReviewTypeDefinitionInput
+    ),
   ...(import.meta.env.DEV
     ? {
         'dev:review-grouping-benchmarks': (args: readonly unknown[]) =>
@@ -516,6 +523,19 @@ function readReviewTarget(value: unknown): GitReviewTarget {
   return {
     kind,
     scope: readEnumProperty(record, 'scope', ['all', 'staged', 'unstaged'])
+  };
+}
+
+function readReviewTypeDefinitionInput(value: unknown): GitReviewTypeDefinitionInput {
+  const record = readRecord(value, 'review type definition input');
+
+  return {
+    target: readReviewTarget(record.target),
+    sourceFingerprint: readReviewSourceFingerprint(record.sourceFingerprint),
+    filePath: readNonEmptyLimitedString(record.filePath, 'filePath', 4_096),
+    side: readEnumProperty(record, 'side', ['old', 'new']),
+    line: readPositiveInteger(record.line, 'line'),
+    character: readNonNegativeInteger(record.character, 'character')
   };
 }
 

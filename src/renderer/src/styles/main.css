@@ -2934,6 +2934,125 @@ button.ref-chip {
   min-height: 100%;
 }
 
+.review-type-definition-dialog {
+  width: min(840px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 48px));
+  display: grid;
+  grid-template-rows: auto auto minmax(180px, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-popover);
+  box-shadow: 0 24px 72px rgb(0 0 0 / 0.62);
+}
+
+.review-type-definition-dialog > header {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--accent-2) 17%, transparent), transparent 46%),
+    var(--bg-graph-header);
+}
+
+.review-type-definition-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 38%, var(--border));
+  border-radius: 7px;
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--bg-field));
+}
+
+.review-type-definition-dialog > header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.review-type-definition-dialog > header > div > span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-3);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.review-type-definition-dialog > header h2 {
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-type-definition-location {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  background: var(--bg-field);
+  font-size: 10.5px;
+}
+
+.review-type-definition-location code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-type-definition-code {
+  min-height: 180px;
+  overflow: auto;
+  background: var(--diffs-bg);
+}
+
+.gg-definition-file {
+  min-height: 100%;
+  display: block;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.review-type-definition-message {
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
+}
+
+.review-type-definition-dialog > footer {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  background: var(--bg-graph-header);
+  font-size: 10.5px;
+}
+
 /* --- GitHub pull request inbox -------------------------------------- */
 
 .sidebar-pr-destination {

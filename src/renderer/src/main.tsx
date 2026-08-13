@@ -18,7 +18,8 @@ const diffWorkerPoolOptions: WorkerPoolOptions = {
   totalASTLRUCacheSize: 32
 };
 const diffHighlighterOptions: WorkerInitializationRenderOptions = {
-  theme: getDiffThemeName(createDefaultAppSettings().diffSyntaxTheme)
+  theme: getDiffThemeName(createDefaultAppSettings().diffSyntaxTheme),
+  useTokenTransformer: true
 };
 
 const rootElement = document.getElementById('root');

@@ -252,6 +252,31 @@ export type GitReviewFileContext = {
   syntax?: GitReviewSyntaxContext;
 };
 
+export type GitReviewTypeDefinitionInput = {
+  target: GitReviewTarget;
+  sourceFingerprint: string;
+  filePath: string;
+  side: 'old' | 'new';
+  line: number;
+  character: number;
+};
+
+export type GitReviewTypeDefinitionResult = {
+  name: string;
+  path: string;
+  kind: 'definition' | 'type-definition';
+  declarationKind: string;
+  start: number;
+  end: number;
+  startLine: number;
+  startCharacter: number;
+  endLine: number;
+  endCharacter: number;
+  snippetStartLine: number;
+  snippetEndLine: number;
+  snippet: string;
+};
+
 export type GitReviewSyntaxNode = {
   kind: 'declaration' | 'block' | 'member' | 'graphql';
   startLine: number;

@@ -41,6 +41,18 @@ export class GitHubPullRequestReviewPlanCache {
     return plan;
   }
 
+  getByReview(repoPath: string, sourceFingerprint: string): GitReviewPlan {
+    const plan = [...this.plans.values()].find((candidate) =>
+      candidate.repoPath === repoPath && candidate.sourceFingerprint === sourceFingerprint
+    );
+
+    if (!plan) {
+      throw new Error('Reload the pull request before opening a TypeScript definition.');
+    }
+
+    return plan;
+  }
+
   has(plan: GitReviewPlan): boolean {
     return [...this.plans.values()].some((candidate) =>
       candidate.repoPath === plan.repoPath &&

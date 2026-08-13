@@ -47,6 +47,8 @@ const api: RendererApi = {
   generateCommitMessage: (repoPath) => invoke('repo:generate-commit-message', repoPath),
   getFileDiff: (repoPath, request) => invoke('repo:file-diff', repoPath, request),
   getReviewPlan: (repoPath, target) => invoke('repo:review-plan', repoPath, target),
+  getReviewTypeDefinition: (repoPath, input) =>
+    invoke('repo:review-type-definition', repoPath, input),
   getReviewGuideState: (repoPath, sourceFingerprint) =>
     invoke('repo:review-guide-state', repoPath, sourceFingerprint),
   startReviewGuide: (repoPath, target, sourceFingerprint) =>

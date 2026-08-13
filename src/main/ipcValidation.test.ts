@@ -490,6 +490,29 @@ describe('IPC argument validation', () => {
       '/repo',
       { kind: 'wip', scope: 'all' }
     ]);
+    expect(
+      validateIpcArgs('repo:review-type-definition', [
+        '/repo',
+        {
+          target: { kind: 'wip', scope: 'all' },
+          sourceFingerprint: 'a'.repeat(64),
+          filePath: 'src/view.tsx',
+          side: 'new',
+          line: 12,
+          character: 8
+        }
+      ])
+    ).toEqual([
+      '/repo',
+      {
+        target: { kind: 'wip', scope: 'all' },
+        sourceFingerprint: 'a'.repeat(64),
+        filePath: 'src/view.tsx',
+        side: 'new',
+        line: 12,
+        character: 8
+      }
+    ]);
     expect(validateIpcArgs('repo:review-guide-state', ['/repo', 'a'.repeat(64)])).toEqual([
       '/repo',
       'a'.repeat(64)
@@ -784,6 +807,19 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:review-plan', ['/repo', { kind: 'wip', scope: 'index' }])).toThrow(
       'scope must be one of: all, staged, unstaged.'
     );
+    expect(() =>
+      validateIpcArgs('repo:review-type-definition', [
+        '/repo',
+        {
+          target: { kind: 'wip', scope: 'all' },
+          sourceFingerprint: 'a'.repeat(64),
+          filePath: '../outside.ts',
+          side: 'new',
+          line: 0,
+          character: -1
+        }
+      ])
+    ).toThrow('line must be a positive integer.');
     expect(() =>
       validateIpcArgs('repo:review-plan', ['/repo', { kind: 'branch', name: '', sha: 'abc123' }])
     ).toThrow('name must not be empty.');

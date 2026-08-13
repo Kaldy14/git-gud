@@ -22,9 +22,13 @@ describe('GitHub pull request review plan cache', () => {
     cache.remember(locator, plan);
 
     expect(cache.get(locator, 'fingerprint-1')).toBe(plan);
+    expect(cache.getByReview(plan.repoPath, 'fingerprint-1')).toBe(plan);
     expect(cache.has(plan)).toBe(true);
     expect(() => cache.get(locator, 'fingerprint-2')).toThrow(
       'The pull request changed while the AI guide was starting.'
+    );
+    expect(() => cache.getByReview(plan.repoPath, 'fingerprint-2')).toThrow(
+      'Reload the pull request before opening a TypeScript definition.'
     );
   });
 

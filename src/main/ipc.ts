@@ -15,6 +15,7 @@ import type {
   DashboardActionAlertState,
   DashboardActionFailureAlert,
   GitOperationProgressEvent,
+  GitReviewPlan,
   WorkspaceState
 } from '@shared/types';
 
@@ -81,6 +82,7 @@ import {
 import { githubPullRequestReviewPlans } from './githubReviewPlans';
 import { validateRepository } from './git/repoInspector';
 import { clearReviewSyntaxCache, clearReviewSyntaxCacheForRepository } from './git/reviewSyntax';
+import { resolveReviewTypeDefinition } from './git/reviewTypeDefinition';
 import type { RepoWatcherRegistry } from './git/watcher';
 import { validateIpcArgs } from './ipcValidation';
 import { isTrustedRendererUrl } from './ipcSecurity';
@@ -145,6 +147,8 @@ type TrackedOperation = {
 };
 
 const activeOperations = new Map<string, TrackedOperation>();
+const localReviewPlans = new Map<string, GitReviewPlan>();
+const MAX_CACHED_LOCAL_REVIEW_PLANS = 8;
 const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: string; cancellable?: boolean }>> = {
   'repo:apply-patch': { label: 'Apply patch' },
   'repo:stage-file': { label: 'Stage file' },
@@ -444,11 +448,29 @@ export function registerIpcHandlers(
   handle('repo:file-diff', async (_event, repoPath, request) => loadFileDiff(getOpenRepositoryTab(repoPath), request));
   handle('repo:review-plan', async (_event, repoPath, target) => {
     const plan = await loadReviewPlan(getOpenRepositoryTab(repoPath), target);
+    rememberLocalReviewPlan(plan);
     const validChunkIds = new Set(plan.units.flatMap((unit) => unit.chunks.map((chunk) => chunk.id)));
     return {
       ...plan,
       reviewedChunkIds: loadReviewedChunks(repoPath, plan.targetKey, validChunkIds)
     };
+  });
+  handle('repo:review-type-definition', (_event, repoPath, input) => {
+    const plan = repoPath.startsWith('github://')
+      ? githubPullRequestReviewPlans.getByReview(repoPath, input.sourceFingerprint)
+      : getCachedLocalReviewPlan(repoPath, input.sourceFingerprint);
+
+    if (JSON.stringify(plan.target) !== JSON.stringify(input.target)) {
+      throw new Error('The review target changed. Reload the review and try again.');
+    }
+
+    return resolveReviewTypeDefinition({
+      filePath: input.filePath,
+      side: input.side,
+      line: input.line,
+      character: input.character,
+      files: plan.fileContexts
+    });
   });
   if (import.meta.env.DEV && isDevelopment) {
     handle('dev:review-grouping-benchmarks', async () => {
@@ -822,6 +844,29 @@ function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
 function syncWorkspaceWatchers(workspace: WorkspaceState, repoWatchers: RepoWatcherRegistry): WorkspaceState {
   repoWatchers.sync(workspace.tabs);
   return workspace;
+}
+
+function rememberLocalReviewPlan(plan: GitReviewPlan): void {
+  const key = `${plan.repoPath}\0${plan.sourceFingerprint}`;
+  localReviewPlans.delete(key);
+  localReviewPlans.set(key, plan);
+
+  while (localReviewPlans.size > MAX_CACHED_LOCAL_REVIEW_PLANS) {
+    const oldestKey = localReviewPlans.keys().next().value;
+    if (typeof oldestKey !== 'string') return;
+    localReviewPlans.delete(oldestKey);
+  }
+}
+
+function getCachedLocalReviewPlan(repoPath: string, sourceFingerprint: string): GitReviewPlan {
+  getOpenRepositoryTab(repoPath);
+  const plan = localReviewPlans.get(`${repoPath}\0${sourceFingerprint}`);
+
+  if (!plan) {
+    throw new Error('Reload the review before opening a TypeScript definition.');
+  }
+
+  return plan;
 }
 
 function getOpenRepositoryTab(repoPath: string): WorkspaceState['tabs'][number] {

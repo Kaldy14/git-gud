@@ -50,6 +50,8 @@ import type {
   GitReviewGuideState,
   GitReviewProgressUpdate,
   GitReviewTarget,
+  GitReviewTypeDefinitionInput,
+  GitReviewTypeDefinitionResult,
   ReviewGroupingBenchmarkPreview,
   ReviewGroupingBenchmarkSummary,
   GitRenameBranchInput,
@@ -203,6 +205,10 @@ export type IpcChannelMap = {
   'repo:review-plan': {
     args: [repoPath: string, target: GitReviewTarget];
     result: GitReviewPlan;
+  };
+  'repo:review-type-definition': {
+    args: [repoPath: string, input: GitReviewTypeDefinitionInput];
+    result: GitReviewTypeDefinitionResult | undefined;
   };
   'dev:review-grouping-benchmarks': {
     args: [];
@@ -564,6 +570,10 @@ export type RendererApi = {
   generateCommitMessage: (repoPath: string) => Promise<string>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
   getReviewPlan: (repoPath: string, target: GitReviewTarget) => Promise<GitReviewPlan>;
+  getReviewTypeDefinition: (
+    repoPath: string,
+    input: GitReviewTypeDefinitionInput
+  ) => Promise<GitReviewTypeDefinitionResult | undefined>;
   getReviewGuideState: (repoPath: string, sourceFingerprint: string) => Promise<GitReviewGuideState>;
   startReviewGuide: (
     repoPath: string,
