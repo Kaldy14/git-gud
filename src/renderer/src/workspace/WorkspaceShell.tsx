@@ -276,6 +276,7 @@ export function WorkspaceShell(): ReactElement {
   } = useWorkspaceStore();
   const diffWorkerPool = useWorkerPool();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
+  const [graphScrollResetByTab, setGraphScrollResetByTab] = useState<Record<string, number>>({});
   const [bulkSelectionByTab, setBulkSelectionByTab] = useState<Record<string, string[]>>({});
   const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
   const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
@@ -1812,8 +1813,19 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleFetch(): void {
+    const tabId = activeTab?.id;
+
     void runRepositoryOperation('Fetch', (repoPath) => window.api.fetchRepository(repoPath), {
       retryable: true
+    }).then((completed) => {
+      if (!completed || !tabId) {
+        return;
+      }
+
+      setGraphScrollResetByTab((signals) => ({
+        ...signals,
+        [tabId]: (signals[tabId] ?? 0) + 1
+      }));
     });
   }
 
@@ -3428,6 +3440,7 @@ export function WorkspaceShell(): ReactElement {
                   largeRepoMode={settings.largeRepoMode}
                   columns={settings.graphColumns}
                   remoteAvatars={settings.remoteAvatars}
+                  scrollToTopSignal={graphScrollResetByTab[activeTab.id] ?? 0}
                   isSearchOpen={isCommitSearchOpen}
                   searchFocusSignal={commitSearchFocusSignal}
                   onCloseSearch={() => setIsCommitSearchOpen(false)}

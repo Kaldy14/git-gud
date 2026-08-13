@@ -181,6 +181,7 @@ type GraphViewProps = {
   largeRepoMode?: boolean;
   columns?: GraphColumnVisibility;
   remoteAvatars?: boolean;
+  scrollToTopSignal?: number;
   isSearchOpen?: boolean;
   searchFocusSignal?: number;
   onCloseSearch?: () => void;
@@ -283,6 +284,7 @@ export function GraphView({
   largeRepoMode = false,
   columns = DEFAULT_GRAPH_COLUMN_VISIBILITY,
   remoteAvatars = false,
+  scrollToTopSignal = 0,
   isSearchOpen = false,
   searchFocusSignal = 0,
   onCloseSearch
@@ -381,6 +383,15 @@ export function GraphView({
       rowVirtualizer.scrollToIndex(selectedIndex, { align: 'auto' });
     }
   }, [rowVirtualizer, rows, selectedSha]);
+
+  useEffect(() => {
+    if (scrollToTopSignal === 0) {
+      return;
+    }
+
+    scrollRef.current?.scrollTo({ top: 0 });
+    setFirstVisibleRowIndex(0);
+  }, [scrollToTopSignal]);
 
   useEffect(() => {
     if (bulkSelectedShas.length < 2) {
