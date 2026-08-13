@@ -78,6 +78,7 @@ import { isReviewSummaryRequired } from './pullRequestReviewSubmission';
 import { copyGitGudPullRequestLink } from './pullRequestLinkClipboard';
 import {
   buildPullRequestTimeline,
+  type PullRequestReviewThread,
   type PullRequestTimelineEntry
 } from './pullRequestTimeline';
 
@@ -420,6 +421,7 @@ function PullRequestReviewContent({
     loadPullRequestReviewDrafts(window.localStorage, draftStorageKey)
   );
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const [isConflictPanelOpen, setIsConflictPanelOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [imageGallery, setImageGallery] = useState<ReviewImageGallerySelection>();
@@ -449,6 +451,16 @@ function PullRequestReviewContent({
     ) {
       onRefresh();
     }
+  }
+
+  function toggleConflicts(): void {
+    if (!isOverviewOpen) {
+      setIsOverviewOpen(true);
+      setIsConflictPanelOpen(true);
+      return;
+    }
+
+    setIsConflictPanelOpen((current) => !current);
   }
 
   const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
@@ -753,8 +765,8 @@ function PullRequestReviewContent({
         <div className="pr-review-header-status overflow-hidden">
           <ReviewStatus
             detail={detail}
-            isOverviewOpen={isOverviewOpen}
-            onToggleConflicts={toggleOverview}
+            areConflictsOpen={isOverviewOpen && isConflictPanelOpen}
+            onToggleConflicts={toggleConflicts}
           />
         </div>
         {isReviewPlanEnriching ? (
@@ -873,6 +885,8 @@ function PullRequestReviewContent({
                   ? conflictDetailsQuery.error.message
                   : undefined
               }
+              isOpen={isConflictPanelOpen}
+              onToggle={() => setIsConflictPanelOpen((current) => !current)}
             />
           ) : null}
           <div className="pr-review-overview-body">
@@ -1061,21 +1075,23 @@ function PullRequestTimelineItem({
     );
   }
 
-  if (entry.kind === 'review-comment') {
+  if (entry.kind === 'review-thread') {
     return (
-      <article className="pr-timeline-event" data-kind="review-comment">
+      <article className="pr-timeline-event" data-kind="review-thread">
         <TimelineAvatar
-          author={entry.comment.author}
-          authorAvatarUrl={entry.comment.authorAvatarUrl}
+          author={entry.thread.root.author}
+          authorAvatarUrl={entry.thread.root.authorAvatarUrl}
         />
-        <div className="pr-timeline-event-content pr-timeline-comment">
+        <div className="pr-timeline-event-content pr-timeline-review">
           <TimelineEventHeader
-            author={entry.comment.author}
+            author={entry.thread.root.author}
             action="left a review comment"
             createdAt={entry.createdAt}
-            url={entry.comment.url}
+            url={entry.thread.root.url}
           />
-          <ReviewTimelineComment comment={entry.comment} />
+          <div className="pr-timeline-review-threads">
+            <ReviewTimelineThread thread={entry.thread} />
+          </div>
         </div>
       </article>
     );
@@ -1096,10 +1112,10 @@ function PullRequestTimelineItem({
           state={entry.review.state}
         />
         {entry.review.body.trim() ? <ReviewCommentBody body={entry.review.body} /> : null}
-        {entry.comments.length > 0 ? (
-          <div className="pr-timeline-review-comments">
-            {entry.comments.map((comment) => (
-              <ReviewTimelineComment comment={comment} key={comment.id} />
+        {entry.threads.length > 0 ? (
+          <div className="pr-timeline-review-threads">
+            {entry.threads.map((thread) => (
+              <ReviewTimelineThread thread={thread} key={thread.root.id} />
             ))}
           </div>
         ) : null}
@@ -1110,10 +1126,12 @@ function PullRequestTimelineItem({
 
 function TimelineAvatar({
   author,
-  authorAvatarUrl
+  authorAvatarUrl,
+  compact = false
 }: {
   author: string;
   authorAvatarUrl?: string;
+  compact?: boolean;
 }): ReactElement {
   const [didAvatarFail, setDidAvatarFail] = useState(false);
 
@@ -1121,6 +1139,7 @@ function TimelineAvatar({
     return (
       <img
         className="pr-timeline-avatar"
+        data-compact={compact}
         src={authorAvatarUrl}
         alt=""
         aria-hidden="true"
@@ -1131,7 +1150,7 @@ function TimelineAvatar({
   }
 
   return (
-    <span className="pr-timeline-avatar" aria-hidden="true">
+    <span className="pr-timeline-avatar" data-compact={compact} aria-hidden="true">
       {author.slice(0, 1).toUpperCase()}
     </span>
   );
@@ -1166,25 +1185,69 @@ function TimelineEventHeader({
   );
 }
 
-function ReviewTimelineComment({
-  comment
+function ReviewTimelineThread({
+  thread
 }: {
-  comment: GitHubPullRequestDetail['reviewComments'][number];
+  thread: PullRequestReviewThread;
 }): ReactElement {
-  const lineLabel = comment.subjectType === 'file'
-    ? comment.path
-    : `${comment.path}:${comment.line ?? '?'}`;
+  const lineLabel = thread.root.subjectType === 'file'
+    ? thread.root.path
+    : `${thread.root.path}:${thread.root.line ?? '?'}`;
 
   return (
-    <article className="pr-timeline-review-comment">
+    <article className="pr-timeline-review-thread">
       <header>
         <code title={lineLabel}>{lineLabel}</code>
-        <a href={comment.url} target="_blank" rel="noreferrer" aria-label="Open review comment on GitHub">
+        <a
+          href={thread.root.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open review discussion on GitHub"
+        >
           <ExternalLink size={10} />
         </a>
       </header>
-      <ReviewCommentBody body={comment.body} />
+      <div className="pr-timeline-thread-comments">
+        <ReviewTimelineThreadMessage comment={thread.root} />
+        {thread.replies.map((reply) => (
+          <ReviewTimelineThreadMessage comment={reply} isReply key={reply.id} />
+        ))}
+      </div>
     </article>
+  );
+}
+
+function ReviewTimelineThreadMessage({
+  comment,
+  isReply = false
+}: {
+  comment: GitHubPullRequestDetail['reviewComments'][number];
+  isReply?: boolean;
+}): ReactElement {
+  return (
+    <div className="pr-timeline-thread-message" data-reply={isReply}>
+      <TimelineAvatar
+        author={comment.author}
+        authorAvatarUrl={comment.authorAvatarUrl}
+        compact
+      />
+      <div>
+        <header>
+          <strong>{comment.author}</strong>
+          {isReply ? <span>replied</span> : null}
+          <a
+            href={comment.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Open ${comment.author}'s comment on GitHub`}
+          >
+            <time dateTime={comment.createdAt}>{formatDiscussionDate(comment.createdAt)}</time>
+            <ExternalLink size={9} />
+          </a>
+        </header>
+        <ReviewCommentBody body={comment.body} />
+      </div>
+    </div>
   );
 }
 
@@ -1422,11 +1485,11 @@ function MergePullRequestDialog({
 
 function ReviewStatus({
   detail,
-  isOverviewOpen,
+  areConflictsOpen,
   onToggleConflicts
 }: {
   detail: GitHubPullRequestSummary;
-  isOverviewOpen?: boolean;
+  areConflictsOpen?: boolean;
   onToggleConflicts?: () => void;
 }): ReactElement {
   const reviewStatus = pullRequestStatus(detail);
@@ -1445,8 +1508,8 @@ function ReviewStatus({
           type="button"
           data-tone={reviewStatus.tone}
           aria-controls="pr-review-conflict-panel"
-          aria-expanded={isOverviewOpen}
-          title={isOverviewOpen ? 'Hide merge conflict details' : 'Show merge conflict details'}
+          aria-expanded={areConflictsOpen}
+          title={areConflictsOpen ? 'Hide merge conflict details' : 'Show merge conflict details'}
           onClick={onToggleConflicts}
         >
           <PullRequestReviewerAvatars reviewers={detail.reviewers} />
@@ -1481,7 +1544,9 @@ function PullRequestConflictPanel({
   hasLocalCheckout,
   details,
   isLoading,
-  errorMessage
+  errorMessage,
+  isOpen,
+  onToggle
 }: {
   baseRefName: string;
   headRefName: string;
@@ -1489,54 +1554,75 @@ function PullRequestConflictPanel({
   details?: GitHubPullRequestConflictDetails;
   isLoading: boolean;
   errorMessage?: string;
+  isOpen: boolean;
+  onToggle: () => void;
 }): ReactElement {
   const conflictFiles = details?.files ?? [];
   const fileCount = conflictFiles.length;
+  const summary = !hasLocalCheckout
+    ? 'Local checkout unavailable'
+    : isLoading
+      ? 'Inspecting local checkout…'
+      : errorMessage || details?.unavailableReason
+        ? 'File details unavailable'
+        : fileCount > 0
+          ? `${fileCount} conflicting ${fileCount === 1 ? 'file' : 'files'}`
+          : 'Local revisions merge cleanly';
 
   return (
     <section
       className="pr-review-conflict-panel"
       id="pr-review-conflict-panel"
       aria-labelledby="pr-review-conflict-heading"
+      data-open={isOpen}
     >
-      <AlertTriangle size={15} aria-hidden="true" />
-      <div>
-        <h2 id="pr-review-conflict-heading">Resolve merge conflicts before merging</h2>
-        <p>
-          <strong>{headRefName}</strong> and <strong>{baseRefName}</strong> contain overlapping
-          changes that GitHub cannot combine automatically.
-        </p>
-        {!hasLocalCheckout ? (
-          <small>Open this repository locally to inspect the affected files.</small>
-        ) : isLoading ? (
-          <small className="pr-review-conflict-loading">
-            <Loader2 size={11} className="animate-spin" />
-            Inspecting the local checkout…
-          </small>
-        ) : errorMessage ? (
-          <small>Could not inspect the conflicting files: {errorMessage}</small>
-        ) : details?.unavailableReason ? (
-          <small>
-            {details.unavailableReason} Fetch both branches locally, then reopen this overview.
-          </small>
-        ) : fileCount > 0 ? (
-          <>
-            <small>
-              {fileCount} conflicting {fileCount === 1 ? 'file' : 'files'} in this checkout
+      <button
+        className="pr-review-conflict-summary"
+        type="button"
+        aria-expanded={isOpen}
+        aria-controls="pr-review-conflict-details"
+        onClick={onToggle}
+      >
+        <AlertTriangle size={15} aria-hidden="true" />
+        <span>
+          <strong id="pr-review-conflict-heading">Resolve merge conflicts before merging</strong>
+          <small>{summary}</small>
+        </span>
+        <ChevronRight size={13} aria-hidden="true" />
+      </button>
+      {isOpen ? (
+        <div className="pr-review-conflict-details" id="pr-review-conflict-details">
+          <p>
+            <strong>{headRefName}</strong> and <strong>{baseRefName}</strong> contain overlapping
+            changes that GitHub cannot combine automatically.
+          </p>
+          {!hasLocalCheckout ? (
+            <small>Open this repository locally to inspect the affected files.</small>
+          ) : isLoading ? (
+            <small className="pr-review-conflict-loading">
+              <Loader2 size={11} className="animate-spin" />
+              Inspecting the local checkout…
             </small>
+          ) : errorMessage ? (
+            <small>Could not inspect the conflicting files: {errorMessage}</small>
+          ) : details?.unavailableReason ? (
+            <small>
+              {details.unavailableReason} Fetch both branches locally, then reopen this overview.
+            </small>
+          ) : fileCount > 0 ? (
             <ul aria-label="Conflicting files">
               {conflictFiles.map((path) => (
                 <li key={path}><code>{path}</code></li>
               ))}
             </ul>
-          </>
-        ) : (
-          <small>
-            These local revisions merge cleanly. Refresh the pull request to update GitHub’s
-            conflict status.
-          </small>
-        )}
-      </div>
+          ) : (
+            <small>
+              These local revisions merge cleanly. Refresh the pull request to update GitHub’s
+              conflict status.
+            </small>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

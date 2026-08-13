@@ -21,13 +21,19 @@ describe('pull request timeline', () => {
     ).toEqual(['commit', 'review', 'conversation']);
   });
 
-  it('groups inline comments under their submitted review', () => {
+  it('groups review comment replies into threads under their submitted review', () => {
     const timeline = buildPullRequestTimeline({
       commits: [],
       conversationComments: [],
       reviews: [review({ id: 12 })],
       reviewComments: [
         reviewComment({ id: 20, reviewId: 12 }),
+        reviewComment({
+          id: 22,
+          reviewId: 12,
+          inReplyToId: 20,
+          createdAt: '2026-07-29T09:05:00Z'
+        }),
         reviewComment({ id: 21, reviewId: 99 })
       ]
     });
@@ -35,12 +41,79 @@ describe('pull request timeline', () => {
     expect(timeline).toHaveLength(2);
     expect(timeline[0]).toMatchObject({
       kind: 'review',
-      comments: [{ id: 20 }]
+      threads: [{ root: { id: 20 }, replies: [{ id: 22 }] }]
     });
     expect(timeline[1]).toMatchObject({
-      kind: 'review-comment',
-      comment: { id: 21 }
+      kind: 'review-thread',
+      thread: { root: { id: 21 }, replies: [] }
     });
+  });
+
+  it('groups replies even when they arrive before their root comment', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [],
+      conversationComments: [],
+      reviews: [review({ id: 12 })],
+      reviewComments: [
+        reviewComment({ id: 22, reviewId: 12, inReplyToId: 20 }),
+        reviewComment({ id: 20, reviewId: 12 })
+      ]
+    });
+
+    expect(timeline).toMatchObject([{
+      kind: 'review',
+      threads: [{ root: { id: 20 }, replies: [{ id: 22 }] }]
+    }]);
+  });
+
+  it('keeps a reply with an unavailable parent as a standalone thread', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [],
+      conversationComments: [],
+      reviews: [],
+      reviewComments: [reviewComment({ id: 22, inReplyToId: 20 })]
+    });
+
+    expect(timeline).toMatchObject([{
+      kind: 'review-thread',
+      thread: { root: { id: 22 }, replies: [] }
+    }]);
+  });
+
+  it('sorts replies chronologically within a thread', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [],
+      conversationComments: [],
+      reviews: [review({ id: 12 })],
+      reviewComments: [
+        reviewComment({ id: 20, reviewId: 12 }),
+        reviewComment({ id: 23, reviewId: 12, inReplyToId: 20, createdAt: '2026-07-29T09:10:00Z' }),
+        reviewComment({ id: 22, reviewId: 12, inReplyToId: 20, createdAt: '2026-07-29T09:05:00Z' })
+      ]
+    });
+
+    expect(timeline).toMatchObject([{
+      kind: 'review',
+      threads: [{ replies: [{ id: 22 }, { id: 23 }] }]
+    }]);
+  });
+
+  it('follows nested reply references back to the root comment', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [],
+      conversationComments: [],
+      reviews: [review({ id: 12 })],
+      reviewComments: [
+        reviewComment({ id: 20, reviewId: 12 }),
+        reviewComment({ id: 22, reviewId: 12, inReplyToId: 20 }),
+        reviewComment({ id: 23, reviewId: 12, inReplyToId: 22 })
+      ]
+    });
+
+    expect(timeline).toMatchObject([{
+      kind: 'review',
+      threads: [{ root: { id: 20 }, replies: [{ id: 22 }, { id: 23 }] }]
+    }]);
   });
 });
 

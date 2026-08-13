@@ -23,14 +23,19 @@ export type PullRequestTimelineEntry =
       kind: 'review';
       createdAt: string;
       review: GitHubPullRequestReview;
-      comments: GitHubPullRequestReviewComment[];
+      threads: PullRequestReviewThread[];
     }
   | {
       key: string;
-      kind: 'review-comment';
+      kind: 'review-thread';
       createdAt: string;
-      comment: GitHubPullRequestReviewComment;
+      thread: PullRequestReviewThread;
     };
+
+export type PullRequestReviewThread = {
+  root: GitHubPullRequestReviewComment;
+  replies: GitHubPullRequestReviewComment[];
+};
 
 export function buildPullRequestTimeline(input: {
   commits: GitHubPullRequestCommit[];
@@ -39,16 +44,17 @@ export function buildPullRequestTimeline(input: {
   reviewComments: GitHubPullRequestReviewComment[];
 }): PullRequestTimelineEntry[] {
   const reviewIds = new Set(input.reviews.map((review) => review.id));
-  const commentsByReviewId = new Map<number, GitHubPullRequestReviewComment[]>();
+  const threadsByReviewId = new Map<number, PullRequestReviewThread[]>();
+  const standaloneThreads: PullRequestReviewThread[] = [];
 
-  for (const comment of input.reviewComments) {
-    if (comment.reviewId === undefined || !reviewIds.has(comment.reviewId)) {
-      continue;
+  for (const thread of buildReviewThreads(input.reviewComments)) {
+    if (thread.root.reviewId === undefined || !reviewIds.has(thread.root.reviewId)) {
+      standaloneThreads.push(thread);
+    } else {
+      const threads = threadsByReviewId.get(thread.root.reviewId) ?? [];
+      threads.push(thread);
+      threadsByReviewId.set(thread.root.reviewId, threads);
     }
-
-    const comments = commentsByReviewId.get(comment.reviewId) ?? [];
-    comments.push(comment);
-    commentsByReviewId.set(comment.reviewId, comments);
   }
 
   const entries: PullRequestTimelineEntry[] = [
@@ -74,23 +80,63 @@ export function buildPullRequestTimeline(input: {
         kind: 'review',
         createdAt: review.submittedAt,
         review,
-        comments: [...(commentsByReviewId.get(review.id) ?? [])]
-          .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+        threads: [...(threadsByReviewId.get(review.id) ?? [])]
+          .sort((left, right) => Date.parse(left.root.createdAt) - Date.parse(right.root.createdAt))
       }];
     }),
-    ...input.reviewComments.flatMap<PullRequestTimelineEntry>((comment) => {
-      if (comment.reviewId !== undefined && reviewIds.has(comment.reviewId)) {
-        return [];
-      }
-
-      return [{
-        key: `review-comment:${comment.id}`,
-        kind: 'review-comment',
-        createdAt: comment.createdAt,
-        comment
-      }];
-    })
+    ...standaloneThreads.map<PullRequestTimelineEntry>((thread) => ({
+      key: `review-thread:${thread.root.id}`,
+      kind: 'review-thread',
+      createdAt: thread.root.createdAt,
+      thread
+    }))
   ];
 
   return [...entries].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+}
+
+function buildReviewThreads(
+  comments: GitHubPullRequestReviewComment[]
+): PullRequestReviewThread[] {
+  const commentById = new Map(comments.map((comment) => [comment.id, comment]));
+  const threadByRootId = new Map<number, PullRequestReviewThread>();
+
+  for (const comment of comments) {
+    const root = findThreadRoot(comment, commentById);
+    const existingThread = threadByRootId.get(root.id) ?? { root, replies: [] };
+
+    if (comment.id !== root.id) {
+      existingThread.replies.push(comment);
+    }
+
+    threadByRootId.set(root.id, existingThread);
+  }
+
+  return [...threadByRootId.values()]
+    .map((thread) => ({
+      ...thread,
+      replies: thread.replies.sort(
+        (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)
+      )
+    }))
+    .sort((left, right) => Date.parse(left.root.createdAt) - Date.parse(right.root.createdAt));
+}
+
+function findThreadRoot(
+  comment: GitHubPullRequestReviewComment,
+  commentById: ReadonlyMap<number, GitHubPullRequestReviewComment>
+): GitHubPullRequestReviewComment {
+  const seen = new Set<number>();
+  let current = comment;
+
+  while (current.inReplyToId !== undefined && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parent = commentById.get(current.inReplyToId);
+    if (!parent) {
+      break;
+    }
+    current = parent;
+  }
+
+  return current;
 }

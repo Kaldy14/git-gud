@@ -4194,35 +4194,72 @@ button.ref-chip {
 }
 
 .pr-review-conflict-panel {
-  display: grid;
-  grid-template-columns: 15px minmax(0, 1fr);
-  gap: 9px;
   border-top: 1px solid color-mix(in srgb, var(--danger-text) 22%, var(--border));
   border-bottom: 1px solid color-mix(in srgb, var(--danger-text) 22%, var(--border));
   background: color-mix(in srgb, var(--danger-text) 7%, var(--bg-graph-header));
-  padding: 10px 14px 10px 50px;
   color: var(--danger-text);
 }
 
-.pr-review-conflict-panel > svg {
-  margin-top: 1px;
+.pr-review-conflict-summary {
+  display: grid;
+  width: 100%;
+  min-height: 41px;
+  grid-template-columns: 15px minmax(0, 1fr) 13px;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  padding: 7px 14px 7px 50px;
+  color: inherit;
+  text-align: left;
 }
 
-.pr-review-conflict-panel h2 {
-  margin: 0;
+.pr-review-conflict-summary:hover {
+  background: color-mix(in srgb, var(--danger-text) 5%, transparent);
+}
+
+.pr-review-conflict-summary > span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pr-review-conflict-summary strong {
   color: var(--text-1);
   font-size: 11px;
   font-weight: 700;
 }
 
-.pr-review-conflict-panel p {
+.pr-review-conflict-summary small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-review-conflict-summary > svg:last-child {
+  color: var(--text-3);
+  transition: transform 120ms ease;
+}
+
+.pr-review-conflict-panel[data-open='true'] .pr-review-conflict-summary > svg:last-child {
+  transform: rotate(90deg);
+}
+
+.pr-review-conflict-details {
+  padding: 0 14px 10px 74px;
+}
+
+.pr-review-conflict-details p {
   margin: 3px 0 0;
   color: var(--text-2);
   font-size: 10.5px;
   line-height: 1.45;
 }
 
-.pr-review-conflict-panel small {
+.pr-review-conflict-details small {
   display: block;
   margin-top: 5px;
   color: var(--text-3);
@@ -4236,7 +4273,7 @@ button.ref-chip {
   gap: 5px;
 }
 
-.pr-review-conflict-panel ul {
+.pr-review-conflict-details ul {
   display: grid;
   max-height: 108px;
   gap: 3px;
@@ -4246,11 +4283,11 @@ button.ref-chip {
   list-style: none;
 }
 
-.pr-review-conflict-panel li {
+.pr-review-conflict-details li {
   min-width: 0;
 }
 
-.pr-review-conflict-panel code {
+.pr-review-conflict-details code {
   display: block;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--danger-text) 18%, var(--border));
@@ -4387,6 +4424,12 @@ button.ref-chip {
   object-fit: cover;
 }
 
+.pr-timeline-avatar[data-compact='true'] {
+  width: 20px;
+  height: 20px;
+  font-size: 7.5px;
+}
+
 .pr-timeline-event[data-state='approved'] > .pr-timeline-avatar {
   border-color: color-mix(in srgb, var(--success-text) 52%, var(--border));
 }
@@ -4501,21 +4544,21 @@ button.ref-chip {
   color: var(--text-2);
 }
 
-.pr-timeline-review-comments {
+.pr-timeline-review-threads {
   display: grid;
   gap: 7px;
   border-top: 1px solid var(--border);
   padding: 8px;
 }
 
-.pr-timeline-review-comment {
+.pr-timeline-review-thread {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-app);
 }
 
-.pr-timeline-review-comment > header {
+.pr-timeline-review-thread > header {
   display: flex;
   min-width: 0;
   min-height: 27px;
@@ -4525,7 +4568,7 @@ button.ref-chip {
   padding: 4px 7px;
 }
 
-.pr-timeline-review-comment > header > code {
+.pr-timeline-review-thread > header > code {
   overflow: hidden;
   color: var(--text-3);
   font-size: 8.5px;
@@ -4533,15 +4576,72 @@ button.ref-chip {
   white-space: nowrap;
 }
 
-.pr-timeline-review-comment > header > a {
+.pr-timeline-review-thread > header > a {
   display: inline-flex;
   margin-left: auto;
   color: var(--text-3);
 }
 
-.pr-timeline-review-comment > .review-line-comment-body {
+.pr-timeline-thread-comments {
+  display: grid;
+}
+
+.pr-timeline-thread-message {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  padding: 8px;
+}
+
+.pr-timeline-thread-message + .pr-timeline-thread-message {
+  border-top: 1px solid var(--border);
+}
+
+.pr-timeline-thread-message[data-reply='true'] {
+  margin-left: 18px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+
+.pr-timeline-thread-message > div {
+  min-width: 0;
+}
+
+.pr-timeline-thread-message > div > header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 9px;
+}
+
+.pr-timeline-thread-message > div > header strong {
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+.pr-timeline-thread-message > div > header > a {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--text-3);
+  text-decoration: none;
+}
+
+.pr-timeline-thread-message > div > header > a:hover,
+.pr-timeline-review-thread > header > a:hover {
+  color: var(--text-2);
+}
+
+.pr-timeline-thread-message .review-line-comment-body {
   max-height: none;
   overflow: visible;
+  border: 0;
+  padding: 4px 0 0;
   color: var(--text-2);
 }
 
