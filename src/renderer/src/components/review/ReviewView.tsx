@@ -38,6 +38,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Pencil,
+  Pilcrow,
   Rows3,
   Search,
   Reply,
@@ -371,6 +372,7 @@ export function ReviewView({
     preferences.skipImports,
     preferences.skipGenerated,
     preferences.skipDeletions,
+    preferences.skipEmptyLines,
     preferences.skipFilePatterns && preferences.filePatterns.length > 0
   ].filter(Boolean).length;
   const fileContexts = useMemo(
@@ -1356,6 +1358,12 @@ function ReviewFilterMenu({
           icon={<Trash2 size={13} />}
           label="Deletions"
           onChange={(skipDeletions) => onChange({ ...preferences, skipDeletions })}
+        />
+        <ReviewFilterMenuItem
+          checked={preferences.skipEmptyLines}
+          icon={<Pilcrow size={13} />}
+          label="Empty line changes"
+          onChange={(skipEmptyLines) => onChange({ ...preferences, skipEmptyLines })}
         />
         <ReviewFilterMenuItem
           checked={preferences.skipFilePatterns}

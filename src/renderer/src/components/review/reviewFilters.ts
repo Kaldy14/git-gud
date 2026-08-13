@@ -5,6 +5,7 @@ export type ReviewPreferences = {
   skipImports: boolean;
   skipGenerated: boolean;
   skipDeletions: boolean;
+  skipEmptyLines: boolean;
   skipFilePatterns: boolean;
   filePatterns: string[];
 };
@@ -29,6 +30,7 @@ export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
   skipImports: false,
   skipGenerated: true,
   skipDeletions: false,
+  skipEmptyLines: false,
   skipFilePatterns: false,
   filePatterns: []
 };
@@ -129,6 +131,10 @@ export function loadReviewPreferences(
         typeof parsed.skipDeletions === 'boolean'
           ? parsed.skipDeletions
           : DEFAULT_REVIEW_PREFERENCES.skipDeletions,
+      skipEmptyLines:
+        typeof parsed.skipEmptyLines === 'boolean'
+          ? parsed.skipEmptyLines
+          : DEFAULT_REVIEW_PREFERENCES.skipEmptyLines,
       skipFilePatterns:
         typeof parsed.skipFilePatterns === 'boolean'
           ? parsed.skipFilePatterns && filePatterns.length > 0
@@ -194,7 +200,22 @@ function isChunkSkipped(
     return true;
   }
 
+  if (preferences.skipEmptyLines && hasOnlyEmptyLineChanges(chunk.patch)) {
+    return true;
+  }
+
   return filePatternMatchers.some((matcher) => matcher.test(normalizeReviewPath(chunk.path)));
+}
+
+function hasOnlyEmptyLineChanges(patch: string): boolean {
+  const changedLines = patch
+    .split('\n')
+    .filter((line) =>
+      (line.startsWith('+') && !line.startsWith('+++')) ||
+      (line.startsWith('-') && !line.startsWith('---'))
+    );
+
+  return changedLines.length > 0 && changedLines.every((line) => line.slice(1).trim().length === 0);
 }
 
 function reviewPreferencesStorageKey(repoPath: string): string {

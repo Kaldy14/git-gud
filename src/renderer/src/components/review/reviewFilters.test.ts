@@ -42,6 +42,28 @@ describe('review filters and progress', () => {
     expect(presentation.units[0]?.visibleChunks[0]?.changeType).toBe('modified');
   });
 
+  it('skips chunks that only add or remove empty lines while retaining mixed changes', () => {
+    const addedEmptyLine = chunk('source', 'modified');
+    addedEmptyLine.patch = 'diff --git a/file b/file\n@@ -1,2 +1,3 @@\n line one\n+   \n line two\n';
+    const removedEmptyLine = chunk('source', 'modified');
+    removedEmptyLine.patch = 'diff --git a/file b/file\n@@ -1,3 +1,2 @@\n line one\n-\t\n line two\n';
+    const mixedChange = chunk('source', 'modified');
+    mixedChange.patch = 'diff --git a/file b/file\n@@ -1,2 +1,3 @@\n line one\n+\n+line two\n';
+    const plan = reviewPlan([
+      unit('empty additions', [addedEmptyLine]),
+      unit('empty deletions', [removedEmptyLine]),
+      unit('mixed', [mixedChange])
+    ]);
+    const presentation = createReviewPresentation(
+      plan,
+      { ...DEFAULT_REVIEW_PREFERENCES, skipTests: false, skipEmptyLines: true },
+      new Set()
+    );
+
+    expect(presentation).toMatchObject({ totalCount: 3, skippedCount: 2, pendingCount: 1 });
+    expect(presentation.units[0]?.unit.id).toBe('mixed');
+  });
+
   it('skips import-only chunks while retaining code from mixed hunks', () => {
     const plan = reviewPlan([
       unit('imports', [chunk('source', 'modified', 'imports')]),
@@ -110,12 +132,15 @@ describe('review filters and progress', () => {
   it('keeps every review filter independently switchable', () => {
     const cases: Array<[keyof Pick<
       typeof DEFAULT_REVIEW_PREFERENCES,
-      'skipTests' | 'skipImports' | 'skipGenerated' | 'skipDeletions' | 'skipFilePatterns'
+      'skipTests' | 'skipImports' | 'skipGenerated' | 'skipDeletions' | 'skipEmptyLines' | 'skipFilePatterns'
     >, GitReviewChunk]> = [
       ['skipTests', chunk('test', 'modified')],
       ['skipImports', chunk('source', 'modified', 'imports')],
       ['skipGenerated', chunk('source', 'modified', 'code', 'src/gql/sdk.ts', 'generated')],
       ['skipDeletions', chunk('source', 'deleted')],
+      ['skipEmptyLines', Object.assign(chunk('source', 'modified'), {
+        patch: 'diff --git a/file b/file\n@@ -1,2 +1,3 @@\n line one\n+\n line two\n'
+      })],
       ['skipFilePatterns', chunk('source', 'modified', 'code', 'dist/client.js')]
     ];
     const plan = reviewPlan(cases.map(([key, reviewChunk]) => unit(key, [reviewChunk])));
@@ -127,6 +152,7 @@ describe('review filters and progress', () => {
         skipImports: false,
         skipGenerated: false,
         skipDeletions: false,
+        skipEmptyLines: false,
         skipFilePatterns: false,
         filePatterns: ['dist/**'],
         [enabledKey]: true
@@ -167,6 +193,7 @@ describe('review filters and progress', () => {
       skipImports: true,
       skipGenerated: false,
       skipDeletions: true,
+      skipEmptyLines: true,
       skipFilePatterns: true,
       filePatterns: ['dist/**']
     };
