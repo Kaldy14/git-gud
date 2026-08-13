@@ -51,6 +51,7 @@ import {
 import { WipStatusCounts } from '@renderer/components/graph/WipStatusCounts';
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
 import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
+import { CreateSuggestedTagMenuItem } from '@renderer/components/operations/CreateSuggestedTagMenuItem';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
 import {
@@ -946,6 +947,8 @@ export function GraphView({
           onViewPullRequest={onViewPullRequest}
           canSetBranchUpstream={canSetBranchUpstream}
           onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
+          suggestedTagName={suggestedTagName}
+          onCreateSuggestedTagAtCommit={onCreateTagAtCommit}
           onMergeBranch={onMergeBranch}
           onRebaseOntoBranch={onRebaseOntoBranch}
           onInteractiveRebaseOntoBranch={onInteractiveRebaseOntoBranch}
@@ -980,6 +983,8 @@ export function GraphView({
           onCheckoutCommit={onCheckoutCommit}
           onCreateBranchAtCommit={onCreateBranchAtCommit}
           onCreateTagAtCommit={onCreateTagAtCommit ? handleStartTagCreation : undefined}
+          suggestedTagName={suggestedTagName}
+          onCreateSuggestedTagAtCommit={onCreateTagAtCommit}
           onMergeCommit={onMergeCommit}
           onRebaseOntoCommit={onRebaseOntoCommit}
           onInteractiveRebaseFromCommit={onInteractiveRebaseFromCommit}
@@ -2412,6 +2417,8 @@ function GraphBranchContextMenu({
   onViewPullRequest,
   canSetBranchUpstream,
   onCreateTagAtCommit,
+  suggestedTagName,
+  onCreateSuggestedTagAtCommit,
   onMergeBranch,
   onRebaseOntoBranch,
   onInteractiveRebaseOntoBranch,
@@ -2431,6 +2438,8 @@ function GraphBranchContextMenu({
   onViewPullRequest?: (pullRequest: GitHubPullRequestSummary) => Promise<void> | void;
   canSetBranchUpstream: boolean;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
+  suggestedTagName?: string;
+  onCreateSuggestedTagAtCommit?: (sha: string, name: string) => Promise<boolean>;
   onMergeBranch?: (name: string) => Promise<void> | void;
   onRebaseOntoBranch?: (name: string) => Promise<void> | void;
   onInteractiveRebaseOntoBranch?: (name: string) => Promise<void> | void;
@@ -2562,6 +2571,16 @@ function GraphBranchContextMenu({
         <Tag size={14} />
         <span>Create tag here and push</span>
       </button>
+      <CreateSuggestedTagMenuItem
+        suggestedTagName={suggestedTagName}
+        isOperationBusy={isOperationBusy}
+        onCreate={
+          onCreateSuggestedTagAtCommit
+            ? (name) => onCreateSuggestedTagAtCommit(state.targetSha, name)
+            : undefined
+        }
+        onClose={onClose}
+      />
       <button
         className="menu-row"
         type="button"
@@ -2644,6 +2663,8 @@ function GraphContextMenu({
   onCheckoutCommit,
   onCreateBranchAtCommit,
   onCreateTagAtCommit,
+  suggestedTagName,
+  onCreateSuggestedTagAtCommit,
   onMergeCommit,
   onRebaseOntoCommit,
   onInteractiveRebaseFromCommit,
@@ -2664,6 +2685,8 @@ function GraphContextMenu({
   onCheckoutCommit?: (sha: string) => Promise<void> | void;
   onCreateBranchAtCommit?: (sha: string) => Promise<void> | void;
   onCreateTagAtCommit?: (sha: string) => Promise<void> | void;
+  suggestedTagName?: string;
+  onCreateSuggestedTagAtCommit?: (sha: string, name: string) => Promise<boolean>;
   onMergeCommit?: (sha: string) => Promise<void> | void;
   onRebaseOntoCommit?: (sha: string) => Promise<void> | void;
   onInteractiveRebaseFromCommit?: (sha: string) => Promise<void> | void;
@@ -2860,6 +2883,16 @@ function GraphContextMenu({
             <Tag size={14} />
             <span>Create tag here and push</span>
           </button>
+          <CreateSuggestedTagMenuItem
+            suggestedTagName={suggestedTagName}
+            isOperationBusy={isOperationBusy}
+            onCreate={
+              onCreateSuggestedTagAtCommit
+                ? (name) => onCreateSuggestedTagAtCommit(state.row.sha, name)
+                : undefined
+            }
+            onClose={onClose}
+          />
           <ContextMenuSeparator />
           <button
             className="menu-row"

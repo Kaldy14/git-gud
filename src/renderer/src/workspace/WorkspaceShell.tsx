@@ -3138,6 +3138,8 @@ export function WorkspaceShell(): ReactElement {
               onMergeBranch={handleMergeBranch}
               onRebaseOntoBranch={handleRebaseOntoBranch}
               onCreateTagAtCommit={handleOpenCreateAndPushTagDialog}
+              suggestedTagName={suggestedTagName}
+              onCreateSuggestedTagAtCommit={handleCreateAndPushTagAtCommit}
               onDeleteBranch={handleDeleteBranch}
               onDeleteRemoteBranch={handleDeleteRemoteBranch}
               tagPushRemote={tagPushRemote}
@@ -3249,6 +3251,8 @@ export function WorkspaceShell(): ReactElement {
                 onMergeBranch={handleMergeBranch}
                 onRebaseOntoBranch={handleRebaseOntoBranch}
                 onCreateTagAtCommit={handleOpenCreateAndPushTagDialog}
+                suggestedTagName={suggestedTagName}
+                onCreateSuggestedTagAtCommit={handleCreateAndPushTagAtCommit}
                 onDeleteBranch={handleDeleteBranch}
                 onDeleteRemoteBranch={handleDeleteRemoteBranch}
                 tagPushRemote={tagPushRemote}

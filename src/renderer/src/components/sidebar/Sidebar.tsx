@@ -27,6 +27,7 @@ import {
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
 import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
+import { CreateSuggestedTagMenuItem } from '@renderer/components/operations/CreateSuggestedTagMenuItem';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
@@ -72,6 +73,8 @@ type SidebarProps = {
   onMergeBranch: (name: string) => void;
   onRebaseOntoBranch: (name: string) => void;
   onCreateTagAtCommit: (sha: string) => void;
+  suggestedTagName?: string;
+  onCreateSuggestedTagAtCommit: (sha: string, name: string) => Promise<boolean>;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
@@ -165,6 +168,8 @@ export function Sidebar({
   onMergeBranch,
   onRebaseOntoBranch,
   onCreateTagAtCommit,
+  suggestedTagName,
+  onCreateSuggestedTagAtCommit,
   onDeleteBranch,
   onDeleteRemoteBranch,
   tagPushRemote,
@@ -492,6 +497,8 @@ export function Sidebar({
           onMergeBranch={onMergeBranch}
           onRebaseOntoBranch={onRebaseOntoBranch}
           onCreateTagAtCommit={onCreateTagAtCommit}
+          suggestedTagName={suggestedTagName}
+          onCreateSuggestedTagAtCommit={onCreateSuggestedTagAtCommit}
           onDeleteBranch={onDeleteBranch}
           onDeleteRemoteBranch={onDeleteRemoteBranch}
           tagPushRemote={tagPushRemote}
@@ -920,6 +927,8 @@ function SidebarContextMenu({
   onMergeBranch,
   onRebaseOntoBranch,
   onCreateTagAtCommit,
+  suggestedTagName,
+  onCreateSuggestedTagAtCommit,
   onDeleteBranch,
   onDeleteRemoteBranch,
   tagPushRemote,
@@ -948,6 +957,8 @@ function SidebarContextMenu({
   onMergeBranch: (name: string) => void;
   onRebaseOntoBranch: (name: string) => void;
   onCreateTagAtCommit: (sha: string) => void;
+  suggestedTagName?: string;
+  onCreateSuggestedTagAtCommit: (sha: string, name: string) => Promise<boolean>;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
   tagPushRemote?: string;
@@ -1085,6 +1096,12 @@ function SidebarContextMenu({
             <Tag size={14} />
             <span>Create tag here and push</span>
           </button>
+          <CreateSuggestedTagMenuItem
+            suggestedTagName={suggestedTagName}
+            isOperationBusy={isOperationBusy}
+            onCreate={(name) => onCreateSuggestedTagAtCommit(state.branch.sha, name)}
+            onClose={onClose}
+          />
           {canIntegrateBranch ? (
             <>
               <button
@@ -1198,6 +1215,12 @@ function SidebarContextMenu({
             <Tag size={14} />
             <span>Create tag here and push</span>
           </button>
+          <CreateSuggestedTagMenuItem
+            suggestedTagName={suggestedTagName}
+            isOperationBusy={isOperationBusy}
+            onCreate={(name) => onCreateSuggestedTagAtCommit(state.branch.sha, name)}
+            onClose={onClose}
+          />
           {canIntegrateBranch ? (
             <>
               <button
