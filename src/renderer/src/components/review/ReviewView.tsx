@@ -2105,6 +2105,8 @@ function ReviewFileTree({
         --trees-muted-fg-override: var(--text-3);
         --trees-bg-override: transparent;
         --trees-hover-bg-override: var(--bg-hover);
+        --trees-padding-inline-override: 2px;
+        --trees-item-padding-x-override: 2px;
         font-size: 12px;
       }
     `
