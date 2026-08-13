@@ -513,6 +513,7 @@ describe('IPC argument validation', () => {
         {
           target: { kind: 'wip', scope: 'all' },
           sourceFingerprint: 'a'.repeat(64),
+          source: 'unstaged',
           filePath: 'src/view.tsx',
           side: 'new',
           line: 12,
@@ -524,6 +525,7 @@ describe('IPC argument validation', () => {
       {
         target: { kind: 'wip', scope: 'all' },
         sourceFingerprint: 'a'.repeat(64),
+        source: 'unstaged',
         filePath: 'src/view.tsx',
         side: 'new',
         line: 12,
@@ -830,6 +832,7 @@ describe('IPC argument validation', () => {
         {
           target: { kind: 'wip', scope: 'all' },
           sourceFingerprint: 'a'.repeat(64),
+          source: 'unstaged',
           filePath: '../outside.ts',
           side: 'new',
           line: 0,

@@ -834,7 +834,7 @@ function gitResolutionKey(env: NodeJS.ProcessEnv): string | undefined {
     : undefined;
 }
 
-function resolveGitExecutable(env: NodeJS.ProcessEnv): string {
+export function resolveGitExecutable(env: NodeJS.ProcessEnv): string {
   if (process.platform !== 'darwin') {
     return 'git';
   }

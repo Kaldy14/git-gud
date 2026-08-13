@@ -101,7 +101,12 @@ import { ReviewTypeDefinitionDialog } from './ReviewTypeDefinitionDialog';
 import {
   createReviewTypeDefinitionInput,
   getReviewTypeDefinitionCharacter,
-  isReviewTypeDefinitionGesture
+  isReviewTypeDefinitionGesture,
+  isReviewTypeDefinitionModifier,
+  isTypeScriptReviewContext,
+  REVIEW_TYPE_DEFINITION_HOVER_CSS,
+  reviewTypeDefinitionHoverCacheKey,
+  setReviewTypeDefinitionHoverAvailable
 } from './reviewTypeDefinitionInteraction';
 import {
   createReviewFileTreeEntries,
@@ -277,6 +282,22 @@ type ReviewTypeDefinitionRequest = (
   event: MouseEvent
 ) => void;
 
+type ReviewTypeDefinitionHoverTarget = {
+  chunk: GitReviewChunk;
+  token: DiffTokenEventBaseProps;
+  event: Pick<PointerEvent, 'clientX' | 'clientY'>;
+};
+
+type ReviewTypeDefinitionInteraction = {
+  onClick: ReviewTypeDefinitionRequest;
+  onEnter: (
+    chunk: GitReviewChunk,
+    token: DiffTokenEventBaseProps,
+    event: PointerEvent
+  ) => void;
+  onLeave: (token: DiffTokenEventBaseProps) => void;
+};
+
 export function ReviewView({
   repoPath,
   target,
@@ -344,6 +365,11 @@ export function ReviewView({
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
   const [typeDefinitionPreview, setTypeDefinitionPreview] = useState<ReviewTypeDefinitionPreview>();
   const typeDefinitionRequestRef = useRef(0);
+  const typeDefinitionHoverRef = useRef<ReviewTypeDefinitionHoverTarget | undefined>(undefined);
+  const typeDefinitionHoverRequestRef = useRef(0);
+  const typeDefinitionHoverTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const typeDefinitionHoverCacheRef = useRef(new Map<string, boolean>());
+  const isTypeDefinitionModifierPressedRef = useRef(false);
   const reviewQuery = useReviewPlan(
     embeddedPlan ? undefined : repoPath,
     embeddedPlan ? undefined : target
@@ -363,6 +389,17 @@ export function ReviewView({
   }, [embeddedPlan, embeddedReviewedChunkIds, reviewQuery.data]);
   useEffect(() => {
     typeDefinitionRequestRef.current += 1;
+    typeDefinitionHoverRequestRef.current += 1;
+    clearTimeout(typeDefinitionHoverTimerRef.current);
+    typeDefinitionHoverTimerRef.current = undefined;
+    typeDefinitionHoverCacheRef.current.clear();
+    if (typeDefinitionHoverRef.current) {
+      setReviewTypeDefinitionHoverAvailable(
+        typeDefinitionHoverRef.current.token.tokenElement,
+        false
+      );
+      typeDefinitionHoverRef.current = undefined;
+    }
   }, [repoPath, reviewPlan?.sourceFingerprint]);
   const reviewedChunkIds = useMemo(
     () => new Set(reviewPlan?.reviewedChunkIds ?? []),
@@ -415,9 +452,10 @@ export function ReviewView({
   const typeDefinitionPaths = useMemo(
     () => new Set(
       reviewPlan?.fileContexts
-        .filter((context) =>
-          context.syntax?.language === 'typescript' || context.syntax?.language === 'tsx'
-        )
+        .filter((context) => isTypeScriptReviewContext({
+          path: context.path,
+          language: context.syntax?.language
+        }))
         .map((context) => context.path) ?? []
     ),
     [reviewPlan?.fileContexts]
@@ -1015,6 +1053,7 @@ export function ReviewView({
       const sourceFingerprint = reviewPlan?.sourceFingerprint ?? '';
       const request = createReviewTypeDefinitionInput(
         chunk.path,
+        chunk.source,
         token.side === 'deletions' ? 'old' : 'new',
         token.lineNumber,
         getReviewTypeDefinitionCharacter(token, event),
@@ -1051,7 +1090,7 @@ export function ReviewView({
             result,
             errorMessage: result
               ? undefined
-              : 'No TypeScript definition was found in the available review context.'
+              : 'No TypeScript definition was found in the reviewed project snapshot.'
           });
         })
         .catch((error: unknown) => {
@@ -1072,6 +1111,146 @@ export function ReviewView({
     },
     [repoPath, reviewPlan?.fileContexts, reviewPlan?.sourceFingerprint, target]
   );
+
+  const resolveTypeDefinitionHover = useCallback(
+    (hoverTarget: ReviewTypeDefinitionHoverTarget) => {
+      const request = createReviewTypeDefinitionInput(
+        hoverTarget.chunk.path,
+        hoverTarget.chunk.source,
+        hoverTarget.token.side === 'deletions' ? 'old' : 'new',
+        hoverTarget.token.lineNumber,
+        getReviewTypeDefinitionCharacter(hoverTarget.token, hoverTarget.event),
+        target,
+        reviewPlan?.sourceFingerprint ?? '',
+        reviewPlan?.fileContexts ?? []
+      );
+
+      if (!request) {
+        return;
+      }
+
+      const cacheKey = reviewTypeDefinitionHoverCacheKey(request);
+      const cachedAvailability = typeDefinitionHoverCacheRef.current.get(cacheKey);
+      if (cachedAvailability !== undefined) {
+        setReviewTypeDefinitionHoverAvailable(
+          hoverTarget.token.tokenElement,
+          cachedAvailability
+        );
+        return;
+      }
+
+      const requestId = ++typeDefinitionHoverRequestRef.current;
+      void window.api.getReviewTypeDefinition(repoPath, request)
+        .then((result) => {
+          typeDefinitionHoverCacheRef.current.set(cacheKey, Boolean(result));
+          if (
+            requestId !== typeDefinitionHoverRequestRef.current ||
+            typeDefinitionHoverRef.current?.token.tokenElement !==
+              hoverTarget.token.tokenElement ||
+            !isTypeDefinitionModifierPressedRef.current
+          ) {
+            return;
+          }
+
+          setReviewTypeDefinitionHoverAvailable(hoverTarget.token.tokenElement, Boolean(result));
+        })
+        .catch(() => {
+          // Hover discovery is intentionally silent; Cmd-click still reports resolution errors.
+        });
+    },
+    [repoPath, reviewPlan?.fileContexts, reviewPlan?.sourceFingerprint, target]
+  );
+
+  const scheduleTypeDefinitionHover = useCallback(
+    (hoverTarget: ReviewTypeDefinitionHoverTarget) => {
+      clearTimeout(typeDefinitionHoverTimerRef.current);
+      typeDefinitionHoverTimerRef.current = setTimeout(() => {
+        typeDefinitionHoverTimerRef.current = undefined;
+        resolveTypeDefinitionHover(hoverTarget);
+      }, 80);
+    },
+    [resolveTypeDefinitionHover]
+  );
+
+  const typeDefinitionInteraction = useMemo<ReviewTypeDefinitionInteraction>(
+    () => ({
+      onClick: handleTypeDefinitionRequest,
+      onEnter(chunk, token, event) {
+        const previousTarget = typeDefinitionHoverRef.current;
+        if (previousTarget?.token.tokenElement !== token.tokenElement) {
+          if (previousTarget) {
+            setReviewTypeDefinitionHoverAvailable(previousTarget.token.tokenElement, false);
+          }
+          typeDefinitionHoverRequestRef.current += 1;
+          clearTimeout(typeDefinitionHoverTimerRef.current);
+          typeDefinitionHoverTimerRef.current = undefined;
+        }
+
+        const hoverTarget = { chunk, token, event };
+        typeDefinitionHoverRef.current = hoverTarget;
+        isTypeDefinitionModifierPressedRef.current = isReviewTypeDefinitionModifier(event);
+        setReviewTypeDefinitionHoverAvailable(token.tokenElement, false);
+
+        if (isTypeDefinitionModifierPressedRef.current) {
+          scheduleTypeDefinitionHover(hoverTarget);
+        }
+      },
+      onLeave(token) {
+        setReviewTypeDefinitionHoverAvailable(token.tokenElement, false);
+        if (typeDefinitionHoverRef.current?.token.tokenElement === token.tokenElement) {
+          typeDefinitionHoverRef.current = undefined;
+          typeDefinitionHoverRequestRef.current += 1;
+          clearTimeout(typeDefinitionHoverTimerRef.current);
+          typeDefinitionHoverTimerRef.current = undefined;
+        }
+      }
+    }),
+    [handleTypeDefinitionRequest, scheduleTypeDefinitionHover]
+  );
+
+  useEffect(() => {
+    function syncModifierState(event: globalThis.KeyboardEvent): void {
+      const isPressed = isReviewTypeDefinitionModifier(event);
+      if (isPressed === isTypeDefinitionModifierPressedRef.current) {
+        return;
+      }
+
+      isTypeDefinitionModifierPressedRef.current = isPressed;
+      typeDefinitionHoverRequestRef.current += 1;
+      clearTimeout(typeDefinitionHoverTimerRef.current);
+      typeDefinitionHoverTimerRef.current = undefined;
+      const hoverTarget = typeDefinitionHoverRef.current;
+      if (!hoverTarget) {
+        return;
+      }
+
+      setReviewTypeDefinitionHoverAvailable(hoverTarget.token.tokenElement, false);
+      if (isPressed) {
+        scheduleTypeDefinitionHover(hoverTarget);
+      }
+    }
+
+    function clearModifierState(): void {
+      isTypeDefinitionModifierPressedRef.current = false;
+      typeDefinitionHoverRequestRef.current += 1;
+      clearTimeout(typeDefinitionHoverTimerRef.current);
+      typeDefinitionHoverTimerRef.current = undefined;
+      const hoverTarget = typeDefinitionHoverRef.current;
+      if (hoverTarget) {
+        setReviewTypeDefinitionHoverAvailable(hoverTarget.token.tokenElement, false);
+      }
+    }
+
+    window.addEventListener('keydown', syncModifierState);
+    window.addEventListener('keyup', syncModifierState);
+    window.addEventListener('blur', clearModifierState);
+    return () => {
+      window.removeEventListener('keydown', syncModifierState);
+      window.removeEventListener('keyup', syncModifierState);
+      window.removeEventListener('blur', clearModifierState);
+      clearModifierState();
+    };
+  }, [scheduleTypeDefinitionHover]);
 
   const lineCollaboration: ReviewLineCollaboration | undefined =
     onAddDraftLineComment && onAddDraftFileComment
@@ -1227,7 +1406,7 @@ export function ReviewView({
             : undefined
         }
         typeDefinitionPaths={typeDefinitionPaths}
-        onTypeDefinitionRequest={handleTypeDefinitionRequest}
+        typeDefinitionInteraction={typeDefinitionInteraction}
         onSelectUnit={selectReviewUnit}
         onSelectFile={selectFile}
         onScrollTopChange={saveReviewScrollTop}
@@ -1583,7 +1762,7 @@ function ReviewBody({
   restoredScrollTop,
   reviewSearch,
   typeDefinitionPaths,
-  onTypeDefinitionRequest,
+  typeDefinitionInteraction,
   onSelectUnit,
   onSelectFile,
   onScrollTopChange,
@@ -1609,7 +1788,7 @@ function ReviewBody({
   restoredScrollTop?: number;
   reviewSearch?: ReviewSearchViewState;
   typeDefinitionPaths: ReadonlySet<string>;
-  onTypeDefinitionRequest: ReviewTypeDefinitionRequest;
+  typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
   onSelectUnit: (unitId: string) => void;
   onSelectFile: (path: string | undefined) => void;
   onScrollTopChange: (unitId: string, scrollTop: number) => void;
@@ -1767,7 +1946,7 @@ function ReviewBody({
             search={reviewSearch}
             diffOptions={diffOptions}
             typeDefinitionPaths={typeDefinitionPaths}
-            onTypeDefinitionRequest={onTypeDefinitionRequest}
+            typeDefinitionInteraction={typeDefinitionInteraction}
           />
         ) : selectedUnit ? (
           <>
@@ -1836,7 +2015,7 @@ function ReviewBody({
                       diffOptions={diffOptions}
                       lineCollaboration={lineCollaboration}
                       typeDefinitionPaths={typeDefinitionPaths}
-                      onTypeDefinitionRequest={onTypeDefinitionRequest}
+                      typeDefinitionInteraction={typeDefinitionInteraction}
                       isCollapsed={collapsedFileKeys.has(file.key)}
                       onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
                     />
@@ -1865,12 +2044,12 @@ function ReviewSearchPanel({
   search,
   diffOptions,
   typeDefinitionPaths,
-  onTypeDefinitionRequest
+  typeDefinitionInteraction
 }: {
   search: ReviewSearchViewState;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   typeDefinitionPaths: ReadonlySet<string>;
-  onTypeDefinitionRequest: ReviewTypeDefinitionRequest;
+  typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
 }): ReactElement {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -2151,7 +2330,7 @@ function ReviewSearchPanel({
                   preparedDiffs={search.preparedDiffs}
                   diffOptions={diffOptions}
                   typeDefinitionPaths={typeDefinitionPaths}
-                  onTypeDefinitionRequest={onTypeDefinitionRequest}
+                  typeDefinitionInteraction={typeDefinitionInteraction}
                   isCollapsed={collapsedChunkIds.has(file.chunk.id)}
                   searchHighlightsByChunk={new Map([[file.chunk.id, matchedLines]])}
                   onToggleCollapsed={() => toggleChunk(file.chunk.id)}
@@ -2459,7 +2638,7 @@ function ReviewFile({
   diffOptions,
   lineCollaboration,
   typeDefinitionPaths,
-  onTypeDefinitionRequest,
+  typeDefinitionInteraction,
   isCollapsed,
   searchHighlightsByChunk,
   onToggleCollapsed
@@ -2469,7 +2648,7 @@ function ReviewFile({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   typeDefinitionPaths: ReadonlySet<string>;
-  onTypeDefinitionRequest: ReviewTypeDefinitionRequest;
+  typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
   isCollapsed: boolean;
   searchHighlightsByChunk?: ReadonlyMap<string, readonly ReviewSearchLine[]>;
   onToggleCollapsed: () => void;
@@ -2565,8 +2744,8 @@ function ReviewFile({
               preparedDiff={preparedDiffs.get(chunk.id)}
               diffOptions={diffOptions}
               lineCollaboration={lineCollaboration}
-              onTypeDefinitionRequest={
-                typeDefinitionPaths.has(chunk.path) ? onTypeDefinitionRequest : undefined
+              typeDefinitionInteraction={
+                typeDefinitionPaths.has(chunk.path) ? typeDefinitionInteraction : undefined
               }
               hideLeadingExpansion={shareReviewExpansionBoundary(
                 chunkIndex > 0
@@ -2587,7 +2766,7 @@ function ReviewChunk({
   preparedDiff,
   diffOptions,
   lineCollaboration,
-  onTypeDefinitionRequest,
+  typeDefinitionInteraction,
   hideLeadingExpansion = false,
   searchHighlights
 }: {
@@ -2595,7 +2774,7 @@ function ReviewChunk({
   preparedDiff?: PreparedReviewDiff;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
-  onTypeDefinitionRequest?: ReviewTypeDefinitionRequest;
+  typeDefinitionInteraction?: ReviewTypeDefinitionInteraction;
   hideLeadingExpansion?: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
 }): ReactElement {
@@ -2610,11 +2789,16 @@ function ReviewChunk({
             hideLeadingExpansion
           )
         : diffOptions;
-      const interactiveOptions = onTypeDefinitionRequest
+      const interactiveOptions = typeDefinitionInteraction
         ? {
             ...options,
             onTokenClick: (token: DiffTokenEventBaseProps, event: MouseEvent) =>
-              onTypeDefinitionRequest(chunk, token, event)
+              typeDefinitionInteraction.onClick(chunk, token, event),
+            onTokenEnter: (token: DiffTokenEventBaseProps, event: PointerEvent) =>
+              typeDefinitionInteraction.onEnter(chunk, token, event),
+            onTokenLeave: (token: DiffTokenEventBaseProps) =>
+              typeDefinitionInteraction.onLeave(token),
+            unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_TYPE_DEFINITION_HOVER_CSS}`
           }
         : options;
       const highlightCSS = createReviewSearchHighlightCSS(searchHighlights);
@@ -2631,7 +2815,7 @@ function ReviewChunk({
       diffOptions,
       expandableDiff,
       hideLeadingExpansion,
-      onTypeDefinitionRequest,
+      typeDefinitionInteraction,
       searchHighlights
     ]
   );

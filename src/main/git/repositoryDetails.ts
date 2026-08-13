@@ -223,11 +223,14 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
       (input) => attachReviewSyntax(tab.path, input)
     );
 
-    return buildReviewPlan(
-      tab.path,
-      { kind: 'branch', name: target.name, sha: range.headSha },
-      patches
-    );
+    return {
+      ...buildReviewPlan(
+        tab.path,
+        { kind: 'branch', name: target.name, sha: range.headSha },
+        patches
+      ),
+      baseSha: range.baseSha
+    };
   }
 
   const status = await loadStatus(tab.path, env);

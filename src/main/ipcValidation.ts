@@ -539,6 +539,7 @@ function readReviewTypeDefinitionInput(value: unknown): GitReviewTypeDefinitionI
   return {
     target: readReviewTarget(record.target),
     sourceFingerprint: readReviewSourceFingerprint(record.sourceFingerprint),
+    source: readEnumProperty(record, 'source', ['commit', 'staged', 'unstaged']),
     filePath: readNonEmptyLimitedString(record.filePath, 'filePath', 4_096),
     side: readEnumProperty(record, 'side', ['old', 'new']),
     line: readPositiveInteger(record.line, 'line'),

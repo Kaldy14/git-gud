@@ -10,6 +10,11 @@ type DefinitionGesture = Pick<
   'altKey' | 'button' | 'ctrlKey' | 'metaKey' | 'shiftKey'
 >;
 
+type DefinitionModifier = Pick<
+  MouseEvent,
+  'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'
+>;
+
 type DefinitionToken = {
   lineCharStart: number;
   tokenElement: HTMLElement;
@@ -18,9 +23,39 @@ type DefinitionToken = {
 
 export function isReviewTypeDefinitionGesture(event: DefinitionGesture): boolean {
   return event.button === 0 &&
-    (event.metaKey || event.ctrlKey) &&
-    !event.altKey &&
-    !event.shiftKey;
+    isReviewTypeDefinitionModifier(event);
+}
+
+export function isReviewTypeDefinitionModifier(event: DefinitionModifier): boolean {
+  return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+}
+
+export const REVIEW_TYPE_DEFINITION_HOVER_CSS = `
+  [data-review-type-definition-link='true'] {
+    cursor: pointer;
+    font-weight: 700;
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+`;
+
+export function setReviewTypeDefinitionHoverAvailable(
+  tokenElement: HTMLElement,
+  isAvailable: boolean
+): void {
+  if (isAvailable) {
+    tokenElement.setAttribute('data-review-type-definition-link', 'true');
+    return;
+  }
+
+  tokenElement.removeAttribute('data-review-type-definition-link');
+}
+
+export function reviewTypeDefinitionHoverCacheKey(
+  request: Pick<GitReviewTypeDefinitionInput, 'character' | 'filePath' | 'line' | 'side' | 'source'>
+): string {
+  return [request.source, request.filePath, request.side, request.line, request.character].join(':');
 }
 
 export function getReviewTypeDefinitionCharacter(
@@ -56,7 +91,8 @@ export function isTypeScriptReviewContext(
     language?: GitReviewSyntaxContext['language'];
   }
 ): boolean {
-  return context.language === 'typescript' || context.language === 'tsx';
+  return context.language === 'typescript' || context.language === 'tsx' ||
+    /\.(?:[cm]?ts|tsx)$/i.test(context.path);
 }
 
 function clampTokenOffset(offset: number, tokenText: string): number {
@@ -65,6 +101,7 @@ function clampTokenOffset(offset: number, tokenText: string): number {
 
 export function createReviewTypeDefinitionInput(
   clickedPath: string,
+  source: GitReviewTypeDefinitionInput['source'],
   side: GitReviewTypeDefinitionInput['side'],
   line: number,
   character: number,
@@ -72,7 +109,9 @@ export function createReviewTypeDefinitionInput(
   sourceFingerprint: string,
   contexts: readonly GitReviewFileContext[]
 ): GitReviewTypeDefinitionInput | undefined {
-  const clickedContext = contexts.find((context) => context.path === clickedPath);
+  const clickedContext = contexts.find((context) =>
+    context.path === clickedPath && context.source === source
+  );
 
   if (!clickedContext || !isTypeScriptReviewContext({
     path: clickedContext.path,
@@ -84,6 +123,7 @@ export function createReviewTypeDefinitionInput(
   return {
     target,
     sourceFingerprint,
+    source,
     filePath: side === 'old' ? clickedContext.originalPath ?? clickedContext.path : clickedContext.path,
     side,
     line,

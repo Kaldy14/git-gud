@@ -255,6 +255,7 @@ export type GitReviewFileContext = {
 export type GitReviewTypeDefinitionInput = {
   target: GitReviewTarget;
   sourceFingerprint: string;
+  source: GitReviewChunk['source'];
   filePath: string;
   side: 'old' | 'new';
   line: number;
@@ -303,6 +304,7 @@ export type GitReviewUnit = {
 export type GitReviewPlan = {
   repoPath: string;
   target: GitReviewTarget;
+  baseSha?: string;
   targetKey: string;
   sourceFingerprint: string;
   units: GitReviewUnit[];

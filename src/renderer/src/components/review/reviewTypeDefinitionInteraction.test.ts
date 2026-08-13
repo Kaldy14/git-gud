@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   createReviewTypeDefinitionInput,
   isReviewTypeDefinitionGesture,
-  isTypeScriptReviewContext
+  isReviewTypeDefinitionModifier,
+  isTypeScriptReviewContext,
+  REVIEW_TYPE_DEFINITION_HOVER_CSS,
+  reviewTypeDefinitionHoverCacheKey,
+  setReviewTypeDefinitionHoverAvailable
 } from './reviewTypeDefinitionInteraction';
 
 describe('review type definition interaction', () => {
@@ -19,16 +23,52 @@ describe('review type definition interaction', () => {
     expect(isReviewTypeDefinitionGesture(pointerGesture({ metaKey: true, shiftKey: true }))).toBe(false);
   });
 
+  it('activates hover affordances only for an unmodified Cmd or Ctrl press', () => {
+    expect(isReviewTypeDefinitionModifier(pointerGesture({ metaKey: true }))).toBe(true);
+    expect(isReviewTypeDefinitionModifier(pointerGesture({ ctrlKey: true }))).toBe(true);
+    expect(isReviewTypeDefinitionModifier(pointerGesture())).toBe(false);
+    expect(isReviewTypeDefinitionModifier(pointerGesture({ altKey: true, metaKey: true }))).toBe(false);
+    expect(isReviewTypeDefinitionModifier(pointerGesture({ metaKey: true, shiftKey: true }))).toBe(false);
+  });
+
+  it('marks only resolved symbols as interactive and styles the marker', () => {
+    const attributes = new Map<string, string>();
+    const tokenElement = {
+      setAttribute: (name: string, value: string) => attributes.set(name, value),
+      removeAttribute: (name: string) => attributes.delete(name)
+    } as unknown as HTMLElement;
+
+    setReviewTypeDefinitionHoverAvailable(tokenElement, true);
+    expect(attributes.get('data-review-type-definition-link')).toBe('true');
+    expect(REVIEW_TYPE_DEFINITION_HOVER_CSS).toContain('font-weight: 700');
+    expect(REVIEW_TYPE_DEFINITION_HOVER_CSS).toContain('text-decoration-line: underline');
+
+    setReviewTypeDefinitionHoverAvailable(tokenElement, false);
+    expect(attributes.has('data-review-type-definition-link')).toBe(false);
+  });
+
+  it('caches hover availability per exact source location', () => {
+    expect(reviewTypeDefinitionHoverCacheKey({
+      source: 'unstaged',
+      filePath: 'src/model.ts',
+      side: 'new',
+      line: 12,
+      character: 8
+    })).toBe('unstaged:src/model.ts:new:12:8');
+  });
+
   it('enables semantic navigation only for TypeScript review contexts', () => {
     expect(isTypeScriptReviewContext({ path: 'src/model.ts', language: 'typescript' })).toBe(true);
     expect(isTypeScriptReviewContext({ path: 'src/view.tsx', language: 'tsx' })).toBe(true);
-    expect(isTypeScriptReviewContext({ path: 'src/model.ts', language: 'javascript' })).toBe(false);
-    expect(isTypeScriptReviewContext({ path: 'src/model.ts' })).toBe(false);
+    expect(isTypeScriptReviewContext({ path: 'src/model.ts', language: 'javascript' })).toBe(true);
+    expect(isTypeScriptReviewContext({ path: 'src/model.ts' })).toBe(true);
+    expect(isTypeScriptReviewContext({ path: 'src/model.js', language: 'javascript' })).toBe(false);
   });
 
   it('builds a side-specific snapshot and prioritizes the clicked file', () => {
     const input = createReviewTypeDefinitionInput(
       'src/renamed.ts',
+      'commit',
       'old',
       8,
       4,
@@ -61,7 +101,8 @@ describe('review type definition interaction', () => {
       line: 8,
       character: 4,
       target: { kind: 'wip', scope: 'all' },
-      sourceFingerprint: 'a'.repeat(64)
+      sourceFingerprint: 'a'.repeat(64),
+      source: 'commit'
     });
   });
 });

@@ -101,7 +101,13 @@ import {
   listPortainerConnections,
   savePortainerConnection
 } from './portainerConnections';
-import { assignProfileToRepository, listGitHubAccounts, listProfiles, saveProfile } from './profiles';
+import {
+  assignProfileToRepository,
+  createProfileCommandEnv,
+  listGitHubAccounts,
+  listProfiles,
+  saveProfile
+} from './profiles';
 import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
 import { reviewGuideManager } from './reviewGuide';
 import type { ApplicationUpdater } from './updater';
@@ -465,7 +471,14 @@ export function registerIpcHandlers(
       throw new Error('The review target changed. Reload the review and try again.');
     }
 
+    const tab = repoPath.startsWith('github://') ? undefined : getOpenRepositoryTab(repoPath);
+
     return resolveReviewTypeDefinition({
+      repoPath: repoPath.startsWith('github://') ? undefined : repoPath,
+      gitEnv: tab ? createProfileCommandEnv(tab.assignedProfileId) : undefined,
+      target: input.target,
+      baseSha: plan.baseSha,
+      source: input.source,
       filePath: input.filePath,
       side: input.side,
       line: input.line,
