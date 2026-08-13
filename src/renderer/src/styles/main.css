@@ -3189,6 +3189,133 @@ button.ref-chip {
   font-size: 11px;
 }
 
+.pr-inline-warning {
+  display: flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--warning-text) 28%, var(--border));
+  background: var(--warning-bg);
+  padding: 6px 24px;
+  color: var(--warning-text);
+  font-size: 11px;
+}
+
+.pr-create-suggestions {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px 14px;
+}
+
+.pr-create-suggestions-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.pr-create-suggestions-heading h2 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pr-create-suggestions-heading p {
+  margin: 2px 0 0;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.pr-create-suggestions-heading > span {
+  display: inline-grid;
+  min-width: 21px;
+  height: 19px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--warning-text) 36%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning-bg) 72%, transparent);
+  padding: 0 6px;
+  color: var(--warning-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pr-create-suggestion-list {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--warning-text) 28%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--warning-bg) 56%, var(--bg-field));
+}
+
+.pr-create-suggestion {
+  display: grid;
+  min-height: 49px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px 7px 13px;
+}
+
+.pr-create-suggestion + .pr-create-suggestion {
+  border-top: 1px solid color-mix(in srgb, var(--warning-text) 18%, var(--border));
+}
+
+.pr-create-suggestion > svg {
+  color: var(--warning-text);
+}
+
+.pr-create-suggestion-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pr-create-suggestion-copy strong {
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-create-suggestion-copy > span {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-create-suggestion-action {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--success-text) 38%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--success-text) 72%, #126b2d);
+  padding: 0 11px;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: filter 100ms ease, background 100ms ease;
+}
+
+.pr-create-suggestion-action:hover {
+  filter: brightness(1.08);
+}
+
+.pr-create-suggestion-action:focus-visible {
+  outline: 1px solid var(--select-border);
+  outline-offset: 2px;
+}
+
 .pr-inbox-groups {
   min-height: 0;
   flex: 1 1 auto;
@@ -6819,6 +6946,8 @@ button.ref-chip {
   }
 
   .pr-inbox-controls,
+  .pr-inline-warning,
+  .pr-create-suggestions,
   .pr-inbox-groups {
     padding-inline: 14px;
   }
@@ -6836,6 +6965,15 @@ button.ref-chip {
 
   .tb-context {
     display: none;
+  }
+
+  .pr-create-suggestion {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .pr-create-suggestion-action {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .tb-action {

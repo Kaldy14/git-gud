@@ -6,6 +6,8 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDot,
+  ExternalLink,
+  GitBranch,
   GitPullRequest,
   Inbox,
   Loader2,
@@ -201,6 +203,49 @@ export function PullRequestInboxView({
           <AlertTriangle size={13} />
           <span>{errorMessage}</span>
         </div>
+      ) : null}
+
+      {inbox?.suggestionsError ? (
+        <div className="pr-inline-warning" role="status">
+          <AlertTriangle size={13} />
+          <span>{inbox.suggestionsError}</span>
+        </div>
+      ) : null}
+
+      {inbox?.suggestions.length ? (
+        <section className="pr-create-suggestions" aria-label="Recently pushed branches">
+          <div className="pr-create-suggestions-heading">
+            <div>
+              <h2>Recently pushed branches</h2>
+              <p>Start a pull request for your branches that do not have one yet.</p>
+            </div>
+            <span>{inbox.suggestions.length}</span>
+          </div>
+          <div className="pr-create-suggestion-list">
+            {inbox.suggestions.map((suggestion) => (
+              <article className="pr-create-suggestion" key={suggestion.id}>
+                <GitBranch size={15} aria-hidden="true" />
+                <span className="pr-create-suggestion-copy">
+                  <strong>{suggestion.branch}</strong>
+                  <span>
+                    {suggestion.owner}/{suggestion.repository} · pushed{' '}
+                    {formatRelativeTime(suggestion.pushedAt)}
+                  </span>
+                </span>
+                <a
+                  className="pr-create-suggestion-action"
+                  href={suggestion.compareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Compare ${suggestion.branch} with ${suggestion.defaultBranch} and create a pull request on GitHub`}
+                >
+                  Compare &amp; create pull request
+                  <ExternalLink size={12} aria-hidden="true" />
+                </a>
+              </article>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <div className="pr-inbox-groups">

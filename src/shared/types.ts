@@ -1220,11 +1220,24 @@ export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   checks: GitHubPullRequestChecks;
 };
 
+export type GitHubPullRequestSuggestion = {
+  id: string;
+  owner: string;
+  repository: string;
+  branch: string;
+  defaultBranch: string;
+  headSha: string;
+  pushedAt: string;
+  compareUrl: string;
+};
+
 export type GitHubPullRequestInbox = {
   profileId: string;
   viewerLogin: string;
   host: string;
   pullRequests: GitHubPullRequestSummary[];
+  suggestions: GitHubPullRequestSuggestion[];
+  suggestionsError?: string;
   loadedAt: string;
 };
 

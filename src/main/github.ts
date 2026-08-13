@@ -15,6 +15,7 @@ import type {
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
+  GitHubPullRequestSuggestion,
   GitHubPullRequestReview,
   GitHubPullRequestReviewer,
   GitHubPullRequestReviewComment,
@@ -57,6 +58,13 @@ const GITHUB_ACTIONS_PR_AUTHOR_BATCH_SIZE = 100;
 const GITHUB_ACTIONS_METADATA_CACHE_TTL_MS = 10 * 60_000;
 const GITHUB_ACTIONS_TAG_PAGE_CAP = 5;
 const GITHUB_PULL_REQUEST_INBOX_CACHE_TTL_MS = 30_000;
+const GITHUB_PULL_REQUEST_SUGGESTION_CACHE_TTL_MS = 5 * 60_000;
+const GITHUB_PULL_REQUEST_SUGGESTION_RETRY_BACKOFF_MS = 60_000;
+const GITHUB_PULL_REQUEST_SUGGESTION_LIMIT = 3;
+const GITHUB_RECENT_PUSH_EVENT_PAGE_CAP = 3;
+const GITHUB_RECENT_PUSH_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const GITHUB_RECENT_PUSH_EVALUATION_BATCH_SIZE = 6;
+const GITHUB_RECENT_PUSH_CANDIDATE_LIMIT = 18;
 const GITHUB_PULL_REQUEST_REVIEW_SEED_LIMIT = 8;
 
 export type GitHubTag = {
@@ -78,6 +86,23 @@ type GitHubTagCacheEntry = {
 
 const gitHubTagCache = new Map<string, GitHubTagCacheEntry>();
 const gitHubPullRequestInboxCache = new Map<string, GitHubPullRequestInbox>();
+const gitHubPullRequestSuggestionCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    suggestions: GitHubPullRequestSuggestion[];
+    errorMessage?: string;
+    retryAfter?: number;
+  }
+>();
+
+type GitHubRecentPushCandidate = {
+  owner: string;
+  repository: string;
+  branch: string;
+  headSha: string;
+  pushedAt: string;
+};
 
 type GitHubReviewFileContext = Pick<
   GitReviewFileContext,
@@ -426,22 +451,233 @@ async function loadGitHubPullRequestInboxForContext(
   context: GitHubContext,
   profileId: string
 ): Promise<GitHubPullRequestInbox> {
-  const raw = await runGitHubJson(context, [
-    'api',
-    'graphql',
-    '--hostname',
-    context.host,
-    '-f',
-    `query=${INBOX_QUERY}`,
-    '-F',
-    'reviewQuery=is:open is:pr archived:false review-requested:@me sort:updated-desc',
-    '-F',
-    'authoredQuery=is:open is:pr archived:false author:@me sort:updated-desc'
+  const [raw, suggestionResult] = await Promise.all([
+    runGitHubJson(context, [
+      'api',
+      'graphql',
+      '--hostname',
+      context.host,
+      '-f',
+      `query=${INBOX_QUERY}`,
+      '-F',
+      'reviewQuery=is:open is:pr archived:false review-requested:@me sort:updated-desc',
+      '-F',
+      'authoredQuery=is:open is:pr archived:false author:@me sort:updated-desc'
+    ]),
+    loadGitHubPullRequestSuggestions(context, profileId)
   ]);
   const inbox = parseGitHubInboxResponse(raw, profileId, context.host);
+  inbox.suggestions = suggestionResult.suggestions;
+  inbox.suggestionsError = suggestionResult.errorMessage;
 
   gitHubPullRequestInboxCache.set(profileId, inbox);
   return inbox;
+}
+
+async function loadGitHubPullRequestSuggestions(
+  context: GitHubContext,
+  profileId: string
+): Promise<{ suggestions: GitHubPullRequestSuggestion[]; errorMessage?: string }> {
+  const viewerLogin = context.profile.githubLogin;
+  if (!viewerLogin) {
+    return { suggestions: [] };
+  }
+
+  const cacheKey = [
+    profileId,
+    context.host.toLowerCase(),
+    viewerLogin.toLowerCase(),
+    context.profile.ghConfigDir ?? ''
+  ].join('\n');
+  const cached = gitHubPullRequestSuggestionCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    if (cached.retryAfter && cached.retryAfter > Date.now()) {
+      return {
+        suggestions: cached.suggestions.slice(0, GITHUB_PULL_REQUEST_SUGGESTION_LIMIT),
+        errorMessage: cached.errorMessage
+      };
+    }
+
+    try {
+      const suggestions = await filterSuggestionsWithoutOpenPullRequests(
+        context,
+        cached.suggestions
+      );
+      cached.suggestions = suggestions;
+      return {
+        suggestions: suggestions.slice(0, GITHUB_PULL_REQUEST_SUGGESTION_LIMIT),
+        errorMessage: cached.errorMessage
+      };
+    } catch {
+      cached.retryAfter = Date.now() + GITHUB_PULL_REQUEST_SUGGESTION_RETRY_BACKOFF_MS;
+      cached.errorMessage = 'Could not recheck recently pushed branches. GitHub may be temporarily unavailable.';
+      return {
+        suggestions: cached.suggestions.slice(0, GITHUB_PULL_REQUEST_SUGGESTION_LIMIT),
+        errorMessage: cached.errorMessage
+      };
+    }
+  }
+
+  let rawEvents: unknown[];
+  try {
+    rawEvents = await runGitHubLimitedPaginatedArray(
+      context,
+      `users/${encodeURIComponent(viewerLogin)}/events`,
+      GITHUB_RECENT_PUSH_EVENT_PAGE_CAP
+    );
+  } catch {
+    const errorMessage = 'Could not check recently pushed branches. Your pull request inbox is still available.';
+    gitHubPullRequestSuggestionCache.set(cacheKey, {
+      expiresAt: Date.now() + GITHUB_PULL_REQUEST_SUGGESTION_RETRY_BACKOFF_MS,
+      suggestions: [],
+      errorMessage
+    });
+    return { suggestions: [], errorMessage };
+  }
+  const candidates = parseGitHubRecentPushEvents(
+    rawEvents,
+    viewerLogin,
+    Date.now() - GITHUB_RECENT_PUSH_MAX_AGE_MS
+  ).slice(0, GITHUB_RECENT_PUSH_CANDIDATE_LIMIT);
+  const repositoryMetadata = new Map<string, Promise<unknown>>();
+  const suggestions: GitHubPullRequestSuggestion[] = [];
+  let hadCandidateFailure = false;
+
+  for (
+    let offset = 0;
+    offset < candidates.length;
+    offset += GITHUB_RECENT_PUSH_EVALUATION_BATCH_SIZE
+  ) {
+    const batch = candidates.slice(offset, offset + GITHUB_RECENT_PUSH_EVALUATION_BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (candidate) => {
+        try {
+          return await loadGitHubPullRequestSuggestionCandidate(
+            context,
+            candidate,
+            repositoryMetadata
+          );
+        } catch {
+          hadCandidateFailure = true;
+          return undefined;
+        }
+      })
+    );
+    suggestions.push(
+      ...results.filter(
+        (suggestion): suggestion is GitHubPullRequestSuggestion => Boolean(suggestion)
+      )
+    );
+  }
+
+  const errorMessage = hadCandidateFailure
+    ? 'Some recently pushed branches could not be checked. GitHub may be temporarily unavailable.'
+    : undefined;
+  gitHubPullRequestSuggestionCache.set(cacheKey, {
+    expiresAt: Date.now() + (
+      hadCandidateFailure
+        ? GITHUB_PULL_REQUEST_SUGGESTION_RETRY_BACKOFF_MS
+        : GITHUB_PULL_REQUEST_SUGGESTION_CACHE_TTL_MS
+    ),
+    suggestions,
+    errorMessage
+  });
+  return {
+    suggestions: suggestions.slice(0, GITHUB_PULL_REQUEST_SUGGESTION_LIMIT),
+    errorMessage
+  };
+}
+
+async function loadGitHubPullRequestSuggestionCandidate(
+  context: GitHubContext,
+  candidate: GitHubRecentPushCandidate,
+  repositoryMetadata: Map<string, Promise<unknown>>
+): Promise<GitHubPullRequestSuggestion | undefined> {
+  const repositoryKey = `${candidate.owner.toLowerCase()}/${candidate.repository.toLowerCase()}`;
+  let metadataPromise = repositoryMetadata.get(repositoryKey);
+  if (!metadataPromise) {
+    metadataPromise = runGitHubJson(context, [
+      'api',
+      '--hostname',
+      context.host,
+      `repos/${encodeURIComponent(candidate.owner)}/${encodeURIComponent(candidate.repository)}`
+    ]);
+    repositoryMetadata.set(repositoryKey, metadataPromise);
+  }
+
+  const metadata = readRecord(await metadataPromise, 'GitHub repository');
+  const defaultBranch = readString(metadata.default_branch, 'GitHub default branch');
+  const repositoryOwner = readNestedOptionalString(metadata, ['owner', 'login']) ?? candidate.owner;
+  const htmlUrl = readString(metadata.html_url, 'GitHub repository URL');
+  const endpoint = gitHubRepositoryEndpoint(candidate.owner, candidate.repository);
+  const [openPullRequests, comparison] = await Promise.all([
+    loadOpenPullRequestsForBranch(context, endpoint, repositoryOwner, candidate.branch),
+    runGitHubJson(context, [
+      'api',
+      '--hostname',
+      context.host,
+      `${endpoint}/compare/${encodeURIComponent(defaultBranch)}...${encodeURIComponent(candidate.branch)}`
+    ])
+  ]);
+
+  return buildGitHubPullRequestSuggestion(
+    candidate,
+    defaultBranch,
+    htmlUrl,
+    openPullRequests,
+    comparison
+  );
+}
+
+async function filterSuggestionsWithoutOpenPullRequests(
+  context: GitHubContext,
+  suggestions: GitHubPullRequestSuggestion[]
+): Promise<GitHubPullRequestSuggestion[]> {
+  const remaining: GitHubPullRequestSuggestion[] = [];
+
+  for (let index = 0; index < suggestions.length; index += 1) {
+    if (remaining.length >= GITHUB_PULL_REQUEST_SUGGESTION_LIMIT) {
+      remaining.push(...suggestions.slice(index));
+      break;
+    }
+
+    const suggestion = suggestions[index];
+    if (!suggestion) {
+      continue;
+    }
+    const endpoint = gitHubRepositoryEndpoint(suggestion.owner, suggestion.repository);
+    const openPullRequests = await loadOpenPullRequestsForBranch(
+      context,
+      endpoint,
+      suggestion.owner,
+      suggestion.branch
+    );
+    if (openPullRequests.length === 0) {
+      remaining.push(suggestion);
+    }
+  }
+
+  return remaining;
+}
+
+async function loadOpenPullRequestsForBranch(
+  context: GitHubContext,
+  repositoryEndpoint: string,
+  repositoryOwner: string,
+  branch: string
+): Promise<unknown[]> {
+  const value = await runGitHubJson(context, [
+    'api',
+    '--hostname',
+    context.host,
+    `${repositoryEndpoint}/pulls?state=open&head=${encodeURIComponent(`${repositoryOwner}:${branch}`)}&per_page=1`
+  ]);
+
+  if (!Array.isArray(value)) {
+    throw new Error('GitHub pull requests must be an array.');
+  }
+  return value;
 }
 
 async function loadGitHubPullRequestSummaryForContext(
@@ -1846,7 +2082,99 @@ export function parseGitHubInboxResponse(
     viewerLogin,
     host,
     pullRequests,
+    suggestions: [],
     loadedAt: new Date().toISOString()
+  };
+}
+
+export function parseGitHubRecentPushEvents(
+  value: unknown,
+  viewerLogin: string,
+  earliestPushedAt = Date.now() - GITHUB_RECENT_PUSH_MAX_AGE_MS
+): GitHubRecentPushCandidate[] {
+  if (!Array.isArray(value)) {
+    throw new Error('GitHub events must be an array.');
+  }
+
+  const candidates = new Map<string, GitHubRecentPushCandidate>();
+
+  for (const eventValue of value) {
+    if (!isRecord(eventValue) || eventValue.type !== 'PushEvent') {
+      continue;
+    }
+
+    const actorLogin = readNestedOptionalString(eventValue, ['actor', 'login']);
+    const pushedAt = readOptionalString(eventValue.created_at);
+    const repositoryName = readNestedOptionalString(eventValue, ['repo', 'name']);
+    const payload = nestedRecord(eventValue, ['payload']);
+    const ref = payload ? readOptionalString(payload.ref) : undefined;
+    const headSha = payload ? readOptionalString(payload.head) : undefined;
+    const pushedAtTime = pushedAt ? Date.parse(pushedAt) : Number.NaN;
+
+    if (
+      !actorLogin ||
+      actorLogin.toLowerCase() !== viewerLogin.toLowerCase() ||
+      !pushedAt ||
+      !repositoryName ||
+      !ref?.startsWith('refs/heads/') ||
+      !headSha ||
+      !Number.isFinite(pushedAtTime) ||
+      pushedAtTime < earliestPushedAt
+    ) {
+      continue;
+    }
+
+    const { owner, repository } = parseRepositoryNameWithOwner(repositoryName, 'event repository');
+    const branch = ref.slice('refs/heads/'.length);
+    if (!branch) {
+      continue;
+    }
+
+    const id = `${owner.toLowerCase()}/${repository.toLowerCase()}:${branch}`;
+    const existing = candidates.get(id);
+    if (!existing || Date.parse(pushedAt) > Date.parse(existing.pushedAt)) {
+      candidates.set(id, { owner, repository, branch, headSha, pushedAt });
+    }
+  }
+
+  return [...candidates.values()].sort(
+    (first, second) => Date.parse(second.pushedAt) - Date.parse(first.pushedAt)
+  );
+}
+
+export function buildGitHubPullRequestSuggestion(
+  candidate: GitHubRecentPushCandidate,
+  defaultBranch: string,
+  repositoryHtmlUrl: string,
+  openPullRequestsValue: unknown,
+  comparisonValue: unknown
+): GitHubPullRequestSuggestion | undefined {
+  if (!Array.isArray(openPullRequestsValue)) {
+    throw new Error('GitHub pull requests must be an array.');
+  }
+
+  const comparison = readRecord(comparisonValue, 'GitHub branch comparison');
+  const aheadBy = readOptionalNumber(comparison.ahead_by) ?? 0;
+
+  if (
+    candidate.branch === defaultBranch ||
+    openPullRequestsValue.length > 0 ||
+    aheadBy <= 0
+  ) {
+    return undefined;
+  }
+
+  const compareUrl = `${repositoryHtmlUrl.replace(/\/$/, '')}/compare/${encodeURIComponent(defaultBranch)}...${encodeURIComponent(candidate.branch)}?quick_pull=1`;
+
+  return {
+    id: `${candidate.owner}/${candidate.repository}:${candidate.branch}`,
+    owner: candidate.owner,
+    repository: candidate.repository,
+    branch: candidate.branch,
+    defaultBranch,
+    headSha: candidate.headSha,
+    pushedAt: candidate.pushedAt,
+    compareUrl
   };
 }
 
@@ -2601,7 +2929,11 @@ function pullRequestEndpoint(locator: GitHubPullRequestLocator): string {
 }
 
 function repositoryEndpoint(locator: GitHubPullRequestLocator): string {
-  return `repos/${encodeURIComponent(locator.owner)}/${encodeURIComponent(locator.repository)}`;
+  return gitHubRepositoryEndpoint(locator.owner, locator.repository);
+}
+
+function gitHubRepositoryEndpoint(owner: string, repository: string): string {
+  return `repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
 }
 
 function readSearchNodes(value: unknown, label: string): unknown[] {

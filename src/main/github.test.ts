@@ -7,6 +7,7 @@ import {
   buildCompleteFilePatch,
   buildGitHubFileTextBatchQuery,
   buildGitHubActionsPullRequestGroups,
+  buildGitHubPullRequestSuggestion,
   buildGitHubPullRequestReviewPlan,
   canReuseGitHubPullRequestInbox,
   categorizePullRequest,
@@ -16,6 +17,7 @@ import {
   mergeGitHubPullRequestReviewPlanContext,
   parseGitHubActionsRunsResponse,
   parseGitHubInboxResponse,
+  parseGitHubRecentPushEvents,
   parseGitHubBodyImageUrls,
   parseGitHubPullRequestResponse,
   parseGitHubFileTextBatchResponse,
@@ -92,6 +94,79 @@ describe('GitHub pull request file context', () => {
     expect(mergedPlan.units[0]?.chunks[0]?.fileContextId).toBe(
       enrichedPlan.fileContexts[0]?.id
     );
+  });
+});
+
+describe('GitHub pull request suggestions', () => {
+  it('selects the newest branch push by the authenticated user and ignores stale or unrelated events', () => {
+    const candidates = parseGitHubRecentPushEvents(
+      [
+        pushEvent({ createdAt: '2026-08-12T10:00:00Z', head: 'new-head' }),
+        pushEvent({ createdAt: '2026-08-11T10:00:00Z', head: 'old-head' }),
+        pushEvent({ createdAt: '2026-08-12T09:30:00Z', branch: 'Feature/recent-work' }),
+        pushEvent({ createdAt: '2026-08-12T09:00:00Z', actor: 'someone-else', branch: 'feature/other' }),
+        pushEvent({ createdAt: '2026-06-01T10:00:00Z', branch: 'feature/stale' }),
+        { type: 'IssuesEvent' }
+      ],
+      'octocat',
+      Date.parse('2026-08-01T00:00:00Z')
+    );
+
+    expect(candidates).toEqual([
+      {
+        owner: 'acme',
+        repository: 'widgets',
+        branch: 'feature/recent-work',
+        headSha: 'new-head',
+        pushedAt: '2026-08-12T10:00:00Z'
+      },
+      {
+        owner: 'acme',
+        repository: 'widgets',
+        branch: 'Feature/recent-work',
+        headSha: 'head-sha',
+        pushedAt: '2026-08-12T09:30:00Z'
+      }
+    ]);
+  });
+
+  it('builds GitHub quick-create URLs only for branches ahead without an open pull request', () => {
+    const candidate = {
+      owner: 'acme',
+      repository: 'widgets',
+      branch: 'feature/recent work',
+      headSha: 'head-sha',
+      pushedAt: '2026-08-12T10:00:00Z'
+    };
+
+    expect(
+      buildGitHubPullRequestSuggestion(
+        candidate,
+        'main',
+        'https://github.com/acme/widgets',
+        [],
+        { ahead_by: 3 }
+      )
+    ).toMatchObject({
+      branch: 'feature/recent work',
+      defaultBranch: 'main',
+      compareUrl: 'https://github.com/acme/widgets/compare/main...feature%2Frecent%20work?quick_pull=1'
+    });
+    expect(
+      buildGitHubPullRequestSuggestion(candidate, 'main', 'https://github.com/acme/widgets', [{}], { ahead_by: 3 })
+    ).toBeUndefined();
+    expect(
+      buildGitHubPullRequestSuggestion(candidate, 'main', 'https://github.com/acme/widgets', [], { ahead_by: 0 })
+    ).toBeUndefined();
+    expect(
+      buildGitHubPullRequestSuggestion(
+        { ...candidate, branch: 'main' },
+        'main',
+        'https://github.com/acme/widgets',
+        [],
+        { ahead_by: 3 }
+      )
+    ).toBeUndefined();
   });
 });
 
@@ -380,6 +455,7 @@ describe('GitHub pull request loading', () => {
       viewerLogin: 'reviewer',
       host: 'github.com',
       pullRequests: [],
+      suggestions: [],
       loadedAt: '2026-07-28T09:59:45.000Z'
     };
 
@@ -1115,5 +1191,28 @@ function pullRequestNode(overrides: Record<string, unknown>): Record<string, unk
       }
     },
     ...overrides
+  };
+}
+
+function pushEvent({
+  actor = 'octocat',
+  branch = 'feature/recent-work',
+  createdAt,
+  head = 'head-sha'
+}: {
+  actor?: string;
+  branch?: string;
+  createdAt: string;
+  head?: string;
+}): Record<string, unknown> {
+  return {
+    type: 'PushEvent',
+    actor: { login: actor },
+    repo: { name: 'acme/widgets' },
+    created_at: createdAt,
+    payload: {
+      ref: `refs/heads/${branch}`,
+      head
+    }
   };
 }

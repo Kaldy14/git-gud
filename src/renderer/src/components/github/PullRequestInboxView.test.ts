@@ -1,7 +1,10 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
 
+import { PullRequestInboxView } from './PullRequestInboxView';
 import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
 import {
   hasPullRequestMergeConflicts,
@@ -17,6 +20,52 @@ describe('pull request inbox group expansion', () => {
   it('preserves an explicit user expansion choice', () => {
     expect(resolvePullRequestGroupExpansion(false, 2)).toBe(false);
     expect(resolvePullRequestGroupExpansion(true, 0)).toBe(true);
+  });
+});
+
+describe('pull request creation suggestions', () => {
+  it('renders a recently pushed branch as an external quick-create link', () => {
+    const markup = renderToStaticMarkup(
+      createElement(PullRequestInboxView, {
+        profile: {
+          id: 'profile-1',
+          name: 'Work',
+          email: 'developer@example.com',
+          avatarColor: '#45b8ac',
+          ghConfigDir: '/tmp/gh',
+          githubLogin: 'developer'
+        },
+        inbox: {
+          profileId: 'profile-1',
+          viewerLogin: 'developer',
+          host: 'github.com',
+          pullRequests: [],
+          suggestions: [{
+            id: 'acme/widgets:feature/recent-work',
+            owner: 'acme',
+            repository: 'widgets',
+            branch: 'feature/recent-work',
+            defaultBranch: 'main',
+            headSha: 'head-sha',
+            pushedAt: new Date().toISOString(),
+            compareUrl: 'https://github.com/acme/widgets/compare/main...feature%2Frecent-work?quick_pull=1'
+          }],
+          loadedAt: new Date().toISOString()
+        },
+        isLoading: false,
+        isRefreshing: false,
+        onRefresh: () => undefined,
+        onClose: () => undefined,
+        onOpenProfileSettings: () => undefined,
+        onSelectPullRequest: () => undefined
+      })
+    );
+
+    expect(markup).toContain('Recently pushed branches');
+    expect(markup).toContain('feature/recent-work');
+    expect(markup).toContain('Compare &amp; create pull request');
+    expect(markup).toContain('href="https://github.com/acme/widgets/compare/main...feature%2Frecent-work?quick_pull=1"');
+    expect(markup).toContain('target="_blank"');
   });
 });
 

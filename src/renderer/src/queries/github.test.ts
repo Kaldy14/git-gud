@@ -145,6 +145,7 @@ function inbox(
     viewerLogin: 'viewer',
     host: 'github.com',
     pullRequests,
+    suggestions: [],
     loadedAt
   };
 }

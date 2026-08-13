@@ -53,6 +53,7 @@ describe('pull request deep-link navigation', () => {
       viewerLogin: 'Kaldy14',
       host: 'github.com',
       pullRequests: [pullRequest],
+      suggestions: [],
       loadedAt: '2026-08-06T12:00:00.000Z'
     };
 
