@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { preloadPatchDiff } from '@pierre/diffs/ssr';
 
 import {
   buildChangedFileTree,
@@ -157,7 +158,49 @@ describe('createDiffOptionsBase', () => {
       theme: 'tokyo-night',
       themeType: 'dark'
     });
-    expect(createDiffOptionsBase('git-gud-dark')).not.toHaveProperty('unsafeCSS');
+    expect(createDiffOptionsBase('git-gud-dark').unsafeCSS).toContain(
+      'data-whitespace-only-change'
+    );
+    expect(createDiffOptionsBase('git-gud-dark').onPostRender).toBeTypeOf('function');
+  });
+
+  it('emphasizes only inserted indentation in whitespace-only changes', async () => {
+    const patch = [
+      'diff --git a/src/example.ts b/src/example.ts',
+      '--- a/src/example.ts',
+      '+++ b/src/example.ts',
+      '@@ -1,5 +1,5 @@',
+      ' const values = [',
+      '-  first,',
+      '-  second,',
+      '-  third,',
+      '+    first,',
+      '+    second,',
+      '+    third,',
+      ' ];',
+      ''
+    ].join('\n');
+    const { prerenderedHTML } = await preloadPatchDiff({
+      patch,
+      options: {
+        ...createDiffOptionsBase('git-gud-dark'),
+        diffStyle: 'unified'
+      }
+    });
+    const renderedCode = prerenderedHTML.slice(prerenderedHTML.indexOf('<pre'));
+    const deletionRows = [...renderedCode.matchAll(
+      /<div data-line="\d+" data-line-type="change-deletion"[^>]*>(.*?)<\/div>/g
+    )];
+    const additionRows = [...renderedCode.matchAll(
+      /<div data-line="\d+" data-line-type="change-addition"[^>]*>(.*?)<\/div>/g
+    )];
+
+    expect(deletionRows).toHaveLength(3);
+    expect(deletionRows.every(([, contents]) => !contents.includes('data-diff-span'))).toBe(true);
+    expect(additionRows).toHaveLength(3);
+    expect(additionRows.map(([, contents]) =>
+      contents.match(/<span data-diff-span=""><span[^>]*>(.*?)<\/span><\/span>/)?.[1]
+    )).toEqual(['  ', '  ', '  ']);
   });
 });
 

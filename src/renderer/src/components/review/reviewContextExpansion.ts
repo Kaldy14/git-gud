@@ -95,11 +95,15 @@ export function createReviewContextOptions<LAnnotation>(
   const continuationCSS = hideLeadingSeparator
     ? '[data-separator="line-info"][data-separator-first] { display: none; }'
     : '';
+  const contextPostRender = createReviewContextPostRender<LAnnotation>(diff, filePath);
 
   return {
     ...options,
     hunkSeparators: 'line-info',
-    onPostRender: createReviewContextPostRender(diff, filePath),
+    onPostRender: (node, instance, phase) => {
+      options.onPostRender?.(node, instance, phase);
+      contextPostRender(node, instance, phase);
+    },
     unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_CONTEXT_SEPARATOR_CSS}\n${continuationCSS}`
   };
 }

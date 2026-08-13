@@ -1,6 +1,10 @@
 import type { FileDiffOptions } from '@pierre/diffs';
 
 import { getDiffThemeName } from '@renderer/components/diff/diffTheme';
+import {
+  createWhitespaceOnlyDiffPostRender,
+  WHITESPACE_ONLY_DIFF_CSS
+} from '@renderer/components/diff/whitespaceDiff';
 import type {
   CommitGraphRow,
   DiffSyntaxTheme,
@@ -34,9 +38,10 @@ export const DIFF_OPTIONS_BASE = {
   themeType: 'dark',
   diffIndicators: 'bars',
   hunkSeparators: 'line-info',
-  lineDiffType: 'word',
+  lineDiffType: 'char',
   overflow: 'wrap',
-  stickyHeader: true
+  stickyHeader: true,
+  unsafeCSS: WHITESPACE_ONLY_DIFF_CSS
 } satisfies FileDiffOptions<undefined>;
 
 export function createDiffOptionsBase<LAnnotation = undefined>(
@@ -44,7 +49,8 @@ export function createDiffOptionsBase<LAnnotation = undefined>(
 ): FileDiffOptions<LAnnotation> {
   return {
     ...DIFF_OPTIONS_BASE,
-    theme: getDiffThemeName(theme)
+    theme: getDiffThemeName(theme),
+    onPostRender: createWhitespaceOnlyDiffPostRender<LAnnotation>()
   };
 }
 
