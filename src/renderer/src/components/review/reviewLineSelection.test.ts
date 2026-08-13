@@ -39,25 +39,27 @@ describe('normalizeReviewLineSelection', () => {
 describe('createReviewLineSelectionOptions', () => {
   it('keeps selection rendering local while a line range is being dragged', () => {
     const onSelectLines = vi.fn();
-    const options = createReviewLineSelectionOptions({}, true, onSelectLines);
+    const options = createReviewLineSelectionOptions({}, onSelectLines);
 
     expect(options).toMatchObject({
       enableLineSelection: true,
       controlledSelection: false,
-      lineHoverHighlight: 'both',
-      enableGutterUtility: true
+      lineHoverHighlight: 'disabled',
+      enableGutterUtility: false
     });
+    expect(options.onGutterUtilityClick).toBeUndefined();
 
     const range = { start: 8, end: 10, side: 'additions' as const };
     options.onLineSelected?.(range);
-    options.onGutterUtilityClick?.(range);
 
-    expect(onSelectLines).toHaveBeenNthCalledWith(1, range);
-    expect(onSelectLines).toHaveBeenNthCalledWith(2, range);
+    expect(onSelectLines).toHaveBeenCalledOnce();
+    expect(onSelectLines).toHaveBeenCalledWith(range);
   });
 
-  it('places the blue gutter action inside the number column', () => {
+  it('renders the blue gutter action without a moving utility element', () => {
     expect(REVIEW_LINE_SELECTION_CSS).toContain('background-color: #4c8dff');
-    expect(REVIEW_LINE_SELECTION_CSS).toContain('margin-right: 0');
+    expect(REVIEW_LINE_SELECTION_CSS).toContain('[data-column-number]:hover::after');
+    expect(REVIEW_LINE_SELECTION_CSS).toContain("content: '+'");
+    expect(REVIEW_LINE_SELECTION_CSS).toContain('pointer-events: none');
   });
 });

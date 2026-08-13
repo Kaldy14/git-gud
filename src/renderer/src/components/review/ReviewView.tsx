@@ -2669,7 +2669,6 @@ function ReviewChunk({
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? createReviewLineSelectionOptions(
         contextualDiffOptions,
-        lineCollaboration.selectedChunkId === undefined,
         (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
       )
     : contextualDiffOptions;
