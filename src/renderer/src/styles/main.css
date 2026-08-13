@@ -2910,6 +2910,8 @@ button.ref-chip {
   --diffs-bg-context-gutter-override: #1c1e23;
   --diffs-bg-separator-override: var(--select-bg);
   --diffs-bg-hover-override: var(--bg-hover);
+  --diffs-bg-selection-override: #4c8dff;
+  --diffs-bg-selection-number-override: #4c8dff;
   --diffs-fg-number-override: #858585;
   --diffs-fg-number-addition-override: #858585;
   --diffs-fg-number-deletion-override: #858585;

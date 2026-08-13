@@ -1,4 +1,29 @@
-import type { SelectedLineRange } from '@pierre/diffs';
+import type { FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
+
+export const REVIEW_LINE_SELECTION_CSS = `
+[data-utility-button] {
+  background-color: #4c8dff;
+  color: #fff;
+  margin-right: 0;
+}
+`;
+
+export function createReviewLineSelectionOptions<TAnnotation>(
+  options: FileDiffOptions<TAnnotation>,
+  enableGutterUtility: boolean,
+  onSelectLines: (range: SelectedLineRange | null) => void
+): FileDiffOptions<TAnnotation> {
+  return {
+    ...options,
+    unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_LINE_SELECTION_CSS}`,
+    enableLineSelection: true,
+    controlledSelection: false,
+    lineHoverHighlight: 'both',
+    enableGutterUtility,
+    onGutterUtilityClick: onSelectLines,
+    onLineSelected: onSelectLines
+  };
+}
 
 export function normalizeReviewLineSelection(range: SelectedLineRange | null): {
   startLine?: number;

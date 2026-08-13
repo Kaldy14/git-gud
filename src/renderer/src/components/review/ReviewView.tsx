@@ -103,7 +103,10 @@ import {
   saveReviewFileTreeWidth
 } from './reviewFileTree';
 import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
-import { normalizeReviewLineSelection } from './reviewLineSelection';
+import {
+  createReviewLineSelectionOptions,
+  normalizeReviewLineSelection
+} from './reviewLineSelection';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import {
   ReviewFilePathContextMenu,
@@ -2494,17 +2497,11 @@ function ReviewChunk({
     [chunk.patch, chunk.path, lineCollaboration?.threads, normalizedSelection]
   );
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
-    ? {
-        ...contextualDiffOptions,
-        enableLineSelection: true,
-        controlledSelection: true,
-        lineHoverHighlight: 'both',
-        enableGutterUtility: lineCollaboration.selectedChunkId === undefined,
-        onGutterUtilityClick: (range) =>
-          lineCollaboration.onSelectLines(chunk.id, chunk.path, range),
-        onLineSelected: (range) =>
-          lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
-      }
+    ? createReviewLineSelectionOptions(
+        contextualDiffOptions,
+        lineCollaboration.selectedChunkId === undefined,
+        (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
+      )
     : contextualDiffOptions;
 
   return (
