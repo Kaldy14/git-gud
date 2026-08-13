@@ -1043,6 +1043,10 @@ export function ReviewView({
         </div>
       </div>
 
+      {currentReviewGuideState?.status === 'failed' ? (
+        <ReviewGuideFailureMessage errorMessage={currentReviewGuideState.errorMessage} />
+      ) : null}
+
       <ReviewBody
         repoPath={repoPath}
         isLoading={embeddedPlan ? false : reviewQuery.isLoading}
@@ -1126,6 +1130,21 @@ export function ReviewView({
         />
       ) : null}
     </section>
+  );
+}
+
+export function ReviewGuideFailureMessage({
+  errorMessage
+}: {
+  errorMessage: string;
+}): ReactElement {
+  return (
+    <div className="review-guide-error" role="alert">
+      <AlertTriangle size={14} aria-hidden="true" />
+      <span>
+        <strong>AI guide failed.</strong> {errorMessage}
+      </span>
+    </div>
   );
 }
 

@@ -1953,6 +1953,28 @@ button.ref-chip {
   font-weight: 600;
 }
 
+.review-guide-error {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 7px;
+  border-bottom: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  padding: 7px 10px;
+  color: var(--danger-text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.review-guide-error > svg {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.review-guide-error strong {
+  font-weight: 750;
+}
+
 .review-guide-kicker {
   flex-shrink: 0;
   color: var(--text-3);

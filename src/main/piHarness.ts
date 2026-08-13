@@ -98,20 +98,30 @@ export function shutdownPiProcesses(): void {
 }
 
 async function resolvePiExecutable(): Promise<string> {
+  const home = homedir();
   const configuredPath = process.env.PI_EXECUTABLE_PATH?.trim();
-  const pathCandidates = (process.env.PATH ?? '')
+  const inheritedDirectories = (process.env.PATH ?? '')
     .split(delimiter)
-    .filter(Boolean)
-    .map((directory) => join(directory, 'pi'));
+    .filter(Boolean);
+  const nvmDirectory = process.env.NVM_DIR?.trim() || join(home, '.nvm');
+  const nvmNodeDirectories = await listNvmNodeDirectories(nvmDirectory);
+  const searchDirectories = [
+    ...inheritedDirectories,
+    process.env.NVM_BIN?.trim(),
+    process.env.PNPM_HOME?.trim(),
+    ...nvmNodeDirectories,
+    join(home, 'Library/pnpm'),
+    join(home, '.local/bin'),
+    join(home, '.volta/bin'),
+    join(home, '.local/share/mise/shims'),
+    join(home, '.asdf/shims'),
+    join(home, '.bun/bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin'
+  ].filter((directory): directory is string => Boolean(directory));
   const candidates = configuredPath
     ? [configuredPath]
-    : [
-        ...pathCandidates,
-        join(homedir(), 'Library/pnpm/pi'),
-        join(homedir(), '.local/bin/pi'),
-        '/opt/homebrew/bin/pi',
-        '/usr/local/bin/pi'
-      ];
+    : searchDirectories.map((directory) => join(directory, 'pi'));
 
   for (const candidate of new Set(candidates)) {
     try {
@@ -122,7 +132,9 @@ async function resolvePiExecutable(): Promise<string> {
     }
   }
 
-  throw new Error('The configured AI engine is unavailable. Install Pi or configure its executable path.');
+  throw new Error(
+    'Pi was not found. Install Pi or set PI_EXECUTABLE_PATH to the executable installed on this Mac.'
+  );
 }
 
 function collectProcessOutput(
