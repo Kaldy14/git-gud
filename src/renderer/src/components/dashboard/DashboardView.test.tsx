@@ -128,6 +128,7 @@ describe('DashboardView', () => {
           profile={profile}
           requestedDashboardId={dashboards[0]?.id}
           onSelectDashboard={vi.fn()}
+          onOpenWorkflowRun={vi.fn()}
           onOpenProfileSettings={vi.fn()}
           onClose={vi.fn()}
         />
@@ -175,6 +176,7 @@ describe('DashboardView', () => {
           actionAlerts={[alert]}
           onMarkActionAlertsRead={vi.fn()}
           onSelectDashboard={vi.fn()}
+          onOpenWorkflowRun={vi.fn()}
           onOpenProfileSettings={vi.fn()}
           onClose={vi.fn()}
         />
@@ -242,6 +244,7 @@ describe('DashboardView', () => {
           profile={profile}
           requestedDashboardId={dashboard.id}
           onSelectDashboard={vi.fn()}
+          onOpenWorkflowRun={vi.fn()}
           onOpenProfileSettings={vi.fn()}
           onClose={vi.fn()}
         />
@@ -330,6 +333,7 @@ describe('DashboardView', () => {
           profile={profile}
           requestedDashboardId={dashboard.id}
           onSelectDashboard={vi.fn()}
+          onOpenWorkflowRun={vi.fn()}
           onOpenProfileSettings={vi.fn()}
           onClose={vi.fn()}
         />
@@ -416,6 +420,7 @@ describe('DashboardView', () => {
           profile={profile}
           requestedDashboardId={dashboard.id}
           onSelectDashboard={vi.fn()}
+          onOpenWorkflowRun={vi.fn()}
           onOpenProfileSettings={vi.fn()}
           onClose={vi.fn()}
         />
@@ -522,6 +527,8 @@ describe('DashboardView', () => {
       expect(markup).toContain('Started 8m ago');
       expect(markup).toContain('Queued');
       expect(markup).toContain('Unknown');
+      expect(markup).toContain('Open workflow run in Git Gud');
+      expect(markup).not.toContain('href="https://github.com/acme/widgets/actions/runs/101"');
       expect(markup).not.toContain('2m ago');
 
       expect(
@@ -680,6 +687,7 @@ describe('DashboardView', () => {
           profile={profile}
           requestedDashboardId={dashboard.id}
           onSelectDashboard={vi.fn()}
+          onOpenWorkflowRun={vi.fn()}
           onOpenProfileSettings={vi.fn()}
           onClose={vi.fn()}
         />
@@ -772,6 +780,7 @@ function renderActionsDashboard(
         profile={profile}
         requestedDashboardId={dashboard.id}
         onSelectDashboard={vi.fn()}
+        onOpenWorkflowRun={vi.fn()}
         onOpenProfileSettings={vi.fn()}
         onClose={vi.fn()}
         chooseRepositoryPathForCodex={options.chooseRepositoryPathForCodex}

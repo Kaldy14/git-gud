@@ -70,6 +70,7 @@ import { findBaseRepositoryForMissingWorktree } from './git/repositoryRecovery';
 import { listExternalApplications } from './externalApplications';
 import {
   loadGitHubActionsRuns,
+  loadGitHubWorkflowRunDetail,
   loadGitHubWorkflowRunFailedLog,
   loadGitHubPullRequestDetail,
   loadGitHubPullRequestInbox,
@@ -678,6 +679,9 @@ export function registerIpcHandlers(
 
     return runs;
   });
+  handle('github:workflow-run-detail', (_event, input) =>
+    loadGitHubWorkflowRunDetail(input)
+  );
   handle('github:workflow-run-failed-log', (_event, input) =>
     loadGitHubWorkflowRunFailedLog(input)
   );

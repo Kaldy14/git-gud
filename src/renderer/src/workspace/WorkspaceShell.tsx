@@ -36,6 +36,7 @@ import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import { suggestNextTagName } from '@renderer/lib/tagSuggestion';
 import { PullRequestInboxView } from '@renderer/components/github/PullRequestInboxView';
 import { PullRequestReviewView } from '@renderer/components/github/PullRequestReviewView';
+import { WorkflowRunView } from '@renderer/components/github/WorkflowRunView';
 import {
   RepositoryInspectorDialog,
   type RepositoryInspectorMode
@@ -122,6 +123,7 @@ import type {
   GitInteractiveRebasePlan,
   GitOperationResult,
   GitHubPullRequestSummary,
+  GitHubWorkflowRun,
   GitProfile,
   GitRepositoryOverview,
   GitRemoteBranchRef,
@@ -220,6 +222,14 @@ type ProfileTransitionState = {
 
 type GitHubWorkspaceView =
   | { kind: 'dashboard'; dashboardId?: string }
+  | {
+      kind: 'workflow-run';
+      dashboardId?: string;
+      profileId: string;
+      owner: string;
+      repository: string;
+      run: GitHubWorkflowRun;
+    }
   | { kind: 'inbox' }
   | { kind: 'review'; pullRequest: GitHubPullRequestSummary };
 
@@ -1020,6 +1030,28 @@ export function WorkspaceShell(): ReactElement {
           queryKey: dashboardsQueryKey(activeDashboardProfileId)
         });
       });
+  }
+
+  function handleOpenWorkflowRun(input: {
+    owner: string;
+    repository: string;
+    run: GitHubWorkflowRun;
+  }): void {
+    if (!connectedGitHubProfileId) {
+      return;
+    }
+
+    setGitHubWorkspaceView({
+      kind: 'workflow-run',
+      dashboardId:
+        gitHubWorkspaceView?.kind === 'dashboard'
+          ? gitHubWorkspaceView.dashboardId
+          : undefined,
+      profileId: connectedGitHubProfileId,
+      ...input
+    });
+    setCompactDetailOpen(false);
+    setCompactSidebarOpen(false);
   }
 
   function handleMarkDashboardActionAlertsRead(alertIds: string[]): void {
@@ -3001,13 +3033,18 @@ export function WorkspaceShell(): ReactElement {
       <TabStrip
         tabs={workspace.tabs}
         activeTabId={
-          isStartTabActive || gitHubWorkspaceView?.kind === 'dashboard'
+          isStartTabActive ||
+          gitHubWorkspaceView?.kind === 'dashboard' ||
+          gitHubWorkspaceView?.kind === 'workflow-run'
             ? undefined
             : workspace.activeTabId
         }
         isStartTabOpen={isStartTabOpen}
         isStartTabActive={isStartTabActive}
-        isDashboardsTabActive={gitHubWorkspaceView?.kind === 'dashboard'}
+        isDashboardsTabActive={
+          gitHubWorkspaceView?.kind === 'dashboard' ||
+          gitHubWorkspaceView?.kind === 'workflow-run'
+        }
         dashboardUnreadCount={dashboardActionAlertsQuery.data?.unreadCount ?? 0}
         profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
@@ -3101,10 +3138,19 @@ export function WorkspaceShell(): ReactElement {
             actionAlerts={dashboardActionAlertsQuery.data?.alerts ?? []}
             onMarkActionAlertsRead={handleMarkDashboardActionAlertsRead}
             onSelectDashboard={handleSelectDashboard}
+            onOpenWorkflowRun={handleOpenWorkflowRun}
             onOpenProfileSettings={handleOpenGitProfileMenu}
             onClose={handleClosePullRequestWorkspace}
             resolveRepositoryPath={resolveDashboardRepositoryPath}
             chooseRepositoryPathForCodex={chooseDashboardRepositoryPathForCodex}
+          />
+        ) : gitHubWorkspaceView?.kind === 'workflow-run' ? (
+          <WorkflowRunView
+            profileId={gitHubWorkspaceView.profileId}
+            owner={gitHubWorkspaceView.owner}
+            repository={gitHubWorkspaceView.repository}
+            run={gitHubWorkspaceView.run}
+            onBack={() => openDashboardSurface(gitHubWorkspaceView.dashboardId)}
           />
         ) : gitHubWorkspaceView ? (
           <>

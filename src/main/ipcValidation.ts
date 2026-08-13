@@ -240,6 +240,13 @@ const validators = {
     readOnlyArg(args, 'github:repositories', 'profileId', readNonEmptyString),
   'github:actions-runs': (args) =>
     readOnlyArg(args, 'github:actions-runs', 'input', readGitHubActionsRunsInput),
+  'github:workflow-run-detail': (args) =>
+    readOnlyArg(
+      args,
+      'github:workflow-run-detail',
+      'input',
+      readGitHubWorkflowRunFailureInput
+    ),
   'github:workflow-run-failed-log': (args) =>
     readOnlyArg(
       args,

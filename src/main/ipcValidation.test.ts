@@ -188,6 +188,23 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(
+      validateIpcArgs('github:workflow-run-detail', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'Kaldy14',
+          repository: 'git-gud',
+          runId: 123
+        }
+      ])
+    ).toEqual([
+      {
+        profileId: 'profile:kaldy',
+        owner: 'Kaldy14',
+        repository: 'git-gud',
+        runId: 123
+      }
+    ]);
+    expect(
       validateIpcArgs('github:workflow-run-failed-log', [
         {
           profileId: 'profile:kaldy',

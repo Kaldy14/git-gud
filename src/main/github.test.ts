@@ -13,9 +13,14 @@ import {
   categorizePullRequest,
   createGitHubFileReviewCommentPayload,
   filterGitHubActionsRuns,
+  gitHubWorkflowFileArgs,
+  gitHubWorkflowRunDetailArgs,
   gitHubWorkflowRunFailedLogArgs,
+  gitHubWorkflowRunJobsArgs,
   mergeGitHubPullRequestReviewPlanContext,
   parseGitHubActionsRunsResponse,
+  parseGitHubWorkflowJobGraph,
+  parseGitHubWorkflowRunJobsResponse,
   parseGitHubInboxResponse,
   parseGitHubRecentPushEvents,
   parseGitHubBodyImageUrls,
@@ -171,6 +176,146 @@ describe('GitHub pull request suggestions', () => {
 });
 
 describe('GitHub Actions dashboards', () => {
+  it('loads the run and its workflow file at the exact run revision', () => {
+    const input = {
+      profileId: 'profile-1',
+      owner: 'acme',
+      repository: 'widgets',
+      runId: 101
+    };
+
+    expect(gitHubWorkflowRunDetailArgs(input, 'github.example.com')).toEqual([
+      'api',
+      '--hostname',
+      'github.example.com',
+      'repos/acme/widgets/actions/runs/101'
+    ]);
+    expect(
+      gitHubWorkflowFileArgs(
+        input,
+        '.github/workflows/release production.yml',
+        'abc/123',
+        'github.example.com'
+      )
+    ).toEqual([
+      'api',
+      '--hostname',
+      'github.example.com',
+      '-H',
+      'Accept: application/vnd.github.raw+json',
+      'repos/acme/widgets/contents/.github/workflows/release%20production.yml?ref=abc%2F123'
+    ]);
+  });
+
+  it('parses scalar, inline, and block workflow job dependencies', () => {
+    expect(
+      parseGitHubWorkflowJobGraph(`name: Release\non: push\njobs:\n  detect-changes:\n    runs-on: ubuntu-latest\n  build:\n    name: Build image\n    needs: detect-changes\n  deploy:\n    name: "Deploy production"\n    needs: [detect-changes, build]\n  record:\n    needs:\n      - build\n      - deploy\n    if: always()\n`)
+    ).toEqual([
+      { id: 'detect-changes', needs: [] },
+      { id: 'build', name: 'Build image', needs: ['detect-changes'] },
+      {
+        id: 'deploy',
+        name: 'Deploy production',
+        needs: ['detect-changes', 'build']
+      },
+      { id: 'record', needs: ['build', 'deploy'] }
+    ]);
+  });
+
+  it('loads workflow jobs from the selected repository and GitHub host', () => {
+    expect(
+      gitHubWorkflowRunJobsArgs(
+        {
+          profileId: 'profile-1',
+          owner: 'acme',
+          repository: 'widgets',
+          runId: 101
+        },
+        'github.example.com'
+      )
+    ).toEqual([
+      'api',
+      '--hostname',
+      'github.example.com',
+      'repos/acme/widgets/actions/runs/101/jobs?per_page=100'
+    ]);
+  });
+
+  it('normalizes workflow jobs and steps for the in-app run view', () => {
+    const detail = parseGitHubWorkflowRunJobsResponse(
+      {
+        total_count: 2,
+        jobs: [
+          {
+            id: 500,
+            name: 'detect',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: 'https://github.com/acme/widgets/actions/runs/101/job/500',
+            labels: [],
+            steps: []
+          },
+          {
+            id: 501,
+            name: 'build',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: 'https://github.com/acme/widgets/actions/runs/101/job/501',
+            started_at: '2026-07-25T10:01:00Z',
+            completed_at: '2026-07-25T10:02:00Z',
+            runner_name: 'GitHub Actions 1',
+            labels: ['ubuntu-latest'],
+            steps: [
+              {
+                number: 1,
+                name: 'Checkout',
+                status: 'completed',
+                conclusion: 'success',
+                started_at: '2026-07-25T10:01:00Z',
+                completed_at: '2026-07-25T10:01:05Z'
+              }
+            ]
+          }
+        ]
+      },
+      {
+        profileId: 'profile-1',
+        owner: 'acme',
+        repository: 'widgets',
+        runId: 101
+      },
+      [
+        { id: 'detect', needs: [] },
+        { id: 'build', name: 'build', needs: ['detect'] }
+      ],
+      '.github/workflows/ci.yml'
+    );
+
+    expect(detail).toMatchObject({
+      runId: 101,
+      workflowPath: '.github/workflows/ci.yml',
+      dependencyGraphAvailable: true,
+      totalJobCount: 2,
+      jobs: [
+        {
+          id: 500,
+          name: 'detect',
+          dependencyJobIds: []
+        },
+        {
+          id: 501,
+          name: 'build',
+          status: 'completed',
+          conclusion: 'success',
+          runnerName: 'GitHub Actions 1',
+          labels: ['ubuntu-latest'],
+          dependencyJobIds: [500],
+          steps: [{ number: 1, name: 'Checkout', conclusion: 'success' }]
+        }
+      ]
+    });
+  });
+
   it('loads only failed-step logs for the selected run and GitHub host', () => {
     expect(
       gitHubWorkflowRunFailedLogArgs(

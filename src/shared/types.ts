@@ -974,6 +974,41 @@ export type GitHubWorkflowRunFailureInput = {
   runId: number;
 };
 
+export type GitHubWorkflowStep = {
+  number: number;
+  name: string;
+  status: GitHubWorkflowRunStatus;
+  conclusion?: GitHubWorkflowRunConclusion;
+  startedAt?: string;
+  completedAt?: string;
+};
+
+export type GitHubWorkflowJob = {
+  id: number;
+  name: string;
+  dependencyJobIds: number[];
+  status: GitHubWorkflowRunStatus;
+  conclusion?: GitHubWorkflowRunConclusion;
+  url: string;
+  startedAt?: string;
+  completedAt?: string;
+  runnerName?: string;
+  labels: string[];
+  steps: GitHubWorkflowStep[];
+};
+
+export type GitHubWorkflowRunDetail = {
+  profileId: string;
+  owner: string;
+  repository: string;
+  runId: number;
+  workflowPath?: string;
+  dependencyGraphAvailable: boolean;
+  totalJobCount: number;
+  jobs: GitHubWorkflowJob[];
+  loadedAt: string;
+};
+
 export type GitHubActionsPullRequestGroup = {
   number: number;
   title: string;

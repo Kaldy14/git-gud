@@ -6,7 +6,9 @@ export type WorkflowRunPresentation = {
   icon: 'running' | 'success' | 'failure' | 'cancelled';
 };
 
-export function workflowRunPresentation(run: GitHubWorkflowRun): WorkflowRunPresentation {
+export function workflowRunPresentation(
+  run: Pick<GitHubWorkflowRun, 'status' | 'conclusion'>
+): WorkflowRunPresentation {
   if (run.status !== 'completed') {
     if (
       run.status === 'queued' ||

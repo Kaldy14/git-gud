@@ -119,6 +119,8 @@ const api: RendererApi = {
   getPortainerStackImages: (input) => invoke('portainer:stack-images', input),
   getGitHubRepositories: (profileId) => invoke('github:repositories', profileId),
   getGitHubActionsRuns: (input) => invoke('github:actions-runs', input),
+  getGitHubWorkflowRunDetail: (input) =>
+    invoke('github:workflow-run-detail', input),
   getGitHubWorkflowRunFailedLog: (input) =>
     invoke('github:workflow-run-failed-log', input),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),

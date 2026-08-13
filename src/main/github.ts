@@ -26,6 +26,7 @@ import type {
   GitHubRepositoryMergeSettings,
   GitHubWorkflowRun,
   GitHubWorkflowRunConclusion,
+  GitHubWorkflowRunDetail,
   GitHubWorkflowRunFailureInput,
   GitHubWorkflowRunStatus,
   GitProfile,
@@ -348,6 +349,84 @@ export async function loadGitHubWorkflowRunFailedLog(
   }
 
   return log;
+}
+
+export async function loadGitHubWorkflowRunDetail(
+  input: GitHubWorkflowRunFailureInput
+): Promise<GitHubWorkflowRunDetail> {
+  const context = await getGitHubContext(input.profileId);
+  const [rawRun, rawJobs] = await Promise.all([
+    runGitHubJson(context, gitHubWorkflowRunDetailArgs(input, context.host)),
+    runGitHubJson(context, gitHubWorkflowRunJobsArgs(input, context.host))
+  ]);
+  const run = readRecord(rawRun, 'workflow run response');
+  const workflowPath = readOptionalString(run.path);
+  const headSha = readOptionalString(run.head_sha);
+  let workflowJobs: GitHubWorkflowJobDefinition[] = [];
+
+  if (workflowPath && headSha) {
+    try {
+      const source = await runGitHubText(
+        context,
+        gitHubWorkflowFileArgs(input, workflowPath, headSha, context.host)
+      );
+      workflowJobs = parseGitHubWorkflowJobGraph(source);
+    } catch {
+      // Job details remain useful when the workflow file is inaccessible or invalid.
+    }
+  }
+
+  return parseGitHubWorkflowRunJobsResponse(
+    rawJobs,
+    input,
+    workflowJobs,
+    workflowPath
+  );
+}
+
+export function gitHubWorkflowRunDetailArgs(
+  input: GitHubWorkflowRunFailureInput,
+  host: string
+): string[] {
+  return [
+    'api',
+    '--hostname',
+    host,
+    `repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/actions/runs/${input.runId}`
+  ];
+}
+
+export function gitHubWorkflowRunJobsArgs(
+  input: GitHubWorkflowRunFailureInput,
+  host: string
+): string[] {
+  return [
+    'api',
+    '--hostname',
+    host,
+    `repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/actions/runs/${input.runId}/jobs?per_page=100`
+  ];
+}
+
+export function gitHubWorkflowFileArgs(
+  input: GitHubWorkflowRunFailureInput,
+  workflowPath: string,
+  headSha: string,
+  host: string
+): string[] {
+  const encodedPath = workflowPath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+
+  return [
+    'api',
+    '--hostname',
+    host,
+    '-H',
+    'Accept: application/vnd.github.raw+json',
+    `repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repository)}/contents/${encodedPath}?ref=${encodeURIComponent(headSha)}`
+  ];
 }
 
 export function gitHubWorkflowRunFailedLogArgs(
@@ -915,6 +994,208 @@ function parseWorkflowRun(value: unknown): GitHubWorkflowRun {
     startedAt: readOptionalString(run.run_started_at),
     updatedAt: readString(run.updated_at, 'workflow run updated time')
   };
+}
+
+type GitHubWorkflowJobDefinition = {
+  id: string;
+  name?: string;
+  needs: string[];
+};
+
+export function parseGitHubWorkflowJobGraph(
+  source: string
+): GitHubWorkflowJobDefinition[] {
+  const lines = source.replaceAll('\r\n', '\n').split('\n');
+  const jobsLineIndex = lines.findIndex((line) => /^jobs:\s*(?:#.*)?$/.test(line));
+
+  if (jobsLineIndex < 0) {
+    return [];
+  }
+
+  const definitions: GitHubWorkflowJobDefinition[] = [];
+  let current: GitHubWorkflowJobDefinition | undefined;
+  let readingNeeds = false;
+
+  for (const line of lines.slice(jobsLineIndex + 1)) {
+    if (line.trim() && !line.startsWith(' ')) {
+      break;
+    }
+
+    const jobMatch = /^ {2}(\S[^:]*):\s*(?:#.*)?$/.exec(line);
+    if (jobMatch) {
+      current = {
+        id: parseYamlScalar(jobMatch[1]),
+        needs: []
+      };
+      definitions.push(current);
+      readingNeeds = false;
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const nameMatch = /^ {4}name:\s*(.+?)\s*$/.exec(line);
+    if (nameMatch) {
+      const name = parseYamlScalar(nameMatch[1]);
+      current.name = name.includes('${{') ? undefined : name;
+      readingNeeds = false;
+      continue;
+    }
+
+    const needsMatch = /^ {4}needs:\s*(.*?)\s*$/.exec(line);
+    if (needsMatch) {
+      const needsValue = needsMatch[1];
+      readingNeeds = needsValue.length === 0;
+      if (needsValue.startsWith('[') && needsValue.endsWith(']')) {
+        current.needs.push(
+          ...needsValue
+            .slice(1, -1)
+            .split(',')
+            .map(parseYamlScalar)
+            .filter(Boolean)
+        );
+      } else if (needsValue) {
+        current.needs.push(parseYamlScalar(needsValue));
+      }
+      continue;
+    }
+
+    if (readingNeeds) {
+      const needsItemMatch = /^ {6}-\s+(.+?)\s*$/.exec(line);
+      if (needsItemMatch) {
+        current.needs.push(parseYamlScalar(needsItemMatch[1]));
+        continue;
+      }
+
+      if (line.trim() && !line.startsWith('      ')) {
+        readingNeeds = false;
+      }
+    }
+  }
+
+  return definitions.filter((definition) => definition.id.length > 0);
+}
+
+function parseYamlScalar(value: string): string {
+  const withoutComment = value.replace(/\s+#.*$/, '').trim();
+  const quote = withoutComment[0];
+  return (quote === '"' || quote === "'") && withoutComment.at(-1) === quote
+    ? withoutComment.slice(1, -1)
+    : withoutComment;
+}
+
+export function parseGitHubWorkflowRunJobsResponse(
+  raw: unknown,
+  input: GitHubWorkflowRunFailureInput,
+  workflowJobs: GitHubWorkflowJobDefinition[] = [],
+  workflowPath?: string
+): GitHubWorkflowRunDetail {
+  const response = readRecord(raw, 'workflow run jobs response');
+  const rawJobs = response.jobs;
+
+  if (!Array.isArray(rawJobs)) {
+    throw new Error('GitHub CLI returned an invalid workflow job list.');
+  }
+
+  const jobs: GitHubWorkflowRunDetail['jobs'] = rawJobs.map((value) => {
+    const job = readRecord(value, 'workflow job');
+    const rawSteps = job.steps;
+    const steps = Array.isArray(rawSteps)
+      ? rawSteps.map((value) => {
+          const step = readRecord(value, 'workflow step');
+
+          return {
+            number: readNumber(step.number, 'workflow step number'),
+            name: readString(step.name, 'workflow step name'),
+            status: normalizeWorkflowRunStatus(readOptionalString(step.status)),
+            conclusion: normalizeWorkflowRunConclusion(
+              readOptionalString(step.conclusion)
+            ),
+            startedAt: readOptionalString(step.started_at),
+            completedAt: readOptionalString(step.completed_at)
+          };
+        })
+      : [];
+    const labels = Array.isArray(job.labels)
+      ? job.labels.filter((label): label is string => typeof label === 'string')
+      : [];
+
+    return {
+      id: readNumber(job.id, 'workflow job id'),
+      name: readString(job.name, 'workflow job name'),
+      dependencyJobIds: [],
+      status: normalizeWorkflowRunStatus(readOptionalString(job.status)),
+      conclusion: normalizeWorkflowRunConclusion(readOptionalString(job.conclusion)),
+      url: readString(job.html_url, 'workflow job URL'),
+      startedAt: readOptionalString(job.started_at),
+      completedAt: readOptionalString(job.completed_at),
+      runnerName: readOptionalString(job.runner_name),
+      labels,
+      steps
+    };
+  });
+  const runtimeJobIdsByDefinition = new Map<string, number[]>();
+
+  for (const definition of workflowJobs) {
+    const expectedNames = [definition.name, definition.id].filter(
+      (name): name is string => Boolean(name)
+    );
+    const exactMatches = jobs.filter((job) =>
+      expectedNames.some(
+        (expectedName) => normalizeWorkflowJobName(job.name) === normalizeWorkflowJobName(expectedName)
+      )
+    );
+    const matches =
+      exactMatches.length > 0
+        ? exactMatches
+        : jobs.filter((job) =>
+            expectedNames.some((expectedName) => {
+              const actual = normalizeWorkflowJobName(job.name);
+              const expected = normalizeWorkflowJobName(expectedName);
+              return actual.startsWith(`${expected} (`) || actual.startsWith(`${expected} / `);
+            })
+          );
+
+    if (matches.length > 0) {
+      runtimeJobIdsByDefinition.set(
+        definition.id,
+        matches.map((job) => job.id)
+      );
+    }
+  }
+
+  for (const definition of workflowJobs) {
+    const runtimeJobIds = runtimeJobIdsByDefinition.get(definition.id) ?? [];
+    const dependencyJobIds = [
+      ...new Set(
+        definition.needs.flatMap(
+          (dependencyId) => runtimeJobIdsByDefinition.get(dependencyId) ?? []
+        )
+      )
+    ];
+
+    for (const runtimeJobId of runtimeJobIds) {
+      const job = jobs.find((candidate) => candidate.id === runtimeJobId);
+      if (job) {
+        job.dependencyJobIds = dependencyJobIds;
+      }
+    }
+  }
+
+  return {
+    ...input,
+    workflowPath,
+    dependencyGraphAvailable: runtimeJobIdsByDefinition.size > 0,
+    totalJobCount: readOptionalNumber(response.total_count) ?? jobs.length,
+    jobs,
+    loadedAt: new Date().toISOString()
+  };
+}
+
+function normalizeWorkflowJobName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function parseWorkflowRunPullRequestNumbers(value: unknown): number[] {

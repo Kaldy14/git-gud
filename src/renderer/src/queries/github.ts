@@ -5,6 +5,8 @@ import type {
   GitHubActionsRunFilters,
   GitHubActionsRuns,
   GitHubActionsRunsInput,
+  GitHubWorkflowRunDetail,
+  GitHubWorkflowRunFailureInput,
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
@@ -49,6 +51,16 @@ export const gitHubActionsRunsQueryKey = (
   input.filters.branches.join('\n'),
   input.filters.includeTags,
   input.filters.includeMyPullRequests
+];
+
+export const gitHubWorkflowRunDetailQueryKey = (
+  input: GitHubWorkflowRunFailureInput
+): readonly ['github-workflow-run-detail', string, string, string, number] => [
+  'github-workflow-run-detail',
+  input.profileId,
+  input.owner,
+  input.repository,
+  input.runId
 ];
 
 export const gitHubPullRequestInboxQueryKey = (
@@ -140,6 +152,19 @@ export function useGitHubRepositories(profileId: string | undefined) {
 
 export function useGitHubActionsRuns(input: GitHubActionsRunsInput | undefined) {
   return useQuery(gitHubActionsRunsQueryOptions(input));
+}
+
+export function useGitHubWorkflowRunDetail(input: GitHubWorkflowRunFailureInput) {
+  return useQuery({
+    queryKey: gitHubWorkflowRunDetailQueryKey(input),
+    queryFn: (): Promise<GitHubWorkflowRunDetail> =>
+      window.api.getGitHubWorkflowRunDetail(input),
+    staleTime: 5_000,
+    refetchInterval: (query) =>
+      query.state.data?.jobs.some((job) => job.status !== 'completed')
+        ? GITHUB_ACTIONS_REFETCH_INTERVAL_MS
+        : false
+  });
 }
 
 export function gitHubActionsRunsQueryOptions(

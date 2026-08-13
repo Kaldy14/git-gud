@@ -96,6 +96,11 @@ type DashboardViewProps = {
   actionAlerts?: DashboardActionFailureAlert[];
   onMarkActionAlertsRead?: (alertIds: string[]) => void;
   onSelectDashboard: (dashboardId: string | undefined) => void;
+  onOpenWorkflowRun: (input: {
+    owner: string;
+    repository: string;
+    run: GitHubWorkflowRun;
+  }) => void;
   onOpenProfileSettings: () => void;
   onClose: () => void;
   resolveRepositoryPath?: (repository: {
@@ -163,6 +168,7 @@ export function DashboardView({
   actionAlerts = [],
   onMarkActionAlertsRead,
   onSelectDashboard,
+  onOpenWorkflowRun,
   onOpenProfileSettings,
   onClose,
   resolveRepositoryPath,
@@ -884,6 +890,13 @@ export function DashboardView({
                               dragHandle={dragHandle}
                               isSaving={isSaving}
                               onWorkflowRunNotice={setWorkflowRunNotice}
+                              onOpenWorkflowRun={(run) =>
+                                onOpenWorkflowRun({
+                                  owner: tile.owner,
+                                  repository: tile.repository,
+                                  run
+                                })
+                              }
                               onEdit={() => openEditTileDialog(tile)}
                               onRemove={() => void handleRemoveTile(tile.id)}
                             />
@@ -1150,6 +1163,7 @@ type GitHubActionsTileProps = {
   dragHandle: ReactElement;
   isSaving: boolean;
   onWorkflowRunNotice: (notice: WorkflowRunNotice | undefined) => void;
+  onOpenWorkflowRun: (run: GitHubWorkflowRun) => void;
   onEdit: () => void;
   onRemove: () => void;
 };
@@ -1162,6 +1176,7 @@ function GitHubActionsTile({
   dragHandle,
   isSaving,
   onWorkflowRunNotice,
+  onOpenWorkflowRun,
   onEdit,
   onRemove
 }: GitHubActionsTileProps): ReactElement {
@@ -1324,6 +1339,7 @@ function GitHubActionsTile({
                     chooseCodexRepoPath,
                     onNotice: onWorkflowRunNotice
                   }}
+                  onOpenWorkflowRun={onOpenWorkflowRun}
                   expanded={expanded}
                   onToggle={() =>
                     setPullRequestExpansionOverrides((current) => {
@@ -1357,6 +1373,7 @@ function GitHubActionsTile({
                   chooseCodexRepoPath,
                   onNotice: onWorkflowRunNotice
                 }}
+                onOpenWorkflowRun={onOpenWorkflowRun}
               />
             ))}
           </div>
@@ -1391,11 +1408,13 @@ function GitHubActionsTile({
 function PullRequestWorkflowGroup({
   pullRequest,
   failureActions,
+  onOpenWorkflowRun,
   expanded,
   onToggle
 }: {
   pullRequest: GitHubActionsPullRequestGroup;
   failureActions: WorkflowRunFailureActionsContext;
+  onOpenWorkflowRun: (run: GitHubWorkflowRun) => void;
   expanded: boolean;
   onToggle: () => void;
 }): ReactElement {
@@ -1462,6 +1481,7 @@ function PullRequestWorkflowGroup({
                 key={run.id}
                 run={run}
                 failureActions={failureActions}
+                onOpenWorkflowRun={onOpenWorkflowRun}
               />
             ))}
           </div>
@@ -1477,10 +1497,12 @@ function PullRequestWorkflowGroup({
 
 function PullRequestWorkflowRow({
   run,
-  failureActions
+  failureActions,
+  onOpenWorkflowRun
 }: {
   run: GitHubWorkflowRun;
   failureActions: WorkflowRunFailureActionsContext;
+  onOpenWorkflowRun: (run: GitHubWorkflowRun) => void;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
   const statusIcon =
@@ -1497,11 +1519,10 @@ function PullRequestWorkflowRow({
   const hasFailureActions =
     presentation.tone === 'danger' && Boolean(failureActions.profileId);
   const row = (
-    <a
+    <button
       className="pull-request-workflow-run"
-      href={run.url}
-      target="_blank"
-      rel="noreferrer"
+      type="button"
+      onClick={() => onOpenWorkflowRun(run)}
       aria-haspopup={hasFailureActions ? 'menu' : undefined}
       title={
         hasFailureActions
@@ -1511,13 +1532,13 @@ function PullRequestWorkflowRow({
       onKeyDown={
         hasFailureActions ? openContextMenuFromKeyboard : undefined
       }
-      aria-label={`${run.name}, ${presentation.label}. Open workflow run in browser`}
+      aria-label={`${run.name}, ${presentation.label}. Open workflow run in Git Gud`}
     >
       <span data-tone={presentation.tone}>{statusIcon}</span>
       <strong title={run.name}>{run.name}</strong>
       <span data-tone={presentation.tone}>{presentation.label}</span>
-      <ExternalLink size={10} aria-hidden="true" />
-    </a>
+      <ChevronRight size={10} aria-hidden="true" />
+    </button>
   );
 
   return (
@@ -1740,10 +1761,12 @@ function isPullRequestExpandedByDefault(
 
 function WorkflowRunRow({
   run,
-  failureActions
+  failureActions,
+  onOpenWorkflowRun
 }: {
   run: GitHubWorkflowRun;
   failureActions: WorkflowRunFailureActionsContext;
+  onOpenWorkflowRun: (run: GitHubWorkflowRun) => void;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
   const triggeredRelativeTime = formatRelativeTime(run.createdAt);
@@ -1762,11 +1785,10 @@ function WorkflowRunRow({
   const hasFailureActions =
     presentation.tone === 'danger' && Boolean(failureActions.profileId);
   const row = (
-    <a
+    <button
       className="workflow-run-row"
-      href={run.url}
-      target="_blank"
-      rel="noreferrer"
+      type="button"
+      onClick={() => onOpenWorkflowRun(run)}
       aria-haspopup={hasFailureActions ? 'menu' : undefined}
       title={
         hasFailureActions
@@ -1778,7 +1800,7 @@ function WorkflowRunRow({
       }
       aria-label={`${run.displayTitle}, ${presentation.label}, triggered ${triggeredRelativeTime}${
         startedRelativeTime ? `, started ${startedRelativeTime}` : ''
-      }. Open workflow run in browser`}
+      }. Open workflow run in Git Gud`}
     >
       <span className="workflow-run-status" data-tone={presentation.tone} title={presentation.label}>
         {statusIcon}
@@ -1809,8 +1831,8 @@ function WorkflowRunRow({
           ) : null}
         </small>
       </span>
-      <ExternalLink size={12} className="workflow-run-external" aria-hidden="true" />
-    </a>
+      <ChevronRight size={12} className="workflow-run-external" aria-hidden="true" />
+    </button>
   );
 
   return (
