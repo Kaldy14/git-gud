@@ -106,6 +106,10 @@ import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
 import { normalizeReviewLineSelection } from './reviewLineSelection';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
 import {
+  ReviewFilePathContextMenu,
+  ReviewFileTreePathContextMenu
+} from './ReviewFilePathContextMenu';
+import {
   createReviewSearchResults,
   normalizeReviewSearchSelection,
   readReviewSearchSelection,
@@ -2239,7 +2243,13 @@ function ReviewFileTree({
         </span>
       </header>
       <div className="review-file-tree-body">
-        <FileTree className="review-file-tree" model={model} />
+        <FileTree
+          className="review-file-tree"
+          model={model}
+          renderContextMenu={(item, context) => (
+            <ReviewFileTreePathContextMenu item={item} context={context} />
+          )}
+        />
       </div>
     </aside>
   );
@@ -2329,25 +2339,32 @@ function ReviewFile({
       data-review-path={firstChunk.path}
     >
       <div className="review-file-header">
-        <button
-          className="review-chunk-toggle"
-          type="button"
-          aria-expanded={!isCollapsed}
-          aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${firstChunk.path}`}
-          onClick={onToggleCollapsed}
-        >
-          {isCollapsed ? (
-            <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
-          ) : (
-            <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-          )}
-          <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
-          <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]">{firstChunk.path}</span>
-          <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>
-          {firstChunk.source !== 'commit' ? <span className="badge-mini">{firstChunk.source}</span> : null}
-          <span className="text-[var(--success-text)]">+{file.additions}</span>
-          <span className="text-[var(--danger-text)]">-{file.deletions}</span>
-        </button>
+        <ReviewFilePathContextMenu path={firstChunk.path}>
+          <button
+            className="review-chunk-toggle"
+            type="button"
+            aria-expanded={!isCollapsed}
+            aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${firstChunk.path}`}
+            onClick={onToggleCollapsed}
+          >
+            {isCollapsed ? (
+              <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
+            ) : (
+              <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
+            )}
+            <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
+            <span
+              className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]"
+              title={firstChunk.path}
+            >
+              {firstChunk.path}
+            </span>
+            <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>
+            {firstChunk.source !== 'commit' ? <span className="badge-mini">{firstChunk.source}</span> : null}
+            <span className="text-[var(--success-text)]">+{file.additions}</span>
+            <span className="text-[var(--danger-text)]">-{file.deletions}</span>
+          </button>
+        </ReviewFilePathContextMenu>
         {lineCollaboration ? (
           <button
             className="review-comment-action review-file-comment-action"

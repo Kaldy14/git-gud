@@ -2471,6 +2471,10 @@ button.ref-chip {
   overflow: hidden;
 }
 
+.review-file-path-context-menu {
+  min-width: 160px;
+}
+
 .review-unit-header {
   display: flex;
   min-height: 32px;
