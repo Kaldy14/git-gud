@@ -143,6 +143,8 @@ import {
 import { createReviewSections, type VisibleReviewFile } from './reviewSections';
 import {
   createReviewViewState,
+  getReviewScrollTopForNavigation,
+  type ReviewNavigationReason,
   selectReviewViewUnit,
   setReviewViewScrollTop,
   type ReviewViewState
@@ -339,6 +341,7 @@ export function ReviewView({
   const [requestedFilePath, setRequestedFilePath] = useState<string | undefined>(
     () => initialViewState?.requestedFilePath
   );
+  const [fileNavigationSignal, setFileNavigationSignal] = useState(0);
   const [scrollRestoration, setScrollRestoration] = useState<
     { scrollTop: number; unitId: string } | undefined
   >(() => {
@@ -744,7 +747,10 @@ export function ReviewView({
     commentMutation.reset();
   }
 
-  function selectReviewUnit(unitId: string): void {
+  function selectReviewUnit(
+    unitId: string,
+    reason: ReviewNavigationReason = 'unit'
+  ): void {
     setIsReviewSearchSelected(false);
 
     if (
@@ -754,7 +760,11 @@ export function ReviewView({
     ) {
       return;
     }
-    const scrollTop = viewStateRef.current.scrollTopByUnit[unitId];
+    const scrollTop = getReviewScrollTopForNavigation(
+      viewStateRef.current,
+      unitId,
+      reason
+    );
     setScrollRestoration(
       scrollTop === undefined ? undefined : { scrollTop, unitId }
     );
@@ -865,12 +875,14 @@ export function ReviewView({
       return;
     }
 
+    setFileNavigationSignal((signal) => signal + 1);
+
     const unitId = selectedUnit?.visibleChunks.some((chunk) => chunk.path === path)
       ? selectedUnit.unit.id
       : findReviewUnitIdForPath(presentation?.units ?? [], path);
 
     if (unitId) {
-      selectReviewUnit(unitId);
+      selectReviewUnit(unitId, 'file');
     }
   }
 
@@ -1377,6 +1389,7 @@ export function ReviewView({
             ? scrollRestoration.scrollTop
             : undefined
         }
+        fileNavigationSignal={fileNavigationSignal}
         reviewSearch={
           currentReviewSearch
             ? {
@@ -1760,6 +1773,7 @@ function ReviewBody({
   isFileTreeOpen,
   selectedFilePath,
   restoredScrollTop,
+  fileNavigationSignal,
   reviewSearch,
   typeDefinitionPaths,
   typeDefinitionInteraction,
@@ -1786,6 +1800,7 @@ function ReviewBody({
   isFileTreeOpen: boolean;
   selectedFilePath?: string;
   restoredScrollTop?: number;
+  fileNavigationSignal: number;
   reviewSearch?: ReviewSearchViewState;
   typeDefinitionPaths: ReadonlySet<string>;
   typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
@@ -1796,7 +1811,11 @@ function ReviewBody({
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
-  const renderedLocationRef = useRef<{ filePath?: string; unitId?: string }>({});
+  const renderedLocationRef = useRef<{
+    fileNavigationSignal: number;
+    filePath?: string;
+    unitId?: string;
+  }>({ fileNavigationSignal: 0 });
   const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(
     () => new Set()
   );
@@ -1810,14 +1829,28 @@ function ReviewBody({
     const previousLocation = renderedLocationRef.current;
     const unitChanged = unitId !== previousLocation.unitId;
     const fileChanged = selectedFilePath !== previousLocation.filePath;
+    const fileNavigationRequested =
+      fileNavigationSignal !== previousLocation.fileNavigationSignal;
 
-    renderedLocationRef.current = { filePath: selectedFilePath, unitId };
+    renderedLocationRef.current = {
+      fileNavigationSignal,
+      filePath: selectedFilePath,
+      unitId
+    };
 
-    if (!scroller || !unitId || (!unitChanged && !fileChanged)) {
+    if (
+      !scroller ||
+      !unitId ||
+      (!unitChanged && !fileChanged && !fileNavigationRequested)
+    ) {
       return;
     }
 
-    if (unitChanged && restoredScrollTop !== undefined) {
+    if (
+      unitChanged &&
+      restoredScrollTop !== undefined &&
+      !fileNavigationRequested
+    ) {
       scroller.scrollTo({ top: restoredScrollTop });
       return;
     }
@@ -1844,7 +1877,12 @@ function ReviewBody({
         target.getBoundingClientRect().top -
         scroller.getBoundingClientRect().top
     });
-  }, [restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
+  }, [
+    fileNavigationSignal,
+    restoredScrollTop,
+    selectedFilePath,
+    selectedUnit?.unit.id
+  ]);
 
   function toggleFile(fileKey: string, chunks: readonly GitReviewChunk[]): void {
     const isCollapsing = !collapsedFileKeys.has(fileKey);
@@ -2400,6 +2438,7 @@ function ReviewFileTree({
   onSelectPath: (path: string | undefined) => void;
 }): ReactElement {
   const isSyncingSelectionRef = useRef(false);
+  const onSelectPathRef = useRef(onSelectPath);
   const resizeStateRef = useRef<
     { startX: number; startWidth: number; width: number } | undefined
   >(undefined);
@@ -2410,10 +2449,17 @@ function ReviewFileTree({
   const entries = useMemo(() => createReviewFileTreeEntries(units), [units]);
   const paths = useMemo(() => entries.map((entry) => entry.path), [entries]);
   const pathSet = useMemo(() => new Set(paths), [paths]);
+  const pathSetRef = useRef(pathSet);
   const preparedInput = useMemo(
     () => prepareFileTreeInput(paths, { flattenEmptyDirectories: true }),
     [paths]
   );
+
+  useEffect(() => {
+    onSelectPathRef.current = onSelectPath;
+    pathSetRef.current = pathSet;
+  }, [onSelectPath, pathSet]);
+
   const { model } = useFileTree({
     preparedInput,
     gitStatus: entries,
@@ -2424,7 +2470,9 @@ function ReviewFileTree({
         return;
       }
 
-      onSelectPath(selectedPaths.find((path) => pathSet.has(path)));
+      onSelectPathRef.current(
+        selectedPaths.find((path) => pathSetRef.current.has(path))
+      );
     },
     search: entries.length > 8,
     unsafeCSS: `
@@ -2572,6 +2620,23 @@ function ReviewFileTree({
         <FileTree
           className="review-file-tree"
           model={model}
+          onClickCapture={(event) => {
+            const selectedItem = event.nativeEvent.composedPath().find(
+              (target): target is HTMLElement =>
+                target instanceof HTMLElement &&
+                target.dataset.itemType === 'file' &&
+                target.dataset.itemPath !== undefined
+            );
+            const path = selectedItem?.dataset.itemPath;
+
+            if (
+              path &&
+              pathSet.has(path) &&
+              model.getItem(path)?.isSelected()
+            ) {
+              onSelectPath(path);
+            }
+          }}
           renderContextMenu={(item, context) => (
             <ReviewFileTreePathContextMenu item={item} context={context} />
           )}

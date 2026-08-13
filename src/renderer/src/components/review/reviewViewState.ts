@@ -4,6 +4,8 @@ export type ReviewViewState = {
   scrollTopByUnit: Readonly<Record<string, number>>;
 };
 
+export type ReviewNavigationReason = 'unit' | 'file';
+
 export function createReviewViewState(initial?: ReviewViewState): ReviewViewState {
   return {
     selectedUnitId: initial?.selectedUnitId,
@@ -36,4 +38,12 @@ export function setReviewViewScrollTop(
       [unitId]: scrollTop
     }
   };
+}
+
+export function getReviewScrollTopForNavigation(
+  state: ReviewViewState,
+  unitId: string,
+  reason: ReviewNavigationReason
+): number | undefined {
+  return reason === 'unit' ? state.scrollTopByUnit[unitId] : undefined;
 }

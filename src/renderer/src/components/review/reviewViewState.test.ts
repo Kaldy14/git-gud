@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createReviewViewState,
+  getReviewScrollTopForNavigation,
   selectReviewViewUnit,
   setReviewViewScrollTop
 } from './reviewViewState';
@@ -34,5 +35,20 @@ describe('review view state', () => {
       'story:first': 320,
       'story:second': 1280
     });
+  });
+
+  it('restores group navigation but lets file navigation jump to its target', () => {
+    const state = setReviewViewScrollTop(
+      createReviewViewState(),
+      'story:authentication',
+      864
+    );
+
+    expect(
+      getReviewScrollTopForNavigation(state, 'story:authentication', 'unit')
+    ).toBe(864);
+    expect(
+      getReviewScrollTopForNavigation(state, 'story:authentication', 'file')
+    ).toBeUndefined();
   });
 });
