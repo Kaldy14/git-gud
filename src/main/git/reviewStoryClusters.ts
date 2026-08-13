@@ -38,6 +38,7 @@ type GroupFacts = {
   paths: Set<string>;
   concepts: Set<string>;
   identifiers: Set<string>;
+  syntaxReferences: Set<string>;
   storySignalCounts: Map<string, number>;
   storyChunkCount: number;
   structuralFingerprints: Set<string>;
@@ -186,7 +187,9 @@ function collectStoryEdges(groups: GroupFacts[]): StoryEdge[] {
       const sharedConcepts = intersectionSize(left.concepts, right.concepts);
       const sharedIdentifiers = intersectionSize(left.identifiers, right.identifiers);
       const sharedFingerprints = intersectionSize(left.structuralFingerprints, right.structuralFingerprints);
-      const crossReferences = crossReferenceCount(left, right);
+      const crossReferences = crossReferenceCount(left, right) + (
+        sharedPaths > 0 ? syntaxCrossReferenceCount(left, right) : 0
+      );
       const sharedStorySignals = collectSharedStorySignals(left, right);
       const distinctiveSharedWords = sharedStorySignals.words.filter((word) =>
         !left.concepts.has(word) || !right.concepts.has(word)
@@ -285,6 +288,15 @@ function collectGroupFacts(group: ReviewStoryGroup): GroupFacts {
     ...chunk.syntaxQualifiedSymbols,
     ...chunk.changedIdentifiers
   ]));
+  const syntaxReferences = normalizedValues(evidenceChunks.flatMap((chunk) =>
+    chunk.syntaxIdentifiers
+      .filter((identifier) =>
+        identifier.role !== 'import' &&
+        identifier.role !== 'declaration' &&
+        identifier.role !== 'member'
+      )
+      .flatMap((identifier) => [identifier.name, identifier.qualifiedName ?? ''])
+  ));
 
   for (const word of ignoredStoryWords) {
     identifiers.delete(normalizeReviewSymbol(word));
@@ -326,6 +338,7 @@ function collectGroupFacts(group: ReviewStoryGroup): GroupFacts {
       )
     ),
     identifiers,
+    syntaxReferences,
     storySignalCounts,
     storyChunkCount: storyChunks.length,
     structuralFingerprints: new Set(evidenceChunks.flatMap((chunk) => chunk.structuralFingerprints)),
@@ -399,6 +412,11 @@ function intersection(left: ReadonlySet<string>, right: ReadonlySet<string>): Se
 
 function crossReferenceCount(left: GroupFacts, right: GroupFacts): number {
   return Number(intersects(left.identifiers, right.symbols)) + Number(intersects(right.identifiers, left.symbols));
+}
+
+function syntaxCrossReferenceCount(left: GroupFacts, right: GroupFacts): number {
+  return Number(intersects(left.syntaxReferences, right.symbols)) +
+    Number(intersects(right.syntaxReferences, left.symbols));
 }
 
 function normalizedValues(values: Iterable<string>): Set<string> {
