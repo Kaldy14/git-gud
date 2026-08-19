@@ -90,6 +90,46 @@ export function parseRemoteVerbose(output: string): GitRemote[] {
   return [...remotes.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export function parseRemoteConfig(output: string): GitRemote[] {
+  const remotes = new Map<string, GitRemote>();
+
+  for (const entry of output.split('\0')) {
+    const separatorIndex = entry.indexOf('\n');
+
+    if (separatorIndex < 0) {
+      continue;
+    }
+
+    const key = entry.slice(0, separatorIndex);
+    const url = entry.slice(separatorIndex + 1);
+    const match = /^remote\.(.+)\.(url|pushurl)$/.exec(key);
+
+    if (!match || !url) {
+      continue;
+    }
+
+    const [, name, kind] = match;
+    const remote = remotes.get(name) ?? { name };
+
+    if (kind === 'url') {
+      remote.fetchUrl = url;
+    } else {
+      remote.pushUrl = url;
+      remote.pushUrlExplicit = true;
+    }
+
+    remotes.set(name, remote);
+  }
+
+  return [...remotes.values()]
+    .map((remote) => ({
+      ...remote,
+      pushUrl: remote.pushUrl ?? remote.fetchUrl,
+      pushUrlExplicit: remote.pushUrlExplicit ?? false
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function parseTrackCounts(track: string | undefined): { ahead: number; behind: number } {
   if (!track) {
     return { ahead: 0, behind: 0 };

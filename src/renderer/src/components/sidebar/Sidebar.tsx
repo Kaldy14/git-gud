@@ -17,8 +17,10 @@ import {
   Laptop,
   Link,
   Loader2,
+  MoreVertical,
   PanelLeftClose,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   Tag,
@@ -36,6 +38,7 @@ import type {
   GitBranchRef,
   GitHubPullRequestSummary,
   GitRemoteBranchRef,
+  GitRemote,
   GitRepositoryOverview,
   GitStashEntry,
   GitStashRefInput,
@@ -62,6 +65,10 @@ type SidebarProps = {
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
   isOperationBusy: boolean;
+  onAddRemote: () => void;
+  onFetchRemote: (remote: GitRemote) => void;
+  onEditRemote: (remote: GitRemote) => void;
+  onRemoveRemote: (remote: GitRemote) => void;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
   onCopyBranchName: (name: string) => void;
@@ -98,6 +105,10 @@ type SidebarContextMenuTarget =
   | {
       kind: 'remote';
       branch: GitRemoteBranchRef;
+    }
+  | {
+      kind: 'remote-config';
+      remote: GitRemote;
     }
   | {
       kind: 'tag';
@@ -157,6 +168,10 @@ export function Sidebar({
   onResize,
   onResizeCommit,
   isOperationBusy,
+  onAddRemote,
+  onFetchRemote,
+  onEditRemote,
+  onRemoveRemote,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
   onCopyBranchName,
@@ -186,7 +201,7 @@ export function Sidebar({
   const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState<Record<SectionId, boolean>>({
     local: true,
-    remote: false,
+    remote: true,
     worktrees: false,
     stashes: false,
     tags: false
@@ -286,6 +301,18 @@ export function Sidebar({
       ...state,
       x: event.clientX,
       y: event.clientY
+    });
+  }
+
+  function handleRemoteActions(event: MouseEvent<HTMLButtonElement>, remote: GitRemote): void {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    contextMenuReturnFocusRef.current = event.currentTarget;
+    setContextMenu({
+      kind: 'remote-config',
+      remote,
+      x: rect.right,
+      y: rect.bottom
     });
   }
 
@@ -436,26 +463,43 @@ export function Sidebar({
 
           return (
             <section key={section.id} className="sidebar-section m-0" role="group">
-              <button
-                className="side-section"
-                type="button"
-                role="treeitem"
-                aria-expanded={isExpanded}
-                aria-level={1}
-                onClick={() => setExpanded((value) => ({ ...value, [section.id]: !value[section.id] }))}
-                onKeyDown={handleSidebarTreeKeyDown}
-              >
-                {isExpanded ? (
-                  <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-                ) : (
-                  <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
-                )}
-                <span className="shrink-0 text-[var(--text-3)]">{section.icon}</span>
-                <span className="min-w-0 flex-1 truncate text-left uppercase">{section.title}</span>
-                {typeof sectionCount === 'number' ? (
-                  <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{sectionCount}</span>
+              <div className="side-section-header">
+                <button
+                  className={`side-section${section.id === 'remote' ? ' side-section--with-action' : ''}`}
+                  type="button"
+                  role="treeitem"
+                  aria-expanded={isExpanded}
+                  aria-level={1}
+                  onClick={() => setExpanded((value) => ({ ...value, [section.id]: !value[section.id] }))}
+                  onKeyDown={handleSidebarTreeKeyDown}
+                >
+                  {isExpanded ? (
+                    <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
+                  ) : (
+                    <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
+                  )}
+                  <span className="shrink-0 text-[var(--text-3)]">{section.icon}</span>
+                  <span className="min-w-0 flex-1 truncate text-left uppercase">{section.title}</span>
+                  {typeof sectionCount === 'number' ? (
+                    <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{sectionCount}</span>
+                  ) : null}
+                </button>
+                {section.id === 'remote' ? (
+                  <button
+                    className="side-section-action"
+                    type="button"
+                    aria-label="Add remote"
+                    title="Add remote"
+                    disabled={isOperationBusy || !repositoryOverview}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAddRemote();
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
                 ) : null}
-              </button>
+              </div>
               {isExpanded ? (
                 <SectionRows
                   key={`${repositoryOverview?.repoPath ?? 'empty'}:${section.id}`}
@@ -468,6 +512,7 @@ export function Sidebar({
                   onContextMenu={handleRowContextMenu}
                   onCheckoutBranch={onCheckoutBranch}
                   onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+                  onRemoteActions={handleRemoteActions}
                 />
               ) : null}
             </section>
@@ -485,7 +530,10 @@ export function Sidebar({
               : repositoryOverview?.status.branch.head
           }
           canSetBranchUpstream={Boolean(repositoryOverview?.refs.remoteBranches.length)}
-          onClose={() => setContextMenu(undefined)}
+          onClose={() => {
+            setContextMenu(undefined);
+            contextMenuReturnFocusRef.current?.focus({ preventScroll: true });
+          }}
           onCheckoutBranch={onCheckoutBranch}
           onCheckoutRemoteBranch={onCheckoutRemoteBranch}
           onCopyBranchName={onCopyBranchName}
@@ -504,6 +552,9 @@ export function Sidebar({
           onCreateSuggestedTagAtCommit={onCreateSuggestedTagAtCommit}
           onDeleteBranch={onDeleteBranch}
           onDeleteRemoteBranch={onDeleteRemoteBranch}
+          onFetchRemote={onFetchRemote}
+          onEditRemote={onEditRemote}
+          onRemoveRemote={onRemoveRemote}
           tagPushRemote={tagPushRemote}
           onPushTag={onPushTag}
           onDeleteTag={onDeleteTag}
@@ -594,6 +645,7 @@ type SectionRowsProps = {
   onContextMenu: (event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget) => void;
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
+  onRemoteActions: (event: MouseEvent<HTMLButtonElement>, remote: GitRemote) => void;
 };
 
 function SectionRows({
@@ -605,7 +657,8 @@ function SectionRows({
   errorMessage,
   onContextMenu,
   onCheckoutBranch,
-  onCheckoutRemoteBranch
+  onCheckoutRemoteBranch,
+  onRemoteActions
 }: SectionRowsProps): ReactElement {
   if (errorMessage) {
     return <EmptySection label="Could not load Git data." />;
@@ -659,33 +712,15 @@ function SectionRows({
   }
 
   if (sectionId === 'remote') {
-    const rows = repositoryOverview.refs.remoteBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
     return (
-      <PaginatedRefRows
-        items={rows}
-        renderItems={(branches) => (
-          <BranchTreeRows
-            items={branches}
-            getName={(branch) => branch.name}
-            isFiltering={normalizedFilter.length > 0}
-            renderBranch={(branch, label, depth) => (
-              <SidebarRow
-                key={branch.fullName}
-                icon={<Cloud size={12} />}
-                label={label}
-                meta={branch.sha.slice(0, 7)}
-                depth={depth}
-                isActionDisabled={isOperationBusy}
-                title={isOperationBusy ? 'A Git operation is running' : branch.name}
-                onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
-                onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
-              />
-            )}
-          />
-        )}
-        emptyLabel="No remote branches."
-        itemLabel="remote branches"
-        isFiltering={normalizedFilter.length > 0}
+      <RemoteSectionRows
+        remotes={repositoryOverview.remotes}
+        branches={repositoryOverview.refs.remoteBranches}
+        normalizedFilter={normalizedFilter}
+        isOperationBusy={isOperationBusy}
+        onContextMenu={onContextMenu}
+        onRemoteActions={onRemoteActions}
+        onCheckoutRemoteBranch={onCheckoutRemoteBranch}
       />
     );
   }
@@ -761,6 +796,151 @@ function SectionRows({
       isFiltering={normalizedFilter.length > 0}
     />
   );
+}
+
+function RemoteSectionRows({
+  remotes,
+  branches,
+  normalizedFilter,
+  isOperationBusy,
+  onContextMenu,
+  onRemoteActions,
+  onCheckoutRemoteBranch
+}: {
+  remotes: readonly GitRemote[];
+  branches: readonly GitRemoteBranchRef[];
+  normalizedFilter: string;
+  isOperationBusy: boolean;
+  onContextMenu: (event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget) => void;
+  onRemoteActions: (event: MouseEvent<HTMLButtonElement>, remote: GitRemote) => void;
+  onCheckoutRemoteBranch: (name: string) => void;
+}): ReactElement {
+  const [collapsedRemotes, setCollapsedRemotes] = useState<ReadonlySet<string>>(() => new Set());
+  const remoteNames = remotes.map((remote) => remote.name).sort((left, right) => right.length - left.length);
+  const branchesByRemote = new Map<string, GitRemoteBranchRef[]>();
+
+  for (const branch of branches) {
+    const configuredRemote = remoteNames.find((name) => branch.name.startsWith(`${name}/`));
+
+    if (!configuredRemote) {
+      continue;
+    }
+
+    const remoteBranches = branchesByRemote.get(configuredRemote) ?? [];
+    remoteBranches.push(branch);
+    branchesByRemote.set(configuredRemote, remoteBranches);
+  }
+
+  const visibleRemotes = remotes.filter((remote) => {
+    if (!normalizedFilter) {
+      return true;
+    }
+
+    const remoteText = `${remote.name} ${remote.fetchUrl ?? ''} ${remote.pushUrl ?? ''}`;
+    return (
+      matchesFilter(remoteText, normalizedFilter) ||
+      (branchesByRemote.get(remote.name) ?? []).some((branch) => matchesFilter(branch.name, normalizedFilter))
+    );
+  });
+
+  if (visibleRemotes.length === 0) {
+    return <EmptySection label={remotes.length === 0 ? 'No remotes.' : 'No matching remotes.'} />;
+  }
+
+  return (
+    <div className="py-1">
+      {visibleRemotes.map((remote) => {
+        const isExpanded = normalizedFilter.length > 0 || !collapsedRemotes.has(remote.name);
+        const remoteBranches = (branchesByRemote.get(remote.name) ?? []).filter(
+          (branch) =>
+            !normalizedFilter ||
+            matchesFilter(branch.name, normalizedFilter) ||
+            matchesFilter(remote.name, normalizedFilter)
+        );
+
+        return (
+          <div key={remote.name} role="group" aria-label={`${remote.name} remote`}>
+            <div className="side-remote-row-wrap">
+              <button
+                className="side-remote-row"
+                type="button"
+                role="treeitem"
+                aria-level={2}
+                aria-expanded={isExpanded}
+                title={remote.fetchUrl ?? remote.name}
+                onContextMenu={(event) => onContextMenu(event, { kind: 'remote-config', remote })}
+                onClick={() => {
+                  setCollapsedRemotes((current) => {
+                    const next = new Set(current);
+                    if (next.has(remote.name)) {
+                      next.delete(remote.name);
+                    } else {
+                      next.add(remote.name);
+                    }
+                    return next;
+                  });
+                }}
+                onKeyDown={handleSidebarTreeKeyDown}
+              >
+                {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <Cloud size={13} />
+                <span>{remote.name}</span>
+              </button>
+              <button
+                className="side-remote-actions"
+                type="button"
+                aria-label={`Actions for remote ${remote.name}`}
+                title="Remote actions"
+                disabled={isOperationBusy}
+                onClick={(event) => onRemoteActions(event, remote)}
+              >
+                <MoreVertical size={14} />
+              </button>
+            </div>
+            {isExpanded ? (
+              remoteBranches.length > 0 ? (
+                <PaginatedRefRows
+                  items={remoteBranches}
+                  renderItems={(visibleBranches) => (
+                    <BranchTreeRows
+                      items={visibleBranches}
+                      getName={(branch) => remoteBranchDisplayName(branch.name, remote.name)}
+                      isFiltering={normalizedFilter.length > 0}
+                      depthOffset={1}
+                      renderBranch={(branch, label, depth) => (
+                        <SidebarRow
+                          key={branch.fullName}
+                          className="side-row--remote-branch"
+                          icon={<GitBranch size={12} />}
+                          label={label}
+                          meta={branch.sha.slice(0, 7)}
+                          depth={depth}
+                          isActionDisabled={isOperationBusy}
+                          title={isOperationBusy ? 'A Git operation is running' : branch.name}
+                          onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
+                          onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
+                        />
+                      )}
+                    />
+                  )}
+                  emptyLabel="No remote branches."
+                  itemLabel={`${remote.name} remote branches`}
+                  isFiltering={normalizedFilter.length > 0}
+                />
+              ) : normalizedFilter ? null : (
+                <div className="side-remote-empty">No remote branches.</div>
+              )
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function remoteBranchDisplayName(branchName: string, remoteName: string): string {
+  const prefix = `${remoteName}/`;
+  return branchName.startsWith(prefix) ? branchName.slice(prefix.length) : branchNameFromRemoteRef(branchName);
 }
 
 function PaginatedRefRows<Item>({
@@ -842,11 +1022,13 @@ function BranchTreeRows<Item>({
   items,
   getName,
   isFiltering,
+  depthOffset = 0,
   renderBranch
 }: {
   items: readonly Item[];
   getName: (item: Item) => string;
   isFiltering: boolean;
+  depthOffset?: number;
   renderBranch: (item: Item, label: string, depth: number) => ReactElement;
 }): ReactElement {
   const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(() => new Set());
@@ -897,10 +1079,12 @@ function BranchTreeRows<Item>({
     });
   }
 
-  return <>{renderNodes(nodes, 0)}</>;
+  return <>{renderNodes(nodes, depthOffset)}</>;
 }
 
 function SidebarRow({
+  className,
+  ariaLevel,
   icon,
   label,
   meta,
@@ -911,6 +1095,8 @@ function SidebarRow({
   onContextMenu,
   onDoubleClick
 }: {
+  className?: string;
+  ariaLevel?: number;
   icon: ReactNode;
   label: string;
   meta?: string;
@@ -923,12 +1109,12 @@ function SidebarRow({
 }): ReactElement {
   return (
     <div
-      className="side-row"
+      className={`side-row${className ? ` ${className}` : ''}`}
       style={{ paddingLeft: 34 + depth * 18 }}
       data-active={isActive}
       title={title ?? label}
       role="treeitem"
-      aria-level={depth + 2}
+      aria-level={ariaLevel ?? depth + 2}
       aria-current={isActive ? 'page' : undefined}
       aria-disabled={isActionDisabled || undefined}
       tabIndex={isActive ? 0 : -1}
@@ -1019,6 +1205,9 @@ function SidebarContextMenu({
   onCreateSuggestedTagAtCommit,
   onDeleteBranch,
   onDeleteRemoteBranch,
+  onFetchRemote,
+  onEditRemote,
+  onRemoveRemote,
   tagPushRemote,
   onPushTag,
   onDeleteTag,
@@ -1049,6 +1238,9 @@ function SidebarContextMenu({
   onCreateSuggestedTagAtCommit: (sha: string, name: string) => Promise<boolean>;
   onDeleteBranch: (name: string) => void;
   onDeleteRemoteBranch: (branch: GitRemoteBranchRef) => void;
+  onFetchRemote: (remote: GitRemote) => void;
+  onEditRemote: (remote: GitRemote) => void;
+  onRemoveRemote: (remote: GitRemote) => void;
   tagPushRemote?: string;
   onPushTag: (name: string, remote: string) => void;
   onDeleteTag: (input: GitTagDeleteInput) => void;
@@ -1100,7 +1292,50 @@ function SidebarContextMenu({
       onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       onClick={(event) => event.stopPropagation()}
     >
-      {state.kind === 'local' ? (
+      {state.kind === 'remote-config' ? (
+        <>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onFetchRemote(state.remote);
+              onClose();
+            }}
+          >
+            <Download size={14} />
+            <span>Fetch {state.remote.name}</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onEditRemote(state.remote);
+              onClose();
+            }}
+          >
+            <Pencil size={14} />
+            <span>Edit {state.remote.name}…</span>
+          </button>
+          <ContextMenuSeparator />
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onRemoveRemote(state.remote);
+              onClose();
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Remove {state.remote.name}…</span>
+          </button>
+        </>
+      ) : state.kind === 'local' ? (
         <>
           <BranchContextMenuPrimaryActions
             branchName={state.branch.name}

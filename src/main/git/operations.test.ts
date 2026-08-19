@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GitCommandError, gitExecutor } from './exec';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './commands/rebase';
 import {
+  addRemote,
   cherryPickCommit,
   cherryPickCommits,
   checkoutRef,
@@ -14,21 +15,81 @@ import {
   createTag,
   deleteBranch,
   deleteTag,
+  fetchRemote,
   mergeRef,
   pullRepository,
   pushRepository,
   pushTag,
   setBranchUpstream,
   resetToCommit,
+  removeRemote,
   resolveConflict,
   revertCommit,
   stashDrop,
   stashPop,
   stashPush,
-  undoOperation
+  undoOperation,
+  updateRemote
 } from './operations';
 
 describe('git operations', () => {
+  it('adds, fetches, edits, renames, and removes a configured remote', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const firstRemotePath = join(rootPath, 'first.git');
+      const secondRemotePath = join(rootPath, 'second.git');
+      const pushRemotePath = join(rootPath, 'push.git');
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(rootPath, ['init', '--bare', firstRemotePath]);
+      await git(rootPath, ['init', '--bare', secondRemotePath]);
+      await git(rootPath, ['init', '--bare', pushRemotePath]);
+
+      const addResult = await addRemote(tab, {
+        name: 'origin',
+        fetchUrl: firstRemotePath,
+        pushUrl: pushRemotePath
+      });
+
+      expect((await git(repoPath, ['remote', 'get-url', 'origin'])).stdout.trim()).toBe(firstRemotePath);
+      expect((await git(repoPath, ['remote', 'get-url', '--push', 'origin'])).stdout.trim()).toBe(pushRemotePath);
+      expect(addResult.operation?.label).toBe('Add remote origin');
+
+      const fetchResult = await fetchRemote(tab, 'origin');
+      expect(fetchResult.operation?.label).toBe('Fetch origin');
+
+      const updateResult = await updateRemote(tab, {
+        oldName: 'origin',
+        name: 'upstream',
+        fetchUrl: secondRemotePath
+      });
+
+      expect((await git(repoPath, ['remote'])).stdout.trim()).toBe('upstream');
+      expect((await git(repoPath, ['remote', 'get-url', 'upstream'])).stdout.trim()).toBe(secondRemotePath);
+      expect((await git(repoPath, ['remote', 'get-url', '--push', 'upstream'])).stdout.trim()).toBe(secondRemotePath);
+      expect(updateResult.operation?.label).toBe('Rename remote origin to upstream');
+
+      const removeResult = await removeRemote(tab, 'upstream');
+      expect((await git(repoPath, ['remote'])).stdout.trim()).toBe('');
+      expect(removeResult.operation?.label).toBe('Remove remote upstream');
+
+      await addRemote(tab, { name: '--all', fetchUrl: firstRemotePath });
+      await expect(fetchRemote(tab, '--all')).resolves.toMatchObject({
+        operation: { label: 'Fetch --all', status: 'completed' }
+      });
+      await updateRemote(tab, {
+        oldName: '--all',
+        name: '-source',
+        fetchUrl: secondRemotePath
+      });
+      expect((await git(repoPath, ['remote'])).stdout.trim()).toBe('-source');
+      await removeRemote(tab, '-source');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('checks out and captures undo state with three Git subprocesses', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 

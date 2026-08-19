@@ -5,7 +5,7 @@ import type { GitRepositoryOverview, RepoTab } from '@shared/types';
 import { createProfileCommandEnv, getRepoProfileState } from '../profiles';
 import { loadConflictState } from './conflicts';
 import { GitCommandError, gitExecutor } from './exec';
-import { parseForEachRef, parseRemoteVerbose } from './parsers/refs';
+import { parseForEachRef, parseRemoteConfig } from './parsers/refs';
 import { parseStashList } from './parsers/stash';
 import { parseStatusPorcelainV2 } from './parsers/status';
 import { parseWorktreeList } from './parsers/worktree';
@@ -82,8 +82,11 @@ export async function loadRefs(repoPath: string, env?: NodeJS.ProcessEnv): Promi
 }
 
 export async function loadRemotes(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['remotes']> {
-  const result = await gitExecutor.run(['remote', '-v'], { cwd: repoPath, env });
-  return parseRemoteVerbose(result.stdout);
+  const result = await gitExecutor.run(
+    ['config', '--null', '--get-regexp', '^remote\\..*\\.(url|pushurl)$'],
+    { cwd: repoPath, env, allowedExitCodes: [0, 1] }
+  );
+  return parseRemoteConfig(result.stdout);
 }
 
 export async function loadWorktrees(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['worktrees']> {

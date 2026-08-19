@@ -10,6 +10,8 @@ import type {
   GitOperationResult,
   GitPullInput,
   GitPushInput,
+  GitRemoteCreateInput,
+  GitRemoteUpdateInput,
   GitRenameBranchInput,
   GitSetBranchUpstreamInput,
   GitResetInput,
@@ -58,6 +60,107 @@ export async function fetchRepository(tab: OperationTab): Promise<GitOperationRe
     timeoutMs: NETWORK_GIT_TIMEOUT_MS
   });
   return createOperationResult(tab, env, 'fetch', gitCommandLabel('fetch'));
+}
+
+export async function fetchRemote(tab: OperationTab, remoteInput: string): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const remote = normalizeRequiredName(remoteInput, 'Remote name');
+  await assertRemoteExists(tab.path, remote, env);
+  await gitExecutor.run(['fetch', '--prune', '--', remote], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
+  return createOperationResult(tab, env, 'fetch', `Fetch ${remote}`);
+}
+
+export async function addRemote(
+  tab: OperationTab,
+  input: GitRemoteCreateInput
+): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const name = normalizeRequiredName(input.name, 'Remote name');
+  const fetchUrl = normalizeRequiredName(input.fetchUrl, 'Fetch URL');
+  const pushUrl = input.pushUrl?.trim();
+
+  await gitExecutor.run(['remote', 'add', '--', name, fetchUrl], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env
+  });
+
+  if (pushUrl && pushUrl !== fetchUrl) {
+    await gitExecutor.run(['remote', 'set-url', '--push', '--', name, pushUrl], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+  }
+
+  return createOperationResult(tab, env, 'remote-add', `Add remote ${name}`);
+}
+
+export async function updateRemote(
+  tab: OperationTab,
+  input: GitRemoteUpdateInput
+): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const oldName = normalizeRequiredName(input.oldName, 'Existing remote name');
+  const name = normalizeRequiredName(input.name, 'Remote name');
+  const fetchUrl = normalizeRequiredName(input.fetchUrl, 'Fetch URL');
+  const pushUrl = input.pushUrl?.trim();
+
+  await assertRemoteExists(tab.path, oldName, env);
+
+  if (oldName !== name) {
+    await gitExecutor.run(['remote', 'rename', '--', oldName, name], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+  }
+
+  await gitExecutor.run(['remote', 'set-url', '--', name, fetchUrl], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env
+  });
+
+  if (pushUrl && pushUrl !== fetchUrl) {
+    await gitExecutor.run(['remote', 'set-url', '--push', '--', name, pushUrl], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+  } else {
+    await gitExecutor.run(['config', '--unset-all', `remote.${name}.pushurl`], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env,
+      allowedExitCodes: [0, 5]
+    });
+  }
+
+  return createOperationResult(
+    tab,
+    env,
+    'remote-edit',
+    oldName === name ? `Edit remote ${name}` : `Rename remote ${oldName} to ${name}`
+  );
+}
+
+export async function removeRemote(tab: OperationTab, remoteInput: string): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const remote = normalizeRequiredName(remoteInput, 'Remote name');
+  await assertRemoteExists(tab.path, remote, env);
+  await gitExecutor.run(['remote', 'remove', '--', remote], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env
+  });
+  return createOperationResult(tab, env, 'remote-remove', `Remove remote ${remote}`);
 }
 
 export async function pullRepository(

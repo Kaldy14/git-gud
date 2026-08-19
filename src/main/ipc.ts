@@ -27,6 +27,7 @@ import { gitExecutor } from './git/exec';
 import { loadPullRequestConflictDetails } from './git/pullRequestConflicts';
 import { cloneRepository, initializeRepository } from './git/repositoryCreation';
 import {
+  addRemote,
   checkoutRef,
   cherryPickCommits,
   createBranch,
@@ -34,11 +35,13 @@ import {
   deleteBranch,
   deleteTag,
   fetchRepository,
+  fetchRemote,
   mergeRef,
   pullRepository,
   pushTag,
   pushRepository,
   renameBranch,
+  removeRemote,
   setBranchUpstream,
   resetToCommit,
   resolveConflict,
@@ -47,7 +50,8 @@ import {
   stashDrop,
   stashPop,
   stashPush,
-  undoOperation
+  undoOperation,
+  updateRemote
 } from './git/operations';
 import {
   applyWipPatch,
@@ -558,6 +562,22 @@ export function registerIpcHandlers(
       recordRepositoryFetch(tab.commonDir, result.happenedAt);
       return result;
     })
+  );
+  handle('repo:fetch-remote', async (_event, repoPath, remote) =>
+    inRepositoryTransaction(repoPath, async (tab) => {
+      const result = await fetchRemote(tab, remote);
+      recordRepositoryFetch(tab.commonDir, result.happenedAt);
+      return result;
+    })
+  );
+  handle('repo:add-remote', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => addRemote(tab, input))
+  );
+  handle('repo:update-remote', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => updateRemote(tab, input))
+  );
+  handle('repo:remove-remote', async (_event, repoPath, remote) =>
+    inRepositoryTransaction(repoPath, (tab) => removeRemote(tab, remote))
   );
   handle('repo:pull', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) =>

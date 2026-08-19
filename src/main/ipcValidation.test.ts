@@ -72,6 +72,22 @@ describe('IPC argument validation', () => {
         pushRemote: 'origin'
       }
     ]);
+    const addRemoteArgs = validateIpcArgs('repo:add-remote', [
+      '/repo',
+      {
+        name: 'origin',
+        fetchUrl: 'git@github.com:acme/widgets.git',
+        pushUrl: 'ssh://git@github.com/acme/widgets.git'
+      }
+    ]);
+    const updateRemoteArgs = validateIpcArgs('repo:update-remote', [
+      '/repo',
+      {
+        oldName: 'origin',
+        name: 'upstream',
+        fetchUrl: 'https://github.com/acme/widgets.git'
+      }
+    ]);
 
     expect(branchArgs[1]).toMatchObject({
       name: 'feature/ipc-validation',
@@ -112,6 +128,25 @@ describe('IPC argument validation', () => {
       annotated: true,
       pushRemote: 'origin'
     });
+    expect(addRemoteArgs).toEqual([
+      '/repo',
+      {
+        name: 'origin',
+        fetchUrl: 'git@github.com:acme/widgets.git',
+        pushUrl: 'ssh://git@github.com/acme/widgets.git'
+      }
+    ]);
+    expect(updateRemoteArgs).toEqual([
+      '/repo',
+      {
+        oldName: 'origin',
+        name: 'upstream',
+        fetchUrl: 'https://github.com/acme/widgets.git',
+        pushUrl: undefined
+      }
+    ]);
+    expect(validateIpcArgs('repo:fetch-remote', ['/repo', 'origin'])).toEqual(['/repo', 'origin']);
+    expect(validateIpcArgs('repo:remove-remote', ['/repo', 'origin'])).toEqual(['/repo', 'origin']);
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
     expect(
@@ -881,6 +916,15 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:push-tag', ['/repo', { name: 'v1.0.0' }])).toThrow(
       'remote must be a string.'
     );
+    expect(() =>
+      validateIpcArgs('repo:add-remote', ['/repo', { name: 'origin', fetchUrl: 42 }])
+    ).toThrow('fetchUrl must be a string.');
+    expect(() =>
+      validateIpcArgs('repo:update-remote', [
+        '/repo',
+        { name: 'upstream', fetchUrl: 'https://github.com/acme/widgets.git' }
+      ])
+    ).toThrow('oldName must be a string.');
     expect(() =>
       validateIpcArgs('repo:create-tag', ['/repo', { name: 'v1.0.0', annotated: 'yes' }])
     ).toThrow('annotated must be a boolean.');

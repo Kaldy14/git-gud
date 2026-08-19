@@ -2,6 +2,9 @@ import type { GitQueryInvalidation } from '@shared/types';
 
 export type GitCommandId =
   | 'fetch'
+  | 'remote-add'
+  | 'remote-edit'
+  | 'remote-remove'
   | 'pull'
   | 'push'
   | 'branch-create'
@@ -42,6 +45,9 @@ const allMutableRepositoryQueries = ['overview', 'graph', 'wip-detail', 'file-di
 
 export const GIT_COMMANDS = {
   fetch: command('fetch', 'Fetch', 'remote', 'none', 'none', ['overview', 'graph']),
+  'remote-add': command('remote-add', 'Add remote', 'remote', 'none', 'none', ['overview', 'graph']),
+  'remote-edit': command('remote-edit', 'Edit remote', 'remote', 'none', 'none', ['overview', 'graph']),
+  'remote-remove': command('remote-remove', 'Remove remote', 'remote', 'none', 'none', ['overview', 'graph']),
   pull: command('pull', 'Pull', 'remote', 'none', 'detect-after-run', allMutableRepositoryQueries),
   push: command('push', 'Push', 'remote', 'none', 'none', ['overview']),
   'branch-create': command('branch-create', 'Create branch', 'refs', 'recorded', 'none', ['overview', 'graph']),

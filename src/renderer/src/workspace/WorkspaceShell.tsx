@@ -126,6 +126,7 @@ import type {
   GitHubWorkflowRun,
   GitProfile,
   GitRepositoryOverview,
+  GitRemote,
   GitRemoteBranchRef,
   GitReviewTarget,
   RepoTab,
@@ -1829,6 +1830,128 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  function handleFetchRemote(remote: GitRemote): void {
+    const tabId = activeTab?.id;
+
+    void runRepositoryOperation(
+      `Fetch ${remote.name}`,
+      (repoPath) => window.api.fetchRemote(repoPath, remote.name),
+      { retryable: true }
+    ).then((completed) => {
+      if (!completed || !tabId) {
+        return;
+      }
+
+      setGraphScrollResetByTab((signals) => ({
+        ...signals,
+        [tabId]: (signals[tabId] ?? 0) + 1
+      }));
+    });
+  }
+
+  function handleAddRemote(): void {
+    openCommandDialog({
+      title: 'Add remote',
+      description: 'Connect this repository to another Git remote.',
+      confirmLabel: 'Add Remote',
+      fields: [
+        {
+          id: 'name',
+          kind: 'text',
+          label: 'Name',
+          value: '',
+          placeholder: 'origin',
+          required: true,
+          autoFocus: true
+        },
+        {
+          id: 'fetchUrl',
+          kind: 'text',
+          label: 'Fetch URL',
+          value: '',
+          placeholder: 'git@github.com:owner/repository.git',
+          required: true
+        },
+        {
+          id: 'pushUrl',
+          kind: 'text',
+          label: 'Push URL',
+          value: '',
+          placeholder: 'Uses the fetch URL when empty',
+          helper: 'Optional. Use this when pushes should go to a different URL.'
+        }
+      ],
+      onSubmit: ({ text }) => {
+        void runRepositoryOperation(`Add remote ${text.name.trim()}`, (repoPath) =>
+          window.api.addRemote(repoPath, {
+            name: text.name,
+            fetchUrl: text.fetchUrl,
+            pushUrl: text.pushUrl || undefined
+          })
+        );
+      }
+    });
+  }
+
+  function handleEditRemote(remote: GitRemote): void {
+    openCommandDialog({
+      title: `Edit remote ${remote.name}`,
+      description: 'Update the remote name and its fetch or push destinations.',
+      confirmLabel: 'Save Remote',
+      fields: [
+        {
+          id: 'name',
+          kind: 'text',
+          label: 'Name',
+          value: remote.name,
+          required: true,
+          autoFocus: true
+        },
+        {
+          id: 'fetchUrl',
+          kind: 'text',
+          label: 'Fetch URL',
+          value: remote.fetchUrl ?? '',
+          required: true
+        },
+        {
+          id: 'pushUrl',
+          kind: 'text',
+          label: 'Push URL',
+          value: remote.pushUrlExplicit ? remote.pushUrl ?? '' : '',
+          placeholder: 'Uses the fetch URL when empty',
+          helper: 'Leave empty to use the fetch URL for pushes.'
+        }
+      ],
+      onSubmit: ({ text }) => {
+        void runRepositoryOperation(`Edit remote ${remote.name}`, (repoPath) =>
+          window.api.updateRemote(repoPath, {
+            oldName: remote.name,
+            name: text.name,
+            fetchUrl: text.fetchUrl,
+            pushUrl: text.pushUrl || undefined
+          })
+        );
+      }
+    });
+  }
+
+  function handleRemoveRemote(remote: GitRemote): void {
+    openCommandDialog({
+      title: `Remove remote ${remote.name}?`,
+      description: 'This removes the remote configuration and its remote-tracking branches from this repository.',
+      detail: remote.fetchUrl,
+      confirmLabel: 'Remove Remote',
+      tone: 'danger',
+      fields: [],
+      onSubmit: () => {
+        void runRepositoryOperation(`Remove remote ${remote.name}`, (repoPath) =>
+          window.api.removeRemote(repoPath, remote.name)
+        );
+      }
+    });
+  }
+
   function handlePull(): void {
     const branch = repositoryQuery.data?.status.branch;
     const expectedBranch = branch && !branch.isDetached ? branch.head : undefined;
@@ -3182,6 +3305,10 @@ export function WorkspaceShell(): ReactElement {
               onResize={handleSidebarResize}
               onResizeCommit={handleSidebarResizeCommit}
               isOperationBusy={isOperationBusy}
+              onAddRemote={handleAddRemote}
+              onFetchRemote={handleFetchRemote}
+              onEditRemote={handleEditRemote}
+              onRemoveRemote={handleRemoveRemote}
               onCheckoutBranch={handleCheckoutBranch}
               onCheckoutRemoteBranch={handleActivateRemoteBranch}
               onCopyBranchName={handleCopyBranchName}
@@ -3295,6 +3422,10 @@ export function WorkspaceShell(): ReactElement {
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}
+                onAddRemote={handleAddRemote}
+                onFetchRemote={handleFetchRemote}
+                onEditRemote={handleEditRemote}
+                onRemoveRemote={handleRemoveRemote}
                 onCheckoutBranch={handleCheckoutBranch}
                 onCheckoutRemoteBranch={handleActivateRemoteBranch}
                 onCopyBranchName={handleCopyBranchName}

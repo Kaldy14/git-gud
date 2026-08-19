@@ -28,6 +28,8 @@ import type {
   GitOperationProgressEvent,
   GitPatchApplyInput,
   GitPullInput,
+  GitRemoteCreateInput,
+  GitRemoteUpdateInput,
   GitHubCliAccount,
   GitHubActionsRuns,
   GitHubActionsRunsInput,
@@ -293,6 +295,22 @@ export type IpcChannelMap = {
   };
   'repo:fetch': {
     args: [repoPath: string];
+    result: GitOperationResult;
+  };
+  'repo:fetch-remote': {
+    args: [repoPath: string, remote: string];
+    result: GitOperationResult;
+  };
+  'repo:add-remote': {
+    args: [repoPath: string, input: GitRemoteCreateInput];
+    result: GitOperationResult;
+  };
+  'repo:update-remote': {
+    args: [repoPath: string, input: GitRemoteUpdateInput];
+    result: GitOperationResult;
+  };
+  'repo:remove-remote': {
+    args: [repoPath: string, remote: string];
     result: GitOperationResult;
   };
   'repo:pull': {
@@ -602,6 +620,10 @@ export type RendererApi = {
   unstageAll: (repoPath: string) => Promise<GitOperationResult>;
   commitChanges: (repoPath: string, input: GitCommitInput) => Promise<GitOperationResult>;
   fetchRepository: (repoPath: string) => Promise<GitOperationResult>;
+  fetchRemote: (repoPath: string, remote: string) => Promise<GitOperationResult>;
+  addRemote: (repoPath: string, input: GitRemoteCreateInput) => Promise<GitOperationResult>;
+  updateRemote: (repoPath: string, input: GitRemoteUpdateInput) => Promise<GitOperationResult>;
+  removeRemote: (repoPath: string, remote: string) => Promise<GitOperationResult>;
   pullRepository: (repoPath: string, input: GitPullInput) => Promise<GitOperationResult>;
   pushRepository: (repoPath: string, input: GitPushInput) => Promise<GitOperationResult>;
   createBranch: (repoPath: string, input: GitCreateBranchInput) => Promise<GitOperationResult>;

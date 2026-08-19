@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { GitCommandError, gitExecutor } from '../exec';
 import { parseNameStatus, parseShortStat } from './details';
 import { parseGitLog } from './log';
-import { parseForEachRef, parseRemoteVerbose } from './refs';
+import { parseForEachRef, parseRemoteConfig, parseRemoteVerbose } from './refs';
 import { parseStashList } from './stash';
 import { parseStatusPorcelainV2 } from './status';
 import { parseWorktreeList } from './worktree';
@@ -93,6 +93,28 @@ describe('git read parsers', () => {
         name: 'origin',
         fetchUrl: 'git@github.com:kaldy/git-gud.git',
         pushUrl: 'git@github.com:kaldy/git-gud.git'
+      }
+    ]);
+    expect(
+      parseRemoteConfig(
+        [
+          'remote.origin.url\n/tmp/repository with spaces.git',
+          'remote.team/origin.url\nssh://git@example.com/team/repository.git',
+          'remote.team/origin.pushurl\nssh://push@example.com/team/repository.git'
+        ].join('\0') + '\0'
+      )
+    ).toEqual([
+      {
+        name: 'origin',
+        fetchUrl: '/tmp/repository with spaces.git',
+        pushUrl: '/tmp/repository with spaces.git',
+        pushUrlExplicit: false
+      },
+      {
+        name: 'team/origin',
+        fetchUrl: 'ssh://git@example.com/team/repository.git',
+        pushUrl: 'ssh://push@example.com/team/repository.git',
+        pushUrlExplicit: true
       }
     ]);
   });

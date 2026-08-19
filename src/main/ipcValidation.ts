@@ -34,6 +34,8 @@ import type {
   GitPatchApplyInput,
   GitProfile,
   GitPullInput,
+  GitRemoteCreateInput,
+  GitRemoteUpdateInput,
   GitPushInput,
   GitRebaseInput,
   GitReviewProgressUpdate,
@@ -137,6 +139,10 @@ const validators = {
   'repo:unstage-all': (args) => readOnlyArg(args, 'repo:unstage-all', 'repoPath', readString),
   'repo:commit': (args) => readRepoPathWithObject(args, 'repo:commit', readCommitInput),
   'repo:fetch': (args) => readOnlyArg(args, 'repo:fetch', 'repoPath', readString),
+  'repo:fetch-remote': (args) => readStringPair(args, 'repo:fetch-remote', 'repoPath', 'remote'),
+  'repo:add-remote': (args) => readRepoPathWithObject(args, 'repo:add-remote', readRemoteCreateInput),
+  'repo:update-remote': (args) => readRepoPathWithObject(args, 'repo:update-remote', readRemoteUpdateInput),
+  'repo:remove-remote': (args) => readStringPair(args, 'repo:remove-remote', 'repoPath', 'remote'),
   'repo:pull': (args) => readRepoPathWithObject(args, 'repo:pull', readPullInput),
   'repo:push': (args) => readRepoPathWithObject(args, 'repo:push', readPushInput),
   'repo:create-branch': (args) => readRepoPathWithObject(args, 'repo:create-branch', readCreateBranchInput),
@@ -1007,6 +1013,25 @@ function readPullInput(value: unknown): GitPullInput {
   return {
     mode: readEnumProperty(record, 'mode', ['ff-only', 'rebase']),
     expectedBranch: readOptionalStringProperty(record, 'expectedBranch')
+  };
+}
+
+function readRemoteCreateInput(value: unknown): GitRemoteCreateInput {
+  const record = readRecord(value, 'remote input');
+  return {
+    name: readStringProperty(record, 'name'),
+    fetchUrl: readStringProperty(record, 'fetchUrl'),
+    pushUrl: readOptionalStringProperty(record, 'pushUrl')
+  };
+}
+
+function readRemoteUpdateInput(value: unknown): GitRemoteUpdateInput {
+  const record = readRecord(value, 'remote update input');
+  return {
+    oldName: readStringProperty(record, 'oldName'),
+    name: readStringProperty(record, 'name'),
+    fetchUrl: readStringProperty(record, 'fetchUrl'),
+    pushUrl: readOptionalStringProperty(record, 'pushUrl')
   };
 }
 

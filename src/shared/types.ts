@@ -445,6 +445,16 @@ export type GitPullInput = {
   expectedBranch?: string;
 };
 
+export type GitRemoteCreateInput = {
+  name: string;
+  fetchUrl: string;
+  pushUrl?: string;
+};
+
+export type GitRemoteUpdateInput = GitRemoteCreateInput & {
+  oldName: string;
+};
+
 export type GitPushTarget = {
   remote: string;
   branch: string;
@@ -865,6 +875,7 @@ export type GitRemote = {
   name: string;
   fetchUrl?: string;
   pushUrl?: string;
+  pushUrlExplicit?: boolean;
 };
 
 export type GitWorktree = {
