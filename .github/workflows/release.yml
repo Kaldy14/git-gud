@@ -194,8 +194,7 @@ jobs:
           archive_name="Git-Gud-${GITHUB_REF_NAME}-macOS-${{ matrix.arch }}.zip"
           mkdir -p artifacts
           ditto -c -k --sequesterRsrc --keepParent "dist/mac/Git Gud.app" "artifacts/$archive_name"
-          cd artifacts
-          shasum -a 256 "$archive_name" > "$archive_name.sha256"
+          node scripts/write-release-checksum.mjs "artifacts/$archive_name"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
@@ -254,8 +253,7 @@ jobs:
           }
 
           $artifact = $artifacts[0]
-          $checksum = (Get-FileHash -Algorithm SHA256 $artifact.FullName).Hash.ToLowerInvariant()
-          "$checksum  $($artifact.Name)" | Set-Content -Encoding ascii "$($artifact.FullName).sha256"
+          node scripts/write-release-checksum.mjs "$($artifact.FullName)"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
