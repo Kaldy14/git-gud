@@ -2,11 +2,11 @@
   <img src="build/icon.png" alt="Git Gud icon" width="112" height="112">
   <h1>Git Gud</h1>
   <p><strong>A fast, local-first desktop Git client.</strong></p>
-  <p>Currently supported on macOS.</p>
+  <p>Supported on macOS, with experimental Windows builds.</p>
   <p>Understand history, stage precise changes, and run everyday Git workflows without leaving your flow.</p>
 
   <p>
-    <img src="https://img.shields.io/badge/platform-macOS-111827?logo=apple&logoColor=white" alt="macOS">
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111827?logo=electron&logoColor=white" alt="macOS and Windows">
     <a href="https://github.com/Kaldy14/git-gud/releases/latest"><img src="https://img.shields.io/github/v/release/Kaldy14/git-gud?display_name=tag&label=release" alt="Latest Git Gud release"></a>
     <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
     <img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" alt="React 19">
@@ -19,7 +19,7 @@
 Git Gud is a focused desktop Git client inspired by the strongest parts of GitKraken's local workflow. It uses your installed Git, existing SSH agent, credential helpers, and repository configuration. No hosted account is required.
 
 > [!IMPORTANT]
-> macOS is currently the only supported release platform, not a fundamental limitation of the Electron application. Download the latest signed and notarized build from [GitHub Releases](https://github.com/Kaldy14/git-gud/releases/latest). Windows and Linux builds have not yet been adapted or release-tested.
+> macOS is the fully supported release platform. GitHub Releases also include an experimental, unsigned Windows x64 portable executable; Windows-specific integrations have not yet been fully adapted or release-tested. Linux builds are not currently provided.
 
 ## Highlights
 
@@ -69,7 +69,7 @@ Press <kbd>⌘</kbd> <kbd>P</kbd> to search actions, commits, branches, reposito
 
 ## Requirements
 
-- macOS for the currently supported application build
+- macOS for the fully supported application build, or Windows x64 for the experimental portable build
 - [Git](https://git-scm.com/) available on `PATH`
 - Node.js `^20.19.0` or `>=22.12.0`
 - pnpm `11.9.0` (Corepack recommended)
@@ -95,9 +95,10 @@ Every pushed version tag matching `v*` runs the [release workflow](.github/workf
 
 - An Apple Silicon (`arm64`) macOS application archive
 - An Intel (`x64`) macOS application archive
-- A SHA-256 checksum for each archive
+- An unsigned, portable Windows (`x64`) executable
+- A SHA-256 checksum for each release artifact
 
-Release archives are signed with a Developer ID Application certificate, notarized by Apple, and stapled before they are published. This allows Gatekeeper to verify the application when users install it, including when they are offline.
+The macOS release archives are signed with a Developer ID Application certificate, notarized by Apple, and stapled before they are published. This allows Gatekeeper to verify the application when users install it, including when they are offline.
 
 The release workflow requires these GitHub Actions secrets:
 
@@ -145,6 +146,7 @@ Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-defaul
 | `pnpm benchmark:review` | Score review-chunk grouping against the benchmark datasets |
 | `pnpm build` | Typecheck and create production bundles |
 | `pnpm dist` | Build the local macOS application bundle |
+| `pnpm dist:windows` | Build the portable Windows x64 executable (on Windows) |
 
 Before opening a pull request, run:
 

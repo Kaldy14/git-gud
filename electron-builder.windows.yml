@@ -1,0 +1,27 @@
+appId: dev.kaldy.git-gud
+productName: Git Gud
+asar: true
+
+directories:
+  output: dist/windows
+
+files:
+  - out/**/*
+  - package.json
+
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+
+protocols:
+  - name: Git Gud
+    schemes:
+      - git-gud
+
+win:
+  icon: build/icon.png
+  target:
+    - target: portable
+      arch:
+        - x64
+  artifactName: Git-Gud-${version}-Windows-${arch}.${ext}
