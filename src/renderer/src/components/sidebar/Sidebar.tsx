@@ -9,6 +9,7 @@ import {
   Cloud,
   Copy,
   Download,
+  Folder,
   FolderGit2,
   GitBranch,
   GitMerge,
@@ -42,6 +43,8 @@ import type {
   GitTagRef
 } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
+
+import { buildBranchTree, type BranchTreeNode } from './branchTree';
 
 type SidebarProps = {
   repositoryOverview?: GitRepositoryOverview;
@@ -623,21 +626,29 @@ function SectionRows({
     return (
       <PaginatedRefRows
         items={rows}
-        renderItem={(branch) => (
-          <SidebarRow
-            key={branch.fullName}
-            icon={<GitBranch size={12} />}
-            label={branch.name}
-            meta={formatAheadBehind(branch.ahead, branch.behind)}
-            isActive={branch.current}
-            isActionDisabled={branch.current || isOperationBusy}
-            title={isOperationBusy && !branch.current ? 'A Git operation is running' : branch.name}
-            onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
-            onDoubleClick={() => {
-              if (!branch.current) {
-                onCheckoutBranch(branch.name);
-              }
-            }}
+        renderItems={(branches) => (
+          <BranchTreeRows
+            items={branches}
+            getName={(branch) => branch.name}
+            isFiltering={normalizedFilter.length > 0}
+            renderBranch={(branch, label, depth) => (
+              <SidebarRow
+                key={branch.fullName}
+                icon={<GitBranch size={12} />}
+                label={label}
+                meta={formatAheadBehind(branch.ahead, branch.behind)}
+                depth={depth}
+                isActive={branch.current}
+                isActionDisabled={branch.current || isOperationBusy}
+                title={isOperationBusy && !branch.current ? 'A Git operation is running' : branch.name}
+                onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
+                onDoubleClick={() => {
+                  if (!branch.current) {
+                    onCheckoutBranch(branch.name);
+                  }
+                }}
+              />
+            )}
           />
         )}
         emptyLabel="No local branches."
@@ -652,16 +663,24 @@ function SectionRows({
     return (
       <PaginatedRefRows
         items={rows}
-        renderItem={(branch) => (
-          <SidebarRow
-            key={branch.fullName}
-            icon={<Cloud size={12} />}
-            label={branch.name}
-            meta={branch.sha.slice(0, 7)}
-            isActionDisabled={isOperationBusy}
-            title={isOperationBusy ? 'A Git operation is running' : branch.name}
-            onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
-            onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
+        renderItems={(branches) => (
+          <BranchTreeRows
+            items={branches}
+            getName={(branch) => branch.name}
+            isFiltering={normalizedFilter.length > 0}
+            renderBranch={(branch, label, depth) => (
+              <SidebarRow
+                key={branch.fullName}
+                icon={<Cloud size={12} />}
+                label={label}
+                meta={branch.sha.slice(0, 7)}
+                depth={depth}
+                isActionDisabled={isOperationBusy}
+                title={isOperationBusy ? 'A Git operation is running' : branch.name}
+                onContextMenu={(event) => onContextMenu(event, { kind: 'remote', branch })}
+                onDoubleClick={() => onCheckoutRemoteBranch(branch.name)}
+              />
+            )}
           />
         )}
         emptyLabel="No remote branches."
@@ -724,14 +743,18 @@ function SectionRows({
   return (
     <PaginatedRefRows
       items={rows}
-      renderItem={(tag) => (
-        <SidebarRow
-          key={tag.fullName}
-          icon={<Tag size={12} />}
-          label={tag.name}
-          meta={tag.sha.slice(0, 7)}
-          onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
-        />
+      renderItems={(tags) => (
+        <>
+          {tags.map((tag) => (
+            <SidebarRow
+              key={tag.fullName}
+              icon={<Tag size={12} />}
+              label={tag.name}
+              meta={tag.sha.slice(0, 7)}
+              onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
+            />
+          ))}
+        </>
       )}
       emptyLabel="No tags."
       itemLabel="tags"
@@ -742,13 +765,13 @@ function SectionRows({
 
 function PaginatedRefRows<Item>({
   items,
-  renderItem,
+  renderItems,
   emptyLabel,
   itemLabel,
   isFiltering
 }: {
   items: readonly Item[];
-  renderItem: (item: Item) => ReactElement;
+  renderItems: (items: readonly Item[]) => ReactNode;
   emptyLabel: string;
   itemLabel: string;
   isFiltering: boolean;
@@ -767,7 +790,7 @@ function PaginatedRefRows<Item>({
 
   return (
     <div className="py-1">
-      {visibleItems.map(renderItem)}
+      {renderItems(visibleItems)}
       {hasDisplayControls ? (
         <div className="side-ref-controls" role="group" aria-label={`${itemLabel} display controls`}>
           {canShowLess ? (
@@ -815,10 +838,73 @@ function PaginatedRefRows<Item>({
   );
 }
 
+function BranchTreeRows<Item>({
+  items,
+  getName,
+  isFiltering,
+  renderBranch
+}: {
+  items: readonly Item[];
+  getName: (item: Item) => string;
+  isFiltering: boolean;
+  renderBranch: (item: Item, label: string, depth: number) => ReactElement;
+}): ReactElement {
+  const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(() => new Set());
+  const nodes = buildBranchTree(items, getName);
+
+  function toggleFolder(path: string): void {
+    setCollapsedFolders((folders) => {
+      const nextFolders = new Set(folders);
+
+      if (nextFolders.has(path)) {
+        nextFolders.delete(path);
+      } else {
+        nextFolders.add(path);
+      }
+
+      return nextFolders;
+    });
+  }
+
+  function renderNodes(branchNodes: readonly BranchTreeNode<Item>[], depth: number): ReactNode {
+    return branchNodes.map((node) => {
+      if (node.kind === 'branch') {
+        return renderBranch(node.item, node.name, depth);
+      }
+
+      const isExpanded = isFiltering || !collapsedFolders.has(node.path);
+
+      return (
+        <div key={node.path} role="none">
+          <button
+            className="side-folder-row"
+            style={{ paddingLeft: 34 + depth * 18 }}
+            type="button"
+            role="treeitem"
+            aria-level={depth + 2}
+            aria-expanded={isExpanded}
+            title={node.path}
+            onClick={() => toggleFolder(node.path)}
+            onKeyDown={handleSidebarTreeKeyDown}
+          >
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <Folder size={12} />
+            <span className="side-row-label">{node.name}</span>
+          </button>
+          {isExpanded ? <div role="group">{renderNodes(node.children, depth + 1)}</div> : null}
+        </div>
+      );
+    });
+  }
+
+  return <>{renderNodes(nodes, 0)}</>;
+}
+
 function SidebarRow({
   icon,
   label,
   meta,
+  depth = 0,
   isActive = false,
   isActionDisabled = false,
   title,
@@ -828,6 +914,7 @@ function SidebarRow({
   icon: ReactNode;
   label: string;
   meta?: string;
+  depth?: number;
   isActive?: boolean;
   isActionDisabled?: boolean;
   title?: string;
@@ -837,10 +924,11 @@ function SidebarRow({
   return (
     <div
       className="side-row"
+      style={{ paddingLeft: 34 + depth * 18 }}
       data-active={isActive}
       title={title ?? label}
       role="treeitem"
-      aria-level={2}
+      aria-level={depth + 2}
       aria-current={isActive ? 'page' : undefined}
       aria-disabled={isActionDisabled || undefined}
       tabIndex={isActive ? 0 : -1}
