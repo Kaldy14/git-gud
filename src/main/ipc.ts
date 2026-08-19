@@ -58,6 +58,7 @@ import {
   commitChanges,
   discardAllChanges,
   discardFile,
+  ignorePath,
   loadCommitDetail,
   loadCommitSelectionDetail,
   loadFileDiff,
@@ -165,6 +166,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:stage-file': { label: 'Stage file' },
   'repo:unstage-file': { label: 'Unstage file' },
   'repo:discard-file': { label: 'Discard file changes' },
+  'repo:ignore-path': { label: 'Ignore file' },
   'repo:discard-all': { label: 'Discard all changes' },
   'repo:stage-all': { label: 'Stage all files' },
   'repo:unstage-all': { label: 'Unstage all files' },
@@ -541,6 +543,9 @@ export function registerIpcHandlers(
   );
   handle('repo:discard-file', async (_event, repoPath, path) =>
     inRepositoryTransaction(repoPath, (tab) => discardFile(tab, path))
+  );
+  handle('repo:ignore-path', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => ignorePath(tab, input))
   );
   handle('repo:discard-all', async (_event, repoPath) =>
     inRepositoryTransaction(repoPath, discardAllChanges)

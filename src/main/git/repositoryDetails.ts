@@ -6,6 +6,7 @@ import type {
   GitFileChangeDetail,
   GitFileDiff,
   GitFileDiffRequest,
+  GitIgnoreInput,
   GitOperationResult,
   GitPatchApplyInput,
   GitQueryInvalidation,
@@ -16,7 +17,8 @@ import type {
   RepoTab
 } from '@shared/types';
 
-import { readFile, stat } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { open, readFile, stat } from 'node:fs/promises';
 import pathModule from 'node:path';
 
 import { createProfileCommandEnv } from '../profiles';
@@ -467,6 +469,33 @@ export async function discardFile(tab: DetailTab, path: string): Promise<GitOper
   }
 
   return createOperationResult(tab.path);
+}
+
+export async function ignorePath(tab: DetailTab, input: GitIgnoreInput): Promise<GitOperationResult> {
+  assertSafeRelativePath(input.path);
+  if (/[\r\n]/u.test(input.path)) {
+    throw new Error('File names containing line breaks cannot be added to .gitignore.');
+  }
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const rule = createIgnoreRule(input);
+  const ignoreFilePath = pathModule.join(tab.path, '.gitignore');
+  const existingContents = await readGitIgnoreContents(ignoreFilePath);
+
+  const existingRules = existingContents.split(/\r?\n/u);
+  if (existingRules.includes(rule)) {
+    return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
+  }
+
+  const status = await loadStatus(tab.path, env, [input.path]);
+  const statusFile = status.files.find((file) => file.path === input.path);
+
+  if (statusFile?.status !== 'untracked') {
+    throw new Error('Only untracked files can be added to .gitignore.');
+  }
+
+  await appendGitIgnoreRule(ignoreFilePath, rule);
+
+  return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
 }
 
 export async function discardAllChanges(tab: DetailTab): Promise<GitOperationResult> {
@@ -1238,6 +1267,104 @@ function assertSafeRelativePath(path: string): void {
   if (!path || pathModule.isAbsolute(path) || normalizedPath === '..' || normalizedPath.startsWith(`..${pathModule.sep}`)) {
     throw new Error('A repository-relative file path is required.');
   }
+}
+
+function createIgnoreRule(input: GitIgnoreInput): string {
+  const repositoryPath = input.path.split(pathModule.sep).join('/');
+
+  if (input.mode === 'extension') {
+    const extension = pathModule.posix.extname(repositoryPath);
+    if (!extension) {
+      throw new Error('That file has no extension to ignore.');
+    }
+    return `*${escapeGitIgnorePattern(extension)}`;
+  }
+
+  if (input.mode === 'folder') {
+    const folder = pathModule.posix.dirname(repositoryPath);
+    if (folder === '.') {
+      throw new Error('That file is in the repository root and has no containing folder to ignore.');
+    }
+    return `/${escapeGitIgnorePattern(folder)}/`;
+  }
+
+  return `/${escapeGitIgnorePattern(repositoryPath)}`;
+}
+
+function escapeGitIgnorePattern(value: string): string {
+  const escaped = value.replaceAll('\\', '\\\\').replace(/[?*[\]]/gu, '\\$&');
+  return escaped.replace(/ +$/u, (spaces) => spaces.replaceAll(' ', '\\ '));
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
+function isSymbolicLinkOpenError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ELOOP';
+}
+
+async function readGitIgnoreContents(ignoreFilePath: string): Promise<string> {
+  let handle;
+
+  try {
+    handle = await open(ignoreFilePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) {
+      throw new Error('The repository-root .gitignore is not a regular file.');
+    }
+    return await handle.readFile('utf8');
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      return '';
+    }
+    if (isSymbolicLinkOpenError(error)) {
+      throw new Error('Refusing to update a symbolic-link .gitignore file.', { cause: error });
+    }
+    throw error;
+  } finally {
+    await handle?.close();
+  }
+}
+
+async function appendGitIgnoreRule(ignoreFilePath: string, rule: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let handle;
+
+    try {
+      handle = await open(
+        ignoreFilePath,
+        fsConstants.O_RDWR | fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW,
+        0o666
+      );
+      const beforeRead = await handle.stat();
+      if (!beforeRead.isFile()) {
+        throw new Error('The repository-root .gitignore is not a regular file.');
+      }
+      const contents = await handle.readFile('utf8');
+      if (contents.split(/\r?\n/u).includes(rule)) {
+        return;
+      }
+
+      const beforeAppend = await handle.stat();
+      if (beforeAppend.size !== beforeRead.size || beforeAppend.mtimeMs !== beforeRead.mtimeMs) {
+        continue;
+      }
+
+      const prefix = contents.length === 0 || contents.endsWith('\n') ? '' : '\n';
+      await handle.write(`${prefix}${rule}\n`, undefined, 'utf8');
+      return;
+    } catch (error) {
+      if (isSymbolicLinkOpenError(error)) {
+        throw new Error('Refusing to update a symbolic-link .gitignore file.', { cause: error });
+      }
+      throw error;
+    } finally {
+      await handle?.close();
+    }
+  }
+
+  throw new Error('.gitignore changed while adding the rule. Try the ignore action again.');
 }
 
 function splitParents(value: string): string[] {

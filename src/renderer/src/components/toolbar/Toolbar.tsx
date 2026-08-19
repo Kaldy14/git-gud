@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Check,
   ChevronDown,
   ChevronRight,
   FolderGit2,
@@ -26,15 +27,16 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu';
 
-import type { GitRepositoryOverview, GitUndoEntry, RepoTab } from '@shared/types';
+import type { GitRepositoryOverview, GitUndoEntry, PrimarySyncOperation, RepoTab } from '@shared/types';
 
 type ToolbarProps = {
   activeTab?: RepoTab;
   repositoryOverview?: GitRepositoryOverview;
   isBusy: boolean;
   latestUndo?: GitUndoEntry;
-  onFetch: () => void;
-  onPull: () => void;
+  defaultSyncOperation: PrimarySyncOperation;
+  onSync: (operation: PrimarySyncOperation) => void;
+  onChangeDefaultSyncOperation: (operation: PrimarySyncOperation) => void;
   onPush: () => void;
   onCreateBranch: () => void;
   onStashPush: () => void;
@@ -53,8 +55,9 @@ export function Toolbar({
   repositoryOverview,
   isBusy,
   latestUndo,
-  onFetch,
-  onPull,
+  defaultSyncOperation,
+  onSync,
+  onChangeDefaultSyncOperation,
   onPush,
   onCreateBranch,
   onStashPush,
@@ -70,6 +73,7 @@ export function Toolbar({
   const hasRepo = Boolean(activeTab);
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : '—';
   const dirtyCount = repositoryOverview?.status.dirtyCount ?? 0;
+  const hasConflicts = (repositoryOverview?.status.conflictedCount ?? 0) > 0;
   const hasStashes = (repositoryOverview?.stashes.length ?? 0) > 0;
   const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
 
@@ -119,21 +123,11 @@ export function Toolbar({
           disabled={!latestUndo || Boolean(latestUndo.staleReason) || isBusy}
           onClick={onUndo}
         />
-        <ToolbarAction
-          label="Fetch"
-          icon={<ArrowDownToLine size={17} />}
-          hint="Fetch and prune all remotes"
+        <PrimarySyncAction
+          operation={defaultSyncOperation}
           disabled={!hasRepo || isBusy}
-          onClick={onFetch}
-          emphasized={hasRepo}
-        />
-        <ToolbarAction
-          label="Pull"
-          icon={<GitPullRequestArrow size={17} />}
-          hint="Pull with fast-forward only"
-          disabled={!hasRepo || isBusy}
-          onClick={onPull}
-          emphasized={hasRepo}
+          onRun={() => onSync(defaultSyncOperation)}
+          onChange={onChangeDefaultSyncOperation}
         />
         <ToolbarAction
           label="Push"
@@ -154,8 +148,8 @@ export function Toolbar({
         <ToolbarAction
           label="Stash"
           icon={<Archive size={17} />}
-          hint="Stash changes"
-          disabled={!hasRepo || dirtyCount === 0 || isBusy}
+          hint={hasConflicts ? 'Resolve conflicts before stashing' : 'Choose files to stash'}
+          disabled={!hasRepo || dirtyCount === 0 || hasConflicts || isBusy}
           onClick={onStashPush}
         />
         <ToolbarAction
@@ -185,6 +179,96 @@ export function Toolbar({
           onClick={onOpenQuickJump}
         />
       </div>
+    </div>
+  );
+}
+
+const primarySyncOptions: ReadonlyArray<{
+  operation: PrimarySyncOperation;
+  label: string;
+  buttonLabel: string;
+  hint: string;
+}> = [
+  {
+    operation: 'fetch-all',
+    label: 'Fetch All',
+    buttonLabel: 'Fetch',
+    hint: 'Fetch and prune all remotes'
+  },
+  {
+    operation: 'pull-ff',
+    label: 'Pull (fast-forward if possible)',
+    buttonLabel: 'Pull',
+    hint: 'Fast-forward when possible, otherwise create a merge commit'
+  },
+  {
+    operation: 'pull-ff-only',
+    label: 'Pull (fast-forward only)',
+    buttonLabel: 'Pull',
+    hint: 'Pull only when the branch can fast-forward'
+  },
+  {
+    operation: 'pull-rebase',
+    label: 'Pull (rebase)',
+    buttonLabel: 'Pull',
+    hint: 'Rebase local commits onto the upstream branch'
+  }
+];
+
+function PrimarySyncAction({
+  operation,
+  disabled,
+  onRun,
+  onChange
+}: {
+  operation: PrimarySyncOperation;
+  disabled: boolean;
+  onRun: () => void;
+  onChange: (operation: PrimarySyncOperation) => void;
+}): ReactElement {
+  const selected = primarySyncOptions.find((option) => option.operation === operation) ?? primarySyncOptions[0];
+  const icon = operation === 'fetch-all'
+    ? <ArrowDownToLine size={17} />
+    : <GitPullRequestArrow size={17} />;
+
+  return (
+    <div className="tb-sync-control">
+      <ToolbarAction
+        label={selected.buttonLabel}
+        icon={icon}
+        hint={selected.hint}
+        disabled={disabled}
+        onClick={onRun}
+        emphasized
+        className="tb-sync-action"
+      />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="tb-sync-menu-trigger"
+            type="button"
+            disabled={disabled}
+            title="Choose the default sync operation"
+            aria-label={`Choose the default sync operation. Current: ${selected.label}`}
+          >
+            <ChevronDown size={11} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={-2} className="w-72" aria-label="Default sync operation">
+          <p className="px-2 py-1.5 text-[11px] leading-4 text-[var(--text-3)]">
+            Choose what the main sync button does
+          </p>
+          <DropdownMenuSeparator className="mx-0 my-1" />
+          {primarySyncOptions.map((option) => (
+            <DropdownMenuItem key={option.operation} onSelect={() => onChange(option.operation)}>
+              <span className="grid w-4 shrink-0 place-items-center">
+                {option.operation === operation ? <Check size={13} /> : null}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

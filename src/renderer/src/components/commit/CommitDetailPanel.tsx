@@ -1,6 +1,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import {
   AlertTriangle,
   ArrowDownAZ,
@@ -9,12 +10,9 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  ExternalLink,
   FilePen,
-  FolderOpen,
   FolderTree,
   GitCommit,
-  GitMerge,
   List,
   Loader2,
   Minus,
@@ -27,6 +25,8 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+
+import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
 
 import {
   invalidateRepositoryQueries,
@@ -48,7 +48,7 @@ import {
 } from '@renderer/components/commit/fileDetailUtils';
 import { AuthorAvatar } from '@renderer/components/avatar/AuthorAvatar';
 import { FILE_STATUS_COLORS } from '@shared/graph';
-import type { CommitGraphRow, GitCommitPerson, GitFileChangeDetail, GitRepositoryDetail, GitStatusCode, RepoProfileState } from '@shared/types';
+import type { CommitGraphRow, GitCommitPerson, GitFileChangeDetail, GitIgnoreInput, GitRepositoryDetail, GitStatusCode, RepoProfileState } from '@shared/types';
 import {
   DEFAULT_DETAIL_PANEL_WIDTH,
   MAX_DETAIL_PANEL_WIDTH,
@@ -81,8 +81,12 @@ type CommitDetailPanelProps = {
   onOpenWipChanges: () => void;
   onDiscardAllWip: () => void;
   onDiscardWipFile: (file: GitFileChangeDetail) => void;
+  onIgnoreWipFile: (file: GitFileChangeDetail, mode: GitIgnoreInput['mode']) => void;
+  onInspectWipFile: (file: GitFileChangeDetail, mode: 'history' | 'blame') => void;
+  onCopyWipFilePath: (file: GitFileChangeDetail) => void;
   onOpenWipFile: (file: GitFileChangeDetail) => void;
   onRevealWipFile: (file: GitFileChangeDetail) => void;
+  onStashWipFile: (file: GitFileChangeDetail) => void;
 };
 
 const DEFAULT_COMMIT_MESSAGE_EDITOR_HEIGHT = 220;
@@ -114,8 +118,12 @@ export function CommitDetailPanel({
   onOpenWipChanges,
   onDiscardAllWip,
   onDiscardWipFile,
+  onIgnoreWipFile,
+  onInspectWipFile,
+  onCopyWipFilePath,
   onOpenWipFile,
-  onRevealWipFile
+  onRevealWipFile,
+  onStashWipFile
 }: CommitDetailPanelProps): ReactElement {
   const queryClient = useQueryClient();
   const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(undefined);
@@ -413,17 +421,6 @@ export function CommitDetailPanel({
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-1">
-          {isWip && selectedFileDetail ? (
-            <WipFileActionStrip
-              file={selectedFileDetail}
-              isMutating={activeMutation}
-              onStage={() => stageFileMutation.mutate(selectedFileDetail.path)}
-              onUnstage={() => unstageFileMutation.mutate(selectedFileDetail.path)}
-              onDiscard={() => onDiscardWipFile(selectedFileDetail)}
-              onOpen={() => onOpenWipFile(selectedFileDetail)}
-              onReveal={() => onRevealWipFile(selectedFileDetail)}
-            />
-          ) : null}
           {files.length === 0 ? (
             <EmptyFiles />
           ) : fileView === 'path' ? (
@@ -438,15 +435,30 @@ export function CommitDetailPanel({
               onStageAll={() => stageAllMutation.mutate()}
               onUnstageAll={() => unstageAllMutation.mutate()}
               onDiscardWipFile={onDiscardWipFile}
+              onIgnoreWipFile={onIgnoreWipFile}
+              onInspectWipFile={onInspectWipFile}
+              onCopyWipFilePath={onCopyWipFilePath}
               onOpenWipFile={onOpenWipFile}
               onRevealWipFile={onRevealWipFile}
+              onStashWipFile={onStashWipFile}
             />
           ) : (
             <ChangedFilesTree
               key={files.map((file) => `${file.status}:${file.path}`).join('\0')}
               files={files}
               selectedPath={selectedFileDetail?.path}
+              isWip={isWip}
+              isMutating={activeMutation}
               onSelectPath={onSelectFile}
+              onStageFile={(path) => stageFileMutation.mutate(path)}
+              onUnstageFile={(path) => unstageFileMutation.mutate(path)}
+              onDiscardWipFile={onDiscardWipFile}
+              onIgnoreWipFile={onIgnoreWipFile}
+              onInspectWipFile={onInspectWipFile}
+              onCopyWipFilePath={onCopyWipFilePath}
+              onOpenWipFile={onOpenWipFile}
+              onRevealWipFile={onRevealWipFile}
+              onStashWipFile={onStashWipFile}
             />
           )}
         </div>
@@ -1521,8 +1533,12 @@ type PathFileRowsProps = {
   onStageAll: () => void;
   onUnstageAll: () => void;
   onDiscardWipFile: (file: GitFileChangeDetail) => void;
+  onIgnoreWipFile: (file: GitFileChangeDetail, mode: GitIgnoreInput['mode']) => void;
+  onInspectWipFile: (file: GitFileChangeDetail, mode: 'history' | 'blame') => void;
+  onCopyWipFilePath: (file: GitFileChangeDetail) => void;
   onOpenWipFile: (file: GitFileChangeDetail) => void;
   onRevealWipFile: (file: GitFileChangeDetail) => void;
+  onStashWipFile: (file: GitFileChangeDetail) => void;
 };
 
 function PathFileRows({
@@ -1536,10 +1552,32 @@ function PathFileRows({
   onStageAll,
   onUnstageAll,
   onDiscardWipFile,
+  onIgnoreWipFile,
+  onInspectWipFile,
+  onCopyWipFilePath,
   onOpenWipFile,
-  onRevealWipFile
+  onRevealWipFile,
+  onStashWipFile
 }: PathFileRowsProps): ReactElement {
-  function renderRow(file: GitFileChangeDetail, key: string): ReactElement {
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<'conflicts' | 'unstaged' | 'staged'>>(() => new Set());
+
+  function toggleGroup(group: 'conflicts' | 'unstaged' | 'staged'): void {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  }
+
+  function renderRow(
+    file: GitFileChangeDetail,
+    key: string,
+    placement?: 'conflict' | 'unstaged' | 'staged'
+  ): ReactElement {
     return (
       <FileRow
         key={key}
@@ -1551,8 +1589,13 @@ function PathFileRows({
         onStage={() => onStageFile(file.path)}
         onUnstage={() => onUnstageFile(file.path)}
         onDiscard={() => onDiscardWipFile(file)}
+        onIgnore={(mode) => onIgnoreWipFile(file, mode)}
+        onInspect={(mode) => onInspectWipFile(file, mode)}
+        onCopyPath={() => onCopyWipFilePath(file)}
         onOpen={() => onOpenWipFile(file)}
         onReveal={() => onRevealWipFile(file)}
+        onStash={() => onStashWipFile(file)}
+        placement={placement}
       />
     );
   }
@@ -1573,20 +1616,29 @@ function PathFileRows({
             label={`Conflicts (${conflictedFiles.length})`}
             tone="danger"
             detail="Select a file to compare both versions in the merge tool."
+            expanded={!collapsedGroups.has('conflicts')}
+            onToggle={() => toggleGroup('conflicts')}
           />
-          {conflictedFiles.map((file) => renderRow(file, `conflict:${file.path}`))}
+          {!collapsedGroups.has('conflicts')
+            ? conflictedFiles.map((file) => renderRow(file, `conflict:${file.path}`, 'conflict'))
+            : null}
         </>
       ) : null}
       <FileGroupHeader
         label={`Unstaged Files (${unstagedFiles.length})`}
         separated={conflictedFiles.length > 0}
+        expanded={!collapsedGroups.has('unstaged')}
+        onToggle={() => toggleGroup('unstaged')}
         action={
           unstagedFiles.length > 0 ? (
             <button
               className="btn-subtle h-6 px-2 text-[11px]"
               type="button"
-              disabled={isMutating}
+              disabled={isMutating || conflictedFiles.length > 0}
               onClick={onStageAll}
+              title={conflictedFiles.length > 0
+                ? 'Resolve conflicts before staging all changes'
+                : 'Stage every working directory change'}
               style={{ borderColor: 'var(--success-border)', color: 'var(--success-text)' }}
             >
               <Check size={12} />
@@ -1595,10 +1647,14 @@ function PathFileRows({
           ) : undefined
         }
       />
-      {unstagedFiles.map((file) => renderRow(file, `unstaged:${file.path}`))}
+      {!collapsedGroups.has('unstaged')
+        ? unstagedFiles.map((file) => renderRow(file, `unstaged:${file.path}`, 'unstaged'))
+        : null}
       <FileGroupHeader
         label={`Staged Files (${stagedFiles.length})`}
         separated
+        expanded={!collapsedGroups.has('staged')}
+        onToggle={() => toggleGroup('staged')}
         action={
           stagedFiles.length > 0 ? (
             <button className="btn-subtle h-6 px-2 text-[11px]" type="button" disabled={isMutating} onClick={onUnstageAll}>
@@ -1608,7 +1664,9 @@ function PathFileRows({
           ) : undefined
         }
       />
-      {stagedFiles.map((file) => renderRow(file, `staged:${file.path}`))}
+      {!collapsedGroups.has('staged')
+        ? stagedFiles.map((file) => renderRow(file, `staged:${file.path}`, 'staged'))
+        : null}
     </>
   );
 }
@@ -1618,25 +1676,35 @@ function FileGroupHeader({
   separated = false,
   action,
   tone = 'default',
-  detail
+  detail,
+  expanded = true,
+  onToggle
 }: {
   label: string;
   separated?: boolean;
   action?: ReactElement;
   tone?: 'default' | 'danger';
   detail?: string;
+  expanded?: boolean;
+  onToggle?: () => void;
 }): ReactElement {
   return (
     <div
-      className={`flex min-h-8 items-center justify-between gap-2 px-1 py-1 text-[12px] font-semibold ${tone === 'danger' ? 'text-[var(--danger-text)]' : 'text-[var(--text-2)]'}${separated ? ' mt-2 border-t border-[var(--border)] pt-2' : ''}`}
+      className={`flex min-h-9 items-center justify-between gap-2 border-b border-[var(--border)] px-1 py-1 text-[13px] font-semibold ${tone === 'danger' ? 'text-[var(--danger-text)]' : 'text-[var(--text-2)]'}${separated ? ' mt-2 border-t border-[var(--border)] pt-2' : ''}`}
     >
-      <div className="flex min-w-0 items-start gap-1.5">
-        {tone === 'danger' ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : <ChevronDown size={13} className="mt-0.5 shrink-0 text-[var(--text-3)]" />}
+      <button
+        className="flex min-w-0 items-start gap-1.5 rounded px-0.5 py-1 text-left outline-none hover:text-[var(--text-1)] focus-visible:ring-1 focus-visible:ring-[var(--select-border)]"
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        {tone === 'danger' ? <AlertTriangle size={13} className="mt-0.5 shrink-0" /> : null}
+        {expanded ? <ChevronDown size={13} className="mt-0.5 shrink-0 text-[var(--text-3)]" /> : <ChevronRight size={13} className="mt-0.5 shrink-0 text-[var(--text-3)]" />}
         <span className="min-w-0">
           <span className="block truncate">{label}</span>
           {detail ? <span className="mt-0.5 block text-[10.5px] font-normal leading-4 text-[var(--text-3)]">{detail}</span> : null}
         </span>
-      </div>
+      </button>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
@@ -1651,8 +1719,13 @@ type FileRowProps = {
   onStage: () => void;
   onUnstage: () => void;
   onDiscard: () => void;
+  onIgnore: (mode: GitIgnoreInput['mode']) => void;
+  onInspect: (mode: 'history' | 'blame') => void;
+  onCopyPath: () => void;
   onOpen: () => void;
   onReveal: () => void;
+  onStash: () => void;
+  placement?: 'conflict' | 'unstaged' | 'staged';
 };
 
 function FileRow({
@@ -1664,17 +1737,25 @@ function FileRow({
   onStage,
   onUnstage,
   onDiscard,
+  onIgnore,
+  onInspect,
+  onCopyPath,
   onOpen,
-  onReveal
+  onReveal,
+  onStash,
+  placement
 }: FileRowProps): ReactElement {
   const separatorIndex = file.path.lastIndexOf('/');
   const directory = separatorIndex === -1 ? '' : file.path.slice(0, separatorIndex);
   const basename = separatorIndex === -1 ? file.path : file.path.slice(separatorIndex + 1);
-  const canOpen = canOpenWorktreeFile(file);
-  const canDiscard = canDiscardWipFile(file);
-  const actionStripBackground = isSelected
+  const actionBackground = isSelected
     ? 'linear-gradient(90deg, transparent, var(--select-bg) 18px)'
     : 'linear-gradient(90deg, transparent, var(--bg-hover) 18px)';
+  const primaryAction = placement === 'conflict'
+    ? { label: 'Resolve', onClick: onSelect, disabled: isMutating, tone: 'conflict' as const }
+    : placement === 'staged'
+      ? { label: 'Unstage File', onClick: onUnstage, disabled: isMutating, tone: 'unstage' as const }
+      : { label: 'Stage File', onClick: onStage, disabled: !file.unstaged || isMutating, tone: 'stage' as const };
 
   function handleSelectPointerDown(event: PointerEvent<HTMLButtonElement>): void {
     if (event.button !== 0) {
@@ -1691,9 +1772,10 @@ function FileRow({
     }
   }
 
-  return (
+  const row = (
     <div
-      className="group relative flex h-8 items-center overflow-hidden rounded px-2 text-xs transition hover:bg-[var(--bg-hover)] focus-within:bg-[var(--bg-hover)]"
+      className="wip-file-row group relative flex h-9 items-center overflow-hidden px-2 text-[13px] transition hover:bg-[var(--bg-hover)] focus-within:bg-[var(--bg-hover)]"
+      data-selected={isSelected ? 'true' : undefined}
       style={{ background: isSelected ? 'var(--select-bg)' : undefined }}
     >
       <button
@@ -1718,100 +1800,202 @@ function FileRow({
         {!isWip && file.unstaged ? <span className="badge-mini">worktree</span> : null}
       </button>
       {isWip ? (
-        <div
-          className="pointer-events-none absolute inset-y-0 right-1 flex items-center gap-0.5 pl-6 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
-          style={{ background: actionStripBackground }}
-        >
+        <div className="wip-file-row-action" style={{ background: actionBackground }}>
           <button
-            className="icon-btn h-6 w-6"
+            className="wip-file-primary-action"
+            data-tone={primaryAction.tone}
             type="button"
-            disabled={file.conflicted ? isMutating : !file.unstaged || isMutating}
-            onClick={file.conflicted ? onSelect : onStage}
-            title={file.conflicted ? 'Resolve in merge tool' : 'Stage file'}
-            aria-label={file.conflicted ? `Resolve conflict in ${file.path}` : `Stage ${file.path}`}
+            disabled={primaryAction.disabled}
+            onClick={primaryAction.onClick}
+            title={primaryAction.label}
+            aria-label={`${primaryAction.label} ${file.path}`}
           >
-            {file.conflicted ? <GitMerge size={12} /> : <Check size={12} />}
-          </button>
-          <button className="icon-btn h-6 w-6" type="button" disabled={!file.staged || isMutating} onClick={onUnstage} title="Unstage file">
-            <RotateCcw size={12} />
-          </button>
-          <button className="icon-btn h-6 w-6" type="button" disabled={!canOpen} onClick={onOpen} title="Open file">
-            <ExternalLink size={12} />
-          </button>
-          <button className="icon-btn h-6 w-6" type="button" onClick={onReveal} title="Reveal in Finder">
-            <FolderOpen size={12} />
-          </button>
-          <button className="icon-btn h-6 w-6" type="button" disabled={!canDiscard || isMutating} onClick={onDiscard} title="Discard file changes">
-            <Trash2 size={12} />
+            {primaryAction.label}
           </button>
         </div>
       ) : null}
     </div>
   );
+
+  return isWip
+    ? <WipFileContextMenu
+        file={file}
+        isMutating={isMutating}
+        onStage={onStage}
+        onUnstage={onUnstage}
+        onResolve={onSelect}
+        onDiscard={onDiscard}
+        onIgnore={onIgnore}
+        onInspect={onInspect}
+        onCopyPath={onCopyPath}
+        onOpen={onOpen}
+        onReveal={onReveal}
+        onStash={onStash}
+      >{row}</WipFileContextMenu>
+    : row;
 }
 
-type WipFileActionStripProps = {
-  file: GitFileChangeDetail;
-  isMutating: boolean;
-  onStage: () => void;
-  onUnstage: () => void;
-  onDiscard: () => void;
-  onOpen: () => void;
-  onReveal: () => void;
-};
-
-function WipFileActionStrip({
+function WipFileContextMenu({
   file,
   isMutating,
   onStage,
   onUnstage,
+  onResolve,
   onDiscard,
+  onIgnore,
+  onInspect,
+  onCopyPath,
   onOpen,
-  onReveal
-}: WipFileActionStripProps): ReactElement {
+  onReveal,
+  onStash,
+  children
+}: {
+  file: GitFileChangeDetail;
+  isMutating: boolean;
+  onStage: () => void;
+  onUnstage: () => void;
+  onResolve: () => void;
+  onDiscard: () => void;
+  onIgnore: (mode: GitIgnoreInput['mode']) => void;
+  onInspect: (mode: 'history' | 'blame') => void;
+  onCopyPath: () => void;
+  onOpen: () => void;
+  onReveal: () => void;
+  onStash: () => void;
+  children: ReactElement;
+}): ReactElement {
+  const extension = fileExtension(file.path);
+  const folder = containingFolder(file.path);
   const canOpen = canOpenWorktreeFile(file);
   const canDiscard = canDiscardWipFile(file);
+  const canShowHistory = file.status !== 'untracked';
+  const canBlame = canOpen && file.status !== 'untracked' && file.status !== 'added';
 
   return (
-    <div className="mb-2 flex h-8 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 text-xs">
-      <span className="min-w-0 flex-1 truncate text-[var(--text-2)]" title={file.path}>
-        {file.path}
-      </span>
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          className="icon-btn h-6 w-6"
-          type="button"
-          disabled={file.conflicted || !file.unstaged || isMutating}
-          onClick={onStage}
-          title={file.conflicted ? 'Save and stage from the merge tool' : 'Stage file'}
-          aria-label={file.conflicted ? `Resolve conflict in ${file.path} with the merge tool` : `Stage ${file.path}`}
+    <ContextMenuPrimitive.Root>
+      <ContextMenuPrimitive.Trigger asChild onKeyDown={openContextMenuFromKeyboard}>
+        {children}
+      </ContextMenuPrimitive.Trigger>
+      <ContextMenuPrimitive.Portal>
+        <ContextMenuPrimitive.Content
+          className="context-menu-surface w-64"
+          collisionPadding={8}
+          aria-label={`File actions for ${file.path}`}
         >
-          {file.conflicted ? <GitMerge size={12} /> : <Check size={12} />}
-        </button>
-        <button className="icon-btn h-6 w-6" type="button" disabled={!file.staged || isMutating} onClick={onUnstage} title="Unstage file">
-          <RotateCcw size={12} />
-        </button>
-        <button className="icon-btn h-6 w-6" type="button" disabled={!canOpen} onClick={onOpen} title="Open file">
-          <ExternalLink size={12} />
-        </button>
-        <button className="icon-btn h-6 w-6" type="button" onClick={onReveal} title="Reveal in Finder">
-          <FolderOpen size={12} />
-        </button>
-        <button className="icon-btn h-6 w-6" type="button" disabled={!canDiscard || isMutating} onClick={onDiscard} title="Discard file changes">
-          <Trash2 size={12} />
-        </button>
-      </div>
-    </div>
+          {file.conflicted ? (
+            <ContextMenuPrimitive.Item className="menu-row" disabled={isMutating} onSelect={onResolve}>
+              <span>Resolve conflict</span>
+            </ContextMenuPrimitive.Item>
+          ) : null}
+          {file.unstaged && !file.conflicted ? (
+            <ContextMenuPrimitive.Item className="menu-row" disabled={file.conflicted || isMutating} onSelect={onStage}>
+              <span>Stage</span>
+            </ContextMenuPrimitive.Item>
+          ) : null}
+          {file.staged && !file.conflicted ? (
+            <ContextMenuPrimitive.Item className="menu-row" disabled={file.conflicted || isMutating} onSelect={onUnstage}>
+              <span>Unstage</span>
+            </ContextMenuPrimitive.Item>
+          ) : null}
+          <ContextMenuPrimitive.Item className="menu-row" disabled={!canDiscard || isMutating} onSelect={onDiscard}>
+            <span>Discard changes</span>
+          </ContextMenuPrimitive.Item>
+          {file.status === 'untracked' ? (
+            <ContextMenuPrimitive.Sub>
+              <ContextMenuPrimitive.SubTrigger className="menu-row">
+                <span>Ignore</span>
+                <span className="ml-auto pl-8 text-[var(--context-menu-text-muted)]" aria-hidden="true">›</span>
+              </ContextMenuPrimitive.SubTrigger>
+              <ContextMenuPrimitive.Portal>
+                <ContextMenuPrimitive.SubContent className="context-menu-surface" sideOffset={4} collisionPadding={8}>
+                  <ContextMenuPrimitive.Item className="menu-row" onSelect={() => onIgnore('file')}>
+                    <span>Ignore this file</span>
+                  </ContextMenuPrimitive.Item>
+                  {extension ? (
+                    <ContextMenuPrimitive.Item className="menu-row" onSelect={() => onIgnore('extension')}>
+                      <span>Ignore all {extension} files</span>
+                    </ContextMenuPrimitive.Item>
+                  ) : null}
+                  {folder ? (
+                    <ContextMenuPrimitive.Item className="menu-row" onSelect={() => onIgnore('folder')}>
+                      <span>Ignore folder {folder}</span>
+                    </ContextMenuPrimitive.Item>
+                  ) : null}
+                </ContextMenuPrimitive.SubContent>
+              </ContextMenuPrimitive.Portal>
+            </ContextMenuPrimitive.Sub>
+          ) : null}
+          <ContextMenuPrimitive.Item className="menu-row" disabled={file.conflicted || isMutating} onSelect={onStash}>
+            <span>Stash file</span>
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Separator className="context-menu-separator" />
+          <ContextMenuPrimitive.Item className="menu-row" disabled={!canShowHistory} onSelect={() => onInspect('history')}>
+            <span>File History</span>
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="menu-row" disabled={!canBlame} onSelect={() => onInspect('blame')}>
+            <span>File Blame</span>
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Separator className="context-menu-separator" />
+          <ContextMenuPrimitive.Item className="menu-row" disabled={!canOpen} onSelect={onOpen}>
+            <span>Open file</span>
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Item className="menu-row" onSelect={onReveal}>
+            <span>Show in Finder</span>
+          </ContextMenuPrimitive.Item>
+          <ContextMenuPrimitive.Separator className="context-menu-separator" />
+          <ContextMenuPrimitive.Item className="menu-row" onSelect={onCopyPath}>
+            <span>Copy file path</span>
+          </ContextMenuPrimitive.Item>
+        </ContextMenuPrimitive.Content>
+      </ContextMenuPrimitive.Portal>
+    </ContextMenuPrimitive.Root>
   );
+}
+
+function fileExtension(path: string): string | undefined {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  const separatorIndex = name.lastIndexOf('.');
+  return separatorIndex > 0 ? name.slice(separatorIndex) : undefined;
+}
+
+function containingFolder(path: string): string | undefined {
+  const separatorIndex = path.lastIndexOf('/');
+  return separatorIndex > 0 ? path.slice(0, separatorIndex) : undefined;
 }
 
 type ChangedFilesTreeProps = {
   files: GitFileChangeDetail[];
   selectedPath?: string;
+  isWip: boolean;
+  isMutating: boolean;
   onSelectPath: (path: string | undefined) => void;
+  onStageFile: (path: string) => void;
+  onUnstageFile: (path: string) => void;
+  onDiscardWipFile: (file: GitFileChangeDetail) => void;
+  onIgnoreWipFile: (file: GitFileChangeDetail, mode: GitIgnoreInput['mode']) => void;
+  onInspectWipFile: (file: GitFileChangeDetail, mode: 'history' | 'blame') => void;
+  onCopyWipFilePath: (file: GitFileChangeDetail) => void;
+  onOpenWipFile: (file: GitFileChangeDetail) => void;
+  onRevealWipFile: (file: GitFileChangeDetail) => void;
+  onStashWipFile: (file: GitFileChangeDetail) => void;
 };
 
-function ChangedFilesTree({ files, selectedPath, onSelectPath }: ChangedFilesTreeProps): ReactElement {
+function ChangedFilesTree({
+  files,
+  selectedPath,
+  isWip,
+  isMutating,
+  onSelectPath,
+  onStageFile,
+  onUnstageFile,
+  onDiscardWipFile,
+  onIgnoreWipFile,
+  onInspectWipFile,
+  onCopyWipFilePath,
+  onOpenWipFile,
+  onRevealWipFile,
+  onStashWipFile
+}: ChangedFilesTreeProps): ReactElement {
   const nodes = useMemo(() => buildChangedFileTree(files), [files]);
   const allDirectoryPaths = useMemo(() => collectDirectoryPaths(nodes), [nodes]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
@@ -1849,8 +2033,19 @@ function ChangedFilesTree({ files, selectedPath, onSelectPath }: ChangedFilesTre
             depth={0}
             expandedPaths={expandedPaths}
             selectedPath={selectedPath}
+            isWip={isWip}
+            isMutating={isMutating}
             onToggleDirectory={toggleDirectory}
             onSelectPath={onSelectPath}
+            onStageFile={onStageFile}
+            onUnstageFile={onUnstageFile}
+            onDiscardWipFile={onDiscardWipFile}
+            onIgnoreWipFile={onIgnoreWipFile}
+            onInspectWipFile={onInspectWipFile}
+            onCopyWipFilePath={onCopyWipFilePath}
+            onOpenWipFile={onOpenWipFile}
+            onRevealWipFile={onRevealWipFile}
+            onStashWipFile={onStashWipFile}
           />
         ))}
       </ul>
@@ -1863,25 +2058,67 @@ function ChangedFileTreeRow({
   depth,
   expandedPaths,
   selectedPath,
+  isWip,
+  isMutating,
   onToggleDirectory,
-  onSelectPath
+  onSelectPath,
+  onStageFile,
+  onUnstageFile,
+  onDiscardWipFile,
+  onIgnoreWipFile,
+  onInspectWipFile,
+  onCopyWipFilePath,
+  onOpenWipFile,
+  onRevealWipFile,
+  onStashWipFile
 }: {
   node: ChangedFileTreeNode;
   depth: number;
   expandedPaths: ReadonlySet<string>;
   selectedPath?: string;
+  isWip: boolean;
+  isMutating: boolean;
   onToggleDirectory: (path: string) => void;
   onSelectPath: (path: string | undefined) => void;
+  onStageFile: (path: string) => void;
+  onUnstageFile: (path: string) => void;
+  onDiscardWipFile: (file: GitFileChangeDetail) => void;
+  onIgnoreWipFile: (file: GitFileChangeDetail, mode: GitIgnoreInput['mode']) => void;
+  onInspectWipFile: (file: GitFileChangeDetail, mode: 'history' | 'blame') => void;
+  onCopyWipFilePath: (file: GitFileChangeDetail) => void;
+  onOpenWipFile: (file: GitFileChangeDetail) => void;
+  onRevealWipFile: (file: GitFileChangeDetail) => void;
+  onStashWipFile: (file: GitFileChangeDetail) => void;
 }): ReactElement {
   const paddingLeft = depth * 15 + 2;
 
   if (node.kind === 'file') {
     const isSelected = selectedPath === node.path;
+    const primaryAction = node.file.conflicted
+      ? {
+          label: 'Resolve',
+          tone: 'conflict' as const,
+          disabled: isMutating,
+          onClick: () => onSelectPath(node.path)
+        }
+      : node.file.unstaged
+        ? {
+            label: 'Stage File',
+            tone: 'stage' as const,
+            disabled: isMutating,
+            onClick: () => onStageFile(node.path)
+          }
+        : {
+            label: 'Unstage File',
+            tone: 'unstage' as const,
+            disabled: isMutating,
+            onClick: () => onUnstageFile(node.path)
+          };
 
-    return (
-      <li>
+    const row = (
+      <div className="wip-file-row group relative flex h-9 items-center overflow-hidden">
         <button
-          className="flex h-8 w-full min-w-0 items-center gap-2 rounded pr-2 text-left text-[12px] transition hover:bg-[var(--bg-hover)]"
+          className="flex h-full w-full min-w-0 items-center gap-2 pr-2 text-left text-[13px] transition hover:bg-[var(--bg-hover)]"
           style={{ paddingLeft, background: isSelected ? 'var(--select-bg)' : undefined }}
           type="button"
           aria-current={isSelected ? 'true' : undefined}
@@ -1892,6 +2129,48 @@ function ChangedFileTreeRow({
           <StatusIcon status={node.file.status} />
           <span className="min-w-0 truncate text-[var(--text-2)]">{node.name}</span>
         </button>
+        {isWip ? (
+          <div
+            className="wip-file-row-action"
+            style={{ background: isSelected
+              ? 'linear-gradient(90deg, transparent, var(--select-bg) 18px)'
+              : 'linear-gradient(90deg, transparent, var(--bg-hover) 18px)' }}
+          >
+            <button
+              className="wip-file-primary-action"
+              data-tone={primaryAction.tone}
+              type="button"
+              disabled={primaryAction.disabled}
+              onClick={primaryAction.onClick}
+              aria-label={`${primaryAction.label} ${node.path}`}
+            >
+              {primaryAction.label}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+
+    return (
+      <li>
+        {isWip ? (
+          <WipFileContextMenu
+            file={node.file}
+            isMutating={isMutating}
+            onStage={() => onStageFile(node.path)}
+            onUnstage={() => onUnstageFile(node.path)}
+            onResolve={() => onSelectPath(node.path)}
+            onDiscard={() => onDiscardWipFile(node.file)}
+            onIgnore={(mode) => onIgnoreWipFile(node.file, mode)}
+            onInspect={(mode) => onInspectWipFile(node.file, mode)}
+            onCopyPath={() => onCopyWipFilePath(node.file)}
+            onOpen={() => onOpenWipFile(node.file)}
+            onReveal={() => onRevealWipFile(node.file)}
+            onStash={() => onStashWipFile(node.file)}
+          >
+            {row}
+          </WipFileContextMenu>
+        ) : row}
       </li>
     );
   }
@@ -1921,8 +2200,19 @@ function ChangedFileTreeRow({
               depth={depth + 1}
               expandedPaths={expandedPaths}
               selectedPath={selectedPath}
+              isWip={isWip}
+              isMutating={isMutating}
               onToggleDirectory={onToggleDirectory}
               onSelectPath={onSelectPath}
+              onStageFile={onStageFile}
+              onUnstageFile={onUnstageFile}
+              onDiscardWipFile={onDiscardWipFile}
+              onIgnoreWipFile={onIgnoreWipFile}
+              onInspectWipFile={onInspectWipFile}
+              onCopyWipFilePath={onCopyWipFilePath}
+              onOpenWipFile={onOpenWipFile}
+              onRevealWipFile={onRevealWipFile}
+              onStashWipFile={onStashWipFile}
             />
           ))}
         </ul>

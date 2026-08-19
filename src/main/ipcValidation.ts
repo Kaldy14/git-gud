@@ -30,6 +30,7 @@ import type {
   GitHubPullRequestReviewCommentUpdateInput,
   GitInteractiveRebaseAction,
   GitInteractiveRebaseInput,
+  GitIgnoreInput,
   GitMergeInput,
   GitPatchApplyInput,
   GitProfile,
@@ -130,6 +131,7 @@ const validators = {
   'repo:stage-file': (args) => readStringPair(args, 'repo:stage-file', 'repoPath', 'path'),
   'repo:unstage-file': (args) => readStringPair(args, 'repo:unstage-file', 'repoPath', 'path'),
   'repo:discard-file': (args) => readStringPair(args, 'repo:discard-file', 'repoPath', 'path'),
+  'repo:ignore-path': (args) => readRepoPathWithObject(args, 'repo:ignore-path', readIgnoreInput),
   'repo:discard-all': (args) => readOnlyArg(args, 'repo:discard-all', 'repoPath', readString),
   'repo:open-file': (args) => readStringPair(args, 'repo:open-file', 'repoPath', 'path'),
   'repo:reveal-file': (args) => readStringPair(args, 'repo:reveal-file', 'repoPath', 'path'),
@@ -1011,8 +1013,16 @@ function readGitHubPullRequestReviewCommentUpdateInput(
 function readPullInput(value: unknown): GitPullInput {
   const record = readRecord(value, 'pull input');
   return {
-    mode: readEnumProperty(record, 'mode', ['ff-only', 'rebase']),
+    mode: readEnumProperty(record, 'mode', ['ff', 'ff-only', 'rebase']),
     expectedBranch: readOptionalStringProperty(record, 'expectedBranch')
+  };
+}
+
+function readIgnoreInput(value: unknown): GitIgnoreInput {
+  const record = readRecord(value, 'ignore input');
+  return {
+    path: readStringProperty(record, 'path'),
+    mode: readEnumProperty(record, 'mode', ['file', 'extension', 'folder'])
   };
 }
 
@@ -1209,7 +1219,8 @@ function readStashPushInput(value: unknown): GitStashPushInput {
   const record = readRecord(value, 'stash push input');
   return {
     message: readOptionalStringProperty(record, 'message'),
-    includeUntracked: readBooleanProperty(record, 'includeUntracked')
+    includeUntracked: readBooleanProperty(record, 'includeUntracked'),
+    paths: readOptionalStringArrayProperty(record, 'paths')
   };
 }
 
@@ -1346,6 +1357,12 @@ function readSettingsInput(value: unknown): AppSettingsInput {
   return {
     defaultDiffStyle: readOptionalEnumProperty(record, 'defaultDiffStyle', ['unified', 'split']),
     diffSyntaxTheme: readOptionalEnumProperty(record, 'diffSyntaxTheme', ['git-gud-dark', 'tokyo-night-storm']),
+    defaultSyncOperation: readOptionalEnumProperty(record, 'defaultSyncOperation', [
+      'fetch-all',
+      'pull-ff',
+      'pull-ff-only',
+      'pull-rebase'
+    ]),
     autoFetchIntervalMinutes: readOptionalNonNegativeIntegerProperty(
       record,
       'autoFetchIntervalMinutes'

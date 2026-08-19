@@ -441,8 +441,13 @@ export type GitCommitInput = {
 };
 
 export type GitPullInput = {
-  mode: 'ff-only' | 'rebase';
+  mode: 'ff' | 'ff-only' | 'rebase';
   expectedBranch?: string;
+};
+
+export type GitIgnoreInput = {
+  path: string;
+  mode: 'file' | 'extension' | 'folder';
 };
 
 export type GitRemoteCreateInput = {
@@ -559,6 +564,7 @@ export type GitTagDeleteInput =
 export type GitStashPushInput = {
   message?: string;
   includeUntracked: boolean;
+  paths?: string[];
 };
 
 export type GitStashRefInput = {
@@ -737,9 +743,12 @@ export type GitOperationCancellationResult = {
 
 export type DiffSyntaxTheme = 'git-gud-dark' | 'tokyo-night-storm';
 
+export type PrimarySyncOperation = 'fetch-all' | 'pull-ff' | 'pull-ff-only' | 'pull-rebase';
+
 export type AppSettings = {
   defaultDiffStyle: 'unified' | 'split';
   diffSyntaxTheme: DiffSyntaxTheme;
+  defaultSyncOperation: PrimarySyncOperation;
   autoFetchIntervalMinutes: number;
   graphPageSize: number;
   largeRepoMode: boolean;

@@ -259,6 +259,9 @@ describe('git operations', () => {
         canAbort: true
       });
       expect(result.conflictState?.files.map((file) => file.path)).toContain('conflict.txt');
+      await expect(
+        stashPush(tab, { includeUntracked: false, paths: ['conflict.txt'] })
+      ).rejects.toThrow();
 
       await resolveConflict(tab, { action: 'abort' });
 
@@ -599,6 +602,31 @@ describe('git operations', () => {
       expect((await git(repoPath, ['merge-base', '--is-ancestor', secondUpstreamHead, 'HEAD'])).exitCode).toBe(0);
       expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('local work');
       expect(await readFile(join(repoPath, 'generated/unrelated.txt'), 'utf8')).toBe('keep me\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('creates a merge commit for a divergent pull when fast-forward is preferred but not required', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'local-only.txt', 'local\n', 'local work');
+      await commitFile(remoteWriterPath, 'remote-only.txt', 'remote\n', 'remote work');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+
+      const result = await pullRepository(tab, { mode: 'ff' });
+      const parents = (await git(repoPath, ['show', '-s', '--format=%P', 'HEAD'])).stdout.trim().split(' ');
+
+      expect(result.operation).toMatchObject({
+        label: 'Pull fast-forward if possible',
+        status: 'completed'
+      });
+      expect(parents).toHaveLength(2);
+      expect(await readFile(join(repoPath, 'local-only.txt'), 'utf8')).toBe('local\n');
+      expect(await readFile(join(repoPath, 'remote-only.txt'), 'utf8')).toBe('remote\n');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
@@ -1032,6 +1060,80 @@ describe('git operations', () => {
 
       expect(await readFile(join(repoPath, 'notes/stashed.txt'), 'utf8')).toBe('stashed\n');
       expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('?? notes/\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('stashes only the selected tracked and untracked files', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'tracked-a.txt', 'before a\n', 'add tracked a');
+      await commitFile(repoPath, 'tracked-b.txt', 'before b\n', 'add tracked b');
+      await writeRepoFile(repoPath, 'tracked-a.txt', 'after a\n');
+      await writeRepoFile(repoPath, 'tracked-b.txt', 'after b\n');
+      await writeRepoFile(repoPath, 'selected-note.txt', 'selected\n');
+      await writeRepoFile(repoPath, 'kept-note.txt', 'kept\n');
+
+      const result = await stashPush(tab, {
+        message: 'selected work',
+        includeUntracked: true,
+        paths: ['tracked-a.txt', 'selected-note.txt']
+      });
+
+      expect(result.operation?.label).toBe('Stash 2 files');
+      expect(await readFile(join(repoPath, 'tracked-a.txt'), 'utf8')).toBe('before a\n');
+      expect(await readFile(join(repoPath, 'tracked-b.txt'), 'utf8')).toBe('after b\n');
+      await expect(access(join(repoPath, 'selected-note.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(join(repoPath, 'kept-note.txt'), 'utf8')).toBe('kept\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unsafe and unselected-untracked partial stash paths', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await writeRepoFile(repoPath, 'notes.txt', 'notes\n');
+
+      await expect(
+        stashPush(tab, { includeUntracked: true, paths: ['../notes.txt'] })
+      ).rejects.toThrow('repository-relative file path');
+      await expect(
+        stashPush(tab, { includeUntracked: false, paths: ['notes.txt'] })
+      ).rejects.toThrow('Include untracked files');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps both sides of a renamed file together in a partial stash', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(repoPath, 'old name.txt', 'before\n', 'add rename source');
+      await commitFile(repoPath, 'other.txt', 'other before\n', 'add unrelated file');
+      await git(repoPath, ['mv', 'old name.txt', 'new name.txt']);
+      await writeRepoFile(repoPath, 'other.txt', 'other after\n');
+
+      await stashPush(tab, {
+        message: 'rename only',
+        includeUntracked: false,
+        paths: ['new name.txt']
+      });
+
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe(' M other.txt\n');
+      expect(await readFile(join(repoPath, 'old name.txt'), 'utf8')).toBe('before\n');
+      expect(await readFile(join(repoPath, 'other.txt'), 'utf8')).toBe('other after\n');
+      await expect(access(join(repoPath, 'new name.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

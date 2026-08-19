@@ -10,6 +10,7 @@ export function createDefaultAppSettings(): AppSettings {
   return {
     defaultDiffStyle: 'unified',
     diffSyntaxTheme: 'git-gud-dark',
+    defaultSyncOperation: 'fetch-all',
     autoFetchIntervalMinutes: DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
     graphPageSize: 1500,
     largeRepoMode: false,
@@ -36,6 +37,13 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
       settings.diffSyntaxTheme === 'git-gud-dark' || settings.diffSyntaxTheme === 'tokyo-night-storm'
         ? settings.diffSyntaxTheme
         : fallback.diffSyntaxTheme,
+    defaultSyncOperation:
+      settings.defaultSyncOperation === 'fetch-all' ||
+      settings.defaultSyncOperation === 'pull-ff' ||
+      settings.defaultSyncOperation === 'pull-ff-only' ||
+      settings.defaultSyncOperation === 'pull-rebase'
+        ? settings.defaultSyncOperation
+        : fallback.defaultSyncOperation,
     autoFetchIntervalMinutes: clampAutoFetchIntervalMinutes(
       typeof settings.autoFetchIntervalMinutes === 'number'
         ? settings.autoFetchIntervalMinutes

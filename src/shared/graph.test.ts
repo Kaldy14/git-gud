@@ -225,7 +225,9 @@ describe('measured graph palette', () => {
       '#421a1c',
       '#514a2c'
     ]);
-    expect(laneRefColor(0, true)).toBe('#2f5e6f');
+    expect(Array.from({ length: 7 }, (_, lane) => laneRefColor(lane, true))).toEqual(
+      Array.from({ length: 7 }, (_, lane) => laneColor(lane))
+    );
     expect(laneColor(7)).toBe('#4a9ebc');
   });
 });

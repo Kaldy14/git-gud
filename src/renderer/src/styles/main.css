@@ -648,6 +648,38 @@ select {
   opacity: 0.58;
 }
 
+.tb-sync-control {
+  position: relative;
+  display: flex;
+  height: 44px;
+}
+
+.tb-sync-action {
+  padding-right: 18px;
+}
+
+.tb-sync-menu-trigger {
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  display: grid;
+  width: 17px;
+  height: 18px;
+  place-items: center;
+  border-radius: 3px;
+  color: var(--text-3);
+}
+
+.tb-sync-menu-trigger:not(:disabled):hover,
+.tb-sync-menu-trigger:not(:disabled):focus-visible {
+  background: var(--bg-active);
+  color: var(--text-1);
+}
+
+.tb-sync-menu-trigger:disabled {
+  opacity: 0.45;
+}
+
 .tb-action-label {
   font-size: 10.5px;
   line-height: 1;
@@ -1230,6 +1262,68 @@ select {
   height: 1px;
   margin: 6px 16px;
   background: var(--context-menu-divider);
+}
+
+/* --- Working directory file list ------------------------------------ */
+
+.wip-file-row {
+  border-left: 2px solid transparent;
+}
+
+.wip-file-row[data-selected='true'] {
+  border-left-color: var(--select-border);
+}
+
+.wip-file-row-action {
+  pointer-events: none;
+  position: absolute;
+  inset-block: 0;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  padding-left: 24px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.wip-file-row:hover .wip-file-row-action,
+.wip-file-row:focus-within .wip-file-row-action {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.wip-file-primary-action {
+  height: 27px;
+  border: 1px solid var(--success-border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--success-bg) 82%, var(--bg-sidebar));
+  padding: 0 9px;
+  color: var(--success-text);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 25px;
+  white-space: nowrap;
+}
+
+.wip-file-primary-action[data-tone='unstage'],
+.wip-file-primary-action[data-tone='conflict'] {
+  border-color: var(--danger-border);
+  background: color-mix(in srgb, var(--danger-bg) 82%, var(--bg-sidebar));
+  color: var(--danger-text);
+}
+
+.wip-file-primary-action:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.wip-file-primary-action:focus-visible {
+  outline: 1px solid var(--text-1);
+  outline-offset: 1px;
+}
+
+.wip-file-primary-action:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 /* --- Graph ref chips -------------------------------------------------- */

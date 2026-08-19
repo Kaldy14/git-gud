@@ -1146,7 +1146,7 @@ function GraphRowView({
   const bandBackground = graphRowBandBackground(row, nodeColor);
   const graphLaneX = graphLaneViewportX(row.node.lane, graphWidth, graphScrollLeft);
   const refColor = row.colorOverride ? hexToRgba(nodeColor, 0.3) : laneRefColor(row.node.lane);
-  const currentRefColor = row.colorOverride ? hexToRgba(nodeColor, 0.78) : laneRefColor(row.node.lane, true);
+  const currentRefColor = row.colorOverride ?? laneRefColor(row.node.lane, true);
   const hasRefConnector = visibleRefs.some((ref) => ref.kind === 'branch' || ref.kind === 'remote' || ref.kind === 'tag');
   const hasCurrentBranch = visibleRefs.some(
     (ref) => graphBranchCheckoutLocation(ref, linkedWorktreeBranches) === 'current'

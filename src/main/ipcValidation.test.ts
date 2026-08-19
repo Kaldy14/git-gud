@@ -148,6 +148,10 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('repo:fetch-remote', ['/repo', 'origin'])).toEqual(['/repo', 'origin']);
     expect(validateIpcArgs('repo:remove-remote', ['/repo', 'origin'])).toEqual(['/repo', 'origin']);
     expect(validateIpcArgs('repo:discard-file', ['/repo', 'src/main.ts'])).toEqual(['/repo', 'src/main.ts']);
+    expect(validateIpcArgs('repo:ignore-path', ['/repo', { path: 'dist/app.js', mode: 'extension' }])).toEqual([
+      '/repo',
+      { path: 'dist/app.js', mode: 'extension' }
+    ]);
     expect(validateIpcArgs('repo:discard-all', ['/repo'])).toEqual(['/repo']);
     expect(
       validateIpcArgs('repo:initialize', [
@@ -200,6 +204,7 @@ describe('IPC argument validation', () => {
       {
         defaultDiffStyle: undefined,
         diffSyntaxTheme: undefined,
+        defaultSyncOperation: undefined,
         autoFetchIntervalMinutes: undefined,
         graphPageSize: undefined,
         largeRepoMode: undefined,
@@ -682,7 +687,10 @@ describe('IPC argument validation', () => {
           mode: 'merge'
         }
       ])
-    ).toThrow('mode must be one of: ff-only, rebase.');
+    ).toThrow('mode must be one of: ff, ff-only, rebase.');
+    expect(() =>
+      validateIpcArgs('repo:ignore-path', ['/repo', { path: 'dist/app.js', mode: 'everything' }])
+    ).toThrow('mode must be one of: file, extension, folder.');
     expect(() =>
       validateIpcArgs('settings:update', [
         {
@@ -697,6 +705,28 @@ describe('IPC argument validation', () => {
         }
       ])
     ).toThrow('diffSyntaxTheme must be one of: git-gud-dark, tokyo-night-storm.');
+    expect(() =>
+      validateIpcArgs('settings:update', [{ defaultSyncOperation: 'sync' }])
+    ).toThrow('defaultSyncOperation must be one of: fetch-all, pull-ff, pull-ff-only, pull-rebase.');
+  });
+
+  it('validates partial stash file selections', () => {
+    expect(
+      validateIpcArgs('repo:stash-push', [
+        '/repo',
+        { message: 'focused work', includeUntracked: true, paths: ['src/a.ts', 'notes.txt'] }
+      ])
+    ).toEqual([
+      '/repo',
+      { message: 'focused work', includeUntracked: true, paths: ['src/a.ts', 'notes.txt'] }
+    ]);
+
+    expect(() =>
+      validateIpcArgs('repo:stash-push', [
+        '/repo',
+        { includeUntracked: false, paths: 'src/a.ts' }
+      ])
+    ).toThrow('paths must be an array of strings.');
   });
 
   it('rejects malformed nested payloads', () => {

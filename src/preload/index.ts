@@ -61,6 +61,7 @@ const api: RendererApi = {
   stageFile: (repoPath, path) => invoke('repo:stage-file', repoPath, path),
   unstageFile: (repoPath, path) => invoke('repo:unstage-file', repoPath, path),
   discardFile: (repoPath, path) => invoke('repo:discard-file', repoPath, path),
+  ignorePath: (repoPath, input) => invoke('repo:ignore-path', repoPath, input),
   discardAllChanges: (repoPath) => invoke('repo:discard-all', repoPath),
   openFile: (repoPath, path) => invoke('repo:open-file', repoPath, path),
   revealFile: (repoPath, path) => invoke('repo:reveal-file', repoPath, path),

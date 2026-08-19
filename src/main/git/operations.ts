@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import pathModule from 'node:path';
 
 import type {
   GitCheckoutTarget,
@@ -47,6 +48,7 @@ type ConflictAwareMutationResult = {
 
 const ZERO_SHA = '0000000000000000000000000000000000000000';
 const MAX_BULK_CHERRY_PICK_COMMITS = 100;
+const MAX_PARTIAL_STASH_FILES = 1_000;
 const COMMIT_WRITE_PATH_BATCH_SIZE = 50;
 const NETWORK_GIT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -194,7 +196,7 @@ export async function pullRepository(
 
     const headCommit = await revParseOptional(tab.path, 'HEAD^{commit}', env);
 
-    if (headCommit && headCommit !== upstreamCommit) {
+    if (input.mode === 'ff-only' && headCommit && headCommit !== upstreamCommit) {
       await assertCommitIsAncestor(
         tab.path,
         headCommit,
@@ -207,11 +209,37 @@ export async function pullRepository(
     await assertNoIgnoredTreeCollisions(tab.path, upstreamCommit, env, 'Pull fast-forward');
     await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
 
-    if (headCommit !== upstreamCommit) {
-      await gitExecutor.run(['merge', '--ff-only', upstreamCommit], { cwd: tab.path, kind: 'mutation', env });
+    if (headCommit === upstreamCommit) {
+      return createOperationResult(
+        tab,
+        env,
+        'pull',
+        input.mode === 'ff' ? 'Pull fast-forward if possible' : 'Pull fast-forward only'
+      );
     }
 
-    return createOperationResult(tab, env, 'pull', 'Pull fast-forward');
+    if (input.mode === 'ff') {
+      const { conflictState } = await runMutationAllowingConflicts(
+        tab,
+        ['merge', '--ff', '--no-edit', upstreamCommit],
+        env
+      );
+      return createOperationResult(
+        tab,
+        env,
+        'pull',
+        'Pull fast-forward if possible',
+        undefined,
+        conflictState
+      );
+    }
+
+    await gitExecutor.run(['merge', '--ff-only', upstreamCommit], {
+      cwd: tab.path,
+      kind: 'mutation',
+      env
+    });
+    return createOperationResult(tab, env, 'pull', 'Pull fast-forward only');
   });
 }
 
@@ -722,7 +750,45 @@ export async function deleteTag(tab: OperationTab, input: GitTagDeleteInput): Pr
 
 export async function stashPush(tab: OperationTab, input: GitStashPushInput): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const args = ['stash', 'push'];
+  const requestedPaths = input.paths ? [...new Set(input.paths)] : undefined;
+  let args = requestedPaths ? ['--literal-pathspecs', 'stash', 'push'] : ['stash', 'push'];
+  let stashPathspec = requestedPaths;
+
+  if (requestedPaths) {
+    if (requestedPaths.length === 0) {
+      throw new Error('Select at least one changed file to stash.');
+    }
+    if (requestedPaths.length > MAX_PARTIAL_STASH_FILES) {
+      throw new Error(`A partial stash can contain at most ${MAX_PARTIAL_STASH_FILES} files.`);
+    }
+
+    requestedPaths.forEach(assertSafeRepositoryRelativePath);
+    const status = await loadStatus(tab.path, env);
+    const selectedFiles = requestedPaths.map((path) => {
+      const file = status.files.find((candidate) => candidate.path === path);
+      if (!file || file.status === 'ignored') {
+        throw new Error(`No changed file was found for ${path}.`);
+      }
+      if (file.status === 'untracked' && !input.includeUntracked) {
+        throw new Error(`Include untracked files to stash ${path}.`);
+      }
+      return file;
+    });
+
+    if (selectedFiles.some((file) => file.originalPath)) {
+      const selectedPathSet = new Set(selectedFiles.map((file) => file.path));
+      const exclusions = status.files
+        .filter((file) => !selectedPathSet.has(file.path))
+        .flatMap((file) => file.originalPath ? [file.originalPath, file.path] : [file.path]);
+      args = ['stash', 'push'];
+      stashPathspec = [
+        ':(top,glob)**',
+        ...[...new Set(exclusions)].map((path) => `:(top,exclude,literal)${path}`)
+      ];
+    } else {
+      stashPathspec = selectedFiles.map((file) => file.path);
+    }
+  }
 
   if (input.includeUntracked) {
     args.push('--include-untracked');
@@ -732,8 +798,17 @@ export async function stashPush(tab: OperationTab, input: GitStashPushInput): Pr
     args.push('-m', input.message.trim());
   }
 
+  if (stashPathspec) {
+    args.push('--', ...stashPathspec);
+  }
+
   await gitExecutor.run(args, { cwd: tab.path, kind: 'mutation', env });
-  return createOperationResult(tab, env, 'stash-push', 'Stash changes');
+  return createOperationResult(
+    tab,
+    env,
+    'stash-push',
+    requestedPaths ? `Stash ${requestedPaths.length} files` : 'Stash changes'
+  );
 }
 
 export async function stashApply(tab: OperationTab, input: GitStashRefInput): Promise<GitOperationResult> {
@@ -1666,6 +1741,20 @@ function normalizeRequiredName(value: string, label: string): string {
   }
 
   return normalized;
+}
+
+function assertSafeRepositoryRelativePath(path: string): void {
+  const normalizedPath = pathModule.normalize(path);
+
+  if (
+    !path ||
+    path.includes('\0') ||
+    pathModule.isAbsolute(path) ||
+    normalizedPath === '..' ||
+    normalizedPath.startsWith(`..${pathModule.sep}`)
+  ) {
+    throw new Error('A repository-relative file path is required.');
+  }
 }
 
 function normalizeExpectedCommitSha(value: string, label: string): string {

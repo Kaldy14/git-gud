@@ -10,6 +10,7 @@ describe('app settings', () => {
   it('defaults to a focused commit graph and Gravatar author images', () => {
     expect(createDefaultAppSettings()).toMatchObject({
       diffSyntaxTheme: 'git-gud-dark',
+      defaultSyncOperation: 'fetch-all',
       autoFetchIntervalMinutes: DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
       graphColumns: {
         author: false,
@@ -39,6 +40,13 @@ describe('app settings', () => {
       'tokyo-night-storm'
     );
     expect(normalizeAppSettings({ diffSyntaxTheme: 'unknown' }).diffSyntaxTheme).toBe('git-gud-dark');
+  });
+
+  it('keeps supported sync operations and repairs unknown persisted values', () => {
+    expect(normalizeAppSettings({ defaultSyncOperation: 'pull-ff' }).defaultSyncOperation).toBe('pull-ff');
+    expect(normalizeAppSettings({ defaultSyncOperation: 'pull-ff-only' }).defaultSyncOperation).toBe('pull-ff-only');
+    expect(normalizeAppSettings({ defaultSyncOperation: 'pull-rebase' }).defaultSyncOperation).toBe('pull-rebase');
+    expect(normalizeAppSettings({ defaultSyncOperation: 'unknown' }).defaultSyncOperation).toBe('fetch-all');
   });
 
   it('merges partial nested graph column updates', () => {

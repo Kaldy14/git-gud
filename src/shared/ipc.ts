@@ -22,6 +22,7 @@ import type {
   GitComparison,
   GitInteractiveRebaseInput,
   GitInteractiveRebasePlan,
+  GitIgnoreInput,
   GitMergeInput,
   GitOperationResult,
   GitOperationCancellationResult,
@@ -259,6 +260,10 @@ export type IpcChannelMap = {
   };
   'repo:discard-file': {
     args: [repoPath: string, path: string];
+    result: GitOperationResult;
+  };
+  'repo:ignore-path': {
+    args: [repoPath: string, input: GitIgnoreInput];
     result: GitOperationResult;
   };
   'repo:discard-all': {
@@ -611,6 +616,7 @@ export type RendererApi = {
   stageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   unstageFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   discardFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  ignorePath: (repoPath: string, input: GitIgnoreInput) => Promise<GitOperationResult>;
   discardAllChanges: (repoPath: string) => Promise<GitOperationResult>;
   openFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   revealFile: (repoPath: string, path: string) => Promise<GitOperationResult>;

@@ -51,6 +51,7 @@ import {
 } from '@renderer/components/operations/operationProgress';
 import { PushRejectedBanner } from '@renderer/components/operations/PushRejectedBanner';
 import { QuickJumpDialog, type PaletteAction } from '@renderer/components/operations/QuickJumpDialog';
+import { StashDialog } from '@renderer/components/operations/StashDialog';
 import { InteractiveRebaseDialog } from '@renderer/components/rebase/InteractiveRebaseDialog';
 import { SettingsPanel } from '@renderer/components/settings/SettingsPanel';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
@@ -119,6 +120,7 @@ import type {
   GitConflictActionInput,
   GitDeleteBranchInput,
   GitFileChangeDetail,
+  GitIgnoreInput,
   GitInteractiveRebaseInput,
   GitInteractiveRebasePlan,
   GitOperationResult,
@@ -133,7 +135,9 @@ import type {
   RepoProfileState,
   GitResetInput,
   GitStashRefInput,
-  GitTagDeleteInput
+  GitStashPushInput,
+  GitTagDeleteInput,
+  PrimarySyncOperation
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
@@ -185,8 +189,17 @@ type ShortcutState = {
 };
 
 type RepositoryInspectorState = {
+  repoPath: string;
   mode: RepositoryInspectorMode;
   path?: string;
+};
+
+type StashDialogState = {
+  repoPath: string;
+  activeTabEpoch: number;
+  files: GitFileChangeDetail[];
+  defaultMessage: string;
+  initialPaths?: string[];
 };
 
 type RepositoryOperationOptions = {
@@ -291,6 +304,7 @@ export function WorkspaceShell(): ReactElement {
   >({});
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogState>();
   const [commandDialog, setCommandDialog] = useState<CommandDialogConfig>();
+  const [stashDialog, setStashDialog] = useState<StashDialogState>();
   const [pushRejectionPrompt, setPushRejectionPrompt] = useState<PushRejectionPrompt>();
   const [settings, setSettings] = useState<AppSettings>(createDefaultAppSettings());
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
@@ -356,6 +370,18 @@ export function WorkspaceShell(): ReactElement {
     [workspace.activeTabId, workspace.tabs]
   );
   const activeTab = isStartTabActive ? undefined : workspaceActiveTab;
+  const activeTabContextRef = useRef({ path: activeTab?.path, epoch: 0 });
+  if (activeTabContextRef.current.path !== activeTab?.path) {
+    activeTabContextRef.current = {
+      path: activeTab?.path,
+      epoch: activeTabContextRef.current.epoch + 1
+    };
+  }
+  const activeTabEpoch = activeTabContextRef.current.epoch;
+  const visibleStashDialog =
+    stashDialog && stashDialog.repoPath === activeTab?.path && stashDialog.activeTabEpoch === activeTabEpoch
+      ? stashDialog
+      : undefined;
   const autoFetchRepositoryPath = activeTab?.path;
   const autoFetchRepositoryCommonDir = activeTab?.commonDir;
   const localMutationCount = useIsMutating({ mutationKey: ['repository-mutation', activeTab?.path] });
@@ -747,6 +773,7 @@ export function WorkspaceShell(): ReactElement {
     shortcutStateRef.current = {
       isBlocked: Boolean(
         commandDialog ||
+          visibleStashDialog ||
           interactiveRebaseDialog ||
           isSettingsOpen ||
           isQuickJumpOpen ||
@@ -1952,12 +1979,40 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handlePull(): void {
+  function handlePull(mode: 'ff' | 'ff-only' | 'rebase' = 'ff-only'): void {
     const branch = repositoryQuery.data?.status.branch;
     const expectedBranch = branch && !branch.isDetached ? branch.head : undefined;
-    void runRepositoryOperation('Pull fast-forward', (repoPath) =>
-      window.api.pullRepository(repoPath, { mode: 'ff-only', expectedBranch })
+    const label = mode === 'rebase'
+      ? 'Pull with rebase'
+      : mode === 'ff'
+        ? 'Pull fast-forward if possible'
+        : 'Pull fast-forward only';
+    void runRepositoryOperation(label, (repoPath) =>
+      window.api.pullRepository(repoPath, { mode, expectedBranch })
     );
+  }
+
+  function handlePrimarySync(operation: PrimarySyncOperation): void {
+    if (operation === 'fetch-all') {
+      handleFetch();
+      return;
+    }
+
+    handlePull(
+      operation === 'pull-rebase'
+        ? 'rebase'
+        : operation === 'pull-ff'
+          ? 'ff'
+          : 'ff-only'
+    );
+  }
+
+  function handleChangeDefaultSyncOperation(defaultSyncOperation: PrimarySyncOperation): void {
+    void window.api.updateSettings({ defaultSyncOperation }).then(setSettings).catch((error: unknown) => {
+      setSettingsErrorMessage(
+        error instanceof Error ? error.message : 'Unable to save the default sync operation.'
+      );
+    });
   }
 
   function handlePullBranch(name: string): void {
@@ -2231,6 +2286,22 @@ export function WorkspaceShell(): ReactElement {
     void runRepositoryOperation(`Reveal ${file.path}`, (repoPath) => window.api.revealFile(repoPath, file.path));
   }
 
+  function handleIgnoreWipFile(file: GitFileChangeDetail, mode: GitIgnoreInput['mode']): void {
+    void runRepositoryOperation(`Ignore ${file.path}`, (repoPath) =>
+      window.api.ignorePath(repoPath, { path: file.path, mode })
+    );
+  }
+
+  function handleInspectWipFile(file: GitFileChangeDetail, mode: RepositoryInspectorMode): void {
+    if (activeTab) {
+      setRepositoryInspector({ repoPath: activeTab.path, mode, path: file.path });
+    }
+  }
+
+  function handleCopyWipFilePath(file: GitFileChangeDetail): void {
+    void navigator.clipboard.writeText(file.path);
+  }
+
   function handleCreateBranch(startPoint?: string): void {
     openCommandDialog({
       title: startPoint ? 'Create branch here' : 'Create branch',
@@ -2273,34 +2344,68 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
-  function handleStashPush(): void {
-    openCommandDialog({
-      title: 'Stash changes',
-      description: 'Save the current working tree as a stash node in the graph.',
-      confirmLabel: 'Stash',
-      fields: [
-        {
-          id: 'message',
-          kind: 'text',
-          label: 'Stash message',
-          value: repositoryQuery.data?.status.branch.head ?? 'WIP',
-          autoFocus: true
-        },
-        {
-          id: 'includeUntracked',
-          kind: 'checkbox',
-          label: 'Include untracked files',
-          checked: false
-        }
-      ],
-      onSubmit(values) {
-        void runRepositoryOperation('Stash changes', (repoPath) =>
-          window.api.stashPush(repoPath, {
-            message: values.text.message,
-            includeUntracked: dialogChecked(values, 'includeUntracked')
-          })
-        );
+  function openStashDialog(initialPaths?: string[]): void {
+    const tab = activeTab;
+    if (!tab) {
+      return;
+    }
+    const requestActiveTabEpoch = activeTabContextRef.current.epoch;
+
+    if ((repositoryQuery.data?.status.conflictedCount ?? 0) > 0) {
+      openCommandDialog({
+        title: 'Resolve conflicts before stashing',
+        description: 'Git cannot create a stash while the repository has unresolved conflicts.',
+        confirmLabel: 'Close',
+        fields: [],
+        onSubmit() {}
+      });
+      return;
+    }
+
+    void window.api.getWipDetail(tab.path).then((detail) => {
+      if (
+        activeTabContextRef.current.path !== tab.path ||
+        activeTabContextRef.current.epoch !== requestActiveTabEpoch
+      ) {
+        return;
       }
+      setStashDialog({
+        repoPath: tab.path,
+        activeTabEpoch: requestActiveTabEpoch,
+        files: detail.files,
+        defaultMessage: initialPaths?.length === 1
+          ? `WIP: ${initialPaths[0]}`
+          : repositoryQuery.data?.status.branch.head ?? 'WIP',
+        initialPaths
+      });
+    }).catch((error: unknown) => {
+      openCommandDialog({
+        title: 'Unable to load changed files',
+        description: error instanceof Error ? error.message : 'The changed files could not be loaded.',
+        confirmLabel: 'Close',
+        fields: [],
+        onSubmit() {}
+      });
+    });
+  }
+
+  function handleStashPush(): void {
+    openStashDialog();
+  }
+
+  function handleStashWipFile(file: GitFileChangeDetail): void {
+    openStashDialog([file.path]);
+  }
+
+  function handleSubmitStash(input: GitStashPushInput): void {
+    const dialog = visibleStashDialog;
+    if (!dialog) {
+      return;
+    }
+
+    setStashDialog(undefined);
+    void runRepositoryOperation('Stash selected files', (repoPath) => window.api.stashPush(repoPath, input), {
+      repoPath: dialog.repoPath
     });
   }
 
@@ -3055,7 +3160,7 @@ export function WorkspaceShell(): ReactElement {
       icon: <FileClock size={14} />,
       disabled: !activeTab,
       disabledReason: activeTab ? undefined : 'Open a repository first',
-      onSelect: () => setRepositoryInspector({ mode: 'history', path: activeTab?.selectedFile })
+      onSelect: () => activeTab && setRepositoryInspector({ repoPath: activeTab.path, mode: 'history', path: activeTab.selectedFile })
     },
     {
       id: 'blame',
@@ -3066,7 +3171,7 @@ export function WorkspaceShell(): ReactElement {
       icon: <SearchCode size={14} />,
       disabled: !activeTab,
       disabledReason: activeTab ? undefined : 'Open a repository first',
-      onSelect: () => setRepositoryInspector({ mode: 'blame', path: activeTab?.selectedFile })
+      onSelect: () => activeTab && setRepositoryInspector({ repoPath: activeTab.path, mode: 'blame', path: activeTab.selectedFile })
     },
     {
       id: 'compare',
@@ -3077,7 +3182,7 @@ export function WorkspaceShell(): ReactElement {
       icon: <GitCompareArrows size={14} />,
       disabled: !activeTab,
       disabledReason: activeTab ? undefined : 'Open a repository first',
-      onSelect: () => setRepositoryInspector({ mode: 'compare' })
+      onSelect: () => activeTab && setRepositoryInspector({ repoPath: activeTab.path, mode: 'compare' })
     },
     {
       id: 'toggle-sidebar',
@@ -3201,8 +3306,9 @@ export function WorkspaceShell(): ReactElement {
           repositoryOverview={repositoryQuery.data}
           isBusy={isOperationBusy}
           latestUndo={repositoryQuery.data?.latestUndo}
-          onFetch={handleFetch}
-          onPull={handlePull}
+          defaultSyncOperation={settings.defaultSyncOperation}
+          onSync={handlePrimarySync}
+          onChangeDefaultSyncOperation={handleChangeDefaultSyncOperation}
           onPush={handlePush}
           onCreateBranch={() => handleCreateBranch()}
           onStashPush={handleStashPush}
@@ -3603,8 +3709,12 @@ export function WorkspaceShell(): ReactElement {
                   onOpenWipChanges={handleOpenWipChanges}
                   onDiscardAllWip={handleDiscardAllWip}
                   onDiscardWipFile={handleDiscardWipFile}
+                  onIgnoreWipFile={handleIgnoreWipFile}
+                  onInspectWipFile={handleInspectWipFile}
+                  onCopyWipFilePath={handleCopyWipFilePath}
                   onOpenWipFile={handleOpenWipFile}
                   onRevealWipFile={handleRevealWipFile}
+                  onStashWipFile={handleStashWipFile}
                 />
               ) : null}
             </>
@@ -3690,9 +3800,9 @@ export function WorkspaceShell(): ReactElement {
           onOpenWorktree={(worktreePath) => void activateLinkedWorktreeWip(worktreePath)}
         />
       ) : null}
-      {repositoryInspector && activeTab ? (
+      {repositoryInspector && repositoryInspector.repoPath === activeTab?.path ? (
         <RepositoryInspectorDialog
-          repoPath={activeTab.path}
+          repoPath={repositoryInspector.repoPath}
           initialMode={repositoryInspector.mode}
           initialPath={repositoryInspector.path}
           refs={repositoryQuery.data?.refs}
@@ -3713,6 +3823,16 @@ export function WorkspaceShell(): ReactElement {
         />
       ) : null}
       {commandDialog ? <CommandDialog key={commandDialog.id} dialog={commandDialog} onClose={() => setCommandDialog(undefined)} /> : null}
+      {visibleStashDialog ? (
+        <StashDialog
+          files={visibleStashDialog.files}
+          defaultMessage={visibleStashDialog.defaultMessage}
+          initialPaths={visibleStashDialog.initialPaths}
+          isBusy={isOperationBusy}
+          onClose={() => setStashDialog(undefined)}
+          onSubmit={handleSubmitStash}
+        />
+      ) : null}
     </main>
   );
 }
