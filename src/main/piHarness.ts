@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { access, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join, win32 } from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 const DEFAULT_MAX_OUTPUT_CHARACTERS = 2_000_000;
@@ -18,24 +18,28 @@ export type PiPromptOptions = {
 
 export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
   const executable = await resolvePiExecutable();
+  const args = [
+    '--print',
+    '--no-session',
+    '--mode',
+    'text',
+    ...(options.tools ? ['--tools', options.tools] : ['--no-tools']),
+    '--no-extensions',
+    '--no-skills',
+    '--no-prompt-templates',
+    '--no-context-files',
+    '--no-approve'
+  ];
+  const launch = piLaunchCommand(executable, args);
   const child = spawn(
-    executable,
-    [
-      '--print',
-      '--no-session',
-      '--mode',
-      'text',
-      ...(options.tools ? ['--tools', options.tools] : ['--no-tools']),
-      '--no-extensions',
-      '--no-skills',
-      '--no-prompt-templates',
-      '--no-context-files',
-      '--no-approve'
-    ],
+    launch.command,
+    launch.args,
     {
       cwd: options.cwd,
       env: await buildPiEnvironment(executable),
-      stdio: 'pipe'
+      stdio: 'pipe',
+      windowsHide: true,
+      windowsVerbatimArguments: launch.windowsVerbatimArguments
     }
   );
   activeProcesses.add(child);
@@ -53,24 +57,40 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
   }
 }
 
-async function buildPiEnvironment(executable: string): Promise<NodeJS.ProcessEnv> {
-  const home = homedir();
-  const existingPath = (process.env.PATH ?? '').split(delimiter).filter(Boolean);
-  const nvmDirectory = process.env.NVM_DIR?.trim() || join(home, '.nvm');
+export async function buildPiEnvironment(
+  executable: string,
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env,
+  home: string = homedir()
+): Promise<NodeJS.ProcessEnv> {
+  const pathDelimiter = platform === 'win32' ? win32.delimiter : delimiter;
+  const existingPath = (environmentValue(environment, 'PATH', platform) ?? '')
+    .split(pathDelimiter)
+    .filter(Boolean);
+  const nvmDirectory =
+    environmentValue(environment, 'NVM_DIR', platform)?.trim() || join(home, '.nvm');
   const nvmNodeDirectories = await listNvmNodeDirectories(nvmDirectory);
-  const path = [
-    dirname(executable),
-    ...nvmNodeDirectories,
-    join(home, '.volta/bin'),
-    join(home, '.local/share/mise/shims'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    ...existingPath
-  ];
+  const knownDirectories =
+    platform === 'win32'
+      ? windowsPiDirectories(environment, home)
+      : [
+          ...nvmNodeDirectories,
+          join(home, '.volta/bin'),
+          join(home, '.local/share/mise/shims'),
+          '/opt/homebrew/bin',
+          '/usr/local/bin'
+        ];
+  const path = [dirname(executable), ...knownDirectories, ...existingPath];
+  const result = { ...environment };
+  for (const key of Object.keys(result)) {
+    if (platform === 'win32' && key.toLowerCase() === 'path') {
+      delete result[key];
+    }
+  }
 
   return {
-    ...process.env,
-    PATH: [...new Set(path)].join(delimiter),
+    ...result,
+    PATH: [...new Set(path)].join(pathDelimiter),
     NO_COLOR: '1'
   };
 }
@@ -92,36 +112,48 @@ async function listNvmNodeDirectories(nvmDirectory: string): Promise<string[]> {
 
 export function shutdownPiProcesses(): void {
   for (const child of activeProcesses) {
-    child.kill('SIGTERM');
+    terminatePiProcess(child);
   }
   activeProcesses.clear();
 }
 
-async function resolvePiExecutable(): Promise<string> {
-  const home = homedir();
-  const configuredPath = process.env.PI_EXECUTABLE_PATH?.trim();
-  const inheritedDirectories = (process.env.PATH ?? '')
-    .split(delimiter)
+export async function resolvePiExecutable(
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env,
+  home: string = homedir()
+): Promise<string> {
+  const pathDelimiter = platform === 'win32' ? win32.delimiter : delimiter;
+  const configuredPath = environmentValue(environment, 'PI_EXECUTABLE_PATH', platform)?.trim();
+  const inheritedDirectories = (environmentValue(environment, 'PATH', platform) ?? '')
+    .split(pathDelimiter)
     .filter(Boolean);
-  const nvmDirectory = process.env.NVM_DIR?.trim() || join(home, '.nvm');
+  const nvmDirectory =
+    environmentValue(environment, 'NVM_DIR', platform)?.trim() || join(home, '.nvm');
   const nvmNodeDirectories = await listNvmNodeDirectories(nvmDirectory);
   const searchDirectories = [
     ...inheritedDirectories,
-    process.env.NVM_BIN?.trim(),
-    process.env.PNPM_HOME?.trim(),
+    environmentValue(environment, 'NVM_BIN', platform)?.trim(),
+    environmentValue(environment, 'PNPM_HOME', platform)?.trim(),
     ...nvmNodeDirectories,
-    join(home, 'Library/pnpm'),
-    join(home, '.local/bin'),
-    join(home, '.volta/bin'),
-    join(home, '.local/share/mise/shims'),
-    join(home, '.asdf/shims'),
-    join(home, '.bun/bin'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin'
+    ...(platform === 'win32'
+      ? windowsPiDirectories(environment, home)
+      : [
+          join(home, 'Library/pnpm'),
+          join(home, '.local/bin'),
+          join(home, '.volta/bin'),
+          join(home, '.local/share/mise/shims'),
+          join(home, '.asdf/shims'),
+          join(home, '.bun/bin'),
+          '/opt/homebrew/bin',
+          '/usr/local/bin'
+        ])
   ].filter((directory): directory is string => Boolean(directory));
+  const executableNames = platform === 'win32' ? ['pi.cmd', 'pi.exe', 'pi'] : ['pi'];
   const candidates = configuredPath
     ? [configuredPath]
-    : searchDirectories.map((directory) => join(directory, 'pi'));
+    : searchDirectories.flatMap((directory) =>
+        executableNames.map((executableName) => join(directory, executableName))
+      );
 
   for (const candidate of new Set(candidates)) {
     try {
@@ -133,8 +165,97 @@ async function resolvePiExecutable(): Promise<string> {
   }
 
   throw new Error(
-    'Pi was not found. Install Pi or set PI_EXECUTABLE_PATH to the executable installed on this Mac.'
+    'Pi was not found. Install Pi or set PI_EXECUTABLE_PATH to the installed executable.'
   );
+}
+
+function windowsPiDirectories(environment: NodeJS.ProcessEnv, home: string): string[] {
+  const appData = environmentValue(environment, 'APPDATA', 'win32');
+  const localAppData = environmentValue(environment, 'LOCALAPPDATA', 'win32');
+  const chocolateyInstall = environmentValue(environment, 'ChocolateyInstall', 'win32');
+  const npmPrefix = environmentValue(environment, 'npm_config_prefix', 'win32');
+
+  return [
+    environmentValue(environment, 'PNPM_HOME', 'win32'),
+    appData && join(appData, 'npm'),
+    localAppData && join(localAppData, 'pnpm'),
+    npmPrefix,
+    join(home, 'AppData', 'Roaming', 'npm'),
+    join(home, 'AppData', 'Local', 'pnpm'),
+    join(home, 'scoop', 'shims'),
+    chocolateyInstall && join(chocolateyInstall, 'bin')
+  ].filter((directory): directory is string => Boolean(directory));
+}
+
+function environmentValue(
+  environment: NodeJS.ProcessEnv,
+  name: string,
+  platform: NodeJS.Platform
+): string | undefined {
+  if (platform !== 'win32') {
+    return environment[name];
+  }
+
+  const matchingKey = Object.keys(environment).find((key) => key.toLowerCase() === name.toLowerCase());
+  return matchingKey ? environment[matchingKey] : undefined;
+}
+
+export type PiLaunchCommand = {
+  command: string;
+  args: string[];
+  windowsVerbatimArguments?: boolean;
+};
+
+export function piLaunchCommand(
+  executable: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env
+): PiLaunchCommand {
+  if (platform !== 'win32' || !/\.(?:cmd|bat)$/iu.test(executable)) {
+    return { command: executable, args };
+  }
+
+  const command = [
+    escapeWindowsCommand(executable),
+    ...args.map(escapeWindowsCommandArgument)
+  ].join(' ');
+  return {
+    command: environmentValue(environment, 'ComSpec', 'win32')?.trim() || 'cmd.exe',
+    args: ['/d', '/s', '/c', `"${command}"`],
+    windowsVerbatimArguments: true
+  };
+}
+
+const windowsCommandMetaCharacters = /([()\][%!^"`<>&|;, *?])/gu;
+
+function escapeWindowsCommand(command: string): string {
+  return command.replace(windowsCommandMetaCharacters, '^$1');
+}
+
+function escapeWindowsCommandArgument(argument: string): string {
+  const quoted = `"${argument
+    .replace(/(?=(\\+?)?)\1"/gu, '$1$1\\"')
+    .replace(/(?=(\\+?)?)\1$/gu, '$1$1')}"`;
+  return quoted.replace(windowsCommandMetaCharacters, '^$1');
+}
+
+function terminatePiProcess(child: ChildProcessWithoutNullStreams): void {
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    try {
+      const terminator = spawn(
+        'taskkill.exe',
+        ['/PID', String(child.pid), '/T', '/F'],
+        { stdio: 'ignore', windowsHide: true }
+      );
+      terminator.once('error', () => child.kill('SIGTERM'));
+      return;
+    } catch {
+      // Fall back to terminating the wrapper process below.
+    }
+  }
+
+  child.kill('SIGTERM');
 }
 
 function collectProcessOutput(
@@ -149,7 +270,7 @@ function collectProcessOutput(
     let stderr = '';
     let settled = false;
     const timeout = setTimeout(() => {
-      child.kill('SIGTERM');
+      terminatePiProcess(child);
       finish(new Error(`${errorLabel} timed out.`));
     }, timeoutMs);
     timeout.unref();
@@ -172,7 +293,7 @@ function collectProcessOutput(
     child.stdout.on('data', (chunk: string) => {
       stdout += chunk;
       if (stdout.length > maxOutputCharacters) {
-        child.kill('SIGTERM');
+        terminatePiProcess(child);
         finish(new Error(`${errorLabel} output exceeded the safe size limit.`));
       }
     });

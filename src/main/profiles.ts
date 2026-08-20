@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, readdir, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, posix, win32 } from 'node:path';
 
 import Store from 'electron-store';
 
@@ -99,43 +99,124 @@ export function parseGitHubAuthStatus(output: string, configDir: string): GitHub
   });
 }
 
-async function findGitHubCliConfigDirs(): Promise<string[]> {
-  const configRoot = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+type GitHubCliDiscoveryOptions = {
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  homeDirectory?: string;
+  isExecutable?: (candidate: string) => Promise<boolean>;
+  readDirectoryNames?: (directory: string) => Promise<{ isDirectory: boolean; name: string }[]>;
+};
+
+export async function findGitHubCliConfigDirs(options: GitHubCliDiscoveryOptions = {}): Promise<string[]> {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const pathApi = platform === 'win32' ? win32 : posix;
+  const xdgConfigHome = environmentValue(env, 'XDG_CONFIG_HOME', platform);
+  const appData = environmentValue(env, 'APPDATA', platform);
+  const configRoot =
+    xdgConfigHome ||
+    (platform === 'win32' && appData ? appData : pathApi.join(options.homeDirectory ?? homedir(), '.config'));
+  const defaultDirectoryName = platform === 'win32' && !xdgConfigHome ? 'GitHub CLI' : 'gh';
   const configDirs = new Set<string>();
 
   try {
-    const entries = await readdir(configRoot, { withFileTypes: true });
-    const scopedProfiles = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith('gh-'));
+    const entries = options.readDirectoryNames
+      ? await options.readDirectoryNames(configRoot)
+      : (await readdir(configRoot, { withFileTypes: true })).map((entry) => ({
+          isDirectory: entry.isDirectory(),
+          name: entry.name
+        }));
+    const scopedProfiles = entries.filter((entry) => entry.isDirectory && entry.name.startsWith('gh-'));
 
     for (const entry of scopedProfiles) {
-      configDirs.add(join(configRoot, entry.name));
+      configDirs.add(pathApi.join(configRoot, entry.name));
     }
 
-    if (entries.some((entry) => entry.isDirectory() && entry.name === 'gh')) {
-      configDirs.add(join(configRoot, 'gh'));
+    if (entries.some((entry) => entry.isDirectory && entry.name === defaultDirectoryName)) {
+      configDirs.add(pathApi.join(configRoot, defaultDirectoryName));
     }
   } catch {
     // A missing config root simply means there are no local GitHub CLI profiles.
   }
 
-  if (process.env.GH_CONFIG_DIR) {
-    configDirs.add(process.env.GH_CONFIG_DIR);
+  const configuredDirectory = environmentValue(env, 'GH_CONFIG_DIR', platform);
+
+  if (configuredDirectory) {
+    configDirs.add(configuredDirectory);
   }
 
   return [...configDirs];
 }
 
-export async function findGhExecutable(): Promise<string> {
-  for (const candidate of ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', '/usr/bin/gh']) {
-    try {
-      await access(candidate, constants.X_OK);
+export async function findGhExecutable(options: GitHubCliDiscoveryOptions = {}): Promise<string> {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const pathApi = platform === 'win32' ? win32 : posix;
+  const configuredPath = environmentValue(env, 'GH_PATH', platform)?.trim();
+  const pathDelimiter = platform === 'win32' ? ';' : delimiter;
+  const executableName = platform === 'win32' ? 'gh.exe' : 'gh';
+  const pathCandidates = (environmentValue(env, 'PATH', platform) ?? '')
+    .split(pathDelimiter)
+    .map((directory) => directory.trim())
+    .filter(Boolean)
+    .map((directory) => pathApi.join(directory, executableName));
+  const candidates = configuredPath
+    ? [configuredPath]
+    : platform === 'win32'
+      ? [...pathCandidates, ...knownWindowsGhPaths(env)]
+      : knownMacGhPaths;
+
+  for (const candidate of new Set(candidates)) {
+    const executable = options.isExecutable
+      ? await options.isExecutable(candidate)
+      : await canExecute(candidate);
+
+    if (executable) {
       return candidate;
-    } catch {
-      // Continue through the common macOS install locations.
     }
   }
 
-  throw new Error('GitHub CLI was not found. Install gh to connect an account.');
+  if (configuredPath) {
+    throw new Error(`The configured GitHub CLI executable is unavailable: ${configuredPath}`);
+  }
+
+  throw new Error('GitHub CLI was not found. Install gh or configure GH_PATH to connect an account.');
+}
+
+const knownMacGhPaths = ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', '/usr/bin/gh'];
+
+function knownWindowsGhPaths(env: NodeJS.ProcessEnv): string[] {
+  const localAppData = environmentValue(env, 'LOCALAPPDATA', 'win32');
+  const programFiles = environmentValue(env, 'ProgramFiles', 'win32');
+  const programFilesX86 = environmentValue(env, 'ProgramFiles(x86)', 'win32');
+  const userProfile = environmentValue(env, 'USERPROFILE', 'win32');
+  const chocolateyInstall = environmentValue(env, 'ChocolateyInstall', 'win32');
+
+  return [
+    localAppData && win32.join(localAppData, 'Programs', 'GitHub CLI', 'gh.exe'),
+    programFiles && win32.join(programFiles, 'GitHub CLI', 'gh.exe'),
+    programFilesX86 && win32.join(programFilesX86, 'GitHub CLI', 'gh.exe'),
+    userProfile && win32.join(userProfile, 'scoop', 'shims', 'gh.exe'),
+    chocolateyInstall && win32.join(chocolateyInstall, 'bin', 'gh.exe')
+  ].filter((candidate): candidate is string => Boolean(candidate));
+}
+
+async function canExecute(candidate: string): Promise<boolean> {
+  try {
+    await access(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function environmentValue(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform): string | undefined {
+  if (platform !== 'win32') {
+    return env[name];
+  }
+
+  const matchingKey = Object.keys(env).find((key) => key.toLowerCase() === name.toLowerCase());
+  return matchingKey ? env[matchingKey] : undefined;
 }
 
 function runGitHubAuthStatus(executable: string, configDir: string): Promise<string> {

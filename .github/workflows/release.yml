@@ -238,6 +238,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Test Windows integration seams
+        run: >-
+          pnpm exec vitest run
+          src/main/git/exec.test.ts
+          src/main/externalApplications.test.ts
+          src/main/system.test.ts
+          src/main/profiles.test.ts
+          src/main/piHarness.test.ts
+          src/main/updater.test.ts
+          src/renderer/src/components/statusbar/StatusBar.test.tsx
+
       - name: Build portable Windows application
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"

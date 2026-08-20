@@ -189,7 +189,7 @@ export function ApplicationUpdateButton({
       : state.status === 'manual-update-required'
         ? {
             icon: <Download size={11} />,
-            label: isApplying ? 'Opening release…' : 'Get signed release',
+            label: isApplying ? 'Opening release…' : 'Download latest release',
             title: state.message
           }
         : {

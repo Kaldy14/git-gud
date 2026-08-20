@@ -1,24 +1,102 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { openExternal } = vi.hoisted(() => ({
-  openExternal: vi.fn<(...args: unknown[]) => Promise<void>>()
+const { openExternal, openPath, showItemInFolder } = vi.hoisted(() => ({
+  openExternal: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  openPath: vi.fn<(...args: unknown[]) => Promise<string>>(),
+  showItemInFolder: vi.fn<(...args: unknown[]) => void>()
 }));
 
 vi.mock('electron', () => ({
   shell: {
-    openExternal
+    openExternal,
+    openPath,
+    showItemInFolder
   }
 }));
 
 import {
   addCodexWorktreeContext,
   openCodexTaskForRepository,
+  openRepositoryFileInEditor,
+  revealRepositoryFileInFinder,
   resolveCodexProjectPath
 } from './system';
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('repository file integration', () => {
+  it('opens an existing repository file with the platform shell', async () => {
+    const repositoryPath = await mkdtemp(join(tmpdir(), 'git-gud-system-'));
+    const filePath = join(repositoryPath, 'src', 'example.ts');
+
+    try {
+      await mkdir(join(repositoryPath, 'src'), { recursive: true });
+      await writeFile(filePath, 'export {};');
+      openPath.mockResolvedValueOnce('');
+
+      const result = await openRepositoryFileInEditor({ path: repositoryPath }, 'src/example.ts');
+
+      expect(openPath).toHaveBeenCalledWith(filePath);
+      expect(result.repoPath).toBe(repositoryPath);
+      expect(result.happenedAt).toEqual(expect.any(String));
+    } finally {
+      await rm(repositoryPath, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a platform-shell failure when a file cannot be opened', async () => {
+    const repositoryPath = await mkdtemp(join(tmpdir(), 'git-gud-system-'));
+    const filePath = join(repositoryPath, 'example.ts');
+
+    try {
+      await writeFile(filePath, 'export {};');
+      openPath.mockResolvedValueOnce('No application is associated with the specified file.');
+
+      await expect(openRepositoryFileInEditor({ path: repositoryPath }, 'example.ts')).rejects.toThrow(
+        'Unable to open file.'
+      );
+    } finally {
+      await rm(repositoryPath, { recursive: true, force: true });
+    }
+  });
+
+  it('reveals the nearest existing parent for a missing repository path', async () => {
+    const repositoryPath = await mkdtemp(join(tmpdir(), 'git-gud-system-'));
+    const existingDirectory = join(repositoryPath, 'src');
+
+    try {
+      await mkdir(existingDirectory);
+
+      const result = await revealRepositoryFileInFinder(
+        { path: repositoryPath },
+        'src/missing/example.ts'
+      );
+
+      expect(showItemInFolder).toHaveBeenCalledWith(existingDirectory);
+      expect(result.repoPath).toBe(repositoryPath);
+    } finally {
+      await rm(repositoryPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects paths outside the repository before calling the platform shell', async () => {
+    await expect(openRepositoryFileInEditor({ path: '/repo' }, '../secret.txt')).rejects.toThrow(
+      'File path must stay inside the repository.'
+    );
+    await expect(revealRepositoryFileInFinder({ path: '/repo' }, '../secret.txt')).rejects.toThrow(
+      'File path must stay inside the repository.'
+    );
+
+    expect(openPath).not.toHaveBeenCalled();
+    expect(showItemInFolder).not.toHaveBeenCalled();
+  });
+});
 
 describe('Codex task handoff', () => {
   it('keeps a primary checkout as the Codex project and working directory', () => {

@@ -521,6 +521,7 @@ export class GitExecutor {
         cwd: options.cwd,
         env,
         detached: process.platform !== 'win32',
+        windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe']
       });
       const activeCommand: ActiveCommand = {
@@ -759,6 +760,20 @@ export class GitExecutor {
   }
 
   private signalCommand(command: ActiveCommand, signal: NodeJS.Signals): void {
+    if (process.platform === 'win32' && command.child.pid !== undefined) {
+      try {
+        const terminator = spawn(
+          'taskkill.exe',
+          ['/PID', String(command.child.pid), '/T', '/F'],
+          { stdio: 'ignore', windowsHide: true }
+        );
+        terminator.once('error', () => command.child.kill(signal));
+        return;
+      } catch {
+        // Fall back to terminating only the immediate process below.
+      }
+    }
+
     if (command.ownsProcessGroup && command.child.pid !== undefined) {
       try {
         process.kill(-command.child.pid, signal);
@@ -829,29 +844,49 @@ function addKnownMacExecutableDirectoriesToPath(env: NodeJS.ProcessEnv): void {
 }
 
 function gitResolutionKey(env: NodeJS.ProcessEnv): string | undefined {
-  return process.platform === 'darwin'
-    ? `${env.GIT_EXECUTABLE_PATH?.trim() ?? ''}\0${env.PATH ?? ''}`
-    : undefined;
+  if (process.platform === 'darwin') {
+    return `${env.GIT_EXECUTABLE_PATH?.trim() ?? ''}\0${env.PATH ?? ''}`;
+  }
+
+  if (process.platform === 'win32') {
+    return [
+      environmentValue(env, 'GIT_EXECUTABLE_PATH', 'win32')?.trim() ?? '',
+      environmentValue(env, 'PATH', 'win32') ?? '',
+      environmentValue(env, 'LOCALAPPDATA', 'win32') ?? '',
+      environmentValue(env, 'ProgramFiles', 'win32') ?? '',
+      environmentValue(env, 'ProgramFiles(x86)', 'win32') ?? '',
+      environmentValue(env, 'ProgramW6432', 'win32') ?? '',
+      environmentValue(env, 'USERPROFILE', 'win32') ?? '',
+      environmentValue(env, 'ChocolateyInstall', 'win32') ?? ''
+    ].join('\0');
+  }
+
+  return undefined;
 }
 
-export function resolveGitExecutable(env: NodeJS.ProcessEnv): string {
-  if (process.platform !== 'darwin') {
+export function resolveGitExecutable(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (platform !== 'darwin' && platform !== 'win32') {
     return 'git';
   }
 
-  const configuredPath = env.GIT_EXECUTABLE_PATH?.trim();
-  const pathDirectories = (env.PATH ?? '')
+  const configuredPath = environmentValue(env, 'GIT_EXECUTABLE_PATH', platform)?.trim();
+  const pathDirectories = (environmentValue(env, 'PATH', platform) ?? '')
     .split(delimiter)
     .map((directory) => directory.trim())
     .filter(Boolean);
-  const pathCandidates = pathDirectories.map((directory) => join(directory, 'git'));
+  const executableName = platform === 'win32' ? 'git.exe' : 'git';
+  const pathCandidates = pathDirectories.map((directory) => join(directory, executableName));
+  const knownPaths = platform === 'win32' ? knownWindowsGitPaths(env) : knownMacGitPaths;
   const candidates = configuredPath
     ? [configuredPath]
-    : [...pathCandidates, ...knownMacGitPaths];
+    : [...pathCandidates, ...knownPaths];
 
   for (const candidate of new Set(candidates)) {
     if (isExecutable(candidate)) {
-      addGitDirectoryToPath(env, dirname(candidate));
+      addGitDirectoryToPath(env, dirname(candidate), platform);
       return candidate;
     }
   }
@@ -863,9 +898,54 @@ export function resolveGitExecutable(env: NodeJS.ProcessEnv): string {
   throw new Error('Git was not found. Install Git or configure GIT_EXECUTABLE_PATH.');
 }
 
-function addGitDirectoryToPath(env: NodeJS.ProcessEnv, gitDirectory: string): void {
-  const directories = (env.PATH ?? '').split(delimiter).filter(Boolean);
-  env.PATH = [...new Set([gitDirectory, ...directories])].join(delimiter);
+function knownWindowsGitPaths(env: NodeJS.ProcessEnv): string[] {
+  const localAppData = environmentValue(env, 'LOCALAPPDATA', 'win32');
+  const programFiles = environmentValue(env, 'ProgramFiles', 'win32');
+  const programFilesX86 = environmentValue(env, 'ProgramFiles(x86)', 'win32');
+  const programW6432 = environmentValue(env, 'ProgramW6432', 'win32');
+  const userProfile = environmentValue(env, 'USERPROFILE', 'win32');
+  const chocolateyInstall = environmentValue(env, 'ChocolateyInstall', 'win32');
+
+  return [
+    localAppData && join(localAppData, 'Programs', 'Git', 'cmd', 'git.exe'),
+    programFiles && join(programFiles, 'Git', 'cmd', 'git.exe'),
+    programFilesX86 && join(programFilesX86, 'Git', 'cmd', 'git.exe'),
+    programW6432 && join(programW6432, 'Git', 'cmd', 'git.exe'),
+    userProfile && join(userProfile, 'AppData', 'Local', 'Programs', 'Git', 'cmd', 'git.exe'),
+    userProfile && join(userProfile, 'scoop', 'apps', 'git', 'current', 'cmd', 'git.exe'),
+    chocolateyInstall && join(chocolateyInstall, 'bin', 'git.exe')
+  ].filter((candidate): candidate is string => Boolean(candidate));
+}
+
+function environmentValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  platform: NodeJS.Platform
+): string | undefined {
+  if (platform !== 'win32') {
+    return env[name];
+  }
+
+  if (env[name] !== undefined) {
+    return env[name];
+  }
+
+  const key = Object.keys(env).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+  return key ? env[key] : undefined;
+}
+
+function addGitDirectoryToPath(
+  env: NodeJS.ProcessEnv,
+  gitDirectory: string,
+  platform: NodeJS.Platform = process.platform
+): void {
+  const pathKey = platform === 'win32'
+    ? env.PATH !== undefined
+      ? 'PATH'
+      : Object.keys(env).find((candidate) => candidate.toLowerCase() === 'path') ?? 'PATH'
+    : 'PATH';
+  const directories = (env[pathKey] ?? '').split(delimiter).filter(Boolean);
+  env[pathKey] = [...new Set([gitDirectory, ...directories])].join(delimiter);
 }
 
 function isExecutable(path: string): boolean {

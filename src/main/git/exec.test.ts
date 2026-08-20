@@ -1,6 +1,7 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -10,6 +11,7 @@ import {
   GitOperationCancelledError,
   GitOutputLimitError,
   GitWorkingDirectoryUnavailableError,
+  resolveGitExecutable,
   type GitProgressEvent
 } from './exec';
 
@@ -196,6 +198,23 @@ describe('GitExecutor coordination', () => {
     }
   });
 
+  it('finds a per-user Git for Windows installation when the app PATH is stale', async () => {
+    const localAppData = await mkdtemp(join(tmpdir(), 'git-gud-windows-git-resolution-'));
+    const executable = join(localAppData, 'Programs', 'Git', 'cmd', 'git.exe');
+    await mkdir(join(localAppData, 'Programs', 'Git', 'cmd'), { recursive: true });
+    await writeFile(executable, '');
+    await chmod(executable, 0o755);
+
+    try {
+      const env = { LOCALAPPDATA: localAppData, Path: '' };
+
+      expect(resolveGitExecutable(env, 'win32')).toBe(executable);
+      expect(env.Path).toBe(dirname(executable));
+    } finally {
+      await rm(localAppData, { recursive: true, force: true });
+    }
+  });
+
   it('reports a missing working directory instead of blaming the Git executable', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'git-gud-missing-repository-'));
     const executor = new GitExecutor();
@@ -250,6 +269,46 @@ describe('GitExecutor coordination', () => {
     expect(executor.cancelOperation('operation-1')).toBe(false);
     unsubscribe();
   });
+
+  it.runIf(process.platform === 'win32')(
+    'terminates Git descendants when an operation is cancelled',
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'git-gud-windows-process-tree-'));
+      const startedMarker = join(directory, 'started.txt');
+      const orphanMarker = join(directory, 'orphaned.txt');
+      const executor = new GitExecutor();
+      let started = false;
+      const unsubscribe = executor.onProgress((event) => {
+        if (event.type === 'start' && event.operationId === 'windows-process-tree') {
+          started = true;
+        }
+      });
+
+      try {
+        await executor.run(['init'], { cwd: directory, kind: 'mutation' });
+        const command = executor.withProgressContext('windows-process-tree', () =>
+          executor.run(
+            [
+              '-c',
+              'alias.pause=!printf started > started.txt; sleep 3; printf orphaned > orphaned.txt',
+              'pause'
+            ],
+            { cwd: directory, cancellable: true }
+          )
+        );
+
+        await until(() => started && existsSync(startedMarker));
+        expect(executor.cancelOperation('windows-process-tree')).toBe(true);
+        await expect(command).rejects.toThrow();
+        await new Promise((resolve) => setTimeout(resolve, 3_500));
+        expect(existsSync(orphanMarker)).toBe(false);
+        await executor.waitForIdle();
+      } finally {
+        unsubscribe();
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
 
   it('cancels a queued operation by id without terminating an uncorrelated read', async () => {
     const executor = new GitExecutor();

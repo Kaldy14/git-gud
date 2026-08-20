@@ -254,11 +254,32 @@ describe('ApplicationUpdater', () => {
     expect(openManualDownload).toHaveBeenCalledOnce();
   });
 
+  it('offers the release download for packaged portable Windows builds', () => {
+    const { updater, transport, openManualDownload } = createUpdater({
+      platform: 'win32',
+      architecture: 'x64',
+      automaticUpdatesEnabled: false
+    });
+
+    expect(updater.isSupported).toBe(true);
+    expect(updater.supportsAutomaticUpdates).toBe(false);
+    expect(updater.getState()).toEqual({
+      status: 'manual-update-required',
+      message:
+        'Automatic updates are not available for portable Windows builds. Download the latest release to update Git Gud.'
+    });
+    expect(transport.feedUrl).toBeUndefined();
+
+    updater.applyUpdate();
+    expect(openManualDownload).toHaveBeenCalledOnce();
+  });
+
   it('does not initialize outside supported packaged macOS architectures', () => {
     for (const options of [
       { isPackaged: false, platform: 'darwin' as const, architecture: 'arm64' },
       { isPackaged: true, platform: 'linux' as const, architecture: 'x64' },
-      { isPackaged: true, platform: 'darwin' as const, architecture: 'ia32' }
+      { isPackaged: true, platform: 'darwin' as const, architecture: 'ia32' },
+      { isPackaged: true, platform: 'win32' as const, architecture: 'arm64' }
     ]) {
       const transport = new FakeUpdateTransport();
       const updater = createUpdater({ transport, ...options }).updater;

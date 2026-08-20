@@ -11,6 +11,8 @@ import { commitChanges, stageFile } from './git/repositoryDetails';
 import {
   assignProfileToRepository,
   createProfileCommandEnv,
+  findGhExecutable,
+  findGitHubCliConfigDirs,
   getRepoProfileState,
   normalizeStoredProfiles,
   parseGitHubAuthStatus,
@@ -18,6 +20,80 @@ import {
 } from './profiles';
 
 describe('repository profiles', () => {
+  it('finds gh.exe from case-insensitive Windows GH_PATH and PATH variables', async () => {
+    const configuredPath = String.raw`C:\Tools\GitHub CLI\gh.exe`;
+
+    expect(
+      await findGhExecutable({
+        env: { gh_path: configuredPath },
+        platform: 'win32',
+        isExecutable: async (candidate) => candidate === configuredPath
+      })
+    ).toBe(configuredPath);
+
+    const pathExecutable = String.raw`C:\Users\example\bin\gh.exe`;
+    expect(
+      await findGhExecutable({
+        env: { Path: String.raw`C:\Missing;C:\Users\example\bin` },
+        platform: 'win32',
+        isExecutable: async (candidate) => candidate === pathExecutable
+      })
+    ).toBe(pathExecutable);
+  });
+
+  it('finds gh.exe in common Windows installation directories', async () => {
+    const installedExecutable = String.raw`C:\Program Files\GitHub CLI\gh.exe`;
+
+    expect(
+      await findGhExecutable({
+        env: { PATH: '', PROGRAMFILES: String.raw`C:\Program Files` },
+        platform: 'win32',
+        isExecutable: async (candidate) => candidate === installedExecutable
+      })
+    ).toBe(installedExecutable);
+  });
+
+  it('discovers the Windows GitHub CLI config directory under AppData', async () => {
+    const appData = String.raw`C:\Users\example\AppData\Roaming`;
+    const visitedDirectories: string[] = [];
+
+    expect(
+      await findGitHubCliConfigDirs({
+        env: {
+          AppData: appData,
+          gh_config_dir: String.raw`D:\GitHub\custom`
+        },
+        platform: 'win32',
+        readDirectoryNames: async (directory) => {
+          visitedDirectories.push(directory);
+          return [
+            { isDirectory: true, name: 'GitHub CLI' },
+            { isDirectory: true, name: 'gh-work' },
+            { isDirectory: false, name: 'gh-file' }
+          ];
+        }
+      })
+    ).toEqual([
+      String.raw`C:\Users\example\AppData\Roaming\gh-work`,
+      String.raw`C:\Users\example\AppData\Roaming\GitHub CLI`,
+      String.raw`D:\GitHub\custom`
+    ]);
+    expect(visitedDirectories).toEqual([appData]);
+  });
+
+  it('preserves XDG-based GitHub CLI config discovery', async () => {
+    expect(
+      await findGitHubCliConfigDirs({
+        env: { XDG_CONFIG_HOME: '/custom/config' },
+        platform: 'darwin',
+        readDirectoryNames: async () => [
+          { isDirectory: true, name: 'gh-personal' },
+          { isDirectory: true, name: 'gh' }
+        ]
+      })
+    ).toEqual(['/custom/config/gh-personal', '/custom/config/gh']);
+  });
+
   it('skips malformed persisted profile records without breaking valid profiles', () => {
     const valid = profile('valid-persisted', {
       remoteUrlPatterns: ['github.com/example']

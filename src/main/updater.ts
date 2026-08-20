@@ -11,8 +11,10 @@ const updateServerBaseUrl = 'https://update.electronjs.org/Kaldy14/git-gud';
 const updaterBundleIdentifier = 'dev.kaldy.git-gud';
 const updaterDeveloperTeamId = 'G6L7T68JBX';
 const supportedArchitectures = new Set(['arm64', 'x64']);
-const manualUpdateMessage =
+const manualMacUpdateMessage =
   'This copy was built locally and cannot replace itself safely. Download the signed release once; automatic updates will work after that.';
+const manualWindowsUpdateMessage =
+  'Automatic updates are not available for portable Windows builds. Download the latest release to update Git Gud.';
 
 export interface UpdateTransport {
   setFeedUrl: (url: string) => void;
@@ -66,10 +68,12 @@ export class ApplicationUpdater {
     this.logError = options.logError ?? (() => undefined);
     this.isSupported =
       options.isPackaged &&
-      options.platform === 'darwin' &&
-      supportedArchitectures.has(options.architecture);
+      ((options.platform === 'darwin' && supportedArchitectures.has(options.architecture)) ||
+        (options.platform === 'win32' && options.architecture === 'x64'));
     this.supportsAutomaticUpdates =
-      this.isSupported && (options.automaticUpdatesEnabled ?? true);
+      this.isSupported &&
+      options.platform === 'darwin' &&
+      (options.automaticUpdatesEnabled ?? true);
 
     if (!this.isSupported) {
       return;
@@ -78,7 +82,10 @@ export class ApplicationUpdater {
     if (!this.supportsAutomaticUpdates) {
       this.state = {
         status: 'manual-update-required',
-        message: manualUpdateMessage
+        message:
+          options.platform === 'win32'
+            ? manualWindowsUpdateMessage
+            : manualMacUpdateMessage
       };
       return;
     }
@@ -214,7 +221,7 @@ export class ApplicationUpdater {
     if (isCodeSignatureError(error)) {
       this.setState({
         status: 'manual-update-required',
-        message: manualUpdateMessage
+        message: manualMacUpdateMessage
       });
       return;
     }

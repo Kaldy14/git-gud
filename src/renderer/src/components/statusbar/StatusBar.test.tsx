@@ -70,9 +70,9 @@ describe('ApplicationUpdateButton', () => {
       {
         state: {
           status: 'manual-update-required',
-          message: 'Download the signed release once.'
+          message: 'Download the latest release.'
         } as const,
-        label: 'Get signed release'
+        label: 'Download latest release'
       },
       {
         state: { status: 'error', message: 'Check your connection, then retry.' } as const,

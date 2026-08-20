@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -13,7 +12,11 @@ type CodexTab = Pick<RepoTab, 'path' | 'gitDir' | 'commonDir'>;
 export async function openRepositoryFileInEditor(tab: FileTab, relativePath: string): Promise<GitOperationResult> {
   const targetPath = resolveRepositoryChildPath(tab.path, relativePath);
   await access(targetPath);
-  await openMacTarget(['-t', targetPath]);
+  const errorMessage = await shell.openPath(targetPath);
+
+  if (errorMessage) {
+    throw new Error('Unable to open file.');
+  }
 
   return createSystemOperationResult(tab.path);
 }
@@ -21,7 +24,7 @@ export async function openRepositoryFileInEditor(tab: FileTab, relativePath: str
 export async function revealRepositoryFileInFinder(tab: FileTab, relativePath: string): Promise<GitOperationResult> {
   const targetPath = resolveRepositoryChildPath(tab.path, relativePath);
   const revealPath = await findNearestExistingPath(targetPath, tab.path);
-  await openMacTarget(['-R', revealPath]);
+  shell.showItemInFolder(revealPath);
 
   return createSystemOperationResult(tab.path);
 }
@@ -63,24 +66,6 @@ export function addCodexWorktreeContext(prompt: string, worktreePath: string, pr
     'Run all repository reads, edits, Git commands, and validation there. Do not create a new worktree or modify the primary checkout.',
     prompt
   ].join('\n\n');
-}
-
-function openMacTarget(args: string[], errorMessage = 'Unable to open file.'): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn('open', args, {
-      stdio: 'ignore'
-    });
-
-    child.on('error', reject);
-    child.on('close', (exitCode) => {
-      if (exitCode === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(errorMessage));
-    });
-  });
 }
 
 function resolveRepositoryChildPath(repoPath: string, relativePath: string): string {

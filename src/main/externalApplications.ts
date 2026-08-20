@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { promisify } from 'node:util';
 
 import { app, nativeImage } from 'electron';
@@ -18,6 +18,8 @@ type ExternalApplicationSpec = {
   paths: readonly string[];
   iconFile: string;
   waitCliRelativePath?: string;
+  windowsExecutable?: string;
+  windowsInstallDirectories?: readonly string[];
 };
 
 type InstalledExternalApplication = ExternalApplication & {
@@ -39,7 +41,9 @@ const applicationSpecs: readonly ExternalApplicationSpec[] = [
     bundleId: 'com.microsoft.VSCode',
     paths: ['/Applications/Visual Studio Code.app'],
     iconFile: 'Code.icns',
-    waitCliRelativePath: 'Contents/Resources/app/bin/code'
+    waitCliRelativePath: 'Contents/Resources/app/bin/code',
+    windowsExecutable: 'Code.exe',
+    windowsInstallDirectories: ['Programs\\Microsoft VS Code', 'Microsoft VS Code']
   },
   {
     id: 'cursor',
@@ -47,7 +51,9 @@ const applicationSpecs: readonly ExternalApplicationSpec[] = [
     bundleId: 'com.todesktop.230313mzl4w4u92',
     paths: ['/Applications/Cursor.app'],
     iconFile: 'Cursor.icns',
-    waitCliRelativePath: 'Contents/Resources/app/bin/cursor'
+    waitCliRelativePath: 'Contents/Resources/app/bin/cursor',
+    windowsExecutable: 'Cursor.exe',
+    windowsInstallDirectories: ['Programs\\cursor', 'Cursor']
   },
   {
     id: 'zed',
@@ -125,19 +131,12 @@ export async function launchExternalApplication(
     throw new Error('That application is no longer installed.');
   }
 
-  const launch = installedApplication.waitCliPath
-    ? await spawnObserved(installedApplication.waitCliPath, [
-        '--new-window',
-        '--wait',
-        worktreePath
-      ])
-    : await spawnObserved('/usr/bin/open', [
-        '-W',
-        '-n',
-        '-a',
-        installedApplication.appPath,
-        worktreePath
-      ]);
+  const command = externalApplicationLaunchCommand(
+    installedApplication,
+    worktreePath,
+    process.platform
+  );
+  const launch = await spawnObserved(command.executable, command.args);
 
   return {
     application: {
@@ -151,7 +150,7 @@ export async function launchExternalApplication(
 
 async function loadInstalledExternalApplications(): Promise<InstalledExternalApplication[]> {
   installedApplicationsPromise ??= Promise.all(
-    applicationSpecs.map(resolveInstalledApplication)
+    supportedApplicationSpecs().map(resolveInstalledApplication)
   ).then((applications) =>
     applications.filter(
       (application): application is InstalledExternalApplication => Boolean(application)
@@ -171,10 +170,14 @@ async function resolveInstalledApplication(
   }
 
   try {
-    const iconDataUrl = await loadApplicationIconDataUrl(appPath, spec.iconFile);
-    const waitCliPath = spec.waitCliRelativePath
-      ? `${appPath}/${spec.waitCliRelativePath}`
-      : undefined;
+    const iconDataUrl = process.platform === 'win32'
+      ? (await app.getFileIcon(appPath, { size: 'normal' })).toDataURL()
+      : await loadApplicationIconDataUrl(appPath, spec.iconFile);
+    const waitCliPath = process.platform === 'win32'
+      ? appPath
+      : spec.waitCliRelativePath
+        ? `${appPath}/${spec.waitCliRelativePath}`
+        : undefined;
 
     return {
       id: spec.id,
@@ -273,6 +276,14 @@ async function resolveDeclaredIconPath(appPath: string): Promise<string | undefi
 }
 
 async function resolveApplicationPath(spec: ExternalApplicationSpec): Promise<string | undefined> {
+  if (process.platform === 'win32') {
+    return resolveWindowsApplicationPath(spec, process.env, pathExists);
+  }
+
+  if (process.platform !== 'darwin') {
+    return undefined;
+  }
+
   for (const candidate of spec.paths) {
     if (await pathExists(candidate)) {
       return candidate;
@@ -315,7 +326,8 @@ function spawnObserved(executable: string, args: readonly string[]): Promise<Ext
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       detached: false,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      windowsHide: true
     });
     let started = false;
     let resolveClosed: (() => void) | undefined;
@@ -340,3 +352,90 @@ function spawnObserved(executable: string, args: readonly string[]): Promise<Ext
     });
   });
 }
+
+function supportedApplicationSpecs(
+  platform: NodeJS.Platform = process.platform
+): readonly ExternalApplicationSpec[] {
+  if (platform === 'win32') {
+    return applicationSpecs.filter((spec) => spec.windowsExecutable);
+  }
+
+  return platform === 'darwin' ? applicationSpecs : [];
+}
+
+function windowsApplicationPaths(
+  spec: ExternalApplicationSpec,
+  environment: NodeJS.ProcessEnv
+): string[] {
+  if (!spec.windowsExecutable || !spec.windowsInstallDirectories) {
+    return [];
+  }
+
+  const localAppData = getEnvironmentValue(environment, 'LOCALAPPDATA');
+  const programFiles = [
+    getEnvironmentValue(environment, 'ProgramFiles'),
+    getEnvironmentValue(environment, 'ProgramFiles(x86)')
+  ];
+  const candidates: string[] = [];
+
+  for (const directory of spec.windowsInstallDirectories) {
+    const isPerUserDirectory = directory.startsWith('Programs\\');
+    const roots = isPerUserDirectory ? [localAppData] : programFiles;
+
+    for (const root of roots) {
+      if (root) {
+        candidates.push(win32.join(root, directory, spec.windowsExecutable));
+      }
+    }
+  }
+
+  return [...new Set(candidates)];
+}
+
+async function resolveWindowsApplicationPath(
+  spec: ExternalApplicationSpec,
+  environment: NodeJS.ProcessEnv,
+  exists: (path: string) => Promise<boolean>
+): Promise<string | undefined> {
+  for (const candidate of windowsApplicationPaths(spec, environment)) {
+    if (await exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function externalApplicationLaunchCommand(
+  application: Pick<InstalledExternalApplication, 'appPath' | 'waitCliPath'>,
+  worktreePath: string,
+  platform: NodeJS.Platform
+): { executable: string; args: string[] } {
+  if (platform === 'win32' || application.waitCliPath) {
+    return {
+      executable: application.waitCliPath ?? application.appPath,
+      args: ['--new-window', '--wait', worktreePath]
+    };
+  }
+
+  return {
+    executable: '/usr/bin/open',
+    args: ['-W', '-n', '-a', application.appPath, worktreePath]
+  };
+}
+
+function getEnvironmentValue(
+  environment: NodeJS.ProcessEnv,
+  name: string
+): string | undefined {
+  const matchingKey = Object.keys(environment)
+    .find((key) => key.toLowerCase() === name.toLowerCase());
+  return matchingKey ? environment[matchingKey] : undefined;
+}
+
+export const externalApplicationsTestUtils = {
+  externalApplicationLaunchCommand,
+  resolveWindowsApplicationPath,
+  supportedApplicationSpecs,
+  windowsApplicationPaths
+};
