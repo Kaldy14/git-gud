@@ -18,6 +18,7 @@ const GITHUB_ACTIONS_REFETCH_INTERVAL_MS = 15_000;
 const GITHUB_ACTIONS_FILTERED_REFETCH_INTERVAL_MS = 60_000;
 const GITHUB_ACTIONS_BACKGROUND_MONITOR_INTERVAL_MS = 5 * 60_000;
 const GITHUB_PULL_REQUEST_INTERACTIVE_REFETCH_INTERVAL_MS = 15_000;
+const GITHUB_WORKFLOW_RUN_FAILED_LOG_GC_TIME_MS = 30 * 60_000;
 
 export type GitHubPollingMode = 'interactive' | 'background-monitor';
 
@@ -62,6 +63,33 @@ export const gitHubWorkflowRunDetailQueryKey = (
   input.repository,
   input.runId
 ];
+
+export const gitHubWorkflowRunFailedLogQueryKey = (
+  input: GitHubWorkflowRunFailureInput
+): readonly ['github-workflow-run-failed-log', string, string, string, number] => [
+  'github-workflow-run-failed-log',
+  input.profileId,
+  input.owner,
+  input.repository,
+  input.runId
+];
+
+export const gitHubWorkflowRunFailedLogQueryOptions = (
+  input: GitHubWorkflowRunFailureInput
+) => ({
+  queryKey: gitHubWorkflowRunFailedLogQueryKey(input),
+  queryFn: (): Promise<string> => window.api.getGitHubWorkflowRunFailedLog(input),
+  staleTime: Number.POSITIVE_INFINITY,
+  gcTime: GITHUB_WORKFLOW_RUN_FAILED_LOG_GC_TIME_MS,
+  retry: false
+});
+
+export async function prefetchGitHubWorkflowRunFailedLog(
+  queryClient: QueryClient,
+  input: GitHubWorkflowRunFailureInput
+): Promise<void> {
+  await queryClient.prefetchQuery(gitHubWorkflowRunFailedLogQueryOptions(input));
+}
 
 export const gitHubPullRequestInboxQueryKey = (
   profileId: string

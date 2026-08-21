@@ -4,7 +4,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactElement
 } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BellRing,
@@ -37,6 +37,8 @@ import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
 import {
   dashboardsQueryKey,
+  gitHubWorkflowRunFailedLogQueryOptions,
+  prefetchGitHubWorkflowRunFailedLog,
   useDashboards,
   useGitHubActionsRuns,
   useGitHubRepositories
@@ -1180,6 +1182,7 @@ function GitHubActionsTile({
   onEdit,
   onRemove
 }: GitHubActionsTileProps): ReactElement {
+  const queryClient = useQueryClient();
   const runsQuery = useGitHubActionsRuns(
     profileId
       ? {
@@ -1192,7 +1195,10 @@ function GitHubActionsTile({
         }
       : undefined
   );
-  const runs = runsQuery.data?.runs ?? [];
+  const runs = useMemo(
+    () => runsQuery.data?.runs ?? [],
+    [runsQuery.data?.runs]
+  );
   const pullRequests = runsQuery.data?.pullRequests;
   const [pullRequestExpansionOverrides, setPullRequestExpansionOverrides] =
     useState<Map<number, boolean>>(() => new Map());
@@ -1218,6 +1224,32 @@ function GitHubActionsTile({
           pullRequestCount === 1 ? 'PR' : 'PRs'
         }` : ''}`
       : filterSummary;
+
+  useEffect(() => {
+    if (!profileId) {
+      return;
+    }
+
+    for (const run of runs) {
+      if (workflowRunPresentation(run).tone !== 'danger') {
+        continue;
+      }
+
+      void prefetchGitHubWorkflowRunFailedLog(queryClient, {
+        profileId,
+        owner: tile.owner,
+        repository: tile.repository,
+        runId: run.id
+      });
+    }
+  }, [
+    profileId,
+    queryClient,
+    runs,
+    runsQuery.data?.loadedAt,
+    tile.owner,
+    tile.repository
+  ]);
 
   return (
     <article
@@ -1569,7 +1601,7 @@ function WorkflowRunFailureContextMenu({
   actions: WorkflowRunFailureActionsContext;
   children: ReactElement;
 }): ReactElement {
-  const failedLogPromiseRef = useRef<Promise<string> | undefined>(undefined);
+  const queryClient = useQueryClient();
   const profileId = actions.profileId;
   const isFailure =
     workflowRunPresentation(run).tone === 'danger' && Boolean(profileId);
@@ -1578,23 +1610,17 @@ function WorkflowRunFailureContextMenu({
     return children;
   }
   const connectedProfileId = profileId;
+  const failedLogInput = {
+    profileId: connectedProfileId,
+    owner: actions.owner,
+    repository: actions.repository,
+    runId: run.id
+  };
 
   function loadFailedLog(): Promise<string> {
-    if (!failedLogPromiseRef.current) {
-      failedLogPromiseRef.current = window.api
-        .getGitHubWorkflowRunFailedLog({
-          profileId: connectedProfileId,
-          owner: actions.owner,
-          repository: actions.repository,
-          runId: run.id
-        })
-        .catch((error: unknown) => {
-          failedLogPromiseRef.current = undefined;
-          throw error;
-        });
-    }
-
-    return failedLogPromiseRef.current;
+    return queryClient.fetchQuery(
+      gitHubWorkflowRunFailedLogQueryOptions(failedLogInput)
+    );
   }
 
   async function copyFailure(): Promise<void> {

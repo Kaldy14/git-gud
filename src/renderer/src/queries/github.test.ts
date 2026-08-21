@@ -10,10 +10,13 @@ import {
   gitHubActionsRunsQueryKey,
   gitHubActionsRunsQueryOptions,
   gitHubActionsRunsRefetchInterval,
+  gitHubWorkflowRunFailedLogQueryKey,
+  gitHubWorkflowRunFailedLogQueryOptions,
   gitHubPullRequestInboxRefetchInterval,
   gitHubPullRequestInboxQueryOptions,
   gitHubPullRequestInboxQueryKey,
   gitHubPullRequestReviewPlanQueryKey,
+  prefetchGitHubWorkflowRunFailedLog,
   refreshGitHubPullRequestInboxAfterMerge
 } from './github';
 
@@ -90,6 +93,68 @@ describe('GitHub Actions run queries', () => {
     expect(options.refetchOnWindowFocus).toBe('always');
     expect(options.refetchIntervalInBackground).toBe(false);
     expect(options.refetchInterval).toBe(15_000);
+  });
+});
+
+describe('GitHub workflow run failed-log queries', () => {
+  const input = {
+    profileId: 'profile',
+    owner: 'owner',
+    repository: 'repository',
+    runId: 42
+  };
+
+  it('keys failed logs by profile, repository, and run', () => {
+    expect(gitHubWorkflowRunFailedLogQueryKey(input)).toEqual([
+      'github-workflow-run-failed-log',
+      'profile',
+      'owner',
+      'repository',
+      42
+    ]);
+  });
+
+  it('reuses the prefetched failed log when the action loads it', async () => {
+    const queryClient = new QueryClient();
+    const getGitHubWorkflowRunFailedLog = vi.fn(async () => 'Build failed');
+    vi.stubGlobal('window', {
+      api: { getGitHubWorkflowRunFailedLog }
+    });
+
+    try {
+      await prefetchGitHubWorkflowRunFailedLog(queryClient, input);
+
+      await expect(
+        queryClient.fetchQuery(gitHubWorkflowRunFailedLogQueryOptions(input))
+      ).resolves.toBe('Build failed');
+      expect(getGitHubWorkflowRunFailedLog).toHaveBeenCalledOnce();
+    } finally {
+      queryClient.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('retries on demand after a background prefetch fails', async () => {
+    const queryClient = new QueryClient();
+    const getGitHubWorkflowRunFailedLog = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error('GitHub unavailable'))
+      .mockResolvedValueOnce('Build failed');
+    vi.stubGlobal('window', {
+      api: { getGitHubWorkflowRunFailedLog }
+    });
+
+    try {
+      await prefetchGitHubWorkflowRunFailedLog(queryClient, input);
+
+      await expect(
+        queryClient.fetchQuery(gitHubWorkflowRunFailedLogQueryOptions(input))
+      ).resolves.toBe('Build failed');
+      expect(getGitHubWorkflowRunFailedLog).toHaveBeenCalledTimes(2);
+    } finally {
+      queryClient.clear();
+      vi.unstubAllGlobals();
+    }
   });
 });
 
