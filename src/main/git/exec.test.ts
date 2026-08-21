@@ -3,7 +3,7 @@ import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   GitCommandTimeoutError,
@@ -297,7 +297,10 @@ describe('GitExecutor coordination', () => {
           )
         );
 
-        await until(() => started && existsSync(startedMarker));
+        await vi.waitFor(
+          () => expect(started && existsSync(startedMarker)).toBe(true),
+          { timeout: 5_000, interval: 10 }
+        );
         expect(executor.cancelOperation('windows-process-tree')).toBe(true);
         await expect(command).rejects.toThrow();
         await new Promise((resolve) => setTimeout(resolve, 3_500));
@@ -305,7 +308,13 @@ describe('GitExecutor coordination', () => {
         await executor.waitForIdle();
       } finally {
         unsubscribe();
-        await rm(directory, { recursive: true, force: true });
+        await executor.shutdown();
+        await rm(directory, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100
+        });
       }
     }
   );

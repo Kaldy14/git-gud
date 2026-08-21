@@ -629,7 +629,7 @@ export class GitExecutor {
         queueProgress('stderr', text);
       });
       child.stdin.on('error', (error: NodeJS.ErrnoException) => {
-        if (error.code !== 'EPIPE') {
+        if (error.code !== 'EPIPE' && error.code !== 'EOF') {
           spawnError = error;
         }
       });

@@ -100,7 +100,7 @@ describe('repository file integration', () => {
 
 describe('Codex task handoff', () => {
   it('keeps a primary checkout as the Codex project and working directory', () => {
-    const repositoryPath = '/Users/example/Data/Vosime/hive';
+    const repositoryPath = join(tmpdir(), 'git-gud-codex-handoff', 'Data', 'Vosime', 'hive');
 
     expect(
       resolveCodexProjectPath({
@@ -115,8 +115,9 @@ describe('Codex task handoff', () => {
   });
 
   it('groups a linked worktree under its primary checkout and preserves the worktree for execution', () => {
-    const projectPath = '/Users/example/Data/Vosime/hive';
-    const worktreePath = '/Users/example/.codex/worktrees/3243/hive';
+    const fixtureRoot = join(tmpdir(), 'git-gud-codex-handoff');
+    const projectPath = join(fixtureRoot, 'Data', 'Vosime', 'hive');
+    const worktreePath = join(fixtureRoot, '.codex', 'worktrees', '3243', 'hive');
 
     expect(
       resolveCodexProjectPath({
@@ -136,13 +137,14 @@ describe('Codex task handoff', () => {
   });
 
   it('falls back to the opened checkout for nonstandard shared Git directories', () => {
-    const worktreePath = '/Users/example/worktrees/hive';
+    const fixtureRoot = join(tmpdir(), 'git-gud-codex-handoff');
+    const worktreePath = join(fixtureRoot, 'worktrees', 'hive');
 
     expect(
       resolveCodexProjectPath({
         path: worktreePath,
-        gitDir: '/Users/example/git-data/worktrees/hive',
-        commonDir: '/Users/example/git-data'
+        gitDir: join(fixtureRoot, 'git-data', 'worktrees', 'hive'),
+        commonDir: join(fixtureRoot, 'git-data')
       })
     ).toBe(worktreePath);
   });
