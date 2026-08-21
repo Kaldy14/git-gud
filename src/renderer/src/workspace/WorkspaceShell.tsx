@@ -2147,6 +2147,25 @@ export function WorkspaceShell(): ReactElement {
     );
   }
 
+  function handlePushBranchWithTag(name: string, tagName: string): void {
+    const branch = repositoryQuery.data?.refs.localBranches.find((candidate) => candidate.name === name);
+
+    if (!branch) {
+      return;
+    }
+
+    setPushRejectionPrompt(undefined);
+    void runRepositoryOperation(
+      `Push ${name} & Push ${tagName}`,
+      (repoPath) =>
+        window.api.publishBranchWithTag(repoPath, {
+          branch: name,
+          expectedLocalSha: branch.sha,
+          tagName
+        })
+    );
+  }
+
   function handlePullRejectedBranch(prompt: PushRejectionPrompt): void {
     setPushRejectionPrompt(undefined);
 
@@ -3420,6 +3439,7 @@ export function WorkspaceShell(): ReactElement {
               onCopyBranchName={handleCopyBranchName}
               onPullBranch={handlePullBranch}
               onPushBranch={handlePushBranch}
+              onPushBranchWithTag={handlePushBranchWithTag}
               onSetBranchUpstream={handleSetBranchUpstream}
               onRenameBranch={handleRenameBranch}
               onReviewBranch={handleOpenBranchReview}
@@ -3537,6 +3557,7 @@ export function WorkspaceShell(): ReactElement {
                 onCopyBranchName={handleCopyBranchName}
                 onPullBranch={handlePullBranch}
                 onPushBranch={handlePushBranch}
+                onPushBranchWithTag={handlePushBranchWithTag}
                 onSetBranchUpstream={handleSetBranchUpstream}
                 onRenameBranch={handleRenameBranch}
                 onReviewBranch={handleOpenBranchReview}
@@ -3648,6 +3669,7 @@ export function WorkspaceShell(): ReactElement {
                   onCopyBranchName={handleCopyBranchName}
                   onPullBranch={handlePullBranch}
                   onPushBranch={handlePushBranch}
+                  onPushBranchWithTag={handlePushBranchWithTag}
                   onSetBranchUpstream={handleSetBranchUpstream}
                   onRenameBranch={handleRenameBranch}
                   onViewPullRequest={handleViewPullRequest}

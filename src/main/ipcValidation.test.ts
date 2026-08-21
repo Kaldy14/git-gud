@@ -63,6 +63,14 @@ describe('IPC argument validation', () => {
         }
       }
     ]);
+    const publishBranchWithTagArgs = validateIpcArgs('repo:publish-branch-with-tag', [
+      '/repo',
+      {
+        branch: 'main',
+        expectedLocalSha: 'a'.repeat(40),
+        tagName: 'v2026.8.49'
+      }
+    ]);
     const tagArgs = validateIpcArgs('repo:create-tag', [
       '/repo',
       {
@@ -122,6 +130,14 @@ describe('IPC argument validation', () => {
         setUpstream: false
       }
     });
+    expect(publishBranchWithTagArgs).toEqual([
+      '/repo',
+      {
+        branch: 'main',
+        expectedLocalSha: 'a'.repeat(40),
+        tagName: 'v2026.8.49'
+      }
+    ]);
     expect(tagArgs[1]).toEqual({
       name: 'v1.0.0',
       targetSha: 'abc123',
@@ -933,6 +949,12 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:push', ['/repo', { forceWithLease: false, branch: 42 }])).toThrow(
       'branch must be a string.'
     );
+    expect(() =>
+      validateIpcArgs('repo:publish-branch-with-tag', [
+        '/repo',
+        { branch: 'main', expectedLocalSha: 'a'.repeat(40), tagName: 42 }
+      ])
+    ).toThrow('tagName must be a string.');
     expect(() =>
       validateIpcArgs('repo:push', [
         '/repo',

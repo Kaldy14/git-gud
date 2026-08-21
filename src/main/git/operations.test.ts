@@ -18,6 +18,7 @@ import {
   fetchRemote,
   mergeRef,
   pullRepository,
+  publishBranchWithTag,
   pushRepository,
   pushTag,
   setBranchUpstream,
@@ -655,6 +656,41 @@ describe('git operations', () => {
       expect((await git(remotePath, ['rev-parse', 'refs/heads/feature/publish'])).stdout.trim()).toBe(featureHead);
       expect(await branchUpstream(repoPath, 'feature/publish')).toBe('origin/feature/publish');
       expect(result.operation?.label).toBe('Push feature/publish to origin');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes an unpushed branch and annotated tag together without checking out the branch', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['checkout', '-b', 'release/combined-push']);
+      await commitFile(repoPath, 'release.txt', 'ready\n', 'prepare release');
+      const releaseHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+
+      const result = await publishBranchWithTag(tab, {
+        branch: 'release/combined-push',
+        expectedLocalSha: releaseHead,
+        tagName: 'v2026.8.49'
+      });
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect(await branchUpstream(repoPath, 'release/combined-push')).toBe('origin/release/combined-push');
+      expect((await git(remotePath, ['rev-parse', 'refs/heads/release/combined-push'])).stdout.trim()).toBe(releaseHead);
+      expect((await git(repoPath, ['cat-file', '-t', 'refs/tags/v2026.8.49'])).stdout.trim()).toBe('tag');
+      expect((await git(remotePath, ['rev-parse', 'refs/tags/v2026.8.49^{}'])).stdout.trim()).toBe(releaseHead);
+      expect(result.operation?.label).toBe('Push release/combined-push & push v2026.8.49 to origin');
+      expect(result.invalidates).toEqual(['overview', 'graph']);
+      expect(result.undoEntry?.warning).toBe(
+        'Undo removes only the local tag. The pushed branch and tag remain on origin.'
+      );
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

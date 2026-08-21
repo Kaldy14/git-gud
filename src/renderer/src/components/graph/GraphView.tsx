@@ -152,6 +152,7 @@ type GraphViewProps = {
   onCopyBranchName?: (name: string) => Promise<void> | void;
   onPullBranch?: (name: string) => Promise<void> | void;
   onPushBranch?: (name: string) => Promise<void> | void;
+  onPushBranchWithTag?: (branchName: string, tagName: string) => Promise<void> | void;
   onSetBranchUpstream?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
   onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
@@ -255,6 +256,7 @@ export function GraphView({
   onCopyBranchName,
   onPullBranch,
   onPushBranch,
+  onPushBranchWithTag,
   onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
@@ -951,6 +953,7 @@ export function GraphView({
           onCopyBranchName={onCopyBranchName}
           onPullBranch={onPullBranch}
           onPushBranch={onPushBranch}
+          onPushBranchWithTag={onPushBranchWithTag}
           onSetBranchUpstream={onSetBranchUpstream}
           onRenameBranch={onRenameBranch}
           onReviewBranch={onReviewBranch}
@@ -2421,6 +2424,7 @@ function GraphBranchContextMenu({
   onCopyBranchName,
   onPullBranch,
   onPushBranch,
+  onPushBranchWithTag,
   onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
@@ -2442,6 +2446,7 @@ function GraphBranchContextMenu({
   onCopyBranchName?: (name: string) => Promise<void> | void;
   onPullBranch?: (name: string) => Promise<void> | void;
   onPushBranch?: (name: string) => Promise<void> | void;
+  onPushBranchWithTag?: (branchName: string, tagName: string) => Promise<void> | void;
   onSetBranchUpstream?: (name: string) => Promise<void> | void;
   onRenameBranch?: (name: string) => Promise<void> | void;
   onReviewBranch?: (name: string, sha: string) => Promise<void> | void;
@@ -2488,10 +2493,13 @@ function GraphBranchContextMenu({
     >
       <BranchContextMenuPrimaryActions
         branchName={state.branchName}
+        hasUpstream={Boolean(state.upstream)}
+        suggestedTagName={suggestedTagName}
         isCurrentBranch={isCurrentBranch}
         isOperationBusy={isOperationBusy}
         onCheckoutBranch={onCheckoutBranch}
         onPushBranch={onPushBranch}
+        onPushBranchWithTag={onPushBranchWithTag}
         onClose={onClose}
       />
       {isCurrentBranch && state.upstream ? (

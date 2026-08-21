@@ -74,6 +74,7 @@ type SidebarProps = {
   onCopyBranchName: (name: string) => void;
   onPullBranch: (name: string) => void;
   onPushBranch: (name: string) => void;
+  onPushBranchWithTag: (branchName: string, tagName: string) => void;
   onSetBranchUpstream: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onReviewBranch: (name: string, sha: string) => void;
@@ -177,6 +178,7 @@ export function Sidebar({
   onCopyBranchName,
   onPullBranch,
   onPushBranch,
+  onPushBranchWithTag,
   onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
@@ -539,6 +541,7 @@ export function Sidebar({
           onCopyBranchName={onCopyBranchName}
           onPullBranch={onPullBranch}
           onPushBranch={onPushBranch}
+          onPushBranchWithTag={onPushBranchWithTag}
           onSetBranchUpstream={onSetBranchUpstream}
           onRenameBranch={onRenameBranch}
           onReviewBranch={onReviewBranch}
@@ -1192,6 +1195,7 @@ function SidebarContextMenu({
   onCopyBranchName,
   onPullBranch,
   onPushBranch,
+  onPushBranchWithTag,
   onSetBranchUpstream,
   onRenameBranch,
   onReviewBranch,
@@ -1225,6 +1229,7 @@ function SidebarContextMenu({
   onCopyBranchName: (name: string) => void;
   onPullBranch: (name: string) => void;
   onPushBranch: (name: string) => void;
+  onPushBranchWithTag: (branchName: string, tagName: string) => void;
   onSetBranchUpstream: (name: string) => void;
   onRenameBranch: (name: string) => void;
   onReviewBranch: (name: string, sha: string) => void;
@@ -1339,10 +1344,13 @@ function SidebarContextMenu({
         <>
           <BranchContextMenuPrimaryActions
             branchName={state.branch.name}
+            hasUpstream={Boolean(state.branch.upstream)}
+            suggestedTagName={suggestedTagName}
             isCurrentBranch={state.branch.current}
             isOperationBusy={isOperationBusy}
             onCheckoutBranch={onCheckoutBranch}
             onPushBranch={onPushBranch}
+            onPushBranchWithTag={onPushBranchWithTag}
             onClose={onClose}
           />
           {state.branch.current && state.branch.upstream ? (

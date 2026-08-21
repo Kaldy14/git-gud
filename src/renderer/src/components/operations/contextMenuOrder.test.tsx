@@ -26,6 +26,42 @@ describe('context menu action order', () => {
     expect(menuItemLabels(markup)).toEqual(['Checkout feature/menu-order', 'Push branch to remote']);
   });
 
+  it('offers one-click branch and suggested-tag publishing only before the branch has an upstream', () => {
+    const unpushedMarkup = renderToStaticMarkup(
+      <BranchContextMenuPrimaryActions
+        branchName="main"
+        hasUpstream={false}
+        suggestedTagName="v2026.8.49"
+        isCurrentBranch
+        isOperationBusy={false}
+        onCheckoutBranch={vi.fn()}
+        onPushBranch={vi.fn()}
+        onPushBranchWithTag={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    const pushedMarkup = renderToStaticMarkup(
+      <BranchContextMenuPrimaryActions
+        branchName="main"
+        hasUpstream
+        suggestedTagName="v2026.8.49"
+        isCurrentBranch
+        isOperationBusy={false}
+        onCheckoutBranch={vi.fn()}
+        onPushBranch={vi.fn()}
+        onPushBranchWithTag={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(menuItemLabels(unpushedMarkup)).toEqual([
+      'Checkout main',
+      'Push branch to remote',
+      'Push main &amp; Push v2026.8.49'
+    ]);
+    expect(menuItemLabels(pushedMarkup)).toEqual(['Checkout main', 'Push branch to remote']);
+  });
+
   it('renders Push second in tag context menus', () => {
     const markup = renderToStaticMarkup(
       <TagMenuItems

@@ -77,6 +77,7 @@ const api: RendererApi = {
   removeRemote: (repoPath, remote) => invoke('repo:remove-remote', repoPath, remote),
   pullRepository: (repoPath, input) => invoke('repo:pull', repoPath, input),
   pushRepository: (repoPath, input) => invoke('repo:push', repoPath, input),
+  publishBranchWithTag: (repoPath, input) => invoke('repo:publish-branch-with-tag', repoPath, input),
   createBranch: (repoPath, input) => invoke('repo:create-branch', repoPath, input),
   renameBranch: (repoPath, input) => invoke('repo:rename-branch', repoPath, input),
   setBranchUpstream: (repoPath, input) => invoke('repo:set-branch-upstream', repoPath, input),

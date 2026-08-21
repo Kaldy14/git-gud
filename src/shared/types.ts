@@ -488,6 +488,12 @@ export type GitPushInput =
       };
     };
 
+export type GitPublishBranchWithTagInput = {
+  branch: string;
+  expectedLocalSha: string;
+  tagName: string;
+};
+
 export type GitCreateBranchInput = {
   name: string;
   startPoint?: string;

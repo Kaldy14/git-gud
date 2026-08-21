@@ -47,6 +47,7 @@ import type {
   GitHubPullRequestReviewCommentUpdateInput,
   GitHubRepositorySummary,
   GitProfile,
+  GitPublishBranchWithTagInput,
   GitPushInput,
   GitRebaseInput,
   GitRepositoryOverview,
@@ -324,6 +325,10 @@ export type IpcChannelMap = {
   };
   'repo:push': {
     args: [repoPath: string, input: GitPushInput];
+    result: GitOperationResult;
+  };
+  'repo:publish-branch-with-tag': {
+    args: [repoPath: string, input: GitPublishBranchWithTagInput];
     result: GitOperationResult;
   };
   'repo:create-branch': {
@@ -632,6 +637,10 @@ export type RendererApi = {
   removeRemote: (repoPath: string, remote: string) => Promise<GitOperationResult>;
   pullRepository: (repoPath: string, input: GitPullInput) => Promise<GitOperationResult>;
   pushRepository: (repoPath: string, input: GitPushInput) => Promise<GitOperationResult>;
+  publishBranchWithTag: (
+    repoPath: string,
+    input: GitPublishBranchWithTagInput
+  ) => Promise<GitOperationResult>;
   createBranch: (repoPath: string, input: GitCreateBranchInput) => Promise<GitOperationResult>;
   renameBranch: (repoPath: string, input: GitRenameBranchInput) => Promise<GitOperationResult>;
   setBranchUpstream: (

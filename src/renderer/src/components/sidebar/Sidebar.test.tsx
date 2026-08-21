@@ -32,6 +32,7 @@ describe('Sidebar remote section', () => {
         onCopyBranchName={vi.fn()}
         onPullBranch={vi.fn()}
         onPushBranch={vi.fn()}
+        onPushBranchWithTag={vi.fn()}
         onSetBranchUpstream={vi.fn()}
         onRenameBranch={vi.fn()}
         onReviewBranch={vi.fn()}

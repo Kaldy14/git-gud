@@ -38,6 +38,7 @@ import {
   fetchRemote,
   mergeRef,
   pullRepository,
+  publishBranchWithTag,
   pushTag,
   pushRepository,
   renameBranch,
@@ -174,6 +175,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:fetch': { label: 'Fetch', cancellable: true },
   'repo:pull': { label: 'Pull' },
   'repo:push': { label: 'Push' },
+  'repo:publish-branch-with-tag': { label: 'Push branch and tag', cancellable: true },
   'repo:create-branch': { label: 'Create branch' },
   'repo:rename-branch': { label: 'Rename branch' },
   'repo:set-branch-upstream': { label: 'Set upstream' },
@@ -591,6 +593,9 @@ export function registerIpcHandlers(
   );
   handle('repo:push', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => pushRepository(tab, input))
+  );
+  handle('repo:publish-branch-with-tag', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => publishBranchWithTag(tab, input))
   );
   handle('repo:create-branch', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => createBranch(tab, input))

@@ -34,6 +34,7 @@ import type {
   GitMergeInput,
   GitPatchApplyInput,
   GitProfile,
+  GitPublishBranchWithTagInput,
   GitPullInput,
   GitRemoteCreateInput,
   GitRemoteUpdateInput,
@@ -147,6 +148,8 @@ const validators = {
   'repo:remove-remote': (args) => readStringPair(args, 'repo:remove-remote', 'repoPath', 'remote'),
   'repo:pull': (args) => readRepoPathWithObject(args, 'repo:pull', readPullInput),
   'repo:push': (args) => readRepoPathWithObject(args, 'repo:push', readPushInput),
+  'repo:publish-branch-with-tag': (args) =>
+    readRepoPathWithObject(args, 'repo:publish-branch-with-tag', readPublishBranchWithTagInput),
   'repo:create-branch': (args) => readRepoPathWithObject(args, 'repo:create-branch', readCreateBranchInput),
   'repo:rename-branch': (args) => readRepoPathWithObject(args, 'repo:rename-branch', readRenameBranchInput),
   'repo:set-branch-upstream': (args) =>
@@ -1081,6 +1084,15 @@ function readPushInput(value: unknown): GitPushInput {
       expectedSha: readStringProperty(target, 'expectedSha'),
       setUpstream: readBooleanProperty(target, 'setUpstream')
     }
+  };
+}
+
+function readPublishBranchWithTagInput(value: unknown): GitPublishBranchWithTagInput {
+  const record = readRecord(value, 'publish branch with tag input');
+  return {
+    branch: readStringProperty(record, 'branch'),
+    expectedLocalSha: readStringProperty(record, 'expectedLocalSha'),
+    tagName: readStringProperty(record, 'tagName')
   };
 }
 
