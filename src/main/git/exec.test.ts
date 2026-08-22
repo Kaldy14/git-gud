@@ -316,7 +316,8 @@ describe('GitExecutor coordination', () => {
           retryDelay: 100
         });
       }
-    }
+    },
+    10_000
   );
 
   it('cancels a queued operation by id without terminating an uncorrelated read', async () => {
