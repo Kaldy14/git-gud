@@ -3035,6 +3035,18 @@ function ReviewInlineComposer({
             setHasBody(nextHasBody);
           }
         }}
+        onKeyDown={(event) => {
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.key === 'Enter' &&
+            !event.nativeEvent.isComposing &&
+            canSubmitLineComment &&
+            !collaboration.isSubmitting
+          ) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
       />
       <p className="review-inline-composer-hint">
         Saved in Git Gud only. Nothing is posted until you submit the review.
@@ -3055,11 +3067,14 @@ function ReviewInlineComposer({
           className="btn-primary btn-compact"
           type="submit"
           disabled={!canSubmitLineComment || collaboration.isSubmitting}
+          aria-keyshortcuts="Meta+Enter Control+Enter"
+          title="Add to review (⌘↵)"
         >
           {collaboration.isSubmitting
             ? <Loader2 size={12} className="animate-spin" />
             : <Send size={12} />}
           Add to review
+          <kbd aria-hidden="true" className="text-[9px] text-current opacity-70">⌘↵</kbd>
         </button>
       </div>
     </form>
