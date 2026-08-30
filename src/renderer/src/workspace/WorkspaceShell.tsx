@@ -981,6 +981,15 @@ export function WorkspaceShell(): ReactElement {
     setCompactSidebarOpen(false);
   }
 
+  function handleTogglePullRequestInbox(): void {
+    if (gitHubWorkspaceView?.kind === 'inbox' || gitHubWorkspaceView?.kind === 'review') {
+      handleClosePullRequestWorkspace();
+      return;
+    }
+
+    handleOpenPullRequestInbox();
+  }
+
   function handleViewPullRequest(pullRequest: GitHubPullRequestSummary): void {
     setGitHubWorkspaceView({ kind: 'review', pullRequest });
     setCompactDetailOpen(false);
@@ -3426,7 +3435,7 @@ export function WorkspaceShell(): ReactElement {
               pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
               isPullRequestLoading={pullRequestInboxQuery.isLoading}
               isPullRequestInboxActive
-              onOpenPullRequestInbox={handleOpenPullRequestInbox}
+              onTogglePullRequestInbox={handleTogglePullRequestInbox}
               onResize={handleSidebarResize}
               onResizeCommit={handleSidebarResizeCommit}
               isOperationBusy={isOperationBusy}
@@ -3544,7 +3553,7 @@ export function WorkspaceShell(): ReactElement {
                 pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
                 isPullRequestLoading={pullRequestInboxQuery.isLoading}
                 isPullRequestInboxActive={false}
-                onOpenPullRequestInbox={handleOpenPullRequestInbox}
+                onTogglePullRequestInbox={handleTogglePullRequestInbox}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
                 isOperationBusy={isOperationBusy}

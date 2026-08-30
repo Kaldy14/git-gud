@@ -61,7 +61,7 @@ type SidebarProps = {
   pullRequestCount: number;
   isPullRequestLoading: boolean;
   isPullRequestInboxActive: boolean;
-  onOpenPullRequestInbox: () => void;
+  onTogglePullRequestInbox: () => void;
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
   isOperationBusy: boolean;
@@ -165,7 +165,7 @@ export function Sidebar({
   pullRequestCount,
   isPullRequestLoading,
   isPullRequestInboxActive,
-  onOpenPullRequestInbox,
+  onTogglePullRequestInbox,
   onResize,
   onResizeCommit,
   isOperationBusy,
@@ -384,7 +384,7 @@ export function Sidebar({
             className="sidebar-collapsed-item"
             type="button"
             data-active={isPullRequestInboxActive}
-            onClick={onOpenPullRequestInbox}
+            onClick={onTogglePullRequestInbox}
             aria-label={`Pull request inbox, ${pullRequestCount} items`}
             title={`Pull requests: ${pullRequestCount}`}
           >
@@ -449,7 +449,7 @@ export function Sidebar({
           role="treeitem"
           aria-selected={isPullRequestInboxActive}
           data-active={isPullRequestInboxActive}
-          onClick={onOpenPullRequestInbox}
+          onClick={onTogglePullRequestInbox}
         >
           <GitPullRequest size={14} />
           <span className="min-w-0 flex-1 text-left">Pull requests</span>
