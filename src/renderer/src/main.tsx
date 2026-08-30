@@ -7,6 +7,7 @@ import {
 } from '@pierre/diffs/react';
 
 import { getDiffThemeName } from '@renderer/components/diff/diffTheme';
+import { ChangelogDialog } from '@renderer/components/releases/ChangelogDialog';
 import { createDefaultAppSettings } from '@shared/settings';
 
 import { AppRouter } from './router';
@@ -32,6 +33,7 @@ createRoot(rootElement).render(
   <React.StrictMode>
     <WorkerPoolContextProvider poolOptions={diffWorkerPoolOptions} highlighterOptions={diffHighlighterOptions}>
       <AppRouter />
+      <ChangelogDialog releaseNotes={import.meta.env.VITE_RELEASE_NOTES} />
     </WorkerPoolContextProvider>
   </React.StrictMode>
 );

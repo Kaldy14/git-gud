@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.8.17] - 2026-08-30
+
+### Added
+
+- Added the optional Codex Agent Notes workflow: install its managed skill from Settings, attach validated reviewer context to added lines, and show matching notes inline with hide and reopen controls.
+- Added Command/Ctrl+Enter submission for inline review comments.
+- Added a one-time, version-specific changelog popup after Git Gud installs a new release.
+
+### Changed
+
+- Hardened copied review prompts so finding text, file paths, and code excerpts remain untrusted input and only verified current issues are fixed.
+- Reworked the README around whole-change review, refreshed its screenshots, and documented the Agent Notes workflow.
+
+### Fixed
+
+- Made the pull-request sidebar entry close the active inbox or review when selected again.
+
 ## [0.4.22] - 2026-07-28
 
 ### Changed

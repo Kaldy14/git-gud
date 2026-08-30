@@ -1,10 +1,17 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { externalizeDepsPlugin, defineConfig } from 'electron-vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 
+import { extractReleaseNotes } from './src/shared/changelog';
+
 const appVersion = process.env.GIT_GUD_VERSION?.trim().replace(/^v/, '') || '0.0.0';
+const releaseNotes = extractReleaseNotes(
+  readFileSync(resolve('CHANGELOG.md'), 'utf8'),
+  appVersion
+);
 const sharedAlias = resolve('src/shared');
 
 export default defineConfig({
@@ -26,7 +33,8 @@ export default defineConfig({
   },
   renderer: {
     define: {
-      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+      'import.meta.env.VITE_RELEASE_NOTES': JSON.stringify(releaseNotes)
     },
     resolve: {
       alias: {
