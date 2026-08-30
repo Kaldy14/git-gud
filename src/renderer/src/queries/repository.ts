@@ -5,6 +5,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import type {
   CommitGraphPage,
+  GitAgentNote,
   GitCommitDetail,
   GitCommitSelectionDetail,
   GitConflictFile,
@@ -74,6 +75,11 @@ export const reviewPlanQueryKey = (
   repoPath,
   target.kind,
   target.kind === 'commit' ? target.sha : target.kind === 'branch' ? `${target.name}\0${target.sha}` : target.scope
+];
+
+export const agentNotesQueryKey = (repoPath: string): readonly ['agent-notes', string] => [
+  'agent-notes',
+  repoPath
 ];
 
 export function useRepositoryOverview(repoPath: string | undefined) {
@@ -307,6 +313,23 @@ export function useReviewPlan(repoPath: string | undefined, target: GitReviewTar
   });
 }
 
+export function useAgentNotes(repoPath: string | undefined) {
+  const isLocalRepository = Boolean(repoPath && !repoPath.startsWith('github://'));
+
+  return useQuery({
+    queryKey: repoPath ? agentNotesQueryKey(repoPath) : ['agent-notes', 'none'],
+    queryFn: async (): Promise<GitAgentNote[]> => {
+      if (!repoPath) {
+        throw new Error('Repository path is required.');
+      }
+
+      return window.api.getAgentNotes(repoPath);
+    },
+    enabled: isLocalRepository,
+    staleTime: Number.POSITIVE_INFINITY
+  });
+}
+
 export function useRepositoryChangeInvalidation(): void {
   const queryClient = useQueryClient();
 
@@ -323,7 +346,12 @@ export async function invalidateRepositoryQueries(
   scopes: readonly GitQueryInvalidation[] = allRepositoryInvalidations
 ): Promise<void> {
   const requested = new Set(scopes);
-  const invalidations: Array<Promise<unknown>> = [];
+  const invalidations: Array<Promise<unknown>> = [
+    queryClient.invalidateQueries(
+      { queryKey: agentNotesQueryKey(repoPath) },
+      { cancelRefetch: false }
+    )
+  ];
 
   if (requested.has('overview')) {
     invalidations.push(

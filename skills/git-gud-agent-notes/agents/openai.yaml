@@ -1,0 +1,7 @@
+interface:
+  display_name: "Git Gud Agent Notes"
+  short_description: "Leave only necessary implementation notes"
+  default_prompt: "Use $git-gud-agent-notes after implementation to decide whether the diff needs an Agent Note."
+
+policy:
+  allow_implicit_invocation: true

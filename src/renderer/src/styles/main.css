@@ -5045,6 +5045,140 @@ button.ref-chip {
   overflow: hidden;
 }
 
+.agent-note {
+  margin: 6px 8px 8px 52px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ai-border) 62%, transparent);
+  border-left-width: 3px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--ai-bg) 34%, var(--bg-panel));
+  box-shadow: 0 7px 20px rgb(0 0 0 / 0.2);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  white-space: normal;
+}
+
+.agent-note > header {
+  display: flex;
+  min-height: 31px;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ai-border) 24%, var(--border));
+  padding: 0 8px 0 10px;
+}
+
+.agent-note-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ai-text);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.agent-note-author {
+  color: var(--text-3);
+  font-size: 9px;
+}
+
+.agent-note-hide {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  padding: 0 6px;
+  color: var(--text-3);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.agent-note-hide:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.agent-note-body {
+  padding: 9px 10px 8px;
+}
+
+.agent-note-body strong {
+  display: block;
+  color: var(--text-1);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.agent-note-body p {
+  margin: 5px 0 0;
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 16px;
+}
+
+.agent-note > footer {
+  display: flex;
+  min-height: 25px;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--ai-border) 18%, var(--border));
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: 8.5px;
+}
+
+.agent-note > footer code {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--ai-text) 78%, var(--text-3));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-note > footer time {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.agent-note-collapsed {
+  display: flex;
+  width: calc(100% - 60px);
+  min-height: 27px;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 8px 7px 52px;
+  border: 1px solid var(--border);
+  border-left: 2px solid color-mix(in srgb, var(--ai-border) 55%, var(--border));
+  border-radius: 6px;
+  background: var(--bg-panel);
+  padding: 0 8px;
+  color: var(--text-3);
+  font-size: 9px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.agent-note-collapsed:hover {
+  border-color: color-mix(in srgb, var(--ai-border) 52%, var(--border));
+  color: var(--ai-text);
+}
+
+.agent-note-collapsed > svg:first-child {
+  color: color-mix(in srgb, var(--ai-text) 72%, var(--text-3));
+}
+
+.agent-note-read-state::before {
+  margin-right: 6px;
+  content: '·';
+}
+
+.agent-note-spacer {
+  flex: 1 1 auto;
+}
+
 .review-inline-composer {
   display: grid;
   gap: 7px;

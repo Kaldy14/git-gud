@@ -1,7 +1,9 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useState } from 'react';
 import {
+  Bot,
   Check,
+  Download,
   Gauge,
   GitGraph,
   Palette,
@@ -10,6 +12,7 @@ import {
   Settings,
   ShieldAlert,
   SplitSquareHorizontal,
+  Trash2,
   X
 } from 'lucide-react';
 
@@ -22,17 +25,33 @@ import {
   clampAutoFetchIntervalMinutes,
   clampGraphPageSize
 } from '@shared/settings';
-import type { AppSettings, DiffSyntaxTheme } from '@shared/types';
+import type { AppSettings, CodexAgentNotesSkillState, DiffSyntaxTheme } from '@shared/types';
 
 type SettingsPanelProps = {
   settings: AppSettings;
   isSaving: boolean;
   errorMessage?: string;
+  codexSkillState?: CodexAgentNotesSkillState;
+  isCodexSkillBusy: boolean;
+  codexSkillErrorMessage?: string;
   onClose: () => void;
   onSave: (settings: AppSettings) => Promise<void> | void;
+  onInstallCodexSkill: () => Promise<void> | void;
+  onRemoveCodexSkill: () => Promise<void> | void;
 };
 
-export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSave }: SettingsPanelProps): ReactElement {
+export function SettingsPanel({
+  settings,
+  isSaving,
+  errorMessage,
+  codexSkillState,
+  isCodexSkillBusy,
+  codexSkillErrorMessage,
+  onClose,
+  onSave,
+  onInstallCodexSkill,
+  onRemoveCodexSkill
+}: SettingsPanelProps): ReactElement {
   const titleId = useId();
   const descriptionId = useId();
   const [draft, setDraft] = useState<AppSettings>(settings);
@@ -217,6 +236,73 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
             </label>
           </section>
 
+          <section className="space-y-3 border-b border-[var(--border)] py-4">
+            <SettingHeading icon={<Bot size={15} />} label="Codex" />
+            <div className="rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-[var(--text-1)]">Agent Notes skill</span>
+                  <span className="mt-1 block text-[11px] leading-5 text-[var(--text-3)]">
+                    Lets Codex decide whether a changed line needs a short implementation note. Most tasks produce none.
+                  </span>
+                </span>
+                <CodexSkillStatus state={codexSkillState} />
+              </div>
+
+              <p className="mt-2.5 text-[11px] leading-5 text-[var(--text-3)]">
+                Once installed, this works for local Codex tasks started anywhere, not only tasks opened from Git Gud.
+              </p>
+
+              {codexSkillState ? (
+                <code className="mt-2 block overflow-hidden text-ellipsis whitespace-nowrap rounded bg-[var(--bg-panel)] px-2 py-1.5 text-[10px] text-[var(--text-2)]" title={codexSkillState.installPath}>
+                  {codexSkillState.installPath}
+                </code>
+              ) : null}
+
+              {codexSkillState?.message ? (
+                <p className="mt-2 text-[11px] leading-5 text-[var(--warning-text)]">{codexSkillState.message}</p>
+              ) : null}
+              {codexSkillErrorMessage ? (
+                <p className="mt-2 text-[11px] leading-5 text-[var(--danger-text)]" role="alert">{codexSkillErrorMessage}</p>
+              ) : null}
+
+              <div className="mt-3 flex items-center gap-2">
+                {codexSkillState?.status === 'installed' ? (
+                  <button
+                    className="btn-subtle h-8 text-xs"
+                    type="button"
+                    disabled={isCodexSkillBusy}
+                    onClick={() => void onRemoveCodexSkill()}
+                  >
+                    <Trash2 size={12} />
+                    Remove skill
+                  </button>
+                ) : codexSkillState?.status === 'conflict' ? null : (
+                  <button
+                    className="btn-primary h-8 text-xs"
+                    type="button"
+                    disabled={isCodexSkillBusy || !codexSkillState}
+                    onClick={() => void onInstallCodexSkill()}
+                  >
+                    <Download size={12} />
+                    {codexSkillState?.status === 'update-available' ? 'Update skill' : 'Install skill'}
+                  </button>
+                )}
+                {codexSkillState?.status === 'update-available' ? (
+                  <button
+                    className="btn-subtle h-8 text-xs"
+                    type="button"
+                    disabled={isCodexSkillBusy}
+                    onClick={() => void onRemoveCodexSkill()}
+                  >
+                    <Trash2 size={12} />
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
           <section className="space-y-3 py-4">
             <SettingHeading icon={<ShieldAlert size={15} />} label="Safety" />
             <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
@@ -249,6 +335,26 @@ export function SettingsPanel({ settings, isSaving, errorMessage, onClose, onSav
         </footer>
       </form>
     </ModalSurface>
+  );
+}
+
+function CodexSkillStatus({ state }: { state?: CodexAgentNotesSkillState }): ReactElement {
+  const label = state
+    ? {
+        'not-installed': 'Not installed',
+        installed: 'Installed',
+        'update-available': 'Update available',
+        conflict: 'Needs attention'
+      }[state.status]
+    : 'Checking';
+
+  return (
+    <span
+      className="shrink-0 rounded-full border border-[var(--border-strong)] bg-[var(--bg-panel)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]"
+      data-status={state?.status ?? 'checking'}
+    >
+      {label}
+    </span>
   );
 }
 

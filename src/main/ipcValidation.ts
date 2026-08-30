@@ -107,6 +107,7 @@ const validators = {
     readOnlyArg(args, 'repo:generate-commit-message', 'repoPath', readString),
   'repo:file-diff': (args) => readRepoPathWithObject(args, 'repo:file-diff', readFileDiffRequest),
   'repo:review-plan': (args) => readRepoPathWithObject(args, 'repo:review-plan', readReviewTarget),
+  'repo:agent-notes': (args) => readOnlyArg(args, 'repo:agent-notes', 'repoPath', readString),
   'repo:review-type-definition': (args) =>
     readRepoPathWithObject(
       args,
@@ -185,6 +186,9 @@ const validators = {
   'repo:cancel-operation': (args) => readOperationCancellationArgs(args),
   'settings:get': (args) => noArgs('settings:get', args),
   'settings:update': (args) => readOnlyArg(args, 'settings:update', 'settings', readSettingsInput),
+  'codex:agent-notes-skill-state': (args) => noArgs('codex:agent-notes-skill-state', args),
+  'codex:install-agent-notes-skill': (args) => noArgs('codex:install-agent-notes-skill', args),
+  'codex:remove-agent-notes-skill': (args) => noArgs('codex:remove-agent-notes-skill', args),
   'profiles:list': (args) => noArgs('profiles:list', args),
   'profiles:list-github-accounts': (args) => noArgs('profiles:list-github-accounts', args),
   'dashboards:get': (args) =>

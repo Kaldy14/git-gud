@@ -36,7 +36,8 @@ src/renderer/src/
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer/actions
     diff/FileFocusView.tsx            selected-file patch view with unified/split diff modes and WIP hunk staging
     review/ReviewView.tsx              focused local/GitHub review with expandable context above and below each hunk
-    settings/SettingsPanel.tsx        app defaults for diff layout, graph loading, and large-repo mode
+    review/agentNotes.ts               Agent Note matching, relocation, and per-repository hidden state
+    settings/SettingsPanel.tsx        app defaults plus Codex Agent Notes skill management
     operations/ConflictBanner.tsx     merge/rebase/cherry-pick/revert conflict action banner
     operations/CommandDialog.tsx      app-native command confirmations and simple operation forms
     inspection/RepositoryInspectorDialog.tsx file history, blame, and ref comparison dialog
@@ -56,6 +57,12 @@ Dark slate palette defined as CSS variables in `styles/main.css` (`--bg-*`, `--t
 PR reviews support local line comments, whole-file comments, and replies. Hovering the left diff gutter reveals an accessibly labelled `+` comment action; selecting it, clicking a line number, or dragging in either direction across lines opens the composer directly beneath the normalized range. Review-unit and filter navigation remain disabled until the active composer is added or cancelled, preventing typed text from becoming hidden. File headers provide a persistent **Comment on file** action. Drafts remain local until **Finish your review** submits them. Published line comments, file comments, and replies authored by the active GitHub viewer can be edited inline. File comments use GitHub's standalone review-comment endpoint with `subject_type: file`, while edits use the repository-level pull review comment endpoint.
 
 Review controls use three shared densities: 32px contained actions in headers and dialogs, 28px contained actions in inline forms, and 24px tertiary actions for comment, edit, reply, and draft removal. This keeps action hierarchy, icons, focus states, and disabled states consistent across the review flow.
+
+## Codex Agent Notes
+
+Git Gud can install its bundled `git-gud-agent-notes` skill into the user's Codex skills directory. Codex then decides whether a finished implementation needs any short, reviewer-facing notes. The deterministic writer stores notes under the active worktree's Git metadata, and `ReviewView` renders matching notes inline with hide and reopen controls.
+
+See [agent-notes.md](agent-notes.md) for the authoring rules, installation behavior, storage format, and current limits.
 
 ## Graph rendering model
 

@@ -34,6 +34,7 @@ import {
   ChevronUp,
   Columns2,
   Clock3,
+  EyeOff,
   FileCode2,
   FileCog,
   FolderTree,
@@ -68,9 +69,10 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
-import { reviewPlanQueryKey, useReviewPlan } from '@renderer/queries/repository';
+import { reviewPlanQueryKey, useAgentNotes, useReviewPlan } from '@renderer/queries/repository';
 import type {
   DiffSyntaxTheme,
+  GitAgentNote,
   GitReviewChunk,
   GitReviewFileContext,
   GitReviewGuide,
@@ -82,6 +84,11 @@ import type {
   GitReviewTypeDefinitionResult
 } from '@shared/types';
 
+import {
+  loadHiddenAgentNoteIds,
+  resolveAgentNotes,
+  saveHiddenAgentNoteIds
+} from './agentNotes';
 import {
   createReviewPresentation,
   loadReviewPreferences,
@@ -216,7 +223,13 @@ type ReviewCommentThread = ReviewLineComment & {
 
 type ReviewDiffAnnotation =
   | { kind: 'thread'; thread: ReviewCommentThread }
-  | { kind: 'composer' };
+  | { kind: 'composer' }
+  | { kind: 'agent-note'; note: GitAgentNote; hidden: boolean };
+
+const NO_AGENT_NOTES: readonly GitAgentNote[] = [];
+const NO_HIDDEN_AGENT_NOTE_IDS: ReadonlySet<string> = new Set();
+
+function ignoreAgentNoteHiddenChange(): void {}
 
 type ReviewCommentTarget =
   | { kind: 'line'; chunkId: string; path: string; range: SelectedLineRange }
@@ -335,6 +348,19 @@ export function ReviewView({
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
+  const [hiddenAgentNotesState, setHiddenAgentNotesState] = useState<{
+    repoPath: string;
+    ids: ReadonlySet<string>;
+  }>(() =>
+    ({ repoPath, ids: loadHiddenAgentNoteIds(window.localStorage, repoPath) })
+  );
+  const storedHiddenAgentNoteIds = useMemo(
+    () => loadHiddenAgentNoteIds(window.localStorage, repoPath),
+    [repoPath]
+  );
+  const hiddenAgentNoteIds = hiddenAgentNotesState.repoPath === repoPath
+    ? hiddenAgentNotesState.ids
+    : storedHiddenAgentNoteIds;
   const [selectedUnitId, setSelectedUnitId] = useState<string | undefined>(
     () => initialViewState?.selectedUnitId
   );
@@ -377,6 +403,7 @@ export function ReviewView({
     embeddedPlan ? undefined : repoPath,
     embeddedPlan ? undefined : target
   );
+  const agentNotesQuery = useAgentNotes(repoPath);
   const reviewPlan = useMemo<GitReviewPlan | undefined>(() => {
     if (!embeddedPlan) {
       return reviewQuery.data;
@@ -390,6 +417,10 @@ export function ReviewView({
       reviewedChunkIds: embeddedReviewedChunkIds.filter((chunkId) => validChunkIds.has(chunkId))
     };
   }, [embeddedPlan, embeddedReviewedChunkIds, reviewQuery.data]);
+  const agentNotes = useMemo(
+    () => resolveAgentNotes(agentNotesQuery.data ?? [], reviewPlan?.fileContexts ?? []),
+    [agentNotesQuery.data, reviewPlan?.fileContexts]
+  );
   useEffect(() => {
     typeDefinitionRequestRef.current += 1;
     typeDefinitionHoverRequestRef.current += 1;
@@ -739,6 +770,24 @@ export function ReviewView({
   function setFileTreeOpen(isOpen: boolean): void {
     setIsFileTreeOpen(isOpen);
     saveReviewFileTreeOpen(window.localStorage, repoPath, isOpen);
+  }
+
+  function setAgentNoteHidden(noteId: string, hidden: boolean): void {
+    setHiddenAgentNotesState((current) => {
+      const currentIds = current.repoPath === repoPath
+        ? current.ids
+        : loadHiddenAgentNoteIds(window.localStorage, repoPath);
+      const next = new Set(currentIds);
+
+      if (hidden) {
+        next.add(noteId);
+      } else {
+        next.delete(noteId);
+      }
+
+      saveHiddenAgentNoteIds(window.localStorage, repoPath, next);
+      return { repoPath, ids: next };
+    });
   }
 
   function cancelCommentComposer(): void {
@@ -1378,6 +1427,9 @@ export function ReviewView({
         isMutating={progressMutation.isPending}
         mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
         lineCollaboration={lineCollaboration}
+        agentNotes={agentNotes}
+        hiddenAgentNoteIds={hiddenAgentNoteIds}
+        onSetAgentNoteHidden={setAgentNoteHidden}
         reviewGuide={reviewGuide}
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
@@ -1768,6 +1820,9 @@ function ReviewBody({
   isMutating,
   mutationError,
   lineCollaboration,
+  agentNotes,
+  hiddenAgentNoteIds,
+  onSetAgentNoteHidden,
   reviewGuide,
   reviewGuideUnits,
   isFileTreeOpen,
@@ -1795,6 +1850,9 @@ function ReviewBody({
   isMutating: boolean;
   mutationError?: string;
   lineCollaboration?: ReviewLineCollaboration;
+  agentNotes: readonly GitAgentNote[];
+  hiddenAgentNoteIds: ReadonlySet<string>;
+  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   reviewGuide?: GitReviewGuide;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
@@ -1819,6 +1877,17 @@ function ReviewBody({
   const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(
     () => new Set()
   );
+  const agentNotesByPath = useMemo(() => {
+    const notesByPath = new Map<string, GitAgentNote[]>();
+
+    for (const note of agentNotes) {
+      const notes = notesByPath.get(note.path) ?? [];
+      notes.push(note);
+      notesByPath.set(note.path, notes);
+    }
+
+    return notesByPath;
+  }, [agentNotes]);
   const selectedGuideUnit = selectedUnit
     ? reviewGuideUnits.get(selectedUnit.unit.id)
     : undefined;
@@ -2052,6 +2121,9 @@ function ReviewBody({
                       preparedDiffs={preparedDiffs}
                       diffOptions={diffOptions}
                       lineCollaboration={lineCollaboration}
+                      agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
+                      hiddenAgentNoteIds={hiddenAgentNoteIds}
+                      onSetAgentNoteHidden={onSetAgentNoteHidden}
                       typeDefinitionPaths={typeDefinitionPaths}
                       typeDefinitionInteraction={typeDefinitionInteraction}
                       isCollapsed={collapsedFileKeys.has(file.key)}
@@ -2367,6 +2439,9 @@ function ReviewSearchPanel({
                   }}
                   preparedDiffs={search.preparedDiffs}
                   diffOptions={diffOptions}
+                  agentNotes={NO_AGENT_NOTES}
+                  hiddenAgentNoteIds={NO_HIDDEN_AGENT_NOTE_IDS}
+                  onSetAgentNoteHidden={ignoreAgentNoteHiddenChange}
                   typeDefinitionPaths={typeDefinitionPaths}
                   typeDefinitionInteraction={typeDefinitionInteraction}
                   isCollapsed={collapsedChunkIds.has(file.chunk.id)}
@@ -2702,6 +2777,9 @@ function ReviewFile({
   preparedDiffs,
   diffOptions,
   lineCollaboration,
+  agentNotes,
+  hiddenAgentNoteIds,
+  onSetAgentNoteHidden,
   typeDefinitionPaths,
   typeDefinitionInteraction,
   isCollapsed,
@@ -2712,6 +2790,9 @@ function ReviewFile({
   preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
+  agentNotes: readonly GitAgentNote[];
+  hiddenAgentNoteIds: ReadonlySet<string>;
+  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   typeDefinitionPaths: ReadonlySet<string>;
   typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
   isCollapsed: boolean;
@@ -2809,6 +2890,9 @@ function ReviewFile({
               preparedDiff={preparedDiffs.get(chunk.id)}
               diffOptions={diffOptions}
               lineCollaboration={lineCollaboration}
+              agentNotes={agentNotes}
+              hiddenAgentNoteIds={hiddenAgentNoteIds}
+              onSetAgentNoteHidden={onSetAgentNoteHidden}
               typeDefinitionInteraction={
                 typeDefinitionPaths.has(chunk.path) ? typeDefinitionInteraction : undefined
               }
@@ -2831,6 +2915,9 @@ function ReviewChunk({
   preparedDiff,
   diffOptions,
   lineCollaboration,
+  agentNotes,
+  hiddenAgentNoteIds,
+  onSetAgentNoteHidden,
   typeDefinitionInteraction,
   hideLeadingExpansion = false,
   searchHighlights
@@ -2839,6 +2926,9 @@ function ReviewChunk({
   preparedDiff?: PreparedReviewDiff;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
+  agentNotes: readonly GitAgentNote[];
+  hiddenAgentNoteIds: ReadonlySet<string>;
+  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   typeDefinitionInteraction?: ReviewTypeDefinitionInteraction;
   hideLeadingExpansion?: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
@@ -2905,6 +2995,19 @@ function ReviewChunk({
             }]
           : []
       ) ?? []),
+      ...agentNotes.flatMap((note) =>
+        note.path === chunk.path && patchContainsLine(chunk.patch, note.line, 'right')
+          ? [{
+              lineNumber: note.line,
+              side: 'additions' as const,
+              metadata: {
+                kind: 'agent-note' as const,
+                note,
+                hidden: hiddenAgentNoteIds.has(note.id)
+              }
+            }]
+          : []
+      ),
       ...(normalizedSelection
         ? [{
             lineNumber: normalizedSelection.line,
@@ -2913,7 +3016,14 @@ function ReviewChunk({
           }]
         : [])
     ],
-    [chunk.patch, chunk.path, lineCollaboration?.threads, normalizedSelection]
+    [
+      agentNotes,
+      chunk.patch,
+      chunk.path,
+      hiddenAgentNoteIds,
+      lineCollaboration?.threads,
+      normalizedSelection
+    ]
   );
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? createReviewLineSelectionOptions(
@@ -2950,7 +3060,13 @@ function ReviewChunk({
                       onUpdateComment={lineCollaboration?.onUpdateComment}
                       onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
                     />
-                  : null
+                  : annotation.metadata.kind === 'agent-note'
+                    ? <ReviewAgentNoteAnnotation
+                        note={annotation.metadata.note}
+                        hidden={annotation.metadata.hidden}
+                        onSetAgentNoteHidden={onSetAgentNoteHidden}
+                      />
+                    : null
             )}
           />
         ) : (
@@ -2970,12 +3086,92 @@ function ReviewChunk({
                       onUpdateComment={lineCollaboration?.onUpdateComment}
                       onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
                     />
-                  : null
+                  : annotation.metadata.kind === 'agent-note'
+                    ? <ReviewAgentNoteAnnotation
+                        note={annotation.metadata.note}
+                        hidden={annotation.metadata.hidden}
+                        onSetAgentNoteHidden={onSetAgentNoteHidden}
+                      />
+                    : null
             )}
           />
         )
       )}
     </section>
+  );
+}
+
+export function AgentNoteAnnotation({
+  note,
+  hidden,
+  onHiddenChange
+}: {
+  note: GitAgentNote;
+  hidden: boolean;
+  onHiddenChange: (hidden: boolean) => void;
+}): ReactElement {
+  if (hidden) {
+    return (
+      <button
+        className="agent-note-collapsed"
+        type="button"
+        aria-label={`Show Agent Note: ${note.summary}`}
+        onClick={() => onHiddenChange(false)}
+      >
+        <Sparkles size={11} />
+        <span>Agent note</span>
+        <span className="agent-note-read-state">read</span>
+        <span className="agent-note-spacer" />
+        <span>Show</span>
+        <ChevronDown size={11} />
+      </button>
+    );
+  }
+
+  return (
+    <article className="agent-note" data-agent-note-id={note.id}>
+      <header>
+        <span className="agent-note-kicker">
+          <Sparkles size={11} />
+          Agent note
+        </span>
+        <span className="agent-note-author">{note.author}</span>
+        <button
+          className="agent-note-hide"
+          type="button"
+          onClick={() => onHiddenChange(true)}
+        >
+          <EyeOff size={11} />
+          Hide note
+        </button>
+      </header>
+      <div className="agent-note-body">
+        <strong>{note.summary}</strong>
+        {note.detail ? <p>{note.detail}</p> : null}
+      </div>
+      <footer>
+        <code>{note.path}:{note.line}</code>
+        <time dateTime={note.createdAt}>{formatReviewCommentDate(note.createdAt)}</time>
+      </footer>
+    </article>
+  );
+}
+
+function ReviewAgentNoteAnnotation({
+  note,
+  hidden,
+  onSetAgentNoteHidden
+}: {
+  note: GitAgentNote;
+  hidden: boolean;
+  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
+}): ReactElement {
+  return (
+    <AgentNoteAnnotation
+      note={note}
+      hidden={hidden}
+      onHiddenChange={(nextHidden) => onSetAgentNoteHidden(note.id, nextHidden)}
+    />
   );
 }
 

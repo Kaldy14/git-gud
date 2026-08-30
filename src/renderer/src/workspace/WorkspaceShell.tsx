@@ -114,6 +114,7 @@ import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ip
 import type { PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
 import type {
   AppSettings,
+  CodexAgentNotesSkillState,
   CommitGraphRow,
   Dashboard,
   DashboardState,
@@ -317,6 +318,9 @@ export function WorkspaceShell(): ReactElement {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
+  const [codexSkillState, setCodexSkillState] = useState<CodexAgentNotesSkillState>();
+  const [isCodexSkillBusy, setIsCodexSkillBusy] = useState(false);
+  const [codexSkillErrorMessage, setCodexSkillErrorMessage] = useState<string>();
   const [isQuickJumpOpen, setIsQuickJumpOpen] = useState(false);
   const [isCommitSearchOpen, setIsCommitSearchOpen] = useState(false);
   const [commitSearchFocusSignal, setCommitSearchFocusSignal] = useState(0);
@@ -1464,6 +1468,49 @@ export function WorkspaceShell(): ReactElement {
       setSettingsErrorMessage(error instanceof Error ? error.message : 'Unable to save settings.');
     } finally {
       setIsSettingsSaving(false);
+    }
+  }
+
+  function handleOpenSettings(): void {
+    setIsSettingsOpen(true);
+    setCodexSkillState(undefined);
+    setCodexSkillErrorMessage(undefined);
+    void window.api.getCodexAgentNotesSkillState()
+      .then(setCodexSkillState)
+      .catch((error: unknown) => {
+        setCodexSkillErrorMessage(
+          error instanceof Error ? error.message : 'Unable to inspect the Codex skill.'
+        );
+      });
+  }
+
+  async function handleInstallCodexSkill(): Promise<void> {
+    setIsCodexSkillBusy(true);
+    setCodexSkillErrorMessage(undefined);
+
+    try {
+      setCodexSkillState(await window.api.installCodexAgentNotesSkill());
+    } catch (error) {
+      setCodexSkillErrorMessage(
+        error instanceof Error ? error.message : 'Unable to install the Codex skill.'
+      );
+    } finally {
+      setIsCodexSkillBusy(false);
+    }
+  }
+
+  async function handleRemoveCodexSkill(): Promise<void> {
+    setIsCodexSkillBusy(true);
+    setCodexSkillErrorMessage(undefined);
+
+    try {
+      setCodexSkillState(await window.api.removeCodexAgentNotesSkill());
+    } catch (error) {
+      setCodexSkillErrorMessage(
+        error instanceof Error ? error.message : 'Unable to remove the Codex skill.'
+      );
+    } finally {
+      setIsCodexSkillBusy(false);
     }
   }
 
@@ -3232,7 +3279,7 @@ export function WorkspaceShell(): ReactElement {
       category: 'Workspace',
       keywords: ['preferences', 'graph columns', 'avatars'],
       icon: <Settings size={14} />,
-      onSelect: () => setIsSettingsOpen(true)
+      onSelect: handleOpenSettings
     },
     {
       id: 'toggle-diff-style',
@@ -3323,7 +3370,7 @@ export function WorkspaceShell(): ReactElement {
         onActivateStartTab={handleActivateStartTab}
         onCloseStartTab={handleCloseStartTab}
         onActivateDashboardsTab={handleActivateDashboardsTab}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={handleOpenSettings}
         onActivateProfile={handleActivateProfile}
         onSaveAndActivateProfile={handleSaveAndActivateProfile}
       />
@@ -3849,8 +3896,13 @@ export function WorkspaceShell(): ReactElement {
           settings={settings}
           isSaving={isSettingsSaving}
           errorMessage={settingsErrorMessage}
+          codexSkillState={codexSkillState}
+          isCodexSkillBusy={isCodexSkillBusy}
+          codexSkillErrorMessage={codexSkillErrorMessage}
           onClose={() => setIsSettingsOpen(false)}
           onSave={handleSaveSettings}
+          onInstallCodexSkill={handleInstallCodexSkill}
+          onRemoveCodexSkill={handleRemoveCodexSkill}
         />
       ) : null}
       {commandDialog ? <CommandDialog key={commandDialog.id} dialog={commandDialog} onClose={() => setCommandDialog(undefined)} /> : null}

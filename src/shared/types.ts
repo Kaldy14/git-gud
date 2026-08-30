@@ -383,6 +383,23 @@ export type GitReviewProgressUpdate = {
   viewed: boolean;
 };
 
+export type GitAgentNote = {
+  id: string;
+  path: string;
+  line: number;
+  anchor: string;
+  summary: string;
+  detail?: string;
+  author: string;
+  createdAt: string;
+};
+
+export type CodexAgentNotesSkillState = {
+  status: 'not-installed' | 'installed' | 'update-available' | 'conflict';
+  installPath: string;
+  message?: string;
+};
+
 export type GitFileHistoryCommit = {
   sha: string;
   shortSha: string;

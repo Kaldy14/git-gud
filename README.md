@@ -51,7 +51,7 @@ The final step publishes the selected decision and all local drafts together:
 - **Sync and stash workflows.** Choose fetch, merge-based pull, fast-forward-only pull, or rebase pull as the main sync action. Push the current branch, prune remote references, create selective stashes that include chosen tracked or untracked files, and apply, pop, or drop saved work.
 - **Rebase and conflict recovery.** Merge, cherry-pick ordered selections, revert, reset, and run standard or interactive rebases with reorder, reword, squash, fixup, and drop. The conflict resolver shows ours and theirs, supports per-marker choices and manual output editing, stages resolved files, and continues, skips, or aborts the active operation.
 - **GitHub Actions and Portainer dashboards.** Build profile-scoped dashboards from editable and reorderable tiles. GitHub Actions tiles can show recent runs for selected branches or tags, or group the latest workflow attempts for pull requests you authored. Open a run inside Git Gud to inspect its job graph, steps, and failed-step logs. Portainer tiles monitor Swarm and Compose stacks, replicas or containers, service health, and deployed images.
-- **Codex and AI assistance.** Open selected diff lines as a prefilled Codex task without submitting it. Pull-request drafts can be copied as a bounded review prompt for use in Codex or another assistant. A locally installed Pi CLI powers optional background review walkthroughs and staged-diff commit-message generation.
+- **Codex and AI assistance.** Install the Git Gud Agent Notes skill once, then let Codex attach occasional implementation context to changed lines from tasks started anywhere. Open selected diff lines as a prefilled Codex task without submitting it. Pull-request drafts can be copied as a bounded review prompt for use in Codex or another assistant. A locally installed Pi CLI powers optional background review walkthroughs and staged-diff commit-message generation.
 - **Safety, profiles, and updates.** Git mutations run in a per-repository queue with progress and cancellation. Destructive actions require confirmation, useful local operations record undo data, ignored local files are protected from overwrite, and rejected pushes can use a revision-checked force push with lease. Profiles isolate Git identity, signing, SSH, GitHub CLI settings, tabs, recent repositories, and dashboards. Packaged macOS releases update in the background and install only after an explicit restart.
 
 ## More screenshots
@@ -96,6 +96,16 @@ Press <kbd>⌘</kbd> <kbd>P</kbd> to search actions, commits, branches, reposito
 - [Codex](https://openai.com/codex/) desktop app (optional, for diff and pull-request review handoffs)
 - Pi CLI available on `PATH`, or configured through `PI_EXECUTABLE_PATH` (optional, for AI review walkthroughs and commit-message generation)
 - Portainer Business Edition API access (optional, for Swarm and Compose stack monitoring)
+
+## Codex Agent Notes
+
+Agent Notes let Codex attach short implementation context directly to changed lines in Git Gud. Most tasks should produce no notes. A note is useful only when the diff cannot explain a constraint, behavior contract, or concrete risk that matters during review.
+
+Open **Settings → Codex** and select **Install skill**. Git Gud installs the bundled `git-gud-agent-notes` skill in `~/.agents/skills`, where local Codex clients can discover it for repositories opened anywhere. This feature does not depend on starting a Codex task from Git Gud.
+
+After an implementation task, the skill asks Codex to inspect its finished diff and decide whether any note is warranted. When one is, the skill's bundled writer validates the changed line, captures a stable anchor, and stores the note in that worktree's Git metadata. Git Gud watches the repository and shows the note inline. Hiding a read note collapses it to a small marker that can be reopened later.
+
+The integration is local and optional. Git Gud never changes a repository's `AGENTS.md`, never adds note files to the working tree, and leaves an existing unmanaged skill with the same name untouched. See [docs/agent-notes.md](docs/agent-notes.md) for the exact authoring rules, command, storage behavior, and limitations.
 
 ## Run from source
 
@@ -202,11 +212,11 @@ Electron main process
 
 The renderer has no Node.js access and never executes Git directly. Shared TypeScript contracts define the IPC boundary, while validation and repository-scope checks run in the main process.
 
-See [docs/README.md](docs/README.md) for the renderer map and graph model, [PRODUCT.md](PRODUCT.md) for product principles, and [PLAN.md](PLAN.md) for milestone history and deeper implementation notes.
+See [docs/README.md](docs/README.md) for the renderer map and graph model, [docs/agent-notes.md](docs/agent-notes.md) for the Codex skill integration, [PRODUCT.md](PRODUCT.md) for product principles, and [PLAN.md](PLAN.md) for milestone history and deeper implementation notes.
 
 ## Project scope
 
-Git Gud prioritizes local repository work, with focused GitHub pull-request and Actions support through an already-connected GitHub CLI profile and optional Portainer stack monitoring. It does not host repositories, manage issues or teams, patch cloud services, or publish automated review comments. AI actions are opt-in: Git Gud can run the locally installed Pi CLI for review walkthroughs and commit messages, open selected code in a prefilled Codex task, or copy local pull-request drafts as a prompt. It does not auto-submit Codex tasks or copied review drafts. Windows remains experimental, and Linux needs platform integration, packaging, and CI coverage before it can be supported.
+Git Gud prioritizes local repository work, with focused GitHub pull-request and Actions support through an already-connected GitHub CLI profile and optional Portainer stack monitoring. It does not host repositories, manage issues or teams, patch cloud services, or publish automated review comments. AI actions are opt-in: Git Gud can install its local Codex Agent Notes skill, run the locally installed Pi CLI for review walkthroughs and commit messages, open selected code in a prefilled Codex task, or copy local pull-request drafts as a prompt. It does not auto-submit Codex tasks or copied review drafts. Windows remains experimental, and Linux needs platform integration, packaging, and CI coverage before it can be supported.
 
 ## Acknowledgements
 

@@ -47,6 +47,7 @@ const api: RendererApi = {
   generateCommitMessage: (repoPath) => invoke('repo:generate-commit-message', repoPath),
   getFileDiff: (repoPath, request) => invoke('repo:file-diff', repoPath, request),
   getReviewPlan: (repoPath, target) => invoke('repo:review-plan', repoPath, target),
+  getAgentNotes: (repoPath) => invoke('repo:agent-notes', repoPath),
   getReviewTypeDefinition: (repoPath, input) =>
     invoke('repo:review-type-definition', repoPath, input),
   getReviewGuideState: (repoPath, sourceFingerprint) =>
@@ -104,6 +105,9 @@ const api: RendererApi = {
   cancelRepositoryOperation: (repoPath, operationId) => invoke('repo:cancel-operation', repoPath, operationId),
   getSettings: () => invoke('settings:get'),
   updateSettings: (settings) => invoke('settings:update', settings),
+  getCodexAgentNotesSkillState: () => invoke('codex:agent-notes-skill-state'),
+  installCodexAgentNotesSkill: () => invoke('codex:install-agent-notes-skill'),
+  removeCodexAgentNotesSkill: () => invoke('codex:remove-agent-notes-skill'),
   listProfiles: () => invoke('profiles:list'),
   listGitHubAccounts: () => invoke('profiles:list-github-accounts'),
   getDashboards: (profileId) => invoke('dashboards:get', profileId),

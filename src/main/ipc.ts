@@ -19,6 +19,12 @@ import type {
   WorkspaceState
 } from '@shared/types';
 
+import { loadAgentNotes } from './agentNotes';
+import {
+  getCodexAgentNotesSkillState,
+  installCodexAgentNotesSkill,
+  removeCodexAgentNotesSkill
+} from './codexAgentNotes';
 import { loadCommitGraph } from './git/commitGraph';
 import { generateCommitMessage } from './commitMessage';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
@@ -470,6 +476,9 @@ export function registerIpcHandlers(
       reviewedChunkIds: loadReviewedChunks(repoPath, plan.targetKey, validChunkIds)
     };
   });
+  handle('repo:agent-notes', (_event, repoPath) =>
+    loadAgentNotes(getOpenRepositoryTab(repoPath))
+  );
   handle('repo:review-type-definition', (_event, repoPath, input) => {
     const plan = repoPath.startsWith('github://')
       ? githubPullRequestReviewPlans.getByReview(repoPath, input.sourceFingerprint)
@@ -671,6 +680,9 @@ export function registerIpcHandlers(
   );
   handle('settings:get', () => getAppSettings());
   handle('settings:update', (_event, settings) => updateAppSettings(settings));
+  handle('codex:agent-notes-skill-state', () => getCodexAgentNotesSkillState());
+  handle('codex:install-agent-notes-skill', () => installCodexAgentNotesSkill());
+  handle('codex:remove-agent-notes-skill', () => removeCodexAgentNotesSkill());
   handle('profiles:list', () => listProfiles());
   handle('profiles:list-github-accounts', () => listGitHubAccounts());
   handle('dashboards:get', (_event, profileId) => getDashboards(profileId));

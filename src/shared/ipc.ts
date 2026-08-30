@@ -2,10 +2,12 @@ import type {
   ApplicationUpdateState,
   AppSettings,
   AppSettingsInput,
+  CodexAgentNotesSkillState,
   CommitGraphPage,
   DashboardActionAlertState,
   DashboardInput,
   DashboardState,
+  GitAgentNote,
   GitCommitDetail,
   GitCommitSelectionDetail,
   GitCommitInput,
@@ -210,6 +212,10 @@ export type IpcChannelMap = {
   'repo:review-plan': {
     args: [repoPath: string, target: GitReviewTarget];
     result: GitReviewPlan;
+  };
+  'repo:agent-notes': {
+    args: [repoPath: string];
+    result: GitAgentNote[];
   };
   'repo:review-type-definition': {
     args: [repoPath: string, input: GitReviewTypeDefinitionInput];
@@ -435,6 +441,18 @@ export type IpcChannelMap = {
     args: [settings: AppSettingsInput];
     result: AppSettings;
   };
+  'codex:agent-notes-skill-state': {
+    args: [];
+    result: CodexAgentNotesSkillState;
+  };
+  'codex:install-agent-notes-skill': {
+    args: [];
+    result: CodexAgentNotesSkillState;
+  };
+  'codex:remove-agent-notes-skill': {
+    args: [];
+    result: CodexAgentNotesSkillState;
+  };
   'profiles:list': {
     args: [];
     result: GitProfile[];
@@ -603,6 +621,7 @@ export type RendererApi = {
   generateCommitMessage: (repoPath: string) => Promise<string>;
   getFileDiff: (repoPath: string, request: GitFileDiffRequest) => Promise<GitFileDiff>;
   getReviewPlan: (repoPath: string, target: GitReviewTarget) => Promise<GitReviewPlan>;
+  getAgentNotes: (repoPath: string) => Promise<GitAgentNote[]>;
   getReviewTypeDefinition: (
     repoPath: string,
     input: GitReviewTypeDefinitionInput
@@ -670,6 +689,9 @@ export type RendererApi = {
   cancelRepositoryOperation: (repoPath: string, operationId: string) => Promise<GitOperationCancellationResult>;
   getSettings: () => Promise<AppSettings>;
   updateSettings: (settings: AppSettingsInput) => Promise<AppSettings>;
+  getCodexAgentNotesSkillState: () => Promise<CodexAgentNotesSkillState>;
+  installCodexAgentNotesSkill: () => Promise<CodexAgentNotesSkillState>;
+  removeCodexAgentNotesSkill: () => Promise<CodexAgentNotesSkillState>;
   listProfiles: () => Promise<GitProfile[]>;
   listGitHubAccounts: () => Promise<GitHubCliAccount[]>;
   getDashboards: (profileId: string) => Promise<DashboardState>;

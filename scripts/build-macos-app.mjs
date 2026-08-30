@@ -79,6 +79,10 @@ function installAppPayload() {
   );
 
   cpSync(join(repoRoot, 'out'), join(bundledAppPath, 'out'), { force: true, recursive: true });
+  cpSync(join(repoRoot, 'skills'), join(bundledAppPath, 'skills'), {
+    force: true,
+    recursive: true
+  });
   cpSync(join(deployedAppPath, 'node_modules'), join(bundledAppPath, 'node_modules'), {
     force: true,
     recursive: true,
