@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.8.18] - 2026-08-31
+
+### Added
+
+- Added repository favicons to tabs, with local icon discovery for standard project and monorepo layouts and a folder fallback when no icon exists.
+
 ## [2026.8.17] - 2026-08-30
 
 ### Added
