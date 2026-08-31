@@ -1298,6 +1298,30 @@ export type GitHubPullRequestReviewer = {
   submittedAt?: string;
 };
 
+export type GitHubPullRequestReviewerCandidate =
+  | {
+      id: string;
+      kind: 'user';
+      login: string;
+      name?: string;
+      avatarUrl?: string;
+    }
+  | {
+      id: string;
+      kind: 'team';
+      organization: string;
+      slug: string;
+      name: string;
+      avatarUrl?: string;
+    };
+
+export type GitHubPullRequestReviewerUpdateInput = GitHubPullRequestLocator & {
+  reviewer:
+    | { kind: 'user'; login: string }
+    | { kind: 'team'; slug: string };
+  requested: boolean;
+};
+
 export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   id: string;
   title: string;

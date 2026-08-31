@@ -12,6 +12,7 @@ import {
   canReuseGitHubPullRequestInbox,
   categorizePullRequest,
   createGitHubFileReviewCommentPayload,
+  createGitHubReviewerRequestPayload,
   filterGitHubActionsRuns,
   gitHubWorkflowFileArgs,
   gitHubWorkflowRunDetailArgs,
@@ -25,6 +26,7 @@ import {
   parseGitHubRecentPushEvents,
   parseGitHubBodyImageUrls,
   parseGitHubPullRequestResponse,
+  parseGitHubPullRequestReviewerCandidates,
   parseGitHubFileTextBatchResponse,
   parsePullRequestCommit,
   parseGitHubRepositoriesResponse,
@@ -34,6 +36,58 @@ import {
   searchGitHubActionsRunPages,
   selectGitHubReviewContextFiles
 } from './github';
+
+describe('GitHub pull request reviewer requests', () => {
+  it('parses and sorts collaborator and team candidates', () => {
+    expect(
+      parseGitHubPullRequestReviewerCandidates(
+        [
+          { login: 'zoe', avatar_url: 'https://avatars.example/zoe' },
+          { login: 'anna', name: 'Anna Reviewer' }
+        ],
+        [
+          {
+            slug: 'platform',
+            name: 'Platform',
+            organization: { login: 'acme' }
+          }
+        ]
+      )
+    ).toEqual([
+      {
+        id: 'team:acme/platform',
+        kind: 'team',
+        organization: 'acme',
+        slug: 'platform',
+        name: 'Platform',
+        avatarUrl: undefined
+      },
+      {
+        id: 'user:anna',
+        kind: 'user',
+        login: 'anna',
+        name: 'Anna Reviewer',
+        avatarUrl: undefined
+      },
+      {
+        id: 'user:zoe',
+        kind: 'user',
+        login: 'zoe',
+        name: undefined,
+        avatarUrl: 'https://avatars.example/zoe'
+      }
+    ]);
+  });
+
+  it('builds GitHub request bodies for users and teams', () => {
+    expect(createGitHubReviewerRequestPayload({ kind: 'user', login: 'anna' })).toEqual({
+      reviewers: ['anna']
+    });
+    expect(createGitHubReviewerRequestPayload({ kind: 'team', slug: 'platform' })).toEqual({
+      team_reviewers: ['platform']
+    });
+  });
+});
 
 describe('GitHub pull request file context', () => {
   it('batches file contents into one GraphQL repository query', () => {

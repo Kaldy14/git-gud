@@ -245,6 +245,34 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('profiles:activate', [undefined])).toEqual([undefined]);
     expect(validateIpcArgs('github:pull-request-inbox', ['profile:kaldy'])).toEqual(['profile:kaldy']);
     expect(
+      validateIpcArgs('github:pull-request-reviewer-candidates', [
+        { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }
+      ])
+    ).toEqual([
+      { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 }
+    ]);
+    expect(
+      validateIpcArgs('github:update-pull-request-reviewer', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          reviewer: { kind: 'team', slug: 'platform' },
+          requested: true
+        }
+      ])
+    ).toEqual([
+      {
+        profileId: 'profile:kaldy',
+        owner: 'acme',
+        repository: 'widgets',
+        number: 42,
+        reviewer: { kind: 'team', slug: 'platform' },
+        requested: true
+      }
+    ]);
+    expect(
       validateIpcArgs('github:workflow-run-detail', [
         {
           profileId: 'profile:kaldy',
@@ -854,6 +882,18 @@ describe('IPC argument validation', () => {
         { profileId: 'profile:kaldy', owner: '../acme', repository: 'widgets', number: 42 }
       ])
     ).toThrow('owner contains unsupported characters.');
+    expect(() =>
+      validateIpcArgs('github:update-pull-request-reviewer', [
+        {
+          profileId: 'profile:kaldy',
+          owner: 'acme',
+          repository: 'widgets',
+          number: 42,
+          reviewer: { kind: 'team', slug: '../platform' },
+          requested: true
+        }
+      ])
+    ).toThrow('reviewer.slug contains unsupported characters.');
     expect(() =>
       validateIpcArgs('github:pull-request-review-plan', [
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
