@@ -77,6 +77,7 @@ import {
   unstageFile
 } from './git/repositoryDetails';
 import { loadRepositoryOverview } from './git/repositoryOverview';
+import { loadRepositoryIconDataUrl } from './git/repositoryIcon';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
 import { findBaseRepositoryForMissingWorktree } from './git/repositoryRecovery';
 import { listExternalApplications } from './externalApplications';
@@ -449,6 +450,9 @@ export function registerIpcHandlers(
     );
     return overview;
   });
+  handle('repo:icon', async (_event, repoPath) =>
+    loadRepositoryIconDataUrl(getOpenRepositoryTab(repoPath).path)
+  );
   handle('repo:graph', async (_event, repoPath, limit) => {
     const tab = getWorkspace().tabs.find((candidate) => candidate.path === repoPath);
 

@@ -185,6 +185,10 @@ export type IpcChannelMap = {
     args: [repoPath: string];
     result: GitRepositoryOverview;
   };
+  'repo:icon': {
+    args: [repoPath: string];
+    result: string | undefined;
+  };
   'repo:graph': {
     args: [repoPath: string, limit?: number];
     result: CommitGraphPage;
@@ -614,6 +618,7 @@ export type RendererApi = {
   setDetailPanelCollapsed: (collapsed: boolean) => Promise<WorkspaceState>;
   setDetailPanelWidth: (width: number) => Promise<WorkspaceState>;
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
+  getRepositoryIcon: (repoPath: string) => Promise<string | undefined>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;

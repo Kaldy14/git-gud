@@ -40,6 +40,7 @@ const api: RendererApi = {
   setDetailPanelCollapsed: (collapsed) => invoke('workspace:set-detail-panel-collapsed', collapsed),
   setDetailPanelWidth: (width) => invoke('workspace:set-detail-panel-width', width),
   getRepositoryOverview: (repoPath) => invoke('repo:overview', repoPath),
+  getRepositoryIcon: (repoPath) => invoke('repo:icon', repoPath),
   getCommitGraph: (repoPath, limit) => invoke('repo:graph', repoPath, limit),
   getCommitDetail: (repoPath, sha) => invoke('repo:commit-detail', repoPath, sha),
   getCommitSelectionDetail: (repoPath, shas) => invoke('repo:commit-selection-detail', repoPath, shas),

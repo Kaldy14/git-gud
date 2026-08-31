@@ -109,11 +109,12 @@ describe('TabStrip', () => {
     expect(markup).toContain(`data-tab-id="${secondRepositoryTab.id}"`);
   });
 
-  it('gives repository names the full tab width until the close control overlays them', () => {
+  it('reserves space for the repository icon, dirty state, and close control', () => {
     const markup = renderToStaticMarkup(
       <TabStrip
         tabs={[repositoryTab]}
         activeTabId={repositoryTab.id}
+        activeRepoDirty
         isStartTabOpen={false}
         isStartTabActive={false}
         isDashboardsTabActive={false}
@@ -132,6 +133,9 @@ describe('TabStrip', () => {
 
     expect(markup).toContain('class="no-drag repo-tab repo-tab--repository group"');
     expect(markup).toContain('class="repo-tab-close"');
+    expect(markup).toContain('data-repository-icon-fallback="true"');
+    expect(markup).toContain('repo-tab-dirty size-2');
+    expect(markup).toContain('size-5 shrink-0');
     expect(markup).not.toContain('lucide-git-branch');
   });
 

@@ -281,18 +281,18 @@ select {
 }
 
 .repo-tab--repository {
-  padding-right: 0;
+  padding-right: 7px;
 }
 
 .repo-tab--repository .repo-tab-main {
-  padding-right: 13px;
+  padding-right: 4px;
 }
 
 .repo-tab-close {
-  position: absolute;
+  position: static;
   z-index: 2;
-  right: 7px;
   display: grid;
+  flex: 0 0 auto;
   width: 20px;
   height: 20px;
   place-items: center;
@@ -301,6 +301,10 @@ select {
   color: var(--text-3);
   opacity: 0;
   transition: color 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.repo-tab-dirty {
+  box-shadow: 0 0 0 2px var(--bg-toolbar);
 }
 
 .repo-tab--repository:hover .repo-tab-close,

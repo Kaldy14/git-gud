@@ -1,5 +1,5 @@
-import { useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { FilePlus2, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
+import { FilePlus2, FolderGit2, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
 
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
 import {
@@ -237,9 +237,10 @@ export function TabStrip({
                     handleTabKeyDown(event, tabIndex, navigationTabIds, activateNavigationTab)
                   }
                 >
-                  <span className="min-w-0 truncate">{tab.name}</span>
+                  <RepositoryTabIcon repoPath={tab.path} />
+                  <span className="min-w-0 flex-1 truncate">{tab.name}</span>
                   {isActive && activeRepoDirty ? (
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
+                    <span className="repo-tab-dirty size-2 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
                   ) : null}
                 </button>
                 <button
@@ -360,6 +361,55 @@ export function TabStrip({
         />
       </div>
     </div>
+  );
+}
+
+function RepositoryTabIcon({ repoPath }: { repoPath: string }): ReactElement {
+  const [iconState, setIconState] = useState<{
+    repoPath: string;
+    source?: string;
+  }>();
+
+  useEffect(() => {
+    let active = true;
+
+    void window.api.getRepositoryIcon(repoPath)
+      .then((source) => {
+        if (active) {
+          setIconState({ repoPath, source });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setIconState({ repoPath });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [repoPath]);
+
+  const iconSource = iconState?.repoPath === repoPath ? iconState.source : undefined;
+
+  if (!iconSource) {
+    return (
+      <FolderGit2
+        aria-hidden="true"
+        className="size-5 shrink-0 text-[var(--text-3)]"
+        data-repository-icon-fallback
+      />
+    );
+  }
+
+  return (
+    <img
+      src={iconSource}
+      alt=""
+      className="size-5 shrink-0 rounded-sm object-contain"
+      data-repository-icon
+      onError={() => setIconState({ repoPath })}
+    />
   );
 }
 

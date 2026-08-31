@@ -7,6 +7,7 @@ describe('IPC argument validation', () => {
     expect(validateIpcArgs('app:pull-request-deep-links-ready', [])).toEqual([]);
     expect(validateIpcArgs('updates:get-state', [])).toEqual([]);
     expect(validateIpcArgs('updates:apply', [])).toEqual([]);
+    expect(validateIpcArgs('repo:icon', ['/repo'])).toEqual(['/repo']);
     expect(validateIpcArgs('dev:review-grouping-benchmarks', [])).toEqual([]);
     expect(validateIpcArgs('dev:review-grouping-preview', ['tsx-prop-migration'])).toEqual([
       'tsx-prop-migration'

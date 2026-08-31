@@ -98,6 +98,7 @@ const validators = {
   'workspace:set-detail-panel-width': (args) =>
     readOnlyArg(args, 'workspace:set-detail-panel-width', 'width', readPositiveInteger),
   'repo:overview': (args) => readOnlyArg(args, 'repo:overview', 'repoPath', readString),
+  'repo:icon': (args) => readOnlyArg(args, 'repo:icon', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
   'repo:commit-selection-detail': (args) =>
