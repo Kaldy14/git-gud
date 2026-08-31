@@ -396,7 +396,7 @@ function RepositoryTabIcon({ repoPath }: { repoPath: string }): ReactElement {
     return (
       <FolderGit2
         aria-hidden="true"
-        className="size-5 shrink-0 text-[var(--text-3)]"
+        className="size-4 shrink-0 text-[var(--text-3)]"
         data-repository-icon-fallback
       />
     );
@@ -406,7 +406,7 @@ function RepositoryTabIcon({ repoPath }: { repoPath: string }): ReactElement {
     <img
       src={iconSource}
       alt=""
-      className="size-5 shrink-0 rounded-sm object-contain"
+      className="size-4 shrink-0 rounded-sm object-contain"
       data-repository-icon
       onError={() => setIconState({ repoPath })}
     />

@@ -135,7 +135,7 @@ describe('TabStrip', () => {
     expect(markup).toContain('class="repo-tab-close"');
     expect(markup).toContain('data-repository-icon-fallback="true"');
     expect(markup).toContain('repo-tab-dirty size-2');
-    expect(markup).toContain('size-5 shrink-0');
+    expect(markup).toContain('size-4 shrink-0');
     expect(markup).not.toContain('lucide-git-branch');
   });
 
