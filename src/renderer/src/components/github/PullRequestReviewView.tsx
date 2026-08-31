@@ -64,7 +64,7 @@ import type {
   GitHubPullRequestSummary
 } from '@shared/types';
 
-import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
+import { PullRequestReviewerPicker } from './PullRequestReviewerPicker';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { PullRequestGitHubLink } from './PullRequestGitHubLink';
 import { PullRequestHeaderActions } from './PullRequestHeaderActions';
@@ -763,6 +763,15 @@ function PullRequestReviewContent({
           </span>
         </div>
         <div className="pr-review-header-status overflow-hidden">
+          <PullRequestReviewerPicker
+            detail={detail}
+            onReviewersChanged={() =>
+              queryClient.invalidateQueries({
+                queryKey: gitHubPullRequestInboxQueryKey(locator.profileId)
+              })
+            }
+            onNotice={setNotice}
+          />
           <ReviewStatus
             detail={detail}
             areConflictsOpen={isOverviewOpen && isConflictPanelOpen}
@@ -1512,14 +1521,12 @@ function ReviewStatus({
           title={areConflictsOpen ? 'Hide merge conflict details' : 'Show merge conflict details'}
           onClick={onToggleConflicts}
         >
-          <PullRequestReviewerAvatars reviewers={detail.reviewers} />
           <AlertTriangle size={12} />
           {reviewStatus.label}
           <ChevronRight size={11} aria-hidden="true" />
         </button>
       ) : (
         <span data-tone={reviewStatus.tone}>
-          <PullRequestReviewerAvatars reviewers={detail.reviewers} />
           {reviewStatus.icon === 'check'
             ? <Check size={12} />
             : reviewStatus.icon === 'warning'

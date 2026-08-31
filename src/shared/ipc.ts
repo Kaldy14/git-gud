@@ -45,6 +45,8 @@ import type {
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
+  GitHubPullRequestReviewerCandidate,
+  GitHubPullRequestReviewerUpdateInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestReviewCommentUpdateInput,
   GitHubRepositorySummary,
@@ -541,6 +543,14 @@ export type IpcChannelMap = {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestDetail;
   };
+  'github:pull-request-reviewer-candidates': {
+    args: [locator: GitHubPullRequestLocator];
+    result: GitHubPullRequestReviewerCandidate[];
+  };
+  'github:update-pull-request-reviewer': {
+    args: [input: GitHubPullRequestReviewerUpdateInput];
+    result: GitHubPullRequestActionResult;
+  };
   'github:pull-request-review-plan': {
     args: [locator: GitHubPullRequestLocator, headSha: string];
     result: GitReviewPlan;
@@ -731,6 +741,12 @@ export type RendererApi = {
   getGitHubWorkflowRunFailedLog: (input: GitHubWorkflowRunFailureInput) => Promise<string>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
+  getGitHubPullRequestReviewerCandidates: (
+    locator: GitHubPullRequestLocator
+  ) => Promise<GitHubPullRequestReviewerCandidate[]>;
+  updateGitHubPullRequestReviewer: (
+    input: GitHubPullRequestReviewerUpdateInput
+  ) => Promise<GitHubPullRequestActionResult>;
   getGitHubPullRequestReviewPlan: (
     locator: GitHubPullRequestLocator,
     headSha: string

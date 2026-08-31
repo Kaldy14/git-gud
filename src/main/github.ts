@@ -15,6 +15,8 @@ import type {
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
+  GitHubPullRequestReviewerCandidate,
+  GitHubPullRequestReviewerUpdateInput,
   GitHubPullRequestSuggestion,
   GitHubPullRequestReview,
   GitHubPullRequestReviewer,
@@ -1491,6 +1493,73 @@ export async function loadGitHubPullRequestDetail(
   };
 }
 
+export async function loadGitHubPullRequestReviewerCandidates(
+  locator: GitHubPullRequestLocator
+): Promise<GitHubPullRequestReviewerCandidate[]> {
+  const context = await getGitHubContext(locator.profileId);
+  const endpoint = repositoryEndpoint(locator);
+  const [users, teams] = await Promise.all([
+    runGitHubPaginatedArray(
+      context,
+      `${endpoint}/collaborators?affiliation=all&per_page=100`
+    ),
+    runGitHubPaginatedArray(context, `${endpoint}/teams?per_page=100`)
+  ]);
+
+  return parseGitHubPullRequestReviewerCandidates(users, teams);
+}
+
+export function parseGitHubPullRequestReviewerCandidates(
+  users: unknown[],
+  teams: unknown[]
+): GitHubPullRequestReviewerCandidate[] {
+  const candidates = new Map<string, GitHubPullRequestReviewerCandidate>();
+
+  for (const value of users) {
+    const user = readRecord(value, 'reviewer candidate');
+    const login = readString(user.login, 'reviewer login');
+    const id = `user:${login.toLowerCase()}`;
+    candidates.set(id, {
+      id,
+      kind: 'user',
+      login,
+      name: readOptionalString(user.name),
+      avatarUrl: readOptionalString(user.avatar_url)
+    });
+  }
+
+  for (const value of teams) {
+    const team = readRecord(value, 'reviewer team candidate');
+    const organization = readNestedString(
+      team,
+      ['organization', 'login'],
+      'reviewer team organization'
+    );
+    const slug = readString(team.slug, 'reviewer team slug');
+    const id = `team:${organization.toLowerCase()}/${slug.toLowerCase()}`;
+    candidates.set(id, {
+      id,
+      kind: 'team',
+      organization,
+      slug,
+      name: readString(team.name, 'reviewer team name'),
+      avatarUrl: readOptionalString(team.avatar_url)
+    });
+  }
+
+  return [...candidates.values()].sort((left, right) =>
+    reviewerCandidateLabel(left).localeCompare(reviewerCandidateLabel(right), undefined, {
+      sensitivity: 'base'
+    })
+  );
+}
+
+function reviewerCandidateLabel(candidate: GitHubPullRequestReviewerCandidate): string {
+  return candidate.kind === 'user'
+    ? candidate.login
+    : `${candidate.organization}/${candidate.slug}`;
+}
+
 export async function loadGitHubPullRequestReviewPlan(
   locator: GitHubPullRequestLocator,
   headSha: string
@@ -2267,6 +2336,44 @@ export async function updateGitHubPullRequestReviewComment(
     { body: input.body }
   );
   return { message: 'Review comment updated.' };
+}
+
+export async function updateGitHubPullRequestReviewer(
+  input: GitHubPullRequestReviewerUpdateInput
+): Promise<GitHubPullRequestActionResult> {
+  const context = await getGitHubContext(input.profileId);
+  await runGitHubJson(
+    context,
+    [
+      'api',
+      '--hostname',
+      context.host,
+      '--method',
+      input.requested ? 'POST' : 'DELETE',
+      '--input',
+      '-',
+      `${pullRequestEndpoint(input)}/requested_reviewers`
+    ],
+    createGitHubReviewerRequestPayload(input.reviewer)
+  );
+  gitHubPullRequestInboxCache.delete(input.profileId);
+
+  const reviewer = input.reviewer.kind === 'user'
+    ? input.reviewer.login
+    : input.reviewer.slug;
+  return {
+    message: input.requested
+      ? `Review requested from ${reviewer}.`
+      : `Review request removed from ${reviewer}.`
+  };
+}
+
+export function createGitHubReviewerRequestPayload(
+  reviewer: GitHubPullRequestReviewerUpdateInput['reviewer']
+): { reviewers?: string[]; team_reviewers?: string[] } {
+  return reviewer.kind === 'user'
+    ? { reviewers: [reviewer.login] }
+    : { team_reviewers: [reviewer.slug] };
 }
 
 export function reviewCommentBelongsToPullRequest(

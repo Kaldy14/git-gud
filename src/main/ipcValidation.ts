@@ -26,6 +26,7 @@ import type {
   GitHubActionsTileView,
   GitHubWorkflowRunFailureInput,
   GitHubPullRequestMergeInput,
+  GitHubPullRequestReviewerUpdateInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestReviewCommentUpdateInput,
   GitInteractiveRebaseAction,
@@ -274,6 +275,20 @@ const validators = {
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
     readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
+  'github:pull-request-reviewer-candidates': (args) =>
+    readOnlyArg(
+      args,
+      'github:pull-request-reviewer-candidates',
+      'locator',
+      readGitHubPullRequestLocator
+    ),
+  'github:update-pull-request-reviewer': (args) =>
+    readOnlyArg(
+      args,
+      'github:update-pull-request-reviewer',
+      'input',
+      readGitHubPullRequestReviewerUpdateInput
+    ),
   'github:pull-request-review-plan': (args) =>
     readGitHubPullRequestReviewPlanArgs(args),
   'github:pull-request-conflicts': (args) =>
@@ -1004,6 +1019,22 @@ function readGitHubPullRequestMergeInput(value: unknown): GitHubPullRequestMerge
   return {
     ...readGitHubPullRequestLocator(record),
     method: readEnumProperty(record, 'method', ['merge', 'squash', 'rebase'])
+  };
+}
+
+function readGitHubPullRequestReviewerUpdateInput(
+  value: unknown
+): GitHubPullRequestReviewerUpdateInput {
+  const record = readRecord(value, 'pull request reviewer update input');
+  const reviewer = readRecord(record.reviewer, 'reviewer');
+  const kind = readEnumProperty(reviewer, 'kind', ['user', 'team']);
+
+  return {
+    ...readGitHubPullRequestLocator(record),
+    reviewer: kind === 'user'
+      ? { kind, login: readGitHubName(reviewer.login, 'reviewer.login') }
+      : { kind, slug: readGitHubName(reviewer.slug, 'reviewer.slug') },
+    requested: readBoolean(record.requested, 'requested')
   };
 }
 

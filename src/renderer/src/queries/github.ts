@@ -10,6 +10,7 @@ import type {
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
   GitHubPullRequestLocator,
+  GitHubPullRequestReviewerCandidate,
   GitHubRepositorySummary,
   GitReviewPlan
 } from '@shared/types';
@@ -99,6 +100,16 @@ export const gitHubPullRequestDetailQueryKey = (
   locator: GitHubPullRequestLocator
 ): readonly ['github-pull-request-detail', string, string, string, number] => [
   'github-pull-request-detail',
+  locator.profileId,
+  locator.owner,
+  locator.repository,
+  locator.number
+];
+
+export const gitHubPullRequestReviewerCandidatesQueryKey = (
+  locator: GitHubPullRequestLocator
+): readonly ['github-pull-request-reviewer-candidates', string, string, string, number] => [
+  'github-pull-request-reviewer-candidates',
   locator.profileId,
   locator.owner,
   locator.repository,
@@ -280,6 +291,19 @@ export function useGitHubPullRequestDetail(locator: GitHubPullRequestLocator | u
     },
     enabled: Boolean(locator),
     staleTime: 15_000
+  });
+}
+
+export function useGitHubPullRequestReviewerCandidates(
+  locator: GitHubPullRequestLocator,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: gitHubPullRequestReviewerCandidatesQueryKey(locator),
+    queryFn: (): Promise<GitHubPullRequestReviewerCandidate[]> =>
+      window.api.getGitHubPullRequestReviewerCandidates(locator),
+    enabled,
+    staleTime: 60_000
   });
 }
 
