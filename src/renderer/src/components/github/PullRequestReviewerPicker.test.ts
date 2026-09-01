@@ -1,10 +1,15 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type {
+  GitHubPullRequestDetail,
   GitHubPullRequestReviewer,
   GitHubPullRequestReviewerCandidate
 } from '@shared/types';
 
+import { PullRequestReviewerPicker } from './PullRequestReviewerPicker';
 import {
   filterReviewerCandidates,
   mergeCurrentReviewerCandidates
@@ -24,6 +29,23 @@ const candidates: GitHubPullRequestReviewerCandidate[] = [
 ];
 
 describe('pull request reviewer picker', () => {
+  it('shows a visible add action when the pull request has no reviewers', () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(PullRequestReviewerPicker, {
+          detail: pullRequestDetail(),
+          onReviewersChanged: async () => undefined,
+          onNotice: () => undefined
+        })
+      )
+    );
+
+    expect(markup).toContain('aria-label="Add reviewer"');
+    expect(markup).toContain('>Add reviewer</span>');
+  });
+
   it('keeps requested reviewers first and excludes the pull request author', () => {
     const reviewers: GitHubPullRequestReviewer[] = [
       { author: 'zoe', state: 'pending' }
@@ -61,3 +83,66 @@ describe('pull request reviewer picker', () => {
     ]);
   });
 });
+
+function pullRequestDetail(): GitHubPullRequestDetail {
+  const loadedAt = '2026-09-01T10:00:00.000Z';
+
+  return {
+    profileId: 'profile:acme',
+    owner: 'acme',
+    repository: 'widgets',
+    number: 42,
+    id: 'pr-42',
+    title: 'Add reviewer controls',
+    url: 'https://github.com/acme/widgets/pull/42',
+    author: 'author',
+    updatedAt: loadedAt,
+    state: 'open',
+    category: 'waiting',
+    isDraft: false,
+    reviewDecision: 'review-required',
+    mergeState: 'clean',
+    mergeable: 'mergeable',
+    canMerge: true,
+    reviewers: [],
+    comments: 0,
+    changedFiles: 1,
+    additions: 4,
+    deletions: 0,
+    headRefName: 'feature/reviewers',
+    headSha: 'head-sha',
+    baseRefName: 'main',
+    baseSha: 'base-sha',
+    baseRefSha: 'base-ref-sha',
+    checks: {
+      state: 'success',
+      total: 1,
+      passed: 1,
+      failed: 0,
+      pending: 0
+    },
+    body: '',
+    commits: 1,
+    commitTimeline: [],
+    files: [],
+    reviewPlan: {
+      repoPath: 'github://github.com/acme/widgets',
+      target: { kind: 'branch', name: 'feature/reviewers', sha: 'head-sha' },
+      targetKey: 'github-pr:profile:acme:acme/widgets#42:head-sha',
+      sourceFingerprint: 'fingerprint',
+      loadedAt,
+      units: [],
+      fileContexts: [],
+      reviewedChunkIds: []
+    },
+    mergeSettings: {
+      allowedMethods: ['squash'],
+      defaultMethod: 'squash'
+    },
+    viewerLogin: 'author',
+    reviewComments: [],
+    conversationComments: [],
+    reviews: [],
+    loadedAt
+  };
+}

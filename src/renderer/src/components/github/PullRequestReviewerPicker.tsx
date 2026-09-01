@@ -31,6 +31,10 @@ export function PullRequestReviewerPicker({
   onNotice: (notice: ReviewerNotice) => void;
 }): ReactElement {
   const canManageReviewers = detail.state === undefined || detail.state === 'open';
+  const hasReviewers = detail.reviewers.length > 0;
+  const triggerLabel = canManageReviewers
+    ? hasReviewers ? 'Manage reviewers' : 'Add reviewer'
+    : 'Reviewers';
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const locator = {
@@ -92,13 +96,18 @@ export function PullRequestReviewerPicker({
           className="pr-reviewer-picker-trigger"
           type="button"
           disabled={!canManageReviewers}
-          aria-label={canManageReviewers ? 'Manage reviewers' : 'Reviewers'}
-          title={canManageReviewers ? 'Manage reviewers' : 'Closed pull requests cannot request reviewers'}
+          aria-label={triggerLabel}
+          title={canManageReviewers ? triggerLabel : 'Closed pull requests cannot request reviewers'}
         >
-          {detail.reviewers.length > 0 ? (
+          {hasReviewers ? (
             <PullRequestReviewerAvatars reviewers={detail.reviewers} />
           ) : (
-            <UserRoundPlus size={14} />
+            <>
+              <UserRoundPlus size={14} aria-hidden="true" />
+              <span className="pr-reviewer-picker-trigger-label">
+                {canManageReviewers ? 'Add reviewer' : 'No reviewers'}
+              </span>
+            </>
           )}
           <ChevronDown size={10} aria-hidden="true" />
         </button>
