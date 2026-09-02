@@ -661,7 +661,7 @@ describe('git operations', () => {
     }
   });
 
-  it('publishes an unpushed branch and annotated tag together without checking out the branch', async () => {
+  it('pushes an unpushed branch, creates an annotated tag, then pushes the tag without checking out the branch', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 
     try {
@@ -674,23 +674,77 @@ describe('git operations', () => {
       await commitFile(repoPath, 'release.txt', 'ready\n', 'prepare release');
       const releaseHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
       await git(repoPath, ['checkout', 'main']);
+      const runSpy = vi.spyOn(gitExecutor, 'run');
 
       const result = await publishBranchWithTag(tab, {
         branch: 'release/combined-push',
         expectedLocalSha: releaseHead,
         tagName: 'v2026.8.49'
       });
+      const mutations = runSpy.mock.calls
+        .filter(([, options]) => options.kind === 'mutation')
+        .map(([args]) => args);
+      runSpy.mockRestore();
 
       expect(await currentBranch(repoPath)).toBe('main');
       expect(await branchUpstream(repoPath, 'release/combined-push')).toBe('origin/release/combined-push');
       expect((await git(remotePath, ['rev-parse', 'refs/heads/release/combined-push'])).stdout.trim()).toBe(releaseHead);
       expect((await git(repoPath, ['cat-file', '-t', 'refs/tags/v2026.8.49'])).stdout.trim()).toBe('tag');
       expect((await git(remotePath, ['rev-parse', 'refs/tags/v2026.8.49^{}'])).stdout.trim()).toBe(releaseHead);
-      expect(result.operation?.label).toBe('Push release/combined-push & push v2026.8.49 to origin');
+      expect(mutations).toEqual([
+        [
+          'push',
+          '-u',
+          '--',
+          'origin',
+          'refs/heads/release/combined-push:refs/heads/release/combined-push'
+        ],
+        ['tag', '--annotate', '--no-sign', '--message=', '--', 'v2026.8.49', releaseHead],
+        ['push', '--', 'origin', 'refs/tags/v2026.8.49:refs/tags/v2026.8.49']
+      ]);
+      expect(result.operation?.label).toBe(
+        'Push release/combined-push, create tag v2026.8.49, and push tag to origin'
+      );
       expect(result.invalidates).toEqual(['overview', 'graph']);
       expect(result.undoEntry?.warning).toBe(
-        'Undo removes only the local tag. The pushed branch and tag remain on origin.'
+        'Undo removes only the local tag. The pushed tag remains on origin.'
       );
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('pushes an already-published branch before creating and pushing its tag', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
+
+    try {
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['init', '--bare', remotePath]);
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['checkout', '-b', 'release/existing-upstream']);
+      await git(repoPath, [
+        'push',
+        '-u',
+        'origin',
+        'refs/heads/release/existing-upstream:refs/heads/releases/stable'
+      ]);
+      await commitFile(repoPath, 'release.txt', 'next\n', 'prepare next release');
+      const releaseHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+
+      await publishBranchWithTag(tab, {
+        branch: 'release/existing-upstream',
+        expectedLocalSha: releaseHead,
+        tagName: 'v2026.8.50'
+      });
+
+      expect(await currentBranch(repoPath)).toBe('main');
+      expect(await branchUpstream(repoPath, 'release/existing-upstream')).toBe('origin/releases/stable');
+      expect((await git(remotePath, ['rev-parse', 'refs/heads/releases/stable'])).stdout.trim()).toBe(releaseHead);
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/heads/release/existing-upstream']);
+      expect((await git(remotePath, ['rev-parse', 'refs/tags/v2026.8.50^{}'])).stdout.trim()).toBe(releaseHead);
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

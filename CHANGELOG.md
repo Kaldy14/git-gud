@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Added a branch context-menu action that pushes the branch, creates the suggested version tag, and then pushes that tag in order.
+
 ## [2026.8.18] - 2026-08-31
 
 ### Added

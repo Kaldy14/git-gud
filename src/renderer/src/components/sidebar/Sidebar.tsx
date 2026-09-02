@@ -1344,7 +1344,6 @@ function SidebarContextMenu({
         <>
           <BranchContextMenuPrimaryActions
             branchName={state.branch.name}
-            hasUpstream={Boolean(state.branch.upstream)}
             suggestedTagName={suggestedTagName}
             isCurrentBranch={state.branch.current}
             isOperationBusy={isOperationBusy}

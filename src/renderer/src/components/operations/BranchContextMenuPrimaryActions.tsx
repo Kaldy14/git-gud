@@ -3,7 +3,6 @@ import { Check, Cloud } from 'lucide-react';
 
 type BranchContextMenuPrimaryActionsProps = {
   branchName: string;
-  hasUpstream?: boolean;
   suggestedTagName?: string;
   isCurrentBranch: boolean;
   isOperationBusy: boolean;
@@ -15,7 +14,6 @@ type BranchContextMenuPrimaryActionsProps = {
 
 export function BranchContextMenuPrimaryActions({
   branchName,
-  hasUpstream = false,
   suggestedTagName,
   isCurrentBranch,
   isOperationBusy,
@@ -52,7 +50,7 @@ export function BranchContextMenuPrimaryActions({
         <Cloud size={14} />
         <span>Push branch to remote</span>
       </button>
-      {!hasUpstream && suggestedTagName && onPushBranchWithTag ? (
+      {suggestedTagName && onPushBranchWithTag ? (
         <button
           className="menu-row"
           type="button"
@@ -64,7 +62,7 @@ export function BranchContextMenuPrimaryActions({
           }}
         >
           <Cloud size={14} />
-          <span>Push {branchName} &amp; Push {suggestedTagName}</span>
+          <span>Push remote &amp; Create tag {suggestedTagName} &amp; push tag</span>
         </button>
       ) : null}
     </>

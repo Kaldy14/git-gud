@@ -327,12 +327,6 @@ export async function publishBranchWithTag(
   await assertValidBranchName(tab.path, branchName, env);
   await assertValidTagName(tab.path, tagName, env);
 
-  const upstream = await branchUpstream(tab.path, branchName, env);
-
-  if (upstream) {
-    throw new Error(`Branch ${branchName} already tracks ${upstream}.`);
-  }
-
   const branchSha = await revParse(tab.path, `refs/heads/${branchName}^{commit}`, env);
 
   if (branchSha !== expectedLocalSha) {
@@ -340,66 +334,44 @@ export async function publishBranchWithTag(
   }
 
   const remotes = await loadRemotes(tab.path, env);
-  const remote = remotes.find((candidate) => candidate.name === 'origin') ?? remotes[0];
+  const upstream = await branchUpstream(tab.path, branchName, env);
+  const upstreamRemote = upstream
+    ? [...remotes]
+        .sort((left, right) => right.name.length - left.name.length)
+        .find((candidate) => upstream.startsWith(`${candidate.name}/`))
+    : undefined;
+  const remote = upstreamRemote ?? remotes.find((candidate) => candidate.name === 'origin') ?? remotes[0];
 
   if (!remote) {
     throw new Error('Push requires a configured Git remote.');
   }
 
-  const tagRef = `refs/tags/${tagName}`;
-  await gitExecutor.run(
-    ['tag', '--annotate', '--no-sign', '--message=', '--', tagName, branchSha],
-    { cwd: tab.path, kind: 'mutation', env }
-  );
-  const createdRefSha = await revParse(tab.path, tagRef, env);
-
-  try {
-    await gitExecutor.run(
-      [
-        'push',
-        '--atomic',
-        '--set-upstream',
-        '--',
-        remote.name,
-        `refs/heads/${branchName}:refs/heads/${branchName}`,
-        `${tagRef}:${tagRef}`
-      ],
-      {
-        cwd: tab.path,
-        kind: 'mutation',
-        env,
-        cancellable: true,
-        timeoutMs: NETWORK_GIT_TIMEOUT_MS
-      }
-    );
-  } catch (error) {
-    await gitExecutor.run(['update-ref', '-d', tagRef, createdRefSha], {
-      cwd: tab.path,
-      kind: 'mutation',
-      env
-    }).catch(() => undefined);
-    throw error;
-  }
-
-  const createdTarget = await revParse(tab.path, `${tagRef}^{}`, env);
-
-  if (createdTarget !== branchSha) {
-    throw new Error(`Tag ${tagName} was not created at the requested branch tip.`);
-  }
-
-  const undoEntry = recordUndo(tab, 'tag-create', `Undo create tag ${tagName}`, {
-    refName: tagName,
-    targetSha: createdRefSha,
-    affectedRefs: [tagRef],
-    warning: `Undo removes only the local tag. The pushed branch and tag remain on ${remote.name}.`
+  const remoteBranchName = upstreamRemote && upstream
+    ? upstream.slice(upstreamRemote.name.length + 1)
+    : branchName;
+  await pushRepositoryToExactTarget(tab, {
+    forceWithLease: false,
+    branch: branchName,
+    expectedLocalSha,
+    target: {
+      remote: remote.name,
+      branch: remoteBranchName,
+      setUpstream: !upstreamRemote
+    }
+  }, env);
+  const tagResult = await createTag(tab, {
+    name: tagName,
+    targetSha: branchSha,
+    annotated: true,
+    pushRemote: remote.name
   });
 
   return createOperationResult(
     tab,
     env,
     'tag-create',
-    `Push ${branchName} & push ${tagName} to ${remote.name}`,
-    undoEntry
+    `Push ${branchName}, create tag ${tagName}, and push tag to ${remote.name}`,
+    tagResult.undoEntry
   );
 }
 

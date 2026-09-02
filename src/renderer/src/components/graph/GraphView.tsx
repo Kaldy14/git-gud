@@ -2493,7 +2493,6 @@ function GraphBranchContextMenu({
     >
       <BranchContextMenuPrimaryActions
         branchName={state.branchName}
-        hasUpstream={Boolean(state.upstream)}
         suggestedTagName={suggestedTagName}
         isCurrentBranch={isCurrentBranch}
         isOperationBusy={isOperationBusy}
