@@ -124,12 +124,12 @@ export function StatusBar({
         ) : null}
         {repositoryOverview?.stashes.length ? <span>{repositoryOverview.stashes.length} stash</span> : null}
         {identityLabel ? (
-          <span className="flex items-center gap-1.5">
+          <span className="statusbar-identity flex items-center gap-1.5">
             <UserCircle size={12} />
             {identityLabel}
           </span>
         ) : null}
-        <span>v{import.meta.env.VITE_APP_VERSION}</span>
+        <span className="statusbar-version">v{import.meta.env.VITE_APP_VERSION}</span>
       </span>
     </footer>
   );

@@ -668,7 +668,7 @@ function SectionRows({
   }
 
   if (isLoading) {
-    return <EmptySection label="Loading refs..." />;
+    return <EmptySection label="Loading refs…" />;
   }
 
   if (!repositoryOverview) {

@@ -148,11 +148,10 @@ export function CommitDetailPanel({
   const commitSelectionQuery = useCommitSelectionDetail(repoPath, isCommitSelection ? selectedShas : []);
   const wipQuery = useWipDetail(repoPath, Boolean(row && isWip));
   const headCommitQuery = useCommitDetail(repoPath, row && isWip ? row.parentShas[0] : undefined);
-  const detail = (
-    isWip ? wipQuery.data : isCommitSelection ? commitSelectionQuery.data : commitQuery.data
-  ) as GitRepositoryDetail | undefined;
-  const detailError = isWip ? wipQuery.error : isCommitSelection ? commitSelectionQuery.error : commitQuery.error;
-  const isDetailLoading = isWip ? wipQuery.isLoading : isCommitSelection ? commitSelectionQuery.isLoading : commitQuery.isLoading;
+  const detailQuery = isWip ? wipQuery : isCommitSelection ? commitSelectionQuery : commitQuery;
+  const detail = detailQuery.data;
+  const detailError = detailQuery.error;
+  const isDetailLoading = detailQuery.isLoading;
   const files = detail?.files ?? [];
   const selectedFileDetail = findFile(files, selectedFile);
   const stageFileMutation = useMutation({
@@ -422,7 +421,7 @@ export function CommitDetailPanel({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-1">
           {files.length === 0 ? (
-            <EmptyFiles />
+            <EmptyFiles isWip={isWip} />
           ) : fileView === 'path' ? (
             <PathFileRows
               files={files}
@@ -528,11 +527,27 @@ export function CommitDetailPanel({
 
       {isDetailLoading && !detail ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <PanelMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading details..." />
+          <PanelMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading details…" />
         </div>
       ) : detailErrorMessage ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <PanelMessage icon={<RotateCcw size={15} />} label={detailErrorMessage} />
+          <div className="px-6 py-8" role="alert">
+            <p className="flex items-center justify-center gap-2 text-center text-xs leading-5 text-[var(--danger-text)]">
+              <AlertTriangle size={15} className="shrink-0" />
+              {detailErrorMessage}
+            </p>
+            <div className="mt-3 flex justify-center">
+              <button
+                className="btn-subtle h-6 px-2 text-[11px]"
+                type="button"
+                disabled={detailQuery.isFetching}
+                onClick={() => void detailQuery.refetch()}
+              >
+                <RotateCcw size={12} />
+                Retry
+              </button>
+            </div>
+          </div>
         </div>
       ) : detail && isWip ? (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -1648,7 +1663,9 @@ function PathFileRows({
         }
       />
       {!collapsedGroups.has('unstaged')
-        ? unstagedFiles.map((file) => renderRow(file, `unstaged:${file.path}`, 'unstaged'))
+        ? (unstagedFiles.length > 0
+          ? unstagedFiles.map((file) => renderRow(file, `unstaged:${file.path}`, 'unstaged'))
+          : <UnstagedEmpty />)
         : null}
       <FileGroupHeader
         label={`Staged Files (${stagedFiles.length})`}
@@ -1665,7 +1682,12 @@ function PathFileRows({
         }
       />
       {!collapsedGroups.has('staged')
-        ? stagedFiles.map((file) => renderRow(file, `staged:${file.path}`, 'staged'))
+        ? (stagedFiles.length > 0
+          ? stagedFiles.map((file) => renderRow(file, `staged:${file.path}`, 'staged'))
+          : <StagedEmpty
+              isMutating={isMutating || conflictedFiles.length > 0}
+              onStageAll={unstagedFiles.length > 0 ? onStageAll : undefined}
+            />)
         : null}
     </>
   );
@@ -2273,8 +2295,48 @@ function PanelMessage({ icon, label }: { icon: ReactElement; label: string }): R
   );
 }
 
-function EmptyFiles(): ReactElement {
-  return <div className="px-2 py-3 text-xs text-[var(--text-3)]">No files to display.</div>;
+function EmptyFiles({ isWip }: { isWip: boolean }): ReactElement {
+  if (!isWip) {
+    return <div className="px-2 py-3 text-xs text-[var(--text-3)]">No files in this commit.</div>;
+  }
+
+  return (
+    <div>
+      <UnstagedEmpty />
+      <div className="border-t border-[var(--border)]">
+        <StagedEmpty />
+      </div>
+    </div>
+  );
+}
+
+function UnstagedEmpty(): ReactElement {
+  return <div className="px-2 py-3 text-xs text-[var(--text-3)]">No unstaged changes.</div>;
+}
+
+function StagedEmpty({
+  isMutating = false,
+  onStageAll
+}: {
+  isMutating?: boolean;
+  onStageAll?: () => void;
+}): ReactElement {
+  return (
+    <div className="px-2 py-3 text-xs text-[var(--text-3)]">
+      <p>No staged files. Stage files to include them in the next commit.</p>
+      {onStageAll ? (
+        <button
+          className="btn-subtle mt-2 h-6 px-2 text-[11px]"
+          type="button"
+          disabled={isMutating}
+          onClick={onStageAll}
+        >
+          <Check size={12} />
+          Stage all
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function StatusIcon({ status }: { status: GitStatusCode }): ReactElement {

@@ -1141,15 +1141,6 @@ export function WorkspaceShell(): ReactElement {
     setGraphLimitByTab((value) => ({ ...value, [activeTab.id]: nextLimit }));
   }
 
-  function handleErrorAction(): void {
-    if (errorMessage) {
-      clearError();
-      return;
-    }
-
-    void repositoryQuery.refetch();
-  }
-
   const handleActivateProfile = useCallback(async (
     profileId: string | undefined,
     targetProfile?: GitProfile
@@ -3416,11 +3407,22 @@ export function WorkspaceShell(): ReactElement {
       ) : null}
 
       {!gitHubWorkspaceView && !repositoryUnavailable && (errorMessage || repositoryError) ? (
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
-          <span>{errorMessage ?? repositoryError}</span>
-          <button className="icon-btn h-6 w-6" type="button" onClick={handleErrorAction} aria-label="Retry or dismiss error">
-            <X size={13} />
-          </button>
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
+          <span className="min-w-0 flex-1">{errorMessage ?? repositoryError}</span>
+          {errorMessage ? (
+            <button className="icon-btn h-6 w-6 shrink-0" type="button" onClick={clearError} aria-label="Dismiss error">
+              <X size={13} />
+            </button>
+          ) : (
+            <button
+              className="btn-subtle h-6 shrink-0 px-2 text-[11px]"
+              type="button"
+              disabled={repositoryQuery.isFetching}
+              onClick={() => void repositoryQuery.refetch()}
+            >
+              Retry
+            </button>
+          )}
         </div>
       ) : null}
 

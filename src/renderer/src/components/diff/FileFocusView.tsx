@@ -351,7 +351,7 @@ function renderDiffContent({
   const diffErrorMessage = diffQuery.error instanceof Error ? diffQuery.error.message : undefined;
 
   if (isDetailLoading && !detail) {
-    return <FileFocusMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading file details..." />;
+    return <FileFocusMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading file details…" />;
   }
 
   if (detailErrorMessage) {
@@ -367,7 +367,7 @@ function renderDiffContent({
   }
 
   if (diffQuery.isLoading) {
-    return <FileFocusMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading diff..." />;
+    return <FileFocusMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading diff…" />;
   }
 
   if (diffErrorMessage) {

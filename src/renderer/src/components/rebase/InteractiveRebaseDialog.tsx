@@ -92,7 +92,7 @@ export function InteractiveRebaseDialog({
       {isLoading ? (
         <InactiveDialogBody
           icon={<Loader2 size={15} className="animate-spin" />}
-          label="Loading commits..."
+          label="Loading commits…"
           onClose={onClose}
         />
       ) : errorMessage ? (
@@ -561,7 +561,7 @@ function CommitPreview({
         </div>
 
         {detailQuery.isLoading && !detail ? (
-          <RebasePreviewMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading commit details..." />
+          <RebasePreviewMessage icon={<Loader2 size={15} className="animate-spin" />} label="Loading commit details…" />
         ) : detailQuery.error instanceof Error ? (
           <RebasePreviewMessage icon={<AlertTriangle size={15} />} label={detailQuery.error.message} />
         ) : detail ? (
