@@ -6,7 +6,6 @@ import {
   createReviewPresentation,
   DEFAULT_REVIEW_PREFERENCES,
   loadReviewPreferences,
-  matchesReviewFilePattern,
   parseReviewFilePatterns,
   saveReviewPreferences
 } from './reviewFilters';
@@ -164,12 +163,22 @@ describe('review filters and progress', () => {
     }
   });
 
-  it('supports root, recursive, basename, and Windows-style patterns', () => {
-    expect(matchesReviewFilePattern('dist/client.js', ['dist/'])).toBe(true);
-    expect(matchesReviewFilePattern('client.generated.ts', ['**/*.generated.ts'])).toBe(true);
-    expect(matchesReviewFilePattern('src/models/client.generated.ts', ['**/*.generated.ts'])).toBe(true);
-    expect(matchesReviewFilePattern('src\\generated\\client.ts', ['src/generated/**'])).toBe(true);
-    expect(matchesReviewFilePattern('src/generator/client.ts', ['src/generated/**'])).toBe(false);
+  it.each([
+    ['dist/client.js', 'dist/', true],
+    ['client.generated.ts', '**/*.generated.ts', true],
+    ['src/models/client.generated.ts', '**/*.generated.ts', true],
+    ['src\\generated\\client.ts', 'src/generated/**', true],
+    ['src/generator/client.ts', 'src/generated/**', false]
+  ])('applies the %s file filter using %s', (path, pattern, skipped) => {
+    const plan = reviewPlan([unit('files', [{ ...chunk('source', 'modified'), path }])]);
+    const presentation = createReviewPresentation(plan, {
+      ...DEFAULT_REVIEW_PREFERENCES,
+      skipFilePatterns: true,
+      filePatterns: [pattern]
+    }, new Set());
+
+    expect(presentation.skippedCount).toBe(skipped ? 1 : 0);
+    expect(presentation.pendingCount).toBe(skipped ? 0 : 1);
   });
 
   it('normalizes line-based pattern input', () => {

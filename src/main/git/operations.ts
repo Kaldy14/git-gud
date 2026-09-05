@@ -897,10 +897,6 @@ export async function stashDrop(tab: OperationTab, input: GitStashRefInput): Pro
   return createOperationResult(tab, env, 'stash-drop', `Drop ${selector}`);
 }
 
-export async function cherryPickCommit(tab: OperationTab, sha: string): Promise<GitOperationResult> {
-  return cherryPickCommits(tab, [sha]);
-}
-
 export async function cherryPickCommits(tab: OperationTab, shas: string[]): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const targetShas = shas.map((sha, index) => normalizeRequiredName(sha, `Commit SHA ${index + 1}`));

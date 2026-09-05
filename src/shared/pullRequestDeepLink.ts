@@ -8,6 +8,15 @@ export type PullRequestDeepLinkTarget = {
   number: number;
 };
 
+export function pullRequestDeepLinkTargetKey(target: PullRequestDeepLinkTarget): string {
+  return [
+    target.host.toLowerCase(),
+    target.owner.toLowerCase(),
+    target.repository.toLowerCase(),
+    target.number
+  ].join('/');
+}
+
 export function createPullRequestDeepLink(
   target: PullRequestDeepLinkTarget
 ): string {

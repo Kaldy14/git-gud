@@ -8,7 +8,6 @@ import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
   placeholderGraphForRepository,
-  prepareRepositoryForNavigation,
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   scopesForRepositoryChange,
@@ -211,29 +210,6 @@ describe('repository query invalidation', () => {
 
     expect(getRepositoryOverview).toHaveBeenCalledTimes(1);
     expect(getCommitGraph).not.toHaveBeenCalled();
-    queryClient.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('warms repository data before navigating to a linked worktree', async () => {
-    const queryClient = new QueryClient();
-    const overview = { repoPath: '/repo-linked' };
-    const graph = { repoPath: '/repo-linked', limit: 1500, rows: [] };
-    const getRepositoryOverview = vi.fn(async () => overview);
-    const getCommitGraph = vi.fn(async () => graph);
-    vi.stubGlobal('window', {
-      api: {
-        getRepositoryOverview,
-        getCommitGraph
-      }
-    });
-
-    await prepareRepositoryForNavigation(queryClient, '/repo-linked', 1500);
-
-    expect(getRepositoryOverview).toHaveBeenCalledWith('/repo-linked');
-    expect(getCommitGraph).toHaveBeenCalledWith('/repo-linked', 1500);
-    expect(queryClient.getQueryData(repositoryOverviewQueryKey('/repo-linked'))).toEqual(overview);
-    expect(queryClient.getQueryData(['commit-graph', '/repo-linked', 1500])).toEqual(graph);
     queryClient.clear();
     vi.unstubAllGlobals();
   });

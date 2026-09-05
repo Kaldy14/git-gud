@@ -65,31 +65,6 @@ export function parseForEachRef(output: string): GitRefsSummary {
   };
 }
 
-export function parseRemoteVerbose(output: string): GitRemote[] {
-  const remotes = new Map<string, GitRemote>();
-
-  for (const line of output.split('\n')) {
-    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)$/.exec(line.trim());
-
-    if (!match) {
-      continue;
-    }
-
-    const [, name, url, direction] = match;
-    const remote = remotes.get(name) ?? { name };
-
-    if (direction === 'fetch') {
-      remote.fetchUrl = url;
-    } else {
-      remote.pushUrl = url;
-    }
-
-    remotes.set(name, remote);
-  }
-
-  return [...remotes.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export function parseRemoteConfig(output: string): GitRemote[] {
   const remotes = new Map<string, GitRemote>();
 

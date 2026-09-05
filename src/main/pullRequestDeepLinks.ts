@@ -1,4 +1,4 @@
-import type { PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
+import { pullRequestDeepLinkTargetKey, type PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
 
 export class PullRequestDeepLinkQueue {
   private readonly pending: PullRequestDeepLinkTarget[] = [];
@@ -31,14 +31,3 @@ export class PullRequestDeepLinkQueue {
 }
 
 export const pullRequestDeepLinkQueue = new PullRequestDeepLinkQueue();
-
-function pullRequestDeepLinkTargetKey(
-  target: PullRequestDeepLinkTarget
-): string {
-  return [
-    target.host.toLowerCase(),
-    target.owner.toLowerCase(),
-    target.repository.toLowerCase(),
-    target.number
-  ].join('/');
-}

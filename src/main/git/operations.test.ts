@@ -8,7 +8,6 @@ import { GitCommandError, gitExecutor } from './exec';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './commands/rebase';
 import {
   addRemote,
-  cherryPickCommit,
   cherryPickCommits,
   checkoutRef,
   createBranch,
@@ -1293,7 +1292,7 @@ describe('git operations', () => {
       await git(repoPath, ['checkout', 'main']);
       await writeRepoFile(repoPath, 'generated/output.txt', 'ignored local value\n');
 
-      await expect(cherryPickCommit(tab, targetCommit)).rejects.toThrow('overwrite ignored path');
+      await expect(cherryPickCommits(tab, [targetCommit])).rejects.toThrow('overwrite ignored path');
 
       expect(await readFile(join(repoPath, 'generated/output.txt'), 'utf8')).toBe('ignored local value\n');
       expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('ignore generated output');
@@ -1317,7 +1316,7 @@ describe('git operations', () => {
       await git(repoPath, ['checkout', 'main']);
       await writeRepoFile(repoPath, 'generated', 'ignored local value\n');
 
-      await expect(cherryPickCommit(tab, targetCommit)).rejects.toThrow('overwrite ignored path');
+      await expect(cherryPickCommits(tab, [targetCommit])).rejects.toThrow('overwrite ignored path');
 
       expect(await readFile(join(repoPath, 'generated'), 'utf8')).toBe('ignored local value\n');
       expect((await git(repoPath, ['log', '-1', '--format=%s'])).stdout.trim()).toBe('ignore generated output');

@@ -9,8 +9,6 @@ import {
 } from '@renderer/components/accessibility/menuKeyboard';
 import { ContextMenuSurface } from '@renderer/components/ui/context-menu';
 
-import { copyReviewFilePath } from './reviewFilePathClipboard';
-
 export function ReviewFilePathContextMenu({
   path,
   children
@@ -31,7 +29,7 @@ export function ReviewFilePathContextMenu({
         >
           <ContextMenuPrimitive.Item
             className="menu-row"
-            onSelect={() => void copyReviewFilePath(path)}
+            onSelect={() => void navigator.clipboard.writeText(path)}
           >
             <Copy size={14} />
             <span>Copy file path</span>
@@ -66,7 +64,7 @@ export function ReviewFileTreePathContextMenu({
         autoFocus
         onClick={() => {
           context.close();
-          void copyReviewFilePath(item.path);
+          void navigator.clipboard.writeText(item.path);
         }}
       >
         <Copy size={14} />

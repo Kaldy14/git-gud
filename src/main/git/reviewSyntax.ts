@@ -8,11 +8,8 @@ import {
   syntaxIdentifiersForLines
 } from './reviewSyntaxIdentifiers';
 import {
-  reviewStructureContextName,
-  reviewStructureEnclosingSymbols,
   type ReviewPatchSyntax,
   type ReviewStructureProvider,
-  type ReviewSyntaxHunk,
   type ReviewSyntaxLanguage,
   type ReviewSyntaxOwner,
   type ReviewSyntaxOwnerKind
@@ -125,14 +122,6 @@ export const treeSitterReviewStructureProvider: ReviewStructureProvider = {
   analyze: ({ filePath, patch, context, documentKey }) =>
     analyzeReviewPatchSyntax(filePath, patch, context, documentKey)
 };
-
-export function syntaxEnclosingSymbols(hunk: ReviewSyntaxHunk | undefined): string[] {
-  return reviewStructureEnclosingSymbols(hunk);
-}
-
-export function syntaxContextName(hunk: ReviewSyntaxHunk | undefined): string | undefined {
-  return reviewStructureContextName(hunk);
-}
 
 function changedLinesByHunk(patch: string): HunkLineRanges[] {
   const lines = patch.split('\n');

@@ -19,7 +19,7 @@ import {
   gitHubWorkflowRunFailedLogArgs,
   gitHubWorkflowRunJobsArgs,
   mergeGitHubPullRequestReviewPlanContext,
-  parseGitHubActionsRunsResponse,
+  parseGitHubWorkflowRuns,
   parseGitHubWorkflowJobGraph,
   parseGitHubWorkflowRunJobsResponse,
   parseGitHubInboxResponse,
@@ -416,33 +416,19 @@ describe('GitHub Actions dashboards', () => {
   });
 
   it('normalizes running and completed workflow runs', () => {
-    const result = parseGitHubActionsRunsResponse(
-      {
-        workflow_runs: [
-          workflowRun({ id: 101, status: 'in_progress', conclusion: null }),
-          workflowRun({
-            id: 100,
-            status: 'completed',
-            conclusion: 'timed_out',
-            run_started_at: null
-          })
-        ]
-      },
-      {
-        profileId: 'profile-1',
-        owner: 'acme',
-        repository: 'widgets',
-        limit: 2,
-        view: 'runs',
-        filters: {
-          branches: [],
-          includeTags: false,
-          includeMyPullRequests: false
-        }
-      }
-    );
+    const result = parseGitHubWorkflowRuns({
+      workflow_runs: [
+        workflowRun({ id: 101, status: 'in_progress', conclusion: null }),
+        workflowRun({
+          id: 100,
+          status: 'completed',
+          conclusion: 'timed_out',
+          run_started_at: null
+        })
+      ]
+    });
 
-    expect(result.runs).toMatchObject([
+    expect(result).toMatchObject([
       {
         id: 101,
         status: 'in-progress',
@@ -452,13 +438,7 @@ describe('GitHub Actions dashboards', () => {
       },
       { id: 100, status: 'completed', conclusion: 'timed-out', startedAt: undefined }
     ]);
-    expect(result).toMatchObject({
-      profileId: 'profile-1',
-      owner: 'acme',
-      repository: 'widgets',
-      searchedRunCount: 2,
-      searchLimitReached: false
-    });
+
   });
 
   it('does not treat an issue comment execution ref as a branch', () => {
@@ -489,40 +469,26 @@ describe('GitHub Actions dashboards', () => {
   });
 
   it('combines exact branch, current tag, and authored pull request filters with OR semantics', () => {
-    const parsed = parseGitHubActionsRunsResponse(
-      {
-        workflow_runs: [
-          workflowRun({ id: 1, head_branch: 'main', head_sha: 'main-sha' }),
-          workflowRun({ id: 2, head_branch: 'v2.0.0', head_sha: 'tag-sha', event: 'push' }),
-          workflowRun({
-            id: 3,
-            head_branch: 'feature/mine',
-            head_sha: 'pr-sha',
-            event: 'pull_request',
-            pull_requests: [{ number: 42 }]
-          }),
-          workflowRun({ id: 4, head_branch: 'develop', head_sha: 'other-sha' }),
-          workflowRun({ id: 5, head_branch: 'v2.0.0', head_sha: 'old-tag-sha', event: 'push' }),
-          workflowRun({ id: 6, head_branch: 'v2.0.0', head_sha: 'tag-sha', event: 'workflow_dispatch' })
-        ]
-      },
-      {
-        profileId: 'profile-1',
-        owner: 'acme',
-        repository: 'widgets',
-        limit: 20,
-        view: 'runs',
-        filters: {
-          branches: [],
-          includeTags: false,
-          includeMyPullRequests: false
-        }
-      }
-    );
+    const parsed = parseGitHubWorkflowRuns({
+      workflow_runs: [
+        workflowRun({ id: 1, head_branch: 'main', head_sha: 'main-sha' }),
+        workflowRun({ id: 2, head_branch: 'v2.0.0', head_sha: 'tag-sha', event: 'push' }),
+        workflowRun({
+          id: 3,
+          head_branch: 'feature/mine',
+          head_sha: 'pr-sha',
+          event: 'pull_request',
+          pull_requests: [{ number: 42 }]
+        }),
+        workflowRun({ id: 4, head_branch: 'develop', head_sha: 'other-sha' }),
+        workflowRun({ id: 5, head_branch: 'v2.0.0', head_sha: 'old-tag-sha', event: 'push' }),
+        workflowRun({ id: 6, head_branch: 'v2.0.0', head_sha: 'tag-sha', event: 'workflow_dispatch' })
+      ]
+    });
 
     expect(
       filterGitHubActionsRuns(
-        parsed.runs,
+        parsed,
         {
           branches: ['main'],
           includeTags: true,
@@ -1335,21 +1301,7 @@ function workflowRun(overrides: Record<string, unknown>): Record<string, unknown
 }
 
 function parsedWorkflowRuns(runs: Record<string, unknown>[]) {
-  return parseGitHubActionsRunsResponse(
-    { workflow_runs: runs },
-    {
-      profileId: 'profile-1',
-      owner: 'acme',
-      repository: 'widgets',
-      limit: runs.length,
-      view: 'runs',
-      filters: {
-        branches: [],
-        includeTags: false,
-        includeMyPullRequests: false
-      }
-    }
-  ).runs;
+  return parseGitHubWorkflowRuns({ workflow_runs: runs });
 }
 
 function pullRequestNode(overrides: Record<string, unknown>): Record<string, unknown> {

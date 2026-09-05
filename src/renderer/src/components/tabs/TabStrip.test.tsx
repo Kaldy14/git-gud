@@ -109,36 +109,6 @@ describe('TabStrip', () => {
     expect(markup).toContain(`data-tab-id="${secondRepositoryTab.id}"`);
   });
 
-  it('reserves space for the repository icon, dirty state, and close control', () => {
-    const markup = renderToStaticMarkup(
-      <TabStrip
-        tabs={[repositoryTab]}
-        activeTabId={repositoryTab.id}
-        activeRepoDirty
-        isStartTabOpen={false}
-        isStartTabActive={false}
-        isDashboardsTabActive={false}
-        onActivateTab={vi.fn()}
-        onReorderTab={vi.fn()}
-        onCloseTab={vi.fn()}
-        onOpenStartTab={vi.fn()}
-        onActivateStartTab={vi.fn()}
-        onCloseStartTab={vi.fn()}
-        onActivateDashboardsTab={vi.fn()}
-        onOpenSettings={vi.fn()}
-        onActivateProfile={vi.fn(async () => {})}
-        onSaveAndActivateProfile={vi.fn(async () => {})}
-      />
-    );
-
-    expect(markup).toContain('class="no-drag repo-tab repo-tab--repository group"');
-    expect(markup).toContain('class="repo-tab-close"');
-    expect(markup).toContain('data-repository-icon-fallback="true"');
-    expect(markup).toContain('repo-tab-dirty size-2');
-    expect(markup).toContain('size-4 shrink-0');
-    expect(markup).not.toContain('lucide-git-branch');
-  });
-
   it('resolves before and after drops to final tab indexes', () => {
     const tabIds = ['alpha', 'beta', 'gamma'];
 

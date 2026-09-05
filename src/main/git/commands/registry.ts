@@ -28,15 +28,10 @@ export type GitCommandId =
   | 'conflict-resolve'
   | 'undo';
 
-export type GitCommandMutationScope = 'remote' | 'refs' | 'working-tree' | 'history' | 'conflict';
-export type GitCommandUndoStrategy = 'none' | 'recorded' | 'conditional';
 export type GitCommandConflictStrategy = 'none' | 'detect-after-run' | 'continue-skip-abort';
 
 export type GitCommandDescriptor = {
-  id: GitCommandId;
   defaultLabel: string;
-  mutationScope: GitCommandMutationScope;
-  undo: GitCommandUndoStrategy;
   conflicts: GitCommandConflictStrategy;
   invalidates: readonly GitQueryInvalidation[];
 };
@@ -44,32 +39,32 @@ export type GitCommandDescriptor = {
 const allMutableRepositoryQueries = ['overview', 'graph', 'wip-detail', 'file-diff', 'review-plan'] as const;
 
 export const GIT_COMMANDS = {
-  fetch: command('fetch', 'Fetch', 'remote', 'none', 'none', ['overview', 'graph']),
-  'remote-add': command('remote-add', 'Add remote', 'remote', 'none', 'none', ['overview', 'graph']),
-  'remote-edit': command('remote-edit', 'Edit remote', 'remote', 'none', 'none', ['overview', 'graph']),
-  'remote-remove': command('remote-remove', 'Remove remote', 'remote', 'none', 'none', ['overview', 'graph']),
-  pull: command('pull', 'Pull', 'remote', 'none', 'detect-after-run', allMutableRepositoryQueries),
-  push: command('push', 'Push', 'remote', 'none', 'none', ['overview']),
-  'branch-create': command('branch-create', 'Create branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  'branch-rename': command('branch-rename', 'Rename branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  'branch-set-upstream': command('branch-set-upstream', 'Set upstream', 'refs', 'none', 'none', ['overview']),
-  'branch-delete': command('branch-delete', 'Delete branch', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  checkout: command('checkout', 'Checkout', 'working-tree', 'conditional', 'none', allMutableRepositoryQueries),
-  merge: command('merge', 'Merge', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
-  'tag-create': command('tag-create', 'Create tag', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  'tag-push': command('tag-push', 'Push tag', 'remote', 'none', 'none', ['overview']),
-  'tag-delete': command('tag-delete', 'Delete tag', 'refs', 'recorded', 'none', ['overview', 'graph']),
-  'stash-push': command('stash-push', 'Stash changes', 'working-tree', 'none', 'none', allMutableRepositoryQueries),
-  'stash-apply': command('stash-apply', 'Apply stash', 'working-tree', 'none', 'detect-after-run', allMutableRepositoryQueries),
-  'stash-pop': command('stash-pop', 'Pop stash', 'working-tree', 'none', 'detect-after-run', allMutableRepositoryQueries),
-  'stash-drop': command('stash-drop', 'Drop stash', 'refs', 'none', 'none', ['overview', 'graph']),
-  'cherry-pick': command('cherry-pick', 'Cherry-pick', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
-  revert: command('revert', 'Revert', 'history', 'conditional', 'detect-after-run', allMutableRepositoryQueries),
-  reset: command('reset', 'Reset', 'history', 'conditional', 'none', allMutableRepositoryQueries),
-  rebase: command('rebase', 'Rebase', 'history', 'none', 'detect-after-run', allMutableRepositoryQueries),
-  'interactive-rebase': command('interactive-rebase', 'Interactive rebase', 'history', 'none', 'detect-after-run', allMutableRepositoryQueries),
-  'conflict-resolve': command('conflict-resolve', 'Resolve conflict', 'conflict', 'none', 'continue-skip-abort', allMutableRepositoryQueries),
-  undo: command('undo', 'Undo', 'history', 'none', 'none', allMutableRepositoryQueries)
+  fetch: command('Fetch', 'none', ['overview', 'graph']),
+  'remote-add': command('Add remote', 'none', ['overview', 'graph']),
+  'remote-edit': command('Edit remote', 'none', ['overview', 'graph']),
+  'remote-remove': command('Remove remote', 'none', ['overview', 'graph']),
+  pull: command('Pull', 'detect-after-run', allMutableRepositoryQueries),
+  push: command('Push', 'none', ['overview']),
+  'branch-create': command('Create branch', 'none', ['overview', 'graph']),
+  'branch-rename': command('Rename branch', 'none', ['overview', 'graph']),
+  'branch-set-upstream': command('Set upstream', 'none', ['overview']),
+  'branch-delete': command('Delete branch', 'none', ['overview', 'graph']),
+  checkout: command('Checkout', 'none', allMutableRepositoryQueries),
+  merge: command('Merge', 'detect-after-run', allMutableRepositoryQueries),
+  'tag-create': command('Create tag', 'none', ['overview', 'graph']),
+  'tag-push': command('Push tag', 'none', ['overview']),
+  'tag-delete': command('Delete tag', 'none', ['overview', 'graph']),
+  'stash-push': command('Stash changes', 'none', allMutableRepositoryQueries),
+  'stash-apply': command('Apply stash', 'detect-after-run', allMutableRepositoryQueries),
+  'stash-pop': command('Pop stash', 'detect-after-run', allMutableRepositoryQueries),
+  'stash-drop': command('Drop stash', 'none', ['overview', 'graph']),
+  'cherry-pick': command('Cherry-pick', 'detect-after-run', allMutableRepositoryQueries),
+  revert: command('Revert', 'detect-after-run', allMutableRepositoryQueries),
+  reset: command('Reset', 'none', allMutableRepositoryQueries),
+  rebase: command('Rebase', 'detect-after-run', allMutableRepositoryQueries),
+  'interactive-rebase': command('Interactive rebase', 'detect-after-run', allMutableRepositoryQueries),
+  'conflict-resolve': command('Resolve conflict', 'continue-skip-abort', allMutableRepositoryQueries),
+  undo: command('Undo', 'none', allMutableRepositoryQueries)
 } satisfies Record<GitCommandId, GitCommandDescriptor>;
 
 export function gitCommandLabel(id: GitCommandId): string {
@@ -77,18 +72,12 @@ export function gitCommandLabel(id: GitCommandId): string {
 }
 
 function command(
-  id: GitCommandId,
   defaultLabel: string,
-  mutationScope: GitCommandMutationScope,
-  undo: GitCommandUndoStrategy,
   conflicts: GitCommandConflictStrategy,
   invalidates: readonly GitQueryInvalidation[]
 ): GitCommandDescriptor {
   return {
-    id,
     defaultLabel,
-    mutationScope,
-    undo,
     conflicts,
     invalidates
   };

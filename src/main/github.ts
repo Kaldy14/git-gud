@@ -806,20 +806,7 @@ export function parseGitHubRepositoriesResponse(raw: unknown): GitHubRepositoryS
     .sort((left, right) => left.fullName.localeCompare(right.fullName));
 }
 
-export function parseGitHubActionsRunsResponse(
-  raw: unknown,
-  input: GitHubActionsRunsInput
-): GitHubActionsRuns {
-  const runs = parseGitHubWorkflowRuns(raw).slice(0, input.limit);
-  return buildGitHubActionsRuns(
-    input,
-    runs,
-    runs.length,
-    false
-  );
-}
-
-function parseGitHubWorkflowRuns(raw: unknown): GitHubWorkflowRun[] {
+export function parseGitHubWorkflowRuns(raw: unknown): GitHubWorkflowRun[] {
   const response = readRecord(raw, 'workflow runs response');
   const workflowRuns = response.workflow_runs;
 

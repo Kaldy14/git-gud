@@ -174,11 +174,6 @@ export function parseReviewFilePatterns(value: string): string[] {
   return [...patterns];
 }
 
-export function matchesReviewFilePattern(path: string, patterns: readonly string[]): boolean {
-  const normalizedPath = normalizeReviewPath(path);
-  return patterns.some((pattern) => compileReviewFilePattern(pattern)?.test(normalizedPath) ?? false);
-}
-
 function isChunkSkipped(
   chunk: GitReviewChunk,
   preferences: ReviewPreferences,

@@ -1,9 +1,11 @@
-import type { PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
+import { pullRequestDeepLinkTargetKey, type PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
 import type {
   GitHubPullRequestInbox,
   GitHubPullRequestSummary,
   GitProfile
 } from '@shared/types';
+
+export { pullRequestDeepLinkTargetKey } from '@shared/pullRequestDeepLink';
 
 export function profilesForPullRequestDeepLink(
   target: PullRequestDeepLinkTarget,
@@ -43,17 +45,6 @@ export function findPullRequestForDeepLink(
       pullRequest.repository.toLowerCase() === target.repository.toLowerCase() &&
       pullRequest.number === target.number
   );
-}
-
-export function pullRequestDeepLinkTargetKey(
-  target: PullRequestDeepLinkTarget
-): string {
-  return [
-    target.host.toLowerCase(),
-    target.owner.toLowerCase(),
-    target.repository.toLowerCase(),
-    target.number
-  ].join('/');
 }
 
 export function appendPullRequestDeepLinkTarget(

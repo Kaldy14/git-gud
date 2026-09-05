@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { GitCommandError, gitExecutor } from '../exec';
 import { parseNameStatus, parseShortStat } from './details';
 import { parseGitLog } from './log';
-import { parseForEachRef, parseRemoteConfig, parseRemoteVerbose } from './refs';
+import { parseForEachRef, parseRemoteConfig } from './refs';
 import { parseStashList } from './stash';
 import { parseStatusPorcelainV2 } from './status';
 import { parseWorktreeList } from './worktree';
@@ -81,20 +81,13 @@ describe('git read parsers', () => {
         ].join('\0')
       ].join('\n')
     );
-    const remotes = parseRemoteVerbose('origin\tgit@github.com:kaldy/git-gud.git (fetch)\norigin\tgit@github.com:kaldy/git-gud.git (push)\n');
+
 
     expect(refs.localBranches[0]).toMatchObject({ name: 'main', current: true, ahead: 1, behind: 2 });
     expect(refs.remoteBranches).toHaveLength(1);
     expect(refs.remoteBranches[0]).toMatchObject({ name: 'origin/main', remote: 'origin' });
     expect(refs.tags.map((tag) => tag.name)).toEqual(['v0.10.0', 'v0.2.0', 'v0.1.0']);
     expect(refs.tags[1]).toMatchObject({ sha: 'peeled-commit' });
-    expect(remotes).toEqual([
-      {
-        name: 'origin',
-        fetchUrl: 'git@github.com:kaldy/git-gud.git',
-        pushUrl: 'git@github.com:kaldy/git-gud.git'
-      }
-    ]);
     expect(
       parseRemoteConfig(
         [
