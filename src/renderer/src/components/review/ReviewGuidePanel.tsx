@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, RefreshCw, X } from 'lucide-react';
 
 import type { GitReviewGuide, GitReviewGuideFile, GitReviewGuidePriority } from '@shared/types';
 import type { VisibleReviewUnit } from './reviewFilters';
-import { reviewGuidePriorityDescriptions, visibleReviewGuideFiles } from './reviewGuidePresentation';
+import { reviewGuideFileLabel, reviewGuidePriorityDescriptions, visibleReviewGuideFiles } from './reviewGuidePresentation';
 
 export function ReviewGuidePriority({ priority, reason }: {
   priority: GitReviewGuidePriority;
@@ -32,6 +32,7 @@ export function ReviewGuidePanel({
   const index = units.findIndex((unit) => unit.unit.id === selectedUnit?.unit.id);
   const block = guide.units.find((unit) => unit.unitId === selectedUnit?.unit.id);
   const files = visibleReviewGuideFiles(selectedUnit, block);
+  const guideFiles = guide.units.flatMap((unit) => unit.files);
 
   return (
     <aside className="review-guide-panel" aria-label="AI guide">
@@ -50,8 +51,8 @@ export function ReviewGuidePanel({
         {files.length ? (
           <div className="review-guide-file-links" aria-label="Files in this block">
             {files.map((file) => <button key={file.path} type="button" disabled={disabled}
-              title={file.reason} onClick={() => onSelectFile(file)}>
-              <span>{file.path.split('/').pop()}{file.line ? `:${file.line}` : ''}</span>
+              title={`${file.path}${file.line ? `:${file.line}` : ''}\n${file.reason}`} onClick={() => onSelectFile(file)}>
+              <span>{reviewGuideFileLabel(file.path, guideFiles)}{file.line ? `:${file.line}` : ''}</span>
               <ArrowRight size={12} />
             </button>)}
           </div>
@@ -63,14 +64,14 @@ export function ReviewGuidePanel({
             disabled={disabled || index < 0 || index >= units.length - 1}
             onClick={() => onSelectUnit(units[index + 1]!.unit.id)}>Next block <ArrowRight size={13} /></button>
         </div>
-        {index >= 0 && index === units.length - 1 ? <small>End of the guide. Viewed progress is unchanged.</small> : null}
+        {index >= 0 && index === units.length - 1 ? <small>End of the guide.</small> : null}
       </div>
       <footer>
         <button type="button" className="btn-subtle btn-compact" disabled={disabled} onClick={() => onSetRanked(hasUpdatedOrder || !ranked)}>
           {hasUpdatedOrder ? 'Apply updated AI order' : ranked ? 'Use original order' : 'Apply AI order'}
         </button>
         <button type="button" className="icon-btn icon-btn-compact" aria-label="Rebuild AI guide" title="Rebuild AI guide" disabled={disabled || rebuilding} onClick={onRebuild}><RefreshCw size={12} /></button>
-        <small>Follow the guide or browse freely. Navigation does not mark code viewed.</small>
+        <small>Navigation does not mark code viewed.</small>
       </footer>
     </aside>
   );

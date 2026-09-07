@@ -1,6 +1,6 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useState } from 'react';
-import { Code2, ExternalLink, Loader2, Sparkles, TriangleAlert, X } from 'lucide-react';
+import { Code2, ExternalLink, Loader2, TriangleAlert, X } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import {
@@ -47,24 +47,19 @@ export function CodexReviewDialog({ repoPath, selection, onClose }: CodexReviewD
     <ModalSurface
       labelledBy={titleId}
       describedBy={descriptionId}
-      className="w-full max-w-[620px] overflow-hidden rounded-lg border border-[var(--ai-border)] bg-[var(--bg-popover)] shadow-2xl shadow-black/70"
+      className="w-full max-w-[620px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-popover)] shadow-2xl shadow-black/70"
       onClose={onClose}
     >
       <form onSubmit={(event) => void handleSubmit(event)}>
-        <header className="relative overflow-hidden border-b border-[var(--border)] px-5 py-4">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(139,63,246,0.22),transparent_48%)]" />
-          <div className="relative flex items-start gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-[var(--ai-border)] bg-[var(--ai-bg)] text-[var(--ai-text)] shadow-[0_0_24px_rgba(139,63,246,0.18)]">
-              <Sparkles size={17} />
-            </span>
+        <header className="border-b border-[var(--border)] px-5 py-4">
+          <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ai-text)]">Codex handoff</p>
               <h2 id={titleId} className="text-[15px] font-semibold text-[var(--text-1)]">Ask about this code</h2>
               <p id={descriptionId} className="mt-1 text-xs leading-5 text-[var(--text-2)]">
-                A new Codex task will open in <span className="font-semibold text-[var(--text-1)]">{projectName(repoPath)}</span> with this context prefilled. Review it there, then send.
+                Opens a prefilled task in <span className="font-semibold text-[var(--text-1)]">{projectName(repoPath)}</span>. Review and send it in Codex.
               </p>
             </div>
-            <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} aria-label="Close Codex handoff">
+            <button className="icon-btn h-7 w-7 shrink-0" type="button" onClick={onClose} aria-label="Close Codex dialog">
               <X size={14} />
             </button>
           </div>
@@ -76,7 +71,7 @@ export function CodexReviewDialog({ repoPath, selection, onClose }: CodexReviewD
             <textarea
               id={questionId}
               data-modal-initial-focus="true"
-              className="min-h-24 w-full resize-y rounded-md border border-[var(--border-strong)] bg-[var(--bg-field)] px-3 py-2.5 text-xs leading-5 text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-3)] focus:border-[var(--ai-border)]"
+              className="min-h-24 w-full resize-y rounded-md border border-[var(--border-strong)] bg-[var(--bg-field)] px-3 py-2.5 text-xs leading-5 text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-3)] focus:border-[var(--select-border)]"
               value={question}
               maxLength={2_000}
               onChange={(event) => setQuestion(event.target.value)}
@@ -85,7 +80,7 @@ export function CodexReviewDialog({ repoPath, selection, onClose }: CodexReviewD
 
           <section className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-field)]" aria-label="Selected code preview">
             <header className="flex min-h-9 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-3 text-[11px] text-[var(--text-3)]">
-              <Code2 size={13} className="shrink-0 text-[var(--ai-text)]" />
+              <Code2 size={13} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate font-semibold text-[var(--text-2)]" title={selection.filePath}>{selection.filePath}</span>
               <span className="shrink-0">{selection.lineCount} line{selection.lineCount === 1 ? '' : 's'}</span>
             </header>
@@ -102,7 +97,7 @@ export function CodexReviewDialog({ repoPath, selection, onClose }: CodexReviewD
           {selection.truncated ? (
             <p className="flex items-start gap-2 rounded border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[11px] leading-4 text-[var(--danger-text)]">
               <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-              The selection was large, so the handoff includes its first 12,000 characters. Select a smaller region for full fidelity.
+              Only the first 12,000 characters are included. Select a smaller region to include all of it.
             </p>
           ) : null}
 
@@ -113,8 +108,7 @@ export function CodexReviewDialog({ repoPath, selection, onClose }: CodexReviewD
           ) : null}
         </div>
 
-        <footer className="flex min-h-14 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-5 py-3">
-          <p className="text-[10.5px] text-[var(--text-3)]">Opens a prefilled local task; Codex does not auto-submit it.</p>
+        <footer className="flex min-h-14 items-center justify-end gap-3 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-5 py-3">
           <div className="flex shrink-0 items-center gap-2">
             <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>Cancel</button>
             <button className="btn-primary h-8 min-w-32 text-xs" type="submit" disabled={!canSubmit}>

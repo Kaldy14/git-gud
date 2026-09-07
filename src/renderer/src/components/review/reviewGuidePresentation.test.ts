@@ -2,7 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import type { GitReviewGuide, GitReviewUnit } from '@shared/types';
 
-import { rankReviewChunksByGuide, rankReviewUnitsByGuide, visibleReviewGuideFiles } from './reviewGuidePresentation';
+import { rankReviewChunksByGuide, rankReviewUnitsByGuide, reviewGuideFileLabel, visibleReviewGuideFiles } from './reviewGuidePresentation';
+
+describe('guide file labels', () => {
+  it('includes enough parent folders to distinguish repeated filenames', () => {
+    const files = ['src/client/api/index.ts', 'src/server/api/index.ts', 'src/types.ts', 'index.ts']
+      .map((path) => ({ path }));
+    expect(files.map((file) => reviewGuideFileLabel(file.path, files)))
+      .toEqual(['client/api/index.ts', 'server/api/index.ts', 'types.ts', 'index.ts']);
+  });
+
+  it('does not expand labels when the same file occurs in multiple blocks', () => {
+    const files = [{ path: 'src/index.ts' }, { path: 'src/index.ts' }];
+    expect(reviewGuideFileLabel('src/index.ts', files)).toBe('index.ts');
+  });
+});
 
 describe('AI review guide presentation', () => {
   const units = [

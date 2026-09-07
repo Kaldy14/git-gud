@@ -162,7 +162,7 @@ export function SettingsPanel({
                 Load more remains available after the initial page.
               </span>
             </label>
-            <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+            <label className="flex items-start gap-2 py-1 text-xs text-[var(--text-2)]">
               <input
                 className="mt-0.5"
                 type="checkbox"
@@ -172,28 +172,24 @@ export function SettingsPanel({
               <span className="min-w-0">
                 <span className="block font-semibold text-[var(--text-1)]">Large-repo mode</span>
                 <span className="mt-1 block leading-5 text-[var(--text-3)]">
-                  Reduces graph overscan for very large histories.
+                  Renders fewer offscreen commits to reduce memory use.
                 </span>
               </span>
             </label>
-            <fieldset className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5">
-              <legend className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Graph metadata</legend>
-              <label className="flex items-center gap-2 text-xs text-[var(--text-2)]">
-                <input
-                  type="checkbox"
-                  checked={draft.graphColumns.sha}
-                  onChange={(event) =>
-                    setDraft((value) => ({
-                      ...value,
-                      graphColumns: { ...value.graphColumns, sha: event.target.checked }
-                    }))
-                  }
-                />
-                Short SHA
-              </label>
-              <p className="text-[11px] leading-4 text-[var(--text-3)]">The commit message stays the primary history detail.</p>
-            </fieldset>
-            <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+            <label className="flex items-center gap-2 py-1 text-xs font-semibold text-[var(--text-1)]">
+              <input
+                type="checkbox"
+                checked={draft.graphColumns.sha}
+                onChange={(event) =>
+                  setDraft((value) => ({
+                    ...value,
+                    graphColumns: { ...value.graphColumns, sha: event.target.checked }
+                  }))
+                }
+              />
+              Show short commit SHAs
+            </label>
+            <label className="flex items-start gap-2 py-1 text-xs text-[var(--text-2)]">
               <input
                 className="mt-0.5"
                 type="checkbox"

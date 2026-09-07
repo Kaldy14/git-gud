@@ -4,6 +4,17 @@ import type { GitReviewGuide, GitReviewGuideFile, GitReviewGuidePriority, GitRev
 
 const priorityOrder: Record<GitReviewGuidePriority, number> = { focus: 0, review: 1, skim: 2 };
 
+export function reviewGuideFileLabel(path: string, files: readonly { path: string }[]): string {
+  const parts = path.split('/');
+  for (let count = 1; count < parts.length; count += 1) {
+    const label = parts.slice(-count).join('/');
+    if (!files.some((file) => file.path !== path && file.path.split('/').slice(-count).join('/') === label)) {
+      return label;
+    }
+  }
+  return path;
+}
+
 export function rankReviewUnitsByGuide<TUnit extends { unit: { id: string } }>(
   units: readonly TUnit[],
   guide: GitReviewGuide | undefined,

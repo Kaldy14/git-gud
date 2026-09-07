@@ -136,17 +136,9 @@ export function StartPage({
       <div className={`mx-auto w-full ${mode === 'home' ? 'max-w-4xl' : 'max-w-5xl'}`}>
         {mode === 'home' ? (
           <>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-2)]">
-                New Tab
-              </p>
-              <h1 className="mt-1 text-[30px] font-semibold tracking-tight text-[var(--text-1)]">
-                Repositories
-              </h1>
-              <p className="mt-2 max-w-2xl text-[13px] leading-5 text-[var(--text-3)]">
-                Open something local, bring down a remote project, or start a new repository.
-              </p>
-            </div>
+            <h1 className="text-[30px] font-semibold tracking-tight text-[var(--text-1)]">
+              Repositories
+            </h1>
 
             <div className="mt-5 flex flex-wrap gap-3">
               <RepositoryAction
