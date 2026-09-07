@@ -2707,7 +2707,7 @@ function ReviewFileTree({
 
       onSelectPathRef.current(selectedPaths.find((path) => pathSetRef.current.has(path)));
     },
-    search: entries.length > 8,
+    search: false,
     unsafeCSS: `
       :host {
         --trees-selected-bg-override: var(--select-bg);
