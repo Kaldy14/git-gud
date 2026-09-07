@@ -3472,52 +3472,6 @@ export function WorkspaceShell(): ReactElement {
           />
         ) : gitHubWorkspaceView ? (
           <>
-            <Sidebar
-              repositoryOverview={repositoryQuery.data}
-              isLoading={repositoryQuery.isLoading}
-              isRefreshing={repositoryQuery.isFetching && !repositoryQuery.isLoading}
-              errorMessage={repositoryError}
-              isCollapsed={isSidebarCollapsed}
-              width={effectiveSidebarWidth}
-              filterFocusSignal={sidebarFilterFocusSignal}
-              onToggleCollapsed={handleToggleSidebar}
-              pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
-              isPullRequestLoading={pullRequestInboxQuery.isLoading}
-              isPullRequestInboxActive
-              onTogglePullRequestInbox={handleTogglePullRequestInbox}
-              onResize={handleSidebarResize}
-              onResizeCommit={handleSidebarResizeCommit}
-              isOperationBusy={isOperationBusy}
-              onAddRemote={handleAddRemote}
-              onFetchRemote={handleFetchRemote}
-              onEditRemote={handleEditRemote}
-              onRemoveRemote={handleRemoveRemote}
-              onCheckoutBranch={handleCheckoutBranch}
-              onCheckoutRemoteBranch={handleActivateRemoteBranch}
-              onCopyBranchName={handleCopyBranchName}
-              onPullBranch={handlePullBranch}
-              onPushBranch={handlePushBranch}
-              onPushBranchWithTag={handlePushBranchWithTag}
-              onSetBranchUpstream={handleSetBranchUpstream}
-              onRenameBranch={handleRenameBranch}
-              onReviewBranch={handleOpenBranchReview}
-              onViewPullRequest={handleViewPullRequest}
-              localPullRequestsByBranch={pullRequestsByBranch.local}
-              remotePullRequestsByBranch={pullRequestsByBranch.remote}
-              onMergeBranch={handleMergeBranch}
-              onRebaseOntoBranch={handleRebaseOntoBranch}
-              onCreateTagAtCommit={handleOpenCreateAndPushTagDialog}
-              suggestedTagName={suggestedTagName}
-              onCreateSuggestedTagAtCommit={handleCreateAndPushTagAtCommit}
-              onDeleteBranch={handleDeleteBranch}
-              onDeleteRemoteBranch={handleDeleteRemoteBranch}
-              tagPushRemote={tagPushRemote}
-              onPushTag={handlePushTag}
-              onDeleteTag={handleDeleteTag}
-              onStashApply={handleStashApply}
-              onStashPop={handleStashPop}
-              onStashDrop={handleStashDrop}
-            />
             {gitHubWorkspaceView.kind === 'review' ? (
               <PullRequestReviewView
                 key={`${gitHubWorkspaceView.pullRequest.profileId}:${gitHubWorkspaceView.pullRequest.id}`}
@@ -3812,7 +3766,7 @@ export function WorkspaceShell(): ReactElement {
         )}
       </section>
 
-      <StatusBar
+      {gitHubWorkspaceView?.kind !== 'inbox' && gitHubWorkspaceView?.kind !== 'review' ? <StatusBar
         activeTab={isStartTabActive ? undefined : activeTab}
         repositoryOverview={isStartTabActive ? undefined : repositoryQuery.data}
         isRepositoryLoading={!isStartTabActive && repositoryQuery.isLoading}
@@ -3828,7 +3782,7 @@ export function WorkspaceShell(): ReactElement {
             ? undefined
             : visibleActiveOperation
         }
-      />
+      /> : null}
       {import.meta.env.DEV && !isReviewBenchmarkOpen ? (
         <button
           className="fixed bottom-10 right-3 z-40 flex h-8 items-center gap-1.5 rounded-md border border-[var(--select-border)] bg-[var(--bg-popover)] px-2.5 text-[10px] font-semibold text-[var(--accent-2)] shadow-lg shadow-black/50 hover:bg-[var(--bg-hover)]"

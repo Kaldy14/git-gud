@@ -3,7 +3,8 @@ import type {
   FormEvent,
   KeyboardEvent,
   PointerEvent as ReactPointerEvent,
-  ReactElement
+  ReactElement,
+  ReactNode
 } from 'react';
 import {
   useCallback,
@@ -179,6 +180,7 @@ type ReviewViewProps = {
   onClose: () => void;
   closeLabel?: string;
   showCloseButton?: boolean;
+  layout?: 'standard' | 'pull-request';
   initialViewState?: ReviewViewState;
   onViewStateChange?: (state: ReviewViewState) => void;
 };
@@ -332,6 +334,7 @@ export function ReviewView({
   onClose,
   closeLabel = 'Close review',
   showCloseButton = true,
+  layout = 'standard',
   initialViewState,
   onViewStateChange
 }: ReviewViewProps): ReactElement {
@@ -967,7 +970,8 @@ export function ReviewView({
       direction * Math.max(1, Math.round(scroller.clientHeight * 0.85));
   }
 
-  function saveReviewScrollTop(unitId: string, scrollTop: number): void {
+  function saveReviewScrollTop(unitId: string, scrollTop: number, visiblePath?: string): void {
+    if (visiblePath) setRequestedFilePath(visiblePath);
     const nextState = setReviewViewScrollTop(viewStateRef.current, unitId, scrollTop);
     viewStateRef.current = nextState;
     onViewStateChange?.(nextState);
@@ -1339,11 +1343,11 @@ export function ReviewView({
       }
     : undefined;
 
-  return (
-    <section ref={sectionRef} className="review-view" tabIndex={0} onKeyDown={handleKeyDown}>
+  const toolbar = (
+    <>
       <div className="review-toolbar">
         <div className="review-toolbar-primary">
-          {target.kind === 'branch' ? (
+          {layout === 'standard' && target.kind === 'branch' ? (
             <span
               className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2.5 text-[11px] font-semibold text-[var(--text-2)]"
               title={`Review all changes on ${target.name}`}
@@ -1359,7 +1363,7 @@ export function ReviewView({
             onChange={updatePreferences}
             onConfigurePatterns={() => setIsPatternEditorOpen(true)}
           />
-          <ReviewProgress presentation={presentation} />
+          {layout === 'standard' ? <ReviewProgress presentation={presentation} /> : null}
         </div>
 
         <div className="review-toolbar-actions">
@@ -1377,6 +1381,7 @@ export function ReviewView({
               <Columns2 size={12} />
             </button>
           </div>
+          {layout === 'standard' ? (
           <button
             className="icon-btn icon-btn-compact shrink-0"
             type="button"
@@ -1388,6 +1393,7 @@ export function ReviewView({
           >
             {isFileTreeOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
           </button>
+          ) : null}
           {showCloseButton ? (
             <button
               className="icon-btn icon-btn-compact shrink-0"
@@ -1405,8 +1411,16 @@ export function ReviewView({
       {currentReviewGuideState?.status === 'failed' ? (
         <ReviewGuideFailureMessage errorMessage={currentReviewGuideState.errorMessage} />
       ) : null}
+    </>
+  );
+
+  return (
+    <section ref={sectionRef} className="review-view" data-layout={layout} tabIndex={0} onKeyDown={handleKeyDown}>
+      {layout === 'standard' ? toolbar : null}
 
       <ReviewBody
+        compact={layout === 'pull-request'}
+        navigationTools={toolbar}
         repoPath={repoPath}
         isLoading={embeddedPlan ? false : reviewQuery.isLoading}
         errorMessage={
@@ -1808,6 +1822,8 @@ function ReviewGuidePriority({
 }
 
 function ReviewBody({
+  compact,
+  navigationTools,
   repoPath,
   isLoading,
   errorMessage,
@@ -1838,6 +1854,8 @@ function ReviewBody({
   onStartReviewGuide,
   onToggleViewed
 }: {
+  compact: boolean;
+  navigationTools: ReactNode;
   repoPath: string;
   isLoading: boolean;
   errorMessage?: string;
@@ -1864,19 +1882,18 @@ function ReviewBody({
   typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
   onSelectUnit: (unitId: string) => void;
   onSelectFile: (path: string | undefined) => void;
-  onScrollTopChange: (unitId: string, scrollTop: number) => void;
+  onScrollTopChange: (unitId: string, scrollTop: number, visiblePath?: string) => void;
   onStartReviewGuide: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
+  const reviewQueueRef = useRef<HTMLElement>(null);
   const renderedLocationRef = useRef<{
     fileNavigationSignal: number;
     filePath?: string;
     unitId?: string;
   }>({ fileNavigationSignal: 0 });
-  const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(
-    () => new Set()
-  );
+  const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(() => new Set());
   const agentNotesByPath = useMemo(() => {
     const notesByPath = new Map<string, GitAgentNote[]>();
 
@@ -1888,9 +1905,15 @@ function ReviewBody({
 
     return notesByPath;
   }, [agentNotes]);
-  const selectedGuideUnit = selectedUnit
-    ? reviewGuideUnits.get(selectedUnit.unit.id)
-    : undefined;
+  const selectedGuideUnit = selectedUnit ? reviewGuideUnits.get(selectedUnit.unit.id) : undefined;
+  const selectedTreeUnits = useMemo(() => (selectedUnit ? [selectedUnit] : []), [selectedUnit]);
+
+  useEffect(() => {
+    if (compact) {
+      reviewQueueRef.current?.querySelector('[data-active="true"]')
+        ?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [compact, selectedUnit?.unit.id]);
 
   useLayoutEffect(() => {
     const scroller = reviewChunksRef.current;
@@ -1898,8 +1921,7 @@ function ReviewBody({
     const previousLocation = renderedLocationRef.current;
     const unitChanged = unitId !== previousLocation.unitId;
     const fileChanged = selectedFilePath !== previousLocation.filePath;
-    const fileNavigationRequested =
-      fileNavigationSignal !== previousLocation.fileNavigationSignal;
+    const fileNavigationRequested = fileNavigationSignal !== previousLocation.fileNavigationSignal;
 
     renderedLocationRef.current = {
       fileNavigationSignal,
@@ -1910,16 +1932,12 @@ function ReviewBody({
     if (
       !scroller ||
       !unitId ||
-      (!unitChanged && !fileChanged && !fileNavigationRequested)
+      (!unitChanged && (compact || !fileChanged) && !fileNavigationRequested)
     ) {
       return;
     }
 
-    if (
-      unitChanged &&
-      restoredScrollTop !== undefined &&
-      !fileNavigationRequested
-    ) {
+    if (unitChanged && restoredScrollTop !== undefined && !fileNavigationRequested) {
       scroller.scrollTo({ top: restoredScrollTop });
       return;
     }
@@ -1946,20 +1964,12 @@ function ReviewBody({
         target.getBoundingClientRect().top -
         scroller.getBoundingClientRect().top
     });
-  }, [
-    fileNavigationSignal,
-    restoredScrollTop,
-    selectedFilePath,
-    selectedUnit?.unit.id
-  ]);
+  }, [compact, fileNavigationSignal, restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
 
   function toggleFile(fileKey: string, chunks: readonly GitReviewChunk[]): void {
     const isCollapsing = !collapsedFileKeys.has(fileKey);
 
-    if (
-      isCollapsing &&
-      chunks.some((chunk) => chunk.id === lineCollaboration?.selectedChunkId)
-    ) {
+    if (isCollapsing && chunks.some((chunk) => chunk.id === lineCollaboration?.selectedChunkId)) {
       lineCollaboration?.onCancel();
     }
 
@@ -1976,168 +1986,312 @@ function ReviewBody({
     });
   }
 
+  let bodyMessage: ReactElement | undefined;
   if (isLoading) {
-    return <ReviewMessage icon={<Loader2 size={16} className="animate-spin" />} text="Building contextual review…" />;
+    bodyMessage = (
+      <ReviewMessage
+        icon={<Loader2 size={16} className="animate-spin" />}
+        text="Building contextual review…"
+      />
+    );
+  } else if (errorMessage) {
+    bodyMessage = (
+      <ReviewMessage icon={<AlertTriangle size={16} />} text={errorMessage} tone="danger" />
+    );
+  } else if (units.length === 0 && !reviewSearch) {
+    bodyMessage = hasReviewUnits ? (
+      <ReviewMessage
+        icon={<SkipForward size={16} />}
+        text="All changes are skipped by the current review filters."
+      />
+    ) : (
+      <ReviewMessage icon={<Check size={16} />} text={emptyReviewMessage} />
+    );
   }
 
-  if (errorMessage) {
-    return <ReviewMessage icon={<AlertTriangle size={16} />} text={errorMessage} tone="danger" />;
-  }
-
-  if (units.length === 0 && !reviewSearch) {
-    return hasReviewUnits
-      ? <ReviewMessage icon={<SkipForward size={16} />} text="All changes are skipped by the current review filters." />
-      : <ReviewMessage icon={<Check size={16} />} text={emptyReviewMessage} />;
-  }
+  if (!compact && bodyMessage) return bodyMessage;
 
   return (
     <div className="review-layout">
-      <nav className="review-queue" aria-label="Context review units">
-        {reviewSearch ? (
-          <button
-            className="review-unit-row review-search-unit-row"
-            type="button"
-            data-active={reviewSearch.isSelected}
-            disabled={lineCollaboration?.selectedChunkId !== undefined}
-            onClick={reviewSearch.onSelect}
-          >
-            <span className="review-unit-status review-search-unit-status">
-              <Search size={12} />
+      <nav ref={reviewQueueRef} className="review-queue" data-nested={compact} aria-label="Context review units">
+        {compact ? (
+          <header className="review-block-progress">
+            <strong>Blocks</strong>
+            <span>
+              {units.filter((unit) => unit.isViewed).length} / {units.length} viewed
             </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span
-                className="block truncate text-xs font-semibold text-[var(--text-1)]"
-                title={reviewSearch.query || 'Review search'}
-              >
-                Search · {compactReviewSearchQuery(reviewSearch.query)}
-              </span>
-              <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">
-                {formatReviewSearchResultCount(reviewSearch.results.locationCount)}
-              </span>
-            </span>
-            <span className="badge-mini">temporary</span>
-          </button>
+          </header>
         ) : null}
-        {units.map((candidate, index) => (
-          <button
-            key={candidate.unit.id}
-            className="review-unit-row"
-            type="button"
-            data-active={!reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id}
-            disabled={
-              lineCollaboration?.selectedChunkId !== undefined &&
-              candidate.unit.id !== selectedUnit?.unit.id
-            }
-            onClick={() => onSelectUnit(candidate.unit.id)}
-          >
-            <span className="review-unit-status" data-viewed={candidate.isViewed}>
-              {candidate.isViewed ? <Check size={12} /> : index + 1}
-            </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-xs font-semibold text-[var(--text-1)]" title={candidate.unit.explanation}>{candidate.unit.title}</span>
-              <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                {reviewGuideUnits.get(candidate.unit.id) ? (
-                  <ReviewGuidePriority priority={reviewGuideUnits.get(candidate.unit.id)!.priority} />
-                ) : null}
-                <span className="min-w-0 truncate text-[10.5px] text-[var(--text-3)]">{candidate.unit.reason}</span>
+        <div className="review-queue-items">
+          {reviewSearch ? (
+            <button
+              className="review-unit-row review-search-unit-row"
+              type="button"
+              data-active={reviewSearch.isSelected}
+              disabled={lineCollaboration?.selectedChunkId !== undefined}
+              onClick={reviewSearch.onSelect}
+            >
+              <span className="review-unit-status review-search-unit-status">
+                <Search size={12} />
               </span>
+              <span className="min-w-0 flex-1 text-left">
+                <span
+                  className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                  title={reviewSearch.query || 'Review search'}
+                >
+                  Search · {compactReviewSearchQuery(reviewSearch.query)}
+                </span>
+                <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">
+                  {formatReviewSearchResultCount(reviewSearch.results.locationCount)}
+                </span>
+              </span>
+              <span className="badge-mini">temporary</span>
+            </button>
+          ) : null}
+          {units.map((candidate, index) => (
+            <div className="review-block-entry" key={candidate.unit.id}>
+              <button
+                className="review-unit-row"
+                type="button"
+                data-active={
+                  !reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id
+                }
+                aria-expanded={
+                  compact
+                    ? !reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id
+                    : undefined
+                }
+                disabled={
+                  lineCollaboration?.selectedChunkId !== undefined &&
+                  candidate.unit.id !== selectedUnit?.unit.id
+                }
+                onClick={() => onSelectUnit(candidate.unit.id)}
+              >
+                <span className="review-unit-status" data-viewed={candidate.isViewed}>
+                  {candidate.isViewed ? <Check size={12} /> : index + 1}
+                </span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span
+                    className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                    title={candidate.unit.explanation}
+                  >
+                    {compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title}
+                  </span>
+                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                    {reviewGuideUnits.get(candidate.unit.id) ? (
+                      <ReviewGuidePriority
+                        priority={reviewGuideUnits.get(candidate.unit.id)!.priority}
+                      />
+                    ) : null}
+                    <span className="min-w-0 truncate text-[10.5px] text-[var(--text-3)]">
+                      {compact
+                        ? formatReviewBlockSize(candidate)
+                        : candidate.unit.reason}
+                    </span>
+                  </span>
+                </span>
+                {!compact ? (
+                  <span className="badge-mini">{candidate.visibleChunks.length}</span>
+                ) : null}
+              </button>
+              {compact &&
+              !reviewSearch?.isSelected &&
+              candidate.unit.id === selectedUnit?.unit.id ? (
+                <ReviewFileTree
+                  embedded
+                  repoPath={repoPath}
+                  units={selectedTreeUnits}
+                  selectedPath={selectedFilePath}
+                  onSelectPath={onSelectFile}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+        {compact ? (
+          <footer className="review-navigation-footer">
+            {selectedUnit ? (
+              <>
+                <details className="review-block-explanation">
+                  <summary>Why grouped?{selectedGuideUnit ? ' · AI guide' : ''}</summary>
+                  <p>{selectedUnit.unit.explanation}</p>
+                  <small>
+                    {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
+                    filters
+                  </small>
+                  {reviewGuide && selectedGuideUnit ? (
+                    <ReviewGuidePopover
+                      guide={reviewGuide}
+                      guideUnit={selectedGuideUnit}
+                      reviewUnitTitle={selectedUnit.unit.title}
+                      onStart={onStartReviewGuide}
+                      trigger={
+                        <button type="button" className="btn-subtle btn-compact">
+                          Open AI guide
+                        </button>
+                      }
+                    />
+                  ) : null}
+                </details>
+                <div className="review-block-position">
+                  <span>
+                    Block {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
+                    {units.length}
+                  </span>
+                  <span>{selectedUnit.skippedCount} hidden</span>
+                </div>
+                <button
+                  className="btn-primary btn-regular review-viewed-next"
+                  type="button"
+                  disabled={isMutating}
+                  onClick={onToggleViewed}
+                >
+                  <CheckCheck size={13} />
+                  {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed & next'}
+                </button>
+                {mutationError ? (
+                  <p className="review-navigation-error" role="alert">
+                    {mutationError}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {navigationTools}
+            <span className="review-navigation-shortcuts">
+              J / K blocks · [ / ] files · V viewed
             </span>
-            <span className="badge-mini">{candidate.visibleChunks.length}</span>
-          </button>
-        ))}
+          </footer>
+        ) : null}
       </nav>
 
       <div className="review-content">
-        {reviewSearch?.isSelected ? (
-          <ReviewSearchPanel
-            search={reviewSearch}
-            diffOptions={diffOptions}
-            typeDefinitionPaths={typeDefinitionPaths}
-            typeDefinitionInteraction={typeDefinitionInteraction}
-          />
-        ) : selectedUnit ? (
-          <>
-            <header className="review-unit-header">
-              <div className="review-unit-heading">
-                <h2 title={selectedUnit.unit.title}>{selectedUnit.unit.title}</h2>
-                {reviewGuide && selectedGuideUnit ? (
-                  <ReviewGuidePopover
-                    guide={reviewGuide}
-                    guideUnit={selectedGuideUnit}
-                    reviewUnitTitle={selectedUnit.unit.title}
-                    align="start"
-                    trigger={(
-                      <button
-                        className="btn-subtle btn-compact review-guide-unit-trigger"
-                        type="button"
-                        aria-label={`Open AI guide for ${selectedUnit.unit.title}`}
-                        title="Open AI guide for this review block"
-                      >
-                        <Sparkles size={12} />
-                        AI
-                      </button>
+        {bodyMessage ??
+          (reviewSearch?.isSelected ? (
+            <ReviewSearchPanel
+              search={reviewSearch}
+              diffOptions={diffOptions}
+              typeDefinitionPaths={typeDefinitionPaths}
+              typeDefinitionInteraction={typeDefinitionInteraction}
+            />
+          ) : selectedUnit ? (
+            <>
+              {!compact ? (
+                <header className="review-unit-header">
+                  <div className="review-unit-heading">
+                    <h2 title={selectedUnit.unit.title}>{selectedUnit.unit.title}</h2>
+                    {reviewGuide && selectedGuideUnit ? (
+                      <ReviewGuidePopover
+                        guide={reviewGuide}
+                        guideUnit={selectedGuideUnit}
+                        reviewUnitTitle={selectedUnit.unit.title}
+                        align="start"
+                        trigger={
+                          <button
+                            className="btn-subtle btn-compact review-guide-unit-trigger"
+                            type="button"
+                            aria-label={`Open AI guide for ${selectedUnit.unit.title}`}
+                            title="Open AI guide for this review block"
+                          >
+                            <Sparkles size={12} />
+                            AI
+                          </button>
+                        }
+                        onStart={onStartReviewGuide}
+                      />
+                    ) : null}
+                    {selectedGuideUnit ? (
+                      <ReviewGuidePriority priority={selectedGuideUnit.priority} />
+                    ) : null}
+                    <span className="badge-mini shrink-0" title="Grouping confidence">
+                      {selectedUnit.unit.confidence}
+                    </span>
+                    <span
+                      className="review-unit-summary"
+                      title={`${selectedUnit.unit.reason} · ${selectedUnit.unit.explanation}${selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}`}
+                    >
+                      {selectedUnit.unit.reason}
+                      {` · ${selectedUnit.unit.explanation}`}
+                      {selectedUnit.skippedCount > 0
+                        ? ` · ${selectedUnit.skippedCount} skipped by filters`
+                        : ''}
+                    </span>
+                  </div>
+                  <button
+                    className={
+                      selectedUnit.isViewed ? 'btn-subtle btn-compact' : 'btn-primary btn-compact'
+                    }
+                    type="button"
+                    disabled={isMutating}
+                    onClick={onToggleViewed}
+                  >
+                    {isMutating ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : selectedUnit.isViewed ? (
+                      <X size={13} />
+                    ) : (
+                      <CheckCheck size={13} />
                     )}
-                    onStart={onStartReviewGuide}
-                  />
-                ) : null}
-                {selectedGuideUnit ? (
-                  <ReviewGuidePriority priority={selectedGuideUnit.priority} />
-                ) : null}
-                <span className="badge-mini shrink-0" title="Grouping confidence">{selectedUnit.unit.confidence}</span>
-                <span
-                  className="review-unit-summary"
-                  title={`${selectedUnit.unit.reason} · ${selectedUnit.unit.explanation}${selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}`}
-                >
-                  {selectedUnit.unit.reason}
-                  {` · ${selectedUnit.unit.explanation}`}
-                  {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} skipped by filters` : ''}
-                </span>
+                    {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed'}
+                  </button>
+                </header>
+              ) : null}
+              {!compact && mutationError ? (
+                <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">
+                  {mutationError}
+                </p>
+              ) : null}
+              <div
+                ref={reviewChunksRef}
+                className="review-chunks"
+                onScroll={(event) => {
+                  const scroller = event.currentTarget;
+                  const top = scroller.getBoundingClientRect().top + 40;
+                  const visiblePath = compact
+                    ? [...scroller.querySelectorAll<HTMLElement>('[data-review-path]')].find(
+                        (file) => file.getBoundingClientRect().bottom > top
+                      )?.dataset.reviewPath
+                    : undefined;
+                  onScrollTopChange(selectedUnit.unit.id, scroller.scrollTop, visiblePath);
+                }}
+              >
+                {createReviewSections(selectedUnit.visibleChunks).map(
+                  (section, _sectionIndex, sections) => (
+                    <section
+                      className="review-chunk-section"
+                      data-only={sections.length === 1}
+                      key={section.key}
+                    >
+                      {sections.length > 1 ? (
+                        <div className="review-section-header">
+                          <span>{section.label}</span>
+                          <span>{section.files.length}</span>
+                        </div>
+                      ) : null}
+                      {section.files.map((file) => (
+                        <ReviewFile
+                          key={file.key}
+                          file={file}
+                          preparedDiffs={preparedDiffs}
+                          diffOptions={diffOptions}
+                          lineCollaboration={lineCollaboration}
+                          agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
+                          hiddenAgentNoteIds={hiddenAgentNoteIds}
+                          onSetAgentNoteHidden={onSetAgentNoteHidden}
+                          typeDefinitionPaths={typeDefinitionPaths}
+                          typeDefinitionInteraction={typeDefinitionInteraction}
+                          isCollapsed={collapsedFileKeys.has(file.key)}
+                          onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
+                        />
+                      ))}
+                    </section>
+                  )
+                )}
               </div>
-              <button className={selectedUnit.isViewed ? 'btn-subtle btn-compact' : 'btn-primary btn-compact'} type="button" disabled={isMutating} onClick={onToggleViewed}>
-                {isMutating ? <Loader2 size={13} className="animate-spin" /> : selectedUnit.isViewed ? <X size={13} /> : <CheckCheck size={13} />}
-                {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed'}
-              </button>
-            </header>
-            {mutationError ? <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">{mutationError}</p> : null}
-            <div
-              ref={reviewChunksRef}
-              className="review-chunks"
-              onScroll={(event) =>
-                onScrollTopChange(selectedUnit.unit.id, event.currentTarget.scrollTop)
-              }
-            >
-              {createReviewSections(selectedUnit.visibleChunks).map((section, _sectionIndex, sections) => (
-                <section className="review-chunk-section" data-only={sections.length === 1} key={section.key}>
-                  {sections.length > 1 ? (
-                    <div className="review-section-header">
-                      <span>{section.label}</span>
-                      <span>{section.files.length}</span>
-                    </div>
-                  ) : null}
-                  {section.files.map((file) => (
-                    <ReviewFile
-                      key={file.key}
-                      file={file}
-                      preparedDiffs={preparedDiffs}
-                      diffOptions={diffOptions}
-                      lineCollaboration={lineCollaboration}
-                      agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
-                      hiddenAgentNoteIds={hiddenAgentNoteIds}
-                      onSetAgentNoteHidden={onSetAgentNoteHidden}
-                      typeDefinitionPaths={typeDefinitionPaths}
-                      typeDefinitionInteraction={typeDefinitionInteraction}
-                      isCollapsed={collapsedFileKeys.has(file.key)}
-                      onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
-                    />
-                  ))}
-                </section>
-              ))}
-            </div>
-          </>
-        ) : null}
+            </>
+          ) : null)}
       </div>
 
-      {isFileTreeOpen ? (
+      {!compact && isFileTreeOpen ? (
         <ReviewFileTree
           key={repoPath}
           repoPath={repoPath}
@@ -2501,12 +2655,20 @@ function createReviewSearchHighlightCSS(
   `;
 }
 
+function formatReviewBlockSize(unit: VisibleReviewUnit): string {
+  const files = new Set(unit.visibleChunks.map((chunk) => chunk.path)).size;
+  const changes = unit.visibleChunks.length;
+  return `${files} ${files === 1 ? 'file' : 'files'} · ${changes} ${changes === 1 ? 'change' : 'changes'}`;
+}
+
 function ReviewFileTree({
+  embedded = false,
   repoPath,
   units,
   selectedPath,
   onSelectPath
 }: {
+  embedded?: boolean;
   repoPath: string;
   units: VisibleReviewUnit[];
   selectedPath?: string;
@@ -2514,12 +2676,10 @@ function ReviewFileTree({
 }): ReactElement {
   const isSyncingSelectionRef = useRef(false);
   const onSelectPathRef = useRef(onSelectPath);
-  const resizeStateRef = useRef<
-    { startX: number; startWidth: number; width: number } | undefined
-  >(undefined);
-  const [width, setWidth] = useState(() =>
-    loadReviewFileTreeWidth(window.localStorage, repoPath)
+  const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(
+    undefined
   );
+  const [width, setWidth] = useState(() => loadReviewFileTreeWidth(window.localStorage, repoPath));
   const [isResizing, setIsResizing] = useState(false);
   const entries = useMemo(() => createReviewFileTreeEntries(units), [units]);
   const paths = useMemo(() => entries.map((entry) => entry.path), [entries]);
@@ -2545,9 +2705,7 @@ function ReviewFileTree({
         return;
       }
 
-      onSelectPathRef.current(
-        selectedPaths.find((path) => pathSetRef.current.has(path))
-      );
+      onSelectPathRef.current(selectedPaths.find((path) => pathSetRef.current.has(path)));
     },
     search: entries.length > 8,
     unsafeCSS: `
@@ -2561,6 +2719,15 @@ function ReviewFileTree({
         --trees-padding-inline-override: 2px;
         --trees-item-padding-x-override: 2px;
         font-size: 12px;
+      }
+      ${
+        embedded
+          ? `
+        [data-file-tree-virtualized-wrapper], [data-file-tree-virtualized-root] { height: auto; }
+        [data-file-tree-virtualized-scroll] { flex: none; max-height: clamp(150px, calc(100vh - 500px), 360px); }
+        [data-file-tree-virtualized-list] { min-height: 0; }
+      `
+          : ''
       }
     `
   });
@@ -2616,10 +2783,7 @@ function ReviewFileTree({
     const selectedPaths = model.getSelectedPaths();
     const currentSelectedPath = selectedPaths.find((path) => pathSet.has(path));
 
-    if (
-      currentSelectedPath === selectedPath &&
-      selectedPaths.length <= (selectedPath ? 1 : 0)
-    ) {
+    if (currentSelectedPath === selectedPath && selectedPaths.length <= (selectedPath ? 1 : 0)) {
       return;
     }
 
@@ -2675,40 +2839,43 @@ function ReviewFileTree({
   return (
     <aside
       className="review-file-tree-panel"
-      style={panelStyle}
+      data-embedded={embedded}
+      style={embedded ? undefined : panelStyle}
       aria-label="Review files"
     >
-      <ReviewFileTreeResizeHandle
-        width={width}
-        isActive={isResizing}
-        onPointerDown={handleResizeStart}
-        onResize={resizeAndSave}
-      />
-      <header>
-        <span>
-          <FolderTree size={13} />
-          Files
-          <span className="badge-mini">{entries.length}</span>
-        </span>
-      </header>
+      {!embedded ? (
+        <ReviewFileTreeResizeHandle
+          width={width}
+          isActive={isResizing}
+          onPointerDown={handleResizeStart}
+          onResize={resizeAndSave}
+        />
+      ) : null}
+      {!embedded ? (
+        <header>
+          <span>
+            <FolderTree size={13} />
+            Files
+            <span className="badge-mini">{entries.length}</span>
+          </span>
+        </header>
+      ) : null}
       <div className="review-file-tree-body">
         <FileTree
           className="review-file-tree"
           model={model}
           onClickCapture={(event) => {
-            const selectedItem = event.nativeEvent.composedPath().find(
-              (target): target is HTMLElement =>
-                target instanceof HTMLElement &&
-                target.dataset.itemType === 'file' &&
-                target.dataset.itemPath !== undefined
-            );
+            const selectedItem = event.nativeEvent
+              .composedPath()
+              .find(
+                (target): target is HTMLElement =>
+                  target instanceof HTMLElement &&
+                  target.dataset.itemType === 'file' &&
+                  target.dataset.itemPath !== undefined
+              );
             const path = selectedItem?.dataset.itemPath;
 
-            if (
-              path &&
-              pathSet.has(path) &&
-              model.getItem(path)?.isSelected()
-            ) {
+            if (path && pathSet.has(path) && model.getItem(path)?.isSelected()) {
               onSelectPath(path);
             }
           }}

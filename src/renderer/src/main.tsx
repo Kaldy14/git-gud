@@ -12,6 +12,7 @@ import { createDefaultAppSettings } from '@shared/settings';
 
 import { AppRouter } from './router';
 import './styles/main.css';
+import './styles/pr-workspace.css';
 
 const diffWorkerPoolOptions: WorkerPoolOptions = {
   workerFactory: () => new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), { type: 'module' }),

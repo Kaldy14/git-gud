@@ -86,3 +86,11 @@
 - [x] The integration is verified against the documented Portainer 2.39.0 CE and Business Edition API contracts; connected installations remain discoverable through connection testing.
 - [x] The first Portainer slice is monitoring-only; stack updates, restarts, and other write actions are excluded.
 - [x] Tiles use ordered-grid rearrangement rather than freeform coordinates; the saved tile array is the persistent reading and layout order.
+
+## Pull request workspace
+- Approved direction (2026-09-07): Inbox A and Review C from the PR layout study.
+- Inbox: One compact search and refresh row, action and repository scopes on the left, populated groups ordered by the next action. Recently pushed branches follow the review queue.
+- Review: Keep the title bar and a 40px PR command row above the code. Repository navigation and its footer are hidden while reviewing pull requests.
+- Navigation: Blocks and their files share a left directory tree. Only the selected block expands; progress, grouping explanation, filters, diff style, and Viewed & next stay in its footer. The selected file follows code scrolling without moving the reader's position.
+- Context: Details, discussion, attached images, review submission, and merge confirmation open in a dismissible right panel. It docks from 1400px and overlays at narrower widths; code keeps its full vertical space. Closing a panel preserves its draft and restores focus.
+- Keep Git's commit and branch review layout separate from the PR layout. Review and merge still require explicit submission; navigation never publishes local drafts.

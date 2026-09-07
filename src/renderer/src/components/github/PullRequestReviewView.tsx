@@ -8,13 +8,12 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDot,
-  Clock3,
   Copy,
   CornerDownRight,
   ExternalLink,
   FileText,
   FolderTree,
-  GitCommitHorizontal,
+  Images,
   GitMerge,
   GitPullRequest,
   Link2,
@@ -26,7 +25,8 @@ import {
   X
 } from 'lucide-react';
 
-import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
+import { PullRequestPanel } from './PullRequestPanel';
+import { getReviewImages } from '@renderer/components/review/reviewImages';
 import type { DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import {
@@ -421,6 +421,10 @@ function PullRequestReviewContent({
     loadPullRequestReviewDrafts(window.localStorage, draftStorageKey)
   );
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const [contextTab, setContextTab] = useState<'overview' | 'comments' | 'images'>('overview');
+  const [reviewEvent, setReviewEvent] = useState<ReviewEvent>('comment');
+  const [reviewSubmissionKey, setReviewSubmissionKey] = useState(0);
+  const panelTitleId = useId();
   const [isConflictPanelOpen, setIsConflictPanelOpen] = useState(false);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
@@ -440,22 +444,29 @@ function PullRequestReviewContent({
       });
   }
 
-  function toggleOverview(): void {
-    const willOpen = !isOverviewOpen;
-    setIsOverviewOpen(willOpen);
+  function openPanel(panel: 'details' | 'review' | 'merge'): void {
+    setIsOverviewOpen(panel === 'details');
+    setIsReviewDialogOpen(panel === 'review');
+    setIsMergeDialogOpen(panel === 'merge');
+  }
 
-    if (
-      willOpen &&
-      Object.keys(detail.bodyImageUrls ?? {}).length > 0 &&
-      Date.now() - Date.parse(detail.loadedAt) >= 4 * 60 * 1_000
-    ) {
-      onRefresh();
+  function toggleOverview(): void {
+    if (isOverviewOpen) setIsOverviewOpen(false);
+    else {
+      openPanel('details');
+      if (
+        Object.keys(detail.bodyImageUrls ?? {}).length > 0 &&
+        Date.now() - Date.parse(detail.loadedAt) >= 4 * 60 * 1_000
+      ) {
+        onRefresh();
+      }
     }
   }
 
   function toggleConflicts(): void {
     if (!isOverviewOpen) {
-      setIsOverviewOpen(true);
+      openPanel('details');
+      setContextTab('overview');
       setIsConflictPanelOpen(true);
       return;
     }
@@ -485,18 +496,14 @@ function PullRequestReviewContent({
     staleTime: 15_000
   });
   const timeline = useMemo(
-    () => buildPullRequestTimeline({
-      commits: detail.commitTimeline,
-      conversationComments: detail.conversationComments,
-      reviews: detail.reviews,
-      reviewComments: detail.reviewComments
-    }),
-    [
-      detail.commitTimeline,
-      detail.conversationComments,
-      detail.reviewComments,
-      detail.reviews
-    ]
+    () =>
+      buildPullRequestTimeline({
+        commits: detail.commitTimeline,
+        conversationComments: detail.conversationComments,
+        reviews: detail.reviews,
+        reviewComments: detail.reviewComments
+      }),
+    [detail.commitTimeline, detail.conversationComments, detail.reviewComments, detail.reviews]
   );
   const displayedLineComments = useMemo<ReviewLineComment[]>(() => {
     const publishedComments: ReviewLineComment[] = detail.reviewComments.map((comment) => ({
@@ -504,52 +511,56 @@ function PullRequestReviewContent({
       authorAvatarUrl: comment.authorAvatarUrl,
       canEdit: comment.author === detail.viewerLogin
     }));
-    const commentById = new Map(
-      detail.reviewComments.map((comment) => [comment.id, comment])
-    );
+    const commentById = new Map(detail.reviewComments.map((comment) => [comment.id, comment]));
     const draftComments = reviewDrafts.flatMap<ReviewLineComment>((draft) => {
       if (draft.kind === 'line') {
-        return [{
-          id: draft.id,
-          body: draft.body,
-          author: detail.viewerLogin,
-          createdAt: draft.createdAt,
-          path: draft.path,
-          subjectType: 'line',
-          line: draft.line,
-          side: draft.side,
-          isDraft: true
-        }];
+        return [
+          {
+            id: draft.id,
+            body: draft.body,
+            author: detail.viewerLogin,
+            createdAt: draft.createdAt,
+            path: draft.path,
+            subjectType: 'line',
+            line: draft.line,
+            side: draft.side,
+            isDraft: true
+          }
+        ];
       }
 
       if (draft.kind === 'file') {
-        return [{
-          id: draft.id,
-          body: draft.body,
-          author: detail.viewerLogin,
-          createdAt: draft.createdAt,
-          path: draft.path,
-          subjectType: 'file',
-          isDraft: true
-        }];
+        return [
+          {
+            id: draft.id,
+            body: draft.body,
+            author: detail.viewerLogin,
+            createdAt: draft.createdAt,
+            path: draft.path,
+            subjectType: 'file',
+            isDraft: true
+          }
+        ];
       }
 
       const parent = commentById.get(draft.inReplyToId);
       if (!parent) {
         return [];
       }
-      return [{
-        id: draft.id,
-        body: draft.body,
-        author: detail.viewerLogin,
-        createdAt: draft.createdAt,
+      return [
+        {
+          id: draft.id,
+          body: draft.body,
+          author: detail.viewerLogin,
+          createdAt: draft.createdAt,
           path: parent.path,
           subjectType: parent.subjectType,
-        line: parent.line,
-        side: parent.side,
-        inReplyToId: draft.inReplyToId,
-        isDraft: true
-      }];
+          line: parent.line,
+          side: parent.side,
+          inReplyToId: draft.inReplyToId,
+          isDraft: true
+        }
+      ];
     });
 
     return [...publishedComments, ...draftComments];
@@ -572,10 +583,8 @@ function PullRequestReviewContent({
     ]);
   };
   const reviewMutation = useMutation({
-    mutationFn: ({ input }: {
-      input: GitHubPullRequestReviewInput;
-      submittedDraftIds: string[];
-    }) => window.api.submitGitHubPullRequestReview(input),
+    mutationFn: ({ input }: { input: GitHubPullRequestReviewInput; submittedDraftIds: string[] }) =>
+      window.api.submitGitHubPullRequestReview(input),
     onSuccess: async (result, { submittedDraftIds }) => {
       const failedDraftIds = new Set(result.failedDraftIds ?? []);
       const submittedDraftIdSet = new Set(submittedDraftIds);
@@ -587,6 +596,7 @@ function PullRequestReviewContent({
         message: result.message
       });
       setIsReviewDialogOpen(false);
+      setReviewSubmissionKey((key) => key + 1);
       await refreshPullRequest();
     },
     onError: (error) => {
@@ -610,7 +620,8 @@ function PullRequestReviewContent({
     onSuccess: () => {
       setNotice({
         tone: 'success',
-        message: 'Review prompt copied. Your draft comments are still local and were not posted to GitHub.'
+        message:
+          'Review prompt copied. Your draft comments are still local and were not posted to GitHub.'
       });
       setIsReviewDialogOpen(false);
     }
@@ -633,7 +644,6 @@ function PullRequestReviewContent({
         tone: 'danger',
         message: error instanceof Error ? error.message : 'Could not merge the pull request.'
       });
-      setIsMergeDialogOpen(false);
     }
   });
 
@@ -709,8 +719,9 @@ function PullRequestReviewContent({
         body,
         commitId: detail.headSha,
         comments: reviewDrafts
-          .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'line' }> =>
-            draft.kind === 'line'
+          .filter(
+            (draft): draft is Extract<PullRequestReviewDraft, { kind: 'line' }> =>
+              draft.kind === 'line'
           )
           .map((draft) => ({
             id: draft.id,
@@ -722,8 +733,9 @@ function PullRequestReviewContent({
             startSide: draft.startSide
           })),
         fileComments: reviewDrafts
-          .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'file' }> =>
-            draft.kind === 'file'
+          .filter(
+            (draft): draft is Extract<PullRequestReviewDraft, { kind: 'file' }> =>
+              draft.kind === 'file'
           )
           .map((draft) => ({
             id: draft.id,
@@ -731,8 +743,9 @@ function PullRequestReviewContent({
             path: draft.path
           })),
         replies: reviewDrafts
-          .filter((draft): draft is Extract<PullRequestReviewDraft, { kind: 'reply' }> =>
-            draft.kind === 'reply'
+          .filter(
+            (draft): draft is Extract<PullRequestReviewDraft, { kind: 'reply' }> =>
+              draft.kind === 'reply'
           )
           .map((draft) => ({
             id: draft.id,
@@ -742,6 +755,18 @@ function PullRequestReviewContent({
       }
     });
   }
+
+  const galleryImages = [
+    ...new Map(
+      [
+        ...getReviewImages(detail.body, detail.bodyImageUrls),
+        ...detail.conversationComments.flatMap((comment) => getReviewImages(comment.body)),
+        ...detail.reviewComments.flatMap((comment) => getReviewImages(comment.body)),
+        ...detail.reviews.flatMap((review) => getReviewImages(review.body))
+      ].map((image) => [image.src, image])
+    ).values()
+  ];
+  const discussion = timeline.filter((entry) => entry.kind !== 'commit');
 
   return (
     <section className="pr-review-view" aria-label={`Review ${detail.title}`}>
@@ -763,15 +788,6 @@ function PullRequestReviewContent({
           </span>
         </div>
         <div className="pr-review-header-status overflow-hidden">
-          <PullRequestReviewerPicker
-            detail={detail}
-            onReviewersChanged={() =>
-              queryClient.invalidateQueries({
-                queryKey: gitHubPullRequestInboxQueryKey(locator.profileId)
-              })
-            }
-            onNotice={setNotice}
-          />
           <ReviewStatus
             detail={detail}
             areConflictsOpen={isOverviewOpen && isConflictPanelOpen}
@@ -820,8 +836,12 @@ function PullRequestReviewContent({
           }
           isMergePending={mergeMutation.isPending}
           onToggleOverview={toggleOverview}
-          onFinishReview={() => setIsReviewDialogOpen(true)}
-          onOpenMerge={() => setIsMergeDialogOpen(true)}
+          onFinishReview={() => openPanel('review')}
+          onSelectReviewDecision={(event) => {
+            setReviewEvent(event);
+            openPanel('review');
+          }}
+          onOpenMerge={() => openPanel('merge')}
           onClose={onClose}
           onNotice={setNotice}
         />
@@ -837,147 +857,175 @@ function PullRequestReviewContent({
         </div>
       ) : null}
 
-      {isOverviewOpen ? (
-        <section
-          className="pr-review-overview"
-          id="pr-review-overview-panel"
-          aria-label="Pull request overview and discussion"
+      <div
+        className="pr-review-workspace"
+        data-panel-open={isOverviewOpen || isReviewDialogOpen || isMergeDialogOpen}
+      >
+        <div className="pr-focused-review">
+          <ReviewView
+            repoPath={detail.reviewPlan.repoPath}
+            target={detail.reviewPlan.target}
+            plan={detail.reviewPlan}
+            reviewGuideProvider={reviewGuideProvider}
+            reviewProgressKey={detail.reviewPlan.targetKey}
+            lineComments={displayedLineComments}
+            onAddDraftLineComment={addDraftLineComment}
+            onAddDraftFileComment={addDraftFileComment}
+            onAddDraftReply={addDraftReply}
+            onUpdateComment={updateComment}
+            onRemoveDraftComment={removeDraft}
+            diffStyle={diffStyle}
+            diffSyntaxTheme={diffSyntaxTheme}
+            onSetDiffStyle={onSetDiffStyle}
+            onClose={onClose}
+            showCloseButton={false}
+            layout="pull-request"
+          />
+        </div>
+
+        <PullRequestPanel
+          open={isOverviewOpen}
+          labelledBy={panelTitleId}
+          onClose={() => setIsOverviewOpen(false)}
         >
-          <div className="pr-review-overview-meta">
-            <span className="pr-review-repository">
-              <GitPullRequest size={11} />
-              {detail.owner}/{detail.repository}#{detail.number}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span className="pr-review-author">{detail.author}</span>
-            <span aria-hidden="true">·</span>
-            <span className="pr-review-branch-path" title={`${detail.headRefName} → ${detail.baseRefName}`}>
-              <span>{detail.headRefName}</span>
-              <span>→</span>
-              <span>{detail.baseRefName}</span>
-            </span>
-            <span aria-hidden="true">·</span>
-            <GitCommitHorizontal size={11} />
-            <span>{detail.commits} {detail.commits === 1 ? 'commit' : 'commits'}</span>
-            <span className="pr-review-overview-stats">
-              <span className="pr-review-change-stat" data-change="addition">
-                +{detail.additions.toLocaleString()}
-              </span>
-              <span className="pr-review-change-stat" data-change="deletion">
-                -{detail.deletions.toLocaleString()}
-              </span>
-              <span className="pr-review-comment-stat">
-                <MessageSquare size={11} /> {detail.comments} comments
-              </span>
-              <span>
-                {detail.reviews.length} {detail.reviews.length === 1 ? 'review' : 'reviews'}
-              </span>
-            </span>
+          <header className="pr-side-panel-heading">
+            <h2 id={panelTitleId}>Pull request details</h2>
             <button
-              className="btn-subtle btn-compact pr-review-overview-copy-link"
+              className="icon-btn icon-btn-compact"
               type="button"
-              onClick={copyGitGudLink}
+              onClick={() => setIsOverviewOpen(false)}
+              aria-label="Close pull request details"
             >
-              <Link2 size={12} />
-              Copy Git Gud link
+              <X size={14} />
             </button>
-          </div>
-          {hasMergeConflicts ? (
-            <PullRequestConflictPanel
-              baseRefName={detail.baseRefName}
-              headRefName={detail.headRefName}
-              hasLocalCheckout={Boolean(codexRepoPath)}
-              details={conflictDetailsQuery.data}
-              isLoading={conflictDetailsQuery.isLoading}
-              errorMessage={
-                conflictDetailsQuery.error instanceof Error
-                  ? conflictDetailsQuery.error.message
-                  : undefined
-              }
-              isOpen={isConflictPanelOpen}
-              onToggle={() => setIsConflictPanelOpen((current) => !current)}
-            />
-          ) : null}
-          <div className="pr-review-overview-body">
-            <div className="pr-review-overview-main">
-              <section className="pr-review-description" aria-labelledby="pr-review-description-heading">
-                <h2 id="pr-review-description-heading">Description</h2>
-                <ReviewCommentBody
-                  body={detail.body || 'No pull request description was provided.'}
-                  imageUrls={detail.bodyImageUrls}
-                  imageLoading="eager"
-                  onOpenImage={setImageGallery}
-                />
-              </section>
+          </header>
+          <nav className="pr-context-tabs" aria-label="Pull request context">
+            {(['overview', 'comments', 'images'] as const).map((tab) => (
+              <button
+                type="button"
+                key={tab}
+                aria-current={contextTab === tab ? 'page' : undefined}
+                onClick={() => setContextTab(tab)}
+              >
+                {tab === 'overview'
+                  ? 'Overview'
+                  : tab === 'comments'
+                    ? `Comments · ${discussion.length}`
+                    : `Images · ${galleryImages.length}`}
+              </button>
+            ))}
+          </nav>
+          <div className="pr-context-page" hidden={contextTab !== 'overview'}>
+            <h3>{detail.title}</h3>
+            <p className="pr-context-author">
+              {detail.author} · {detail.commits} commits ·{' '}
+              <span>
+                +{detail.additions} −{detail.deletions}
+              </span>
+            </p>
+            <p className="pr-context-branches">
+              {detail.headRefName} → {detail.baseRefName}
+            </p>
+            <div className="pr-context-links">
+              <PullRequestGitHubLink url={detail.url} onNotice={setNotice} />
+              <button className="btn-subtle btn-compact" type="button" onClick={copyGitGudLink}>
+                <Link2 size={12} />
+                Copy Git Gud link
+              </button>
             </div>
-            <section className="pr-review-timeline" aria-labelledby="pr-review-timeline-heading">
-              <h2 id="pr-review-timeline-heading">
-                Timeline
-                <span>{timeline.length}</span>
-              </h2>
-              <div>
-                {timeline.length > 0 ? (
-                  timeline.map((entry) => (
-                    <PullRequestTimelineItem
-                      entry={entry}
-                      key={entry.key}
-                      onOpenCommit={onOpenCommit}
-                    />
-                  ))
-                ) : (
-                  <p className="pr-review-timeline-empty">No activity has been reported yet.</p>
-                )}
-              </div>
-            </section>
+            <ReviewCommentBody
+              body={detail.body || 'No pull request description was provided.'}
+              imageUrls={detail.bodyImageUrls}
+              imageLoading="eager"
+              onOpenImage={setImageGallery}
+            />
+            <h4>Reviewers</h4>
+            <PullRequestReviewerPicker
+              detail={detail}
+              onReviewersChanged={() =>
+                queryClient.invalidateQueries({
+                  queryKey: gitHubPullRequestInboxQueryKey(locator.profileId)
+                })
+              }
+              onNotice={setNotice}
+            />
+
+            <div className="pr-review-header-status pr-context-status">
+              <ReviewStatus
+                detail={detail}
+                areConflictsOpen={isConflictPanelOpen}
+                onToggleConflicts={toggleConflicts}
+              />
+            </div>
+            {hasMergeConflicts ? (
+              <PullRequestConflictPanel
+                baseRefName={detail.baseRefName}
+                headRefName={detail.headRefName}
+                hasLocalCheckout={Boolean(codexRepoPath)}
+                details={conflictDetailsQuery.data}
+                isLoading={conflictDetailsQuery.isLoading}
+                errorMessage={
+                  conflictDetailsQuery.error instanceof Error
+                    ? conflictDetailsQuery.error.message
+                    : undefined
+                }
+                isOpen={isConflictPanelOpen}
+                onToggle={() => setIsConflictPanelOpen((current) => !current)}
+              />
+            ) : null}
+            <details className="pr-context-activity">
+              <summary>Activity · {timeline.length}</summary>
+              {timeline.map((entry) => (
+                <PullRequestTimelineItem
+                  entry={entry}
+                  key={entry.key}
+                  onOpenCommit={onOpenCommit}
+                />
+              ))}
+            </details>
           </div>
-        </section>
-      ) : null}
-
-      {reviewDrafts.length > 0 ? (
-        <button
-          className="pr-review-draft-bar"
-          type="button"
-          onClick={() => setIsReviewDialogOpen(true)}
-        >
-          <span className="pr-review-draft-icon">
-            <Clock3 size={13} />
-          </span>
-          <span>
-            <strong>
-              {reviewDrafts.length} draft {reviewDrafts.length === 1 ? 'comment' : 'comments'}
-            </strong>
-            <small>Saved locally · nothing has been posted to GitHub</small>
-          </span>
-          <span className="pr-review-draft-action">
-            Finish review
-            <CornerDownRight size={12} />
-          </span>
-        </button>
-      ) : null}
-
-      <div className="pr-focused-review">
-        <ReviewView
-          repoPath={detail.reviewPlan.repoPath}
-          target={detail.reviewPlan.target}
-          plan={detail.reviewPlan}
-          reviewGuideProvider={reviewGuideProvider}
-          reviewProgressKey={detail.reviewPlan.targetKey}
-          lineComments={displayedLineComments}
-          onAddDraftLineComment={addDraftLineComment}
-          onAddDraftFileComment={addDraftFileComment}
-          onAddDraftReply={addDraftReply}
-          onUpdateComment={updateComment}
-          onRemoveDraftComment={removeDraft}
-          diffStyle={diffStyle}
-          diffSyntaxTheme={diffSyntaxTheme}
-          onSetDiffStyle={onSetDiffStyle}
-          onClose={onClose}
-          showCloseButton={false}
-        />
-      </div>
-
-      {isReviewDialogOpen ? (
+          <div className="pr-context-page pr-review-timeline" hidden={contextTab !== 'comments'}>
+            {discussion.length ? (
+              discussion.map((entry) => (
+                <PullRequestTimelineItem
+                  entry={entry}
+                  key={entry.key}
+                  onOpenCommit={onOpenCommit}
+                />
+              ))
+            ) : (
+              <p className="pr-context-empty">
+                No comments or reviews yet. Add a comment from a code line or file header.
+              </p>
+            )}
+          </div>
+          <div className="pr-context-page pr-context-images" hidden={contextTab !== 'images'}>
+            {galleryImages.length ? (
+              galleryImages.map((image, index) => (
+                <button
+                  type="button"
+                  key={image.src}
+                  onClick={() => setImageGallery({ images: galleryImages, index })}
+                  aria-label={`Open ${image.alt || `image ${index + 1}`} preview`}
+                >
+                  <PullRequestImageThumbnail src={image.src} alt={image.alt || `Pull request image ${index + 1}`} />
+                  <span>{image.alt || `Image ${index + 1}`}</span>
+                </button>
+              ))
+            ) : (
+              <p className="pr-context-empty">
+                <Images size={22} />
+                No images in this pull request’s description or comments.
+              </p>
+            )}
+          </div>
+        </PullRequestPanel>
         <ReviewSubmissionDialog
+          key={reviewSubmissionKey}
+          open={isReviewDialogOpen}
+          event={reviewEvent}
+          onEventChange={setReviewEvent}
+          isOwnPullRequest={detail.author === detail.viewerLogin}
           drafts={reviewDrafts}
           isSubmitting={reviewMutation.isPending}
           isCopyingPrompt={copyPromptMutation.isPending}
@@ -993,15 +1041,17 @@ function PullRequestReviewContent({
           onCopyPrompt={(summary) => copyPromptMutation.mutate(summary)}
           onSubmit={submitReview}
         />
-      ) : null}
-      {isMergeDialogOpen ? (
         <MergePullRequestDialog
+          open={isMergeDialogOpen}
+          errorMessage={
+            mergeMutation.error instanceof Error ? mergeMutation.error.message : undefined
+          }
           pullRequest={detail}
           isMerging={mergeMutation.isPending}
           onClose={() => setIsMergeDialogOpen(false)}
           onMerge={(method) => mergeMutation.mutate(method)}
         />
-      ) : null}
+      </div>
       {imageGallery ? (
         <ReviewImageGalleryDialog
           selection={imageGallery}
@@ -1009,6 +1059,15 @@ function PullRequestReviewContent({
         />
       ) : null}
     </section>
+  );
+}
+
+function PullRequestImageThumbnail({ src, alt }: { src: string; alt: string }): ReactElement {
+  const [failedSrc, setFailedSrc] = useState<string>();
+  return failedSrc === src ? (
+    <span className="pr-context-image-unavailable">Image unavailable</span>
+  ) : (
+    <img src={src} alt={alt} loading="lazy" onError={() => setFailedSrc(src)} />
   );
 }
 
@@ -1261,6 +1320,10 @@ function ReviewTimelineThreadMessage({
 }
 
 function ReviewSubmissionDialog({
+  open,
+  event,
+  onEventChange,
+  isOwnPullRequest,
   drafts,
   isSubmitting,
   isCopyingPrompt,
@@ -1270,6 +1333,10 @@ function ReviewSubmissionDialog({
   onCopyPrompt,
   onSubmit
 }: {
+  open: boolean;
+  event: ReviewEvent;
+  onEventChange: (event: ReviewEvent) => void;
+  isOwnPullRequest: boolean;
   drafts: PullRequestReviewDraft[];
   isSubmitting: boolean;
   isCopyingPrompt: boolean;
@@ -1280,7 +1347,6 @@ function ReviewSubmissionDialog({
   onSubmit: (event: ReviewEvent, body: string) => void;
 }): ReactElement {
   const titleId = useId();
-  const [event, setEvent] = useState<ReviewEvent>('comment');
   const [body, setBody] = useState('');
   const requiresBody = isReviewSummaryRequired(event, drafts.length);
   const hasPromptContext = drafts.length > 0 || body.trim().length > 0;
@@ -1288,14 +1354,15 @@ function ReviewSubmissionDialog({
 
   function handleSubmit(submitEvent: FormEvent<HTMLFormElement>): void {
     submitEvent.preventDefault();
-    if (requiresBody && !body.trim()) {
+    if (isBusy || (isOwnPullRequest && event !== 'comment') || (requiresBody && !body.trim())) {
       return;
     }
     onSubmit(event, body.trim());
   }
 
   return (
-    <ModalSurface
+    <PullRequestPanel
+      open={open}
       labelledBy={titleId}
       className="pr-action-dialog"
       onClose={isBusy ? () => undefined : onClose}
@@ -1304,26 +1371,43 @@ function ReviewSubmissionDialog({
         <header>
           <ShieldCheck size={17} />
           <h2 id={titleId}>Finish review</h2>
-          <button className="icon-btn icon-btn-compact" type="button" disabled={isBusy} onClick={onClose} aria-label="Close review dialog">
+          <button
+            className="icon-btn icon-btn-compact"
+            type="button"
+            disabled={isBusy}
+            onClick={onClose}
+            aria-label="Close review dialog"
+          >
             <X size={14} />
           </button>
         </header>
         <div className="pr-action-dialog-body">
           <div>
             <span className="pr-action-field-label">GitHub review decision</span>
-            <div className="pr-review-decision-options" role="group" aria-label="GitHub review decision">
-              {([
-                ['comment', 'Send comments', MessageSquare],
-                ['approve', 'Approve', CheckCircle2],
-                ['request-changes', 'Request changes', AlertTriangle]
-              ] as const).map(([value, label, Icon]) => (
+            <div
+              className="pr-review-decision-options"
+              role="group"
+              aria-label="GitHub review decision"
+            >
+              {(
+                [
+                  ['comment', 'Send comments', MessageSquare],
+                  ['approve', 'Approve', CheckCircle2],
+                  ['request-changes', 'Request changes', AlertTriangle]
+                ] as const
+              ).map(([value, label, Icon]) => (
                 <button
                   key={value}
                   type="button"
-                  disabled={isBusy}
+                  disabled={isBusy || (isOwnPullRequest && value !== 'comment')}
+                  title={
+                    isOwnPullRequest && value !== 'comment'
+                      ? 'You cannot approve or request changes on your own pull request.'
+                      : undefined
+                  }
                   data-active={event === value}
                   aria-pressed={event === value}
-                  onClick={() => setEvent(value)}
+                  onClick={() => onEventChange(value)}
                 >
                   <Icon size={13} />
                   {label}
@@ -1344,11 +1428,13 @@ function ReviewSubmissionDialog({
                 {drafts.map((draft) => (
                   <article key={draft.id}>
                     <span className="pr-review-draft-type">
-                      {draft.kind === 'line'
-                        ? <MessageSquare size={11} />
-                        : draft.kind === 'file'
-                          ? <FileText size={11} />
-                          : <CornerDownRight size={11} />}
+                      {draft.kind === 'line' ? (
+                        <MessageSquare size={11} />
+                      ) : draft.kind === 'file' ? (
+                        <FileText size={11} />
+                      ) : (
+                        <CornerDownRight size={11} />
+                      )}
                     </span>
                     <span>
                       <strong>
@@ -1375,9 +1461,7 @@ function ReviewSubmissionDialog({
             </section>
           ) : null}
           <label>
-            <span>
-              {requiresBody ? 'Review summary' : 'Review summary (optional)'}
-            </span>
+            <span>{requiresBody ? 'Review summary' : 'Review summary (optional)'}</span>
             <textarea
               rows={4}
               value={body}
@@ -1398,7 +1482,14 @@ function ReviewSubmissionDialog({
           <span className="pr-review-submit-note">
             Copying keeps drafts local. GitHub publishes them.
           </span>
-          <button className="btn-subtle btn-regular" type="button" disabled={isBusy} onClick={onClose}>Cancel</button>
+          <button
+            className="btn-subtle btn-regular"
+            type="button"
+            disabled={isBusy}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
           <button
             className="btn-subtle btn-regular"
             type="button"
@@ -1413,22 +1504,30 @@ function ReviewSubmissionDialog({
             {isCopyingPrompt ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
             Copy review prompt
           </button>
-          <button className="btn-primary btn-regular" type="submit" disabled={isBusy || (requiresBody && !body.trim())}>
+          <button
+            className="btn-primary btn-regular"
+            type="submit"
+            disabled={isBusy || (requiresBody && !body.trim())}
+          >
             {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             {reviewSubmitLabel(event, drafts.length)}
           </button>
         </footer>
       </form>
-    </ModalSurface>
+    </PullRequestPanel>
   );
 }
 
 function MergePullRequestDialog({
+  open,
+  errorMessage,
   pullRequest,
   isMerging,
   onClose,
   onMerge
 }: {
+  open: boolean;
+  errorMessage?: string;
   pullRequest: GitHubPullRequestDetail;
   isMerging: boolean;
   onClose: () => void;
@@ -1441,28 +1540,52 @@ function MergePullRequestDialog({
   const hasMultipleMethods = pullRequest.mergeSettings.allowedMethods.length > 1;
 
   return (
-    <ModalSurface labelledBy={titleId} className="pr-action-dialog" onClose={onClose}>
+    <PullRequestPanel
+      open={open}
+      labelledBy={titleId}
+      className="pr-action-dialog"
+      onClose={isMerging ? () => undefined : onClose}
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onMerge(method);
+          if (!isMerging) onMerge(method);
         }}
       >
         <header>
           <GitMerge size={17} />
           <h2 id={titleId}>Merge pull request #{pullRequest.number}</h2>
-          <button className="icon-btn icon-btn-compact" type="button" onClick={onClose} aria-label="Close merge dialog">
+          <button
+            className="icon-btn icon-btn-compact"
+            type="button"
+            disabled={isMerging}
+            onClick={onClose}
+            aria-label="Close merge dialog"
+          >
             <X size={14} />
           </button>
         </header>
         <div className="pr-action-dialog-body">
+          {errorMessage ? (
+            <p className="pr-action-error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+          <p className="pr-context-branches">
+            {pullRequest.headRefName} → {pullRequest.baseRefName}
+          </p>
           <p className="pr-merge-warning">
-            This writes to {pullRequest.owner}/{pullRequest.repository} and cannot be undone from Git Gud.
+            This writes to {pullRequest.owner}/{pullRequest.repository} and cannot be undone from
+            Git Gud.
           </p>
           {hasMultipleMethods ? (
             <label>
               <span>Merge method</span>
-              <select value={method} onChange={(event) => setMethod(normalizeMergeMethod(event.target.value))}>
+              <select
+                value={method}
+                disabled={isMerging}
+                onChange={(event) => setMethod(normalizeMergeMethod(event.target.value))}
+              >
                 {pullRequest.mergeSettings.allowedMethods.map((allowedMethod) => (
                   <option value={allowedMethod} key={allowedMethod}>
                     {mergeMethodLabel(allowedMethod)}
@@ -1481,14 +1604,21 @@ function MergePullRequestDialog({
           )}
         </div>
         <footer>
-          <button className="btn-subtle btn-regular" type="button" onClick={onClose}>Cancel</button>
+          <button
+            className="btn-subtle btn-regular"
+            type="button"
+            disabled={isMerging}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
           <button className="btn-primary btn-regular" type="submit" disabled={isMerging}>
             {isMerging ? <Loader2 size={13} className="animate-spin" /> : <GitMerge size={13} />}
             {mergeMethodLabel(method)}
           </button>
         </footer>
       </form>
-    </ModalSurface>
+    </PullRequestPanel>
   );
 }
 

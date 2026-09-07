@@ -59,16 +59,6 @@ const GROUPS: Array<{
     description: 'A team you belong to was requested.'
   },
   {
-    id: 'drafts',
-    title: 'Your drafts',
-    description: 'Open draft pull requests you authored.'
-  },
-  {
-    id: 'waiting',
-    title: 'Waiting for review or checks',
-    description: 'Your pull requests that are still progressing.'
-  },
-  {
     id: 'needs-action',
     title: 'Needs action',
     description: 'Requested changes or failing checks need attention.'
@@ -77,8 +67,20 @@ const GROUPS: Array<{
     id: 'ready-to-merge',
     title: 'Ready to merge',
     description: 'Approved pull requests with successful checks.'
+  },
+  {
+    id: 'waiting',
+    title: 'Waiting for review or checks',
+    description: 'Your pull requests that are still progressing.'
+  },
+  {
+    id: 'drafts',
+    title: 'Your drafts',
+    description: 'Open draft pull requests you authored.'
   }
 ];
+
+type InboxScope = 'all' | 'review-requests' | 'authored' | GitHubPullRequestCategory;
 
 export function PullRequestInboxView({
   profile,
@@ -92,6 +94,8 @@ export function PullRequestInboxView({
   onSelectPullRequest
 }: PullRequestInboxViewProps): ReactElement {
   const [search, setSearch] = useState('');
+  const [scope, setScope] = useState<InboxScope>('all');
+  const [repository, setRepository] = useState('all');
   const [updatedRange, setUpdatedRange] = useState<UpdatedRange>('30');
   const [expandedGroups, setExpandedGroups] = useState<
     Partial<Record<GitHubPullRequestCategory, boolean>>
@@ -100,6 +104,31 @@ export function PullRequestInboxView({
     () => filterPullRequests(inbox?.pullRequests ?? [], search, updatedRange),
     [inbox?.pullRequests, search, updatedRange]
   );
+
+  const repositories = [
+    ...new Set((inbox?.pullRequests ?? []).map((pr) => `${pr.owner}/${pr.repository}`))
+  ].sort();
+  const matchesScope = (pr: GitHubPullRequestSummary, candidate: InboxScope): boolean => {
+    const requested = pr.category === 'needs-your-review' || pr.category === 'needs-team-review';
+    if (candidate === 'all') return true;
+    if (candidate === 'review-requests') return requested;
+    if (candidate === 'authored') return pr.author === (inbox?.viewerLogin ?? profile?.githubLogin);
+    return pr.category === candidate;
+  };
+  const scopedPullRequests = filteredPullRequests.filter(
+    (pr) =>
+      matchesScope(pr, scope) &&
+      (repository === 'all' || `${pr.owner}/${pr.repository}` === repository)
+  );
+  const scopes: Array<{ id: InboxScope; label: string }> = [
+    { id: 'all', label: 'All pull requests' },
+    { id: 'review-requests', label: 'Review requests' },
+    { id: 'authored', label: 'Your pull requests' },
+    { id: 'needs-action', label: 'Needs action' },
+    { id: 'ready-to-merge', label: 'Ready to merge' },
+    { id: 'waiting', label: 'Waiting' },
+    { id: 'drafts', label: 'Drafts' }
+  ];
 
   if (!profile?.ghConfigDir || !profile.githubLogin) {
     return (
@@ -141,45 +170,19 @@ export function PullRequestInboxView({
 
   return (
     <section className="pr-inbox-view" aria-label="Pull request inbox">
-      <header className="pr-inbox-header">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="pr-kicker">GitHub</span>
-            <span className="text-[11px] text-[var(--text-3)]">
-              {inbox?.host ?? profile.githubHost ?? 'github.com'} · @{inbox?.viewerLogin ?? profile.githubLogin}
-            </span>
-          </div>
-          <h1>Pull request inbox</h1>
-          <p>Review requests and authored pull requests, prioritized by what needs you next.</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <PullRequestRefreshControl
-            lastRefreshedAt={inbox?.loadedAt}
-            isRefreshing={isRefreshing}
-            errorMessage={errorMessage}
-            onRefresh={onRefresh}
-          />
-          <button
-            className="icon-btn h-8 w-8"
-            type="button"
-            onClick={onClose}
-            aria-label="Close pull request inbox and return to commit graph"
-            title="Return to commit graph"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      </header>
-
-      <div className="pr-inbox-controls">
+      <header className="pr-inbox-header pr-inbox-header--queue">
+        <h1>
+          Pull requests <span className="pr-count-badge">{inbox?.pullRequests.length ?? 0}</span>
+        </h1>
+        <span className="pr-inbox-account">@{inbox?.viewerLogin ?? profile.githubLogin}</span>
         <label className="pr-search-field">
           <Search size={14} />
           <input
             type="search"
             value={search}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search title, repository, author…"
             aria-label="Search pull requests"
-            onChange={(event) => setSearch(event.target.value)}
           />
         </label>
         <select
@@ -193,108 +196,186 @@ export function PullRequestInboxView({
           <option value="90">Updated: 90 days</option>
           <option value="all">Updated: Any time</option>
         </select>
-        <span className="pr-inbox-total">
-          <strong>{filteredPullRequests.length}</strong> visible
-        </span>
-      </div>
-
-      {errorMessage ? (
-        <div className="pr-inline-error" role="alert">
-          <AlertTriangle size={13} />
-          <span>{errorMessage}</span>
-        </div>
-      ) : null}
-
-      {inbox?.suggestionsError ? (
-        <div className="pr-inline-warning" role="status">
-          <AlertTriangle size={13} />
-          <span>{inbox.suggestionsError}</span>
-        </div>
-      ) : null}
-
-      {inbox?.suggestions.length ? (
-        <section className="pr-create-suggestions" aria-label="Recently pushed branches">
-          <div className="pr-create-suggestions-heading">
-            <div>
-              <h2>Recently pushed branches</h2>
-              <p>Start a pull request for your branches that do not have one yet.</p>
-            </div>
-            <span>{inbox.suggestions.length}</span>
-          </div>
-          <div className="pr-create-suggestion-list">
-            {inbox.suggestions.map((suggestion) => (
-              <article className="pr-create-suggestion" key={suggestion.id}>
-                <GitBranch size={15} aria-hidden="true" />
-                <span className="pr-create-suggestion-copy">
-                  <strong>{suggestion.branch}</strong>
-                  <span>
-                    {suggestion.owner}/{suggestion.repository} · pushed{' '}
-                    {formatRelativeTime(suggestion.pushedAt)}
-                  </span>
-                </span>
-                <a
-                  className="pr-create-suggestion-action"
-                  href={suggestion.compareUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={`Compare ${suggestion.branch} with ${suggestion.defaultBranch} and create a pull request on GitHub`}
-                >
-                  Compare &amp; create pull request
-                  <ExternalLink size={12} aria-hidden="true" />
-                </a>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <div className="pr-inbox-groups">
-        {GROUPS.map((group) => {
-          const rows = filteredPullRequests.filter((pullRequest) => pullRequest.category === group.id);
-          const isExpanded = resolvePullRequestGroupExpansion(
-            expandedGroups[group.id],
-            rows.length
-          );
-
-          return (
-            <section className="pr-inbox-group" key={group.id}>
-              <button
-                className="pr-group-heading"
-                type="button"
-                aria-expanded={isExpanded}
-                title={group.description}
-                onClick={() =>
-                  setExpandedGroups((current) => ({
-                    ...current,
-                    [group.id]: !resolvePullRequestGroupExpansion(
-                      current[group.id],
-                      rows.length
-                    )
-                  }))
+        <PullRequestRefreshControl
+          lastRefreshedAt={inbox?.loadedAt}
+          isRefreshing={isRefreshing}
+          errorMessage={errorMessage}
+          compact
+          onRefresh={onRefresh}
+        />
+        <button
+          className="icon-btn icon-btn-regular"
+          type="button"
+          onClick={onClose}
+          aria-label="Close pull request inbox and return to commit graph"
+          title="Return to commit graph"
+        >
+          <X size={14} />
+        </button>
+      </header>
+      <div className="pr-inbox-workspace">
+        <nav className="pr-inbox-scopes" aria-label="Pull request scopes">
+          {scopes.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              aria-current={scope === item.id && repository === 'all' ? 'page' : undefined}
+              onClick={() => {
+                setScope(item.id);
+                setRepository('all');
+              }}
+            >
+              <span>{item.label}</span>
+              <span>{filteredPullRequests.filter((pr) => matchesScope(pr, item.id)).length}</span>
+            </button>
+          ))}
+          {repositories.length > 0 ? <h2>Repositories</h2> : null}
+          {repositories.map((name) => (
+            <button
+              type="button"
+              key={name}
+              title={name}
+              aria-current={repository === name ? 'page' : undefined}
+              onClick={() => {
+                setScope('all');
+                setRepository(name);
+              }}
+            >
+              <span>{name}</span>
+              <span>
+                {
+                  filteredPullRequests.filter((pr) => `${pr.owner}/${pr.repository}` === name)
+                    .length
                 }
+              </span>
+            </button>
+          ))}
+        </nav>
+        <div className="pr-inbox-results">
+          <div className="pr-inbox-results-heading">
+            <span>Grouped by next action</span>
+            <span>{scopedPullRequests.length} visible</span>
+          </div>
+          {errorMessage ? (
+            <div className="pr-inline-error" role="alert">
+              <AlertTriangle size={13} />
+              <span>{errorMessage}</span>
+            </div>
+          ) : null}
+
+          {inbox?.suggestionsError ? (
+            <div className="pr-inline-warning" role="status">
+              <AlertTriangle size={13} />
+              <span>{inbox.suggestionsError}</span>
+            </div>
+          ) : null}
+
+          <div className="pr-inbox-groups">
+            {GROUPS.map((group) => {
+              const rows = scopedPullRequests.filter(
+                (pullRequest) => pullRequest.category === group.id
+              );
+              if (rows.length === 0) return null;
+              const isExpanded = resolvePullRequestGroupExpansion(
+                expandedGroups[group.id],
+                rows.length
+              );
+
+              return (
+                <section className="pr-inbox-group" key={group.id}>
+                  <button
+                    className="pr-group-heading"
+                    type="button"
+                    aria-expanded={isExpanded}
+                    title={group.description}
+                    onClick={() =>
+                      setExpandedGroups((current) => ({
+                        ...current,
+                        [group.id]: !resolvePullRequestGroupExpansion(
+                          current[group.id],
+                          rows.length
+                        )
+                      }))
+                    }
+                  >
+                    {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    <span>{group.title}</span>
+                    <span className="pr-count-badge">{rows.length}</span>
+                  </button>
+                  {isExpanded ? (
+                    <div className="pr-row-list">
+                      {rows.map((pullRequest) => (
+                        <PullRequestRow
+                          key={pullRequest.id}
+                          pullRequest={pullRequest}
+                          onSelect={() => onSelectPullRequest(pullRequest)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+          </div>
+          {scopedPullRequests.length === 0 ? (
+            <div className="pr-inbox-empty-results">
+              <Inbox size={24} />
+              <h2>
+                {search || repository !== 'all' || scope !== 'all'
+                  ? 'No matching pull requests'
+                  : 'No pull requests in this time range'}
+              </h2>
+              <p>Change the filters or refresh to check for new pull requests.</p>
+              <button
+                className="btn-subtle btn-regular"
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setScope('all');
+                  setRepository('all');
+                  setUpdatedRange('all');
+                }}
               >
-                {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                <span>{group.title}</span>
-                <span className="pr-count-badge">{rows.length}</span>
+                Clear filters
               </button>
-              {isExpanded ? (
-                rows.length > 0 ? (
-                  <div className="pr-row-list">
-                    {rows.map((pullRequest) => (
-                      <PullRequestRow
-                        key={pullRequest.id}
-                        pullRequest={pullRequest}
-                        onSelect={() => onSelectPullRequest(pullRequest)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="pr-group-empty">Nothing here right now.</p>
-                )
-              ) : null}
+            </div>
+          ) : null}
+          {inbox?.suggestions.length ? (
+            <section className="pr-create-suggestions" aria-label="Recently pushed branches">
+              <div className="pr-create-suggestions-heading">
+                <div>
+                  <h2>Recently pushed branches</h2>
+                  <p>Start a pull request for your branches that do not have one yet.</p>
+                </div>
+                <span>{inbox.suggestions.length}</span>
+              </div>
+              <div className="pr-create-suggestion-list">
+                {inbox.suggestions.map((suggestion) => (
+                  <article className="pr-create-suggestion" key={suggestion.id}>
+                    <GitBranch size={15} aria-hidden="true" />
+                    <span className="pr-create-suggestion-copy">
+                      <strong>{suggestion.branch}</strong>
+                      <span>
+                        {suggestion.owner}/{suggestion.repository} · pushed{' '}
+                        {formatRelativeTime(suggestion.pushedAt)}
+                      </span>
+                    </span>
+                    <a
+                      className="pr-create-suggestion-action"
+                      href={suggestion.compareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Compare ${suggestion.branch} with ${suggestion.defaultBranch} and create a pull request on GitHub`}
+                    >
+                      Compare &amp; create pull request
+                      <ExternalLink size={12} aria-hidden="true" />
+                    </a>
+                  </article>
+                ))}
+              </div>
             </section>
-          );
-        })}
+          ) : null}
+        </div>
       </div>
     </section>
   );

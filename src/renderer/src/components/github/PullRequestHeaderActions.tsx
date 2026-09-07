@@ -9,6 +9,7 @@ import {
   GitMerge,
   Loader2,
   MonitorUp,
+  PanelRightOpen,
   MoreHorizontal,
   ShieldCheck,
   X
@@ -32,7 +33,6 @@ import type {
 import { isExternalApplicationId } from '@shared/externalApplications';
 import type { GitHubPullRequestDetail } from '@shared/types';
 
-import { PullRequestGitHubLink } from './PullRequestGitHubLink';
 
 type PullRequestHeaderActionsProps = {
   detail: GitHubPullRequestDetail;
@@ -45,6 +45,7 @@ type PullRequestHeaderActionsProps = {
   isMergePending: boolean;
   onToggleOverview: () => void;
   onFinishReview: () => void;
+  onSelectReviewDecision: (event: 'comment' | 'approve' | 'request-changes') => void;
   onOpenMerge: () => void;
   onClose: () => void;
   onNotice: (notice: { tone: 'success' | 'danger'; message: string }) => void;
@@ -73,184 +74,133 @@ export function PullRequestHeaderActions({
   isMergePending,
   onToggleOverview,
   onFinishReview,
+  onSelectReviewDecision,
   onOpenMerge,
   onClose,
   onNotice
 }: PullRequestHeaderActionsProps): ReactElement {
   const openApplication = useOpenApplication(detail, repoPath, onNotice);
   const compactTriggerRef = useRef<HTMLButtonElement>(null);
+  const decisionTriggerRef = useRef<HTMLButtonElement>(null);
   const pendingActionRef = useRef<(() => void) | undefined>(undefined);
-  const finishReviewLabel = reviewDraftCount > 0
-    ? `Finish review · ${reviewDraftCount}`
-    : 'Finish review';
+  const finishReviewLabel = reviewDraftCount > 0 ? `Review · ${reviewDraftCount}` : 'Review';
 
   function runAfterMenuClose(action: () => void): void {
     pendingActionRef.current = action;
   }
 
   return (
-    <>
-      <div className="pr-review-header-actions max-[1600px]:hidden!">
-        <button
-          className="btn-subtle btn-regular pr-review-overview-button"
-          type="button"
-          aria-controls="pr-review-overview-panel"
-          aria-expanded={isOverviewOpen}
-          onClick={onToggleOverview}
-        >
-          <ChevronDown size={13} />
-          Overview
-        </button>
-        <OpenApplicationSplitButton controller={openApplication} />
-        <PullRequestGitHubLink url={detail.url} onNotice={onNotice} />
-        <button className="btn-subtle btn-regular" type="button" onClick={onFinishReview}>
+    <div className="pr-review-header-actions pr-review-actions-persistent">
+      <button
+        className="btn-subtle btn-regular"
+        type="button"
+        aria-expanded={isOverviewOpen}
+        onClick={onToggleOverview}
+      >
+        <PanelRightOpen size={13} />
+        Details
+      </button>
+      <div className="pr-review-decision-split">
+        <button className="btn-primary btn-regular" type="button" onClick={onFinishReview}>
           <ShieldCheck size={13} />
           {finishReviewLabel}
         </button>
-        <button
-          className="btn-primary btn-regular"
-          type="button"
-          disabled={mergeDisabled}
-          title={mergeTitle}
-          onClick={onOpenMerge}
-        >
-          <GitMerge size={13} />
-          {mergeLabel}
-        </button>
-        <CloseReviewButton onClose={onClose} />
-      </div>
-
-      <div className="hidden shrink-0 items-center gap-1.5 max-[1600px]:flex">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              ref={compactTriggerRef}
-              className="icon-btn icon-btn-regular shrink-0"
+              ref={decisionTriggerRef}
+              className="btn-primary btn-regular"
               type="button"
-              aria-label="Pull request actions"
-              title="Pull request actions"
+              aria-label="Choose review decision"
             >
-              <MoreHorizontal size={16} />
+              <ChevronDown size={12} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            sideOffset={5}
-            className="w-64"
-            aria-label="Pull request actions"
+            aria-label="Review decision"
             onCloseAutoFocus={(event) => {
               const action = pendingActionRef.current;
-
-              if (!action) {
-                return;
-              }
-
+              if (!action) return;
               event.preventDefault();
               pendingActionRef.current = undefined;
-              compactTriggerRef.current?.focus({ preventScroll: true });
+              decisionTriggerRef.current?.focus({ preventScroll: true });
               action();
             }}
           >
-            <DropdownMenuLabel>Pull request actions</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => runAfterMenuClose(onToggleOverview)}>
-              <ChevronDown
-                className={isOverviewOpen ? 'rotate-180' : undefined}
-                size={14}
-              />
-              <span className="min-w-0 flex-1 truncate">
-                {isOverviewOpen ? 'Hide overview' : 'Show overview'}
-              </span>
-            </DropdownMenuItem>
-            <OpenApplicationSubmenu controller={openApplication} />
-            <DropdownMenuItem asChild>
-              <a
-                href={detail.url}
-                target="_blank"
-                rel="noreferrer"
-                className="no-underline"
-              >
-                <ExternalLink size={14} />
-                <span className="min-w-0 flex-1 truncate">Open on GitHub</span>
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => runAfterMenuClose(onFinishReview)}>
-              <ShieldCheck size={14} />
-              <span className="min-w-0 flex-1 truncate">{finishReviewLabel}</span>
+            <DropdownMenuItem
+              onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('comment'))}
+            >
+              Send comments
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={mergeDisabled}
-              title={mergeTitle}
-              onSelect={() => runAfterMenuClose(onOpenMerge)}
+              disabled={detail.author === detail.viewerLogin}
+              onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('approve'))}
             >
-              {isMergePending ? (
-                <Loader2 className="animate-spin" size={14} />
-              ) : (
-                <GitMerge size={14} />
-              )}
-              <span className="min-w-0 flex-1 truncate">{mergeLabel}</span>
+              Approve
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={detail.author === detail.viewerLogin}
+              onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('request-changes'))}
+            >
+              Request changes
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <CloseReviewButton onClose={onClose} />
       </div>
-    </>
-  );
-}
-
-function OpenApplicationSplitButton({
-  controller
-}: {
-  controller: OpenApplicationController;
-}): ReactElement {
-  const disabled = Boolean(controller.unavailableReason) || controller.isOpening;
-
-  return (
-    <div
-      className="inline-flex h-8 shrink-0 overflow-hidden rounded-[5px] border border-[var(--border-strong)] bg-[var(--bg-field)]"
-      aria-label="Open pull request in another application"
-      role="group"
-    >
       <button
-        className="grid h-[30px] w-8 place-items-center text-[var(--text-2)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] disabled:text-[var(--text-3)] disabled:opacity-60"
+        className="btn-subtle btn-regular pr-header-merge"
         type="button"
-        disabled={disabled || !controller.selectedApplication}
-        title={
-          controller.unavailableReason ??
-          `Open temporary checkout in ${controller.selectedApplication?.name ?? 'application'}`
-        }
-        aria-label={
-          controller.unavailableReason ??
-          `Open pull request in ${controller.selectedApplication?.name ?? 'application'}`
-        }
-        onClick={() => {
-          if (controller.selectedApplication) {
-            controller.openInApplication(controller.selectedApplication);
-          }
-        }}
+        disabled={mergeDisabled}
+        title={mergeTitle}
+        onClick={onOpenMerge}
       >
-        {controller.isOpening || controller.isLoading ? (
-          <Loader2 className="animate-spin" size={15} />
-        ) : controller.selectedApplication ? (
-          <ApplicationIcon application={controller.selectedApplication} size={18} />
-        ) : (
-          <MonitorUp size={15} />
-        )}
+        {isMergePending ? <Loader2 size={13} /> : <GitMerge size={13} />}Merge…
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="grid h-[30px] w-6 place-items-center border-l border-[var(--border)] text-[var(--text-3)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] disabled:opacity-60"
+            ref={compactTriggerRef}
+            className="icon-btn icon-btn-regular"
             type="button"
-            disabled={disabled}
-            title={controller.unavailableReason ?? 'Choose application'}
-            aria-label="Choose application for opening this pull request"
+            aria-label="More pull request actions"
           >
-            <ChevronDown size={13} />
+            <MoreHorizontal size={16} />
           </button>
         </DropdownMenuTrigger>
-        <ApplicationMenuContent controller={controller} align="end" />
+        <DropdownMenuContent
+          align="end"
+          className="w-64"
+          aria-label="Pull request actions"
+          onCloseAutoFocus={(event) => {
+            const action = pendingActionRef.current;
+            if (!action) return;
+            event.preventDefault();
+            pendingActionRef.current = undefined;
+            compactTriggerRef.current?.focus({ preventScroll: true });
+            action();
+          }}
+        >
+          <DropdownMenuLabel>Pull request actions</DropdownMenuLabel>
+          <OpenApplicationSubmenu controller={openApplication} />
+          <DropdownMenuItem asChild>
+            <a href={detail.url} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} />
+              Open on GitHub
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={mergeDisabled}
+            title={mergeTitle}
+            onSelect={() => runAfterMenuClose(onOpenMerge)}
+          >
+            <GitMerge size={14} />
+            {mergeLabel}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
       </DropdownMenu>
+      <CloseReviewButton onClose={onClose} />
     </div>
   );
 }
@@ -286,25 +236,6 @@ function OpenApplicationSubmenu({
         <ApplicationMenuItems controller={controller} />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
-  );
-}
-
-function ApplicationMenuContent({
-  controller,
-  align
-}: {
-  controller: OpenApplicationController;
-  align: 'start' | 'center' | 'end';
-}): ReactElement {
-  return (
-    <DropdownMenuContent
-      align={align}
-      sideOffset={5}
-      className="w-56"
-      aria-label="Open pull request in"
-    >
-      <ApplicationMenuItems controller={controller} />
-    </DropdownMenuContent>
   );
 }
 
