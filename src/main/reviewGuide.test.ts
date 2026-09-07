@@ -27,15 +27,11 @@ describe('AI review guides', () => {
           summary: 'Adds timeout-aware connection handling.',
           units: [{
             unitId: unit.id,
-            priority: 'critical',
+            priority: 'focus',
             why: 'Connections now obey the configured timeout.',
             what: 'The open call receives the timeout value.',
-            confirmedIssues: [{
-              summary: 'The new timeout value is undefined.',
-              path: 'src/client.ts',
-              line: 2,
-              evidence: 'The added call references timeout without a declaration.'
-            }]
+            files: [{ path: 'src/client.ts', priority: 'focus', reason: 'Connection timeout behavior.', line: 2 }],
+            inlineNotes: [{ path: 'src/client.ts', line: 2, body: 'The timeout is passed to the connection call.' }]
           }]
         }),
         '```'
@@ -44,15 +40,15 @@ describe('AI review guides', () => {
     );
 
     expect(prompt).toContain('do not create, merge, split, or omit groups');
-    expect(prompt).toContain('confirmedIssues is not a todo list');
+    expect(prompt).toContain('No note quota');
     expect(prompt).toContain('Use "AI guide" as the product term');
     expect(guide).toMatchObject({
       sourceFingerprint: plan.sourceFingerprint,
       summary: 'Adds timeout-aware connection handling.',
       units: [{
         unitId: unit.id,
-        priority: 'critical',
-        confirmedIssues: [{ path: 'src/client.ts', line: 2 }]
+        priority: 'focus',
+        inlineNotes: [{ path: 'src/client.ts', line: 2 }]
       }]
     });
   });
@@ -67,7 +63,8 @@ describe('AI review guides', () => {
         priority: 'review',
         why: 'Pi ranks the groups in the background.',
         what: 'PiReviewGuideEngine produces the guide.',
-        confirmedIssues: []
+        files: [{ path: 'src/client.ts', priority: 'review', reason: 'Connection behavior.' }],
+        inlineNotes: []
       }]
     }), plan);
 
@@ -78,7 +75,7 @@ describe('AI review guides', () => {
     });
   });
 
-  it('rejects invented groups and issues that do not point to an added line', () => {
+  it('rejects invented groups and notes that do not point to an added line', () => {
     const plan = reviewPlan();
 
     expect(() =>
@@ -89,7 +86,8 @@ describe('AI review guides', () => {
           priority: 'review',
           why: 'Why.',
           what: 'What.',
-          confirmedIssues: []
+          files: [{ path: 'src/client.ts', priority: 'review', reason: 'Connection behavior.' }],
+        inlineNotes: []
         }]
       }), plan)
     ).toThrow('each existing review group exactly once');
@@ -102,15 +100,42 @@ describe('AI review guides', () => {
           priority: 'review',
           why: 'Why.',
           what: 'What.',
-          confirmedIssues: [{
-            summary: 'Issue.',
-            path: 'src/client.ts',
-            line: 99,
-            evidence: 'Evidence.'
-          }]
+          files: [{ path: 'src/client.ts', priority: 'review', reason: 'Connection behavior.' }],
+          inlineNotes: [{ path: 'src/client.ts', line: 99, body: 'Invalid location.' }]
         }]
       }), plan)
     ).toThrow('added line');
+  });
+
+  it('allows a quiet block and inline-only guidance without mandatory paragraphs', () => {
+    const plan = reviewPlan();
+    const output = validGuide(plan);
+    output.units[0]!.why = '';
+    output.units[0]!.what = '';
+    output.units[0]!.inlineNotes = [{ path: 'src/client.ts', line: 2, body: 'Timeout units are milliseconds.' }];
+    expect(parseReviewGuideOutput(JSON.stringify(output), plan).units[0]).toMatchObject({
+      why: '', what: '', inlineNotes: [{ line: 2 }]
+    });
+  });
+
+  it('rejects duplicate, missing, and invented file ranks and invalid entry lines', () => {
+    const plan = reviewPlan();
+    const output = validGuide(plan);
+    const file = output.units[0]!.files[0]!;
+    for (const files of [[], [file, file], [{ ...file, path: 'other.ts' }], [{ ...file, line: 99 }]]) {
+      output.units[0]!.files = files;
+      expect(() => parseReviewGuideOutput(JSON.stringify(output), plan)).toThrow();
+    }
+  });
+
+  it('includes author intent as quoted context and identifies partial patches', () => {
+    const plan = reviewPlan();
+    plan.title = 'Respect connection timeout';
+    plan.units[0]!.chunks[0]!.patch += 'x'.repeat(400_001);
+    const prompt = buildReviewGuidePrompt(plan);
+    expect(prompt).toContain('Respect connection timeout');
+    expect(prompt).toContain('"truncated":true');
+    expect(prompt).toContain('incomplete evidence');
   });
 
   it('runs generation in the background and deduplicates an active job', async () => {
@@ -248,7 +273,8 @@ function validGuide(plan: GitReviewPlan): GitReviewGuide {
       priority: 'review',
       why: 'Connections should obey the configured timeout.',
       what: 'The open call now receives the timeout value.',
-      confirmedIssues: []
+      files: [{ path: 'src/client.ts', priority: 'review', reason: 'Connection behavior.' }],
+        inlineNotes: []
     })),
     generatedAt: '2026-07-23T00:00:00.000Z'
   };

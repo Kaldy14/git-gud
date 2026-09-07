@@ -19,6 +19,10 @@ export type PiPromptOptions = {
 export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
   const executable = await resolvePiExecutable();
   const args = [
+    '--model',
+    'openai-codex/gpt-6-astra',
+    '--thinking',
+    'medium',
     '--print',
     '--no-session',
     '--mode',

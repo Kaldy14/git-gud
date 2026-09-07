@@ -1784,6 +1784,7 @@ async function prepareGitHubPullRequestReviewPlan(
   return {
     reviewPlan: {
       ...plan,
+      title: pullRequest.title,
       targetKey: `github-pr:${pullRequest.profileId}:${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}:${headSha}`
     },
     syntaxByPath: new Map(patches.map((patch) => [patch.path, patch.syntax]))

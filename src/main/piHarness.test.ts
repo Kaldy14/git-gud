@@ -15,6 +15,21 @@ describe('Pi harness', () => {
     vi.unstubAllEnvs();
   });
 
+  it.runIf(process.platform !== 'win32')('pins app generation to Astra with medium thinking', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-pi-model-'));
+    const executable = join(directory, 'pi');
+    await writeFile(executable, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end", () => process.stdout.write(JSON.stringify(process.argv.slice(2))));');
+    await chmod(executable, 0o755);
+    vi.stubEnv('PI_EXECUTABLE_PATH', executable);
+    try {
+      const result = await runPiPrompt({ cwd: directory, prompt: 'hello', timeoutMs: 5000, errorLabel: 'Test' });
+      const args: unknown = JSON.parse(result);
+      expect(args).toEqual(expect.arrayContaining(['--model', 'openai-codex/gpt-6-astra', '--thinking', 'medium', '--no-tools']));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(process.platform !== 'win32')(
     'adds an installed NVM Node runtime to a restricted app PATH',
     async () => {

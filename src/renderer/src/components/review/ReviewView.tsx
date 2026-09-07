@@ -53,7 +53,6 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import { Popover as PopoverPrimitive } from 'radix-ui';
 
 import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import {
@@ -72,7 +71,8 @@ import type {
   GitReviewChunk,
   GitReviewFileContext,
   GitReviewGuide,
-  GitReviewGuidePriority,
+  GitReviewGuideFile,
+  GitReviewGuideNote,
   GitReviewGuideState,
   GitReviewGuideUnit,
   GitReviewPlan,
@@ -117,7 +117,8 @@ import {
   loadReviewFileTreeOpen,
   saveReviewFileTreeOpen
 } from './reviewFileTree';
-import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
+import { rankReviewChunksByGuide, rankReviewUnitsByGuide, visibleReviewGuideFiles } from './reviewGuidePresentation';
+import { ReviewGuidePanel, ReviewGuidePriority } from './ReviewGuidePanel';
 import {
   createReviewLineSelectionOptions,
   normalizeReviewLineSelection
@@ -136,7 +137,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewSections, type VisibleReviewFile } from './reviewSections';
+import { createReviewSections, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
 import {
   createReviewViewState,
   getReviewScrollTopForNavigation,
@@ -215,7 +216,16 @@ type ReviewCommentThread = ReviewLineComment & {
 type ReviewDiffAnnotation =
   | { kind: 'thread'; thread: ReviewCommentThread }
   | { kind: 'composer' }
+  | { kind: 'guide-note'; note: GitReviewGuideNote }
   | { kind: 'agent-note'; note: GitAgentNote; hidden: boolean };
+
+const NO_GUIDE_NOTES: readonly GitReviewGuideNote[] = [];
+
+type ReviewGuideOrder = {
+  guide: GitReviewGuide;
+  ranked: boolean;
+  anchor?: { path: string; offset: number };
+};
 
 const NO_AGENT_NOTES: readonly GitAgentNote[] = [];
 const NO_HIDDEN_AGENT_NOTE_IDS: ReadonlySet<string> = new Set();
@@ -386,6 +396,9 @@ export function ReviewView({
   const [selectedCommentTarget, setSelectedCommentTarget] = useState<ReviewCommentTarget>();
   const [lineCommentBody] = useState<ReviewCommentBodyBuffer>(createReviewCommentBodyBuffer);
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [previousGuide, setPreviousGuide] = useState<GitReviewGuide>();
+  const [guideOrder, setGuideOrder] = useState<ReviewGuideOrder>();
   const [typeDefinitionPreview, setTypeDefinitionPreview] = useState<ReviewTypeDefinitionPreview>();
   const typeDefinitionRequestRef = useRef(0);
   const typeDefinitionHoverRef = useRef<ReviewTypeDefinitionHoverTarget | undefined>(undefined);
@@ -453,23 +466,26 @@ export function ReviewView({
   const reviewGuide =
     currentReviewGuideState?.status === 'ready'
       ? currentReviewGuideState.guide
-      : undefined;
-  const presentation = useMemo(
-    () => basePresentation
-      ? {
-          ...basePresentation,
-          units: rankReviewUnitsByGuide(
-            basePresentation.units,
-            reviewGuide,
-            reviewPlan?.sourceFingerprint
-          )
-        }
-      : undefined,
-    [basePresentation, reviewGuide, reviewPlan?.sourceFingerprint]
-  );
+      : previousGuide?.sourceFingerprint === reviewPlan?.sourceFingerprint ? previousGuide : undefined;
+  const activeGuideOrder = guideOrder?.guide.sourceFingerprint === reviewPlan?.sourceFingerprint ? guideOrder : undefined;
+  const isGuideRanked = Boolean(activeGuideOrder?.ranked);
+  const orderGuide = activeGuideOrder?.guide;
   const reviewGuideUnits = useMemo(
     () => new Map(reviewGuide?.units.map((unit) => [unit.unitId, unit]) ?? []),
     [reviewGuide]
+  );
+  const presentation = useMemo(
+    () => basePresentation && isGuideRanked
+      ? {
+          ...basePresentation,
+          units: rankReviewUnitsByGuide(basePresentation.units, orderGuide, reviewPlan?.sourceFingerprint)
+            .map((unit) => ({
+              ...unit,
+              visibleChunks: rankReviewChunksByGuide(unit.visibleChunks, orderGuide?.units.find((item) => item.unitId === unit.unit.id))
+            }))
+        }
+      : basePresentation,
+    [basePresentation, isGuideRanked, orderGuide, reviewPlan?.sourceFingerprint]
   );
   const activeFilterCount = [
     preferences.skipTests,
@@ -867,13 +883,41 @@ export function ReviewView({
     setActiveReviewSearchLocationIndex(0);
   }
 
+  function setGuideRanked(ranked: boolean): void {
+    if (!reviewGuide || selectedCommentTarget !== undefined || commentMutation.isPending) return;
+    const scroller = sectionRef.current?.querySelector<HTMLElement>('.review-chunks');
+    const file = scroller && [...scroller.querySelectorAll<HTMLElement>('[data-review-path]')]
+      .find((element) => element.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top + 40);
+    // Pin the selection and viewport before changing order; AI finishing never moves either.
+    if (selectedUnit) setSelectedUnitId(selectedUnit.unit.id);
+    if (selectedFilePath) setRequestedFilePath(selectedFilePath);
+    setGuideOrder({
+      guide: reviewGuide, ranked,
+      anchor: file?.dataset.reviewPath && scroller
+        ? { path: file.dataset.reviewPath, offset: file.getBoundingClientRect().top - scroller.getBoundingClientRect().top }
+        : undefined
+    });
+  }
+
+  function selectGuideUnit(unitId: string): void {
+    if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
+    const next = presentation?.units.find((unit) => unit.unit.id === unitId);
+    if (!next) return;
+    selectReviewUnit(unitId);
+    setRequestedFilePath(next.visibleChunks[0]?.path);
+    setFileNavigationSignal((signal) => signal + 1);
+  }
+
   async function startReviewGuide(): Promise<void> {
-    if (!isReviewGuideEnabled || !reviewPlan || currentReviewGuideState?.status === 'running') {
+    if (!isReviewGuideEnabled || !reviewPlan || currentReviewGuideState?.status === 'running' ||
+      selectedCommentTarget !== undefined || commentMutation.isPending) {
       return;
     }
 
     const sourceFingerprint = reviewPlan.sourceFingerprint;
     setSelectedUnitId(selectedUnit?.unit.id);
+    setIsGuideOpen(true);
+    setPreviousGuide(reviewGuide);
     setReviewGuideState({
       status: 'running',
       sourceFingerprint,
@@ -1381,6 +1425,8 @@ export function ReviewView({
           {isReviewGuideEnabled && reviewPlan?.units.length ? (
             <ReviewGuideControl
               state={currentReviewGuideState}
+              open={isGuideOpen}
+              onToggle={() => setIsGuideOpen((open) => !open)}
               onStart={() => void startReviewGuide()}
             />
           ) : null}
@@ -1457,6 +1503,13 @@ export function ReviewView({
         onSetAgentNoteHidden={setAgentNoteHidden}
         reviewGuide={reviewGuide}
         reviewGuideUnits={reviewGuideUnits}
+        isGuideOpen={isGuideOpen}
+        isGuideRanked={isGuideRanked}
+        guideOrder={activeGuideOrder}
+        isGuideRebuilding={currentReviewGuideState?.status === 'running'}
+        onSetGuideRanked={setGuideRanked}
+        onCloseGuide={() => setIsGuideOpen(false)}
+        onGuideSelectUnit={selectGuideUnit}
         isFileTreeOpen={isFileTreeOpen}
         fileTreePanel={fileTreePanel}
         allFileUnits={allFileUnits}
@@ -1551,158 +1604,23 @@ export function ReviewGuideFailureMessage({
   );
 }
 
-function ReviewGuideControl({
-  state,
-  onStart
-}: {
+function ReviewGuideControl({ state, open, onStart, onToggle }: {
   state: GitReviewGuideState | undefined;
+  open: boolean;
   onStart: () => void;
+  onToggle: () => void;
 }): ReactElement {
   if (state?.status === 'running') {
-    return (
-      <span className="review-guide-control" aria-live="polite">
-        <Loader2 size={12} className="animate-spin" />
-        AI guide
-      </span>
-    );
+    return <span className="review-guide-control" role="status">Preparing guide…</span>;
   }
-
   if (state?.status === 'ready') {
-    return (
-      <ReviewGuidePopover
-        guide={state.guide}
-        trigger={(
-          <button
-            className="btn-subtle btn-compact"
-            type="button"
-            aria-label="Open AI guide overview"
-            title="Open AI guide overview"
-          >
-            <Sparkles size={12} />
-            AI guide
-          </button>
-        )}
-        onStart={onStart}
-      />
-    );
+    return <button type="button" className="btn-subtle btn-compact" aria-expanded={open}
+      onClick={onToggle}><Sparkles size={12} /> AI guide</button>;
   }
-
-  if (state?.status === 'failed') {
-    return (
-      <button
-        className="btn-subtle btn-compact text-[var(--danger-text)]"
-        type="button"
-        title={state.errorMessage}
-        onClick={onStart}
-      >
-        <AlertTriangle size={12} />
-        Retry AI guide
-      </button>
-    );
-  }
-
-  return (
-    <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
-      Build AI guide
-    </button>
-  );
-}
-
-function ReviewGuidePopover({
-  guide,
-  guideUnit,
-  reviewUnitTitle,
-  trigger,
-  align = 'end',
-  onStart
-}: {
-  guide: GitReviewGuide;
-  guideUnit?: GitReviewGuideUnit;
-  reviewUnitTitle?: string;
-  trigger: ReactElement;
-  align?: 'start' | 'center' | 'end';
-  onStart: () => void;
-}): ReactElement {
-  return (
-    <PopoverPrimitive.Root>
-      <PopoverPrimitive.Trigger asChild>
-        {trigger}
-      </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          className="review-guide-popover"
-          align={align}
-          sideOffset={6}
-          aria-label="AI guide"
-        >
-          <header>
-            <div>
-              <span className="review-guide-kicker">AI guide</span>
-              <strong>{guideUnit ? reviewUnitTitle ?? 'Review block' : 'Review overview'}</strong>
-            </div>
-            <PopoverPrimitive.Close asChild>
-              <button
-                className="icon-btn icon-btn-compact"
-                type="button"
-                aria-label="Close AI guide"
-                title="Close AI guide"
-              >
-                <X size={13} />
-              </button>
-            </PopoverPrimitive.Close>
-          </header>
-
-          <section>
-            <span className="review-guide-kicker">Change intent</span>
-            <p>{guide.summary}</p>
-          </section>
-
-          {guideUnit ? (
-            <>
-              <section className="review-guide-popover-unit">
-                <div className="review-guide-popover-unit-heading">
-                  <ReviewGuidePriority priority={guideUnit.priority} />
-                  <span>This review block</span>
-                </div>
-                <div className="review-guide-popover-columns">
-                  <div>
-                    <span className="review-guide-kicker">Why this changed</span>
-                    <p>{guideUnit.why}</p>
-                  </div>
-                  <div>
-                    <span className="review-guide-kicker">What changed</span>
-                    <p>{guideUnit.what}</p>
-                  </div>
-                </div>
-              </section>
-              {guideUnit.confirmedIssues.map((issue) => (
-                <section
-                  className="review-guide-popover-issue"
-                  key={`${issue.path}:${issue.line}`}
-                >
-                  <AlertTriangle size={13} />
-                  <div>
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <strong>AI-confirmed issue</strong>
-                      <code>{issue.path}:{issue.line}</code>
-                    </div>
-                    <p>{issue.summary} {issue.evidence}</p>
-                  </div>
-                </section>
-              ))}
-            </>
-          ) : null}
-
-          <footer>
-            <button className="btn-subtle btn-compact" type="button" onClick={onStart}>
-              <Sparkles size={12} />
-              Rebuild guide
-            </button>
-          </footer>
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
-  );
+  return <button type="button" className="btn-subtle btn-compact" onClick={onStart}
+    title={state?.status === 'failed' ? state.errorMessage : undefined}>
+    {state?.status === 'failed' ? 'Retry AI guide' : 'Build AI guide'}
+  </button>;
 }
 
 function ReviewFilterMenu({
@@ -1813,28 +1731,6 @@ function ReviewFilterMenuItem({
   );
 }
 
-function ReviewGuidePriority({
-  priority
-}: {
-  priority: GitReviewGuidePriority;
-}): ReactElement {
-  return (
-    <span
-      className="review-guide-priority"
-      data-priority={priority}
-      title={
-        priority === 'critical'
-          ? 'Must understand before approval'
-          : priority === 'review'
-            ? 'Read with normal focus'
-            : 'Low-risk or mechanical change'
-      }
-    >
-      {priority}
-    </span>
-  );
-}
-
 function ReviewBody({
   compact,
   navigationTools,
@@ -1855,6 +1751,13 @@ function ReviewBody({
   onSetAgentNoteHidden,
   reviewGuide,
   reviewGuideUnits,
+  isGuideOpen,
+  isGuideRanked,
+  isGuideRebuilding,
+  guideOrder,
+  onSetGuideRanked,
+  onCloseGuide,
+  onGuideSelectUnit,
   isFileTreeOpen,
   fileTreePanel,
   allFileUnits,
@@ -1890,6 +1793,13 @@ function ReviewBody({
   onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   reviewGuide?: GitReviewGuide;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
+  isGuideOpen: boolean;
+  isGuideRanked: boolean;
+  isGuideRebuilding: boolean;
+  guideOrder?: ReviewGuideOrder;
+  onSetGuideRanked: (ranked: boolean) => void;
+  onCloseGuide: () => void;
+  onGuideSelectUnit: (unitId: string) => void;
   isFileTreeOpen: boolean;
   fileTreePanel?: ReviewViewProps['fileTreePanel'];
   allFileUnits: VisibleReviewUnit[];
@@ -1907,6 +1817,11 @@ function ReviewBody({
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
+  const [guideLocation, setGuideLocation] = useState<{ file: GitReviewGuideFile; navigationSignal: number; unitId: string }>();
+  if (guideLocation && (guideLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
+    setGuideLocation(undefined);
+  }
+  const consumedGuideLocation = useRef<typeof guideLocation>(undefined);
   const reviewQueueRef = useRef<HTMLElement>(null);
   const queueResize = usePanelResize({
     storageKey: `git-gud:review-queue-width:v1:${encodeURIComponent(repoPath)}`,
@@ -1994,6 +1909,59 @@ function ReviewBody({
         scroller.getBoundingClientRect().top
     });
   }, [compact, fileNavigationSignal, restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
+
+  useLayoutEffect(() => {
+    const anchor = guideOrder?.anchor;
+    const scroller = reviewChunksRef.current;
+    if (!anchor || !scroller) return;
+    const file = scroller.querySelector<HTMLElement>(`[data-review-path="${CSS.escape(anchor.path)}"]`);
+    if (file) scroller.scrollTop += file.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.offset;
+  }, [guideOrder]);
+
+  useEffect(() => {
+    if (!guideLocation?.file.line || guideLocation.navigationSignal !== fileNavigationSignal ||
+      reviewSearch?.isSelected || consumedGuideLocation.current === guideLocation) return;
+    consumedGuideLocation.current = guideLocation;
+    const location = guideLocation.file;
+    let frame = 0;
+    let attempts = 0;
+    const locate = (): void => {
+      const file = reviewChunksRef.current?.querySelector<HTMLElement>(
+        `[data-review-path="${CSS.escape(location.path)}"]`
+      );
+      for (const diff of file?.querySelectorAll('.gg-diff') ?? []) {
+        const line = diff.shadowRoot?.querySelector<HTMLElement>(
+          `[data-line="${location.line}"][data-line-type="change-addition"]`
+        );
+        if (line) {
+          line.scrollIntoView({ block: 'center' });
+          return;
+        }
+      }
+      // Diff workers render asynchronously. Retry only for this explicit code jump.
+      if (++attempts < 120) frame = requestAnimationFrame(locate);
+    };
+    frame = requestAnimationFrame(locate);
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [guideLocation, fileNavigationSignal, selectedUnit?.unit.id, reviewSearch?.isSelected, reviewGuide?.sourceFingerprint]);
+
+  function selectGuideFile(file: GitReviewGuideFile): void {
+    setCollapsedFileKeys((current) => {
+      const next = new Set(current);
+      for (const item of groupReviewFiles(selectedUnit?.visibleChunks ?? [])) {
+        if (item.chunks[0].path === file.path) next.delete(item.key);
+      }
+      return next;
+    });
+    onSelectFile(file.path);
+    const visibleFile = visibleReviewGuideFiles(selectedUnit, selectedGuideUnit).find((item) => item.path === file.path);
+    // Wait for this file navigation; a subsequent selection cancels the pending jump.
+    setGuideLocation(visibleFile && selectedUnit ? {
+      file: visibleFile, navigationSignal: fileNavigationSignal + 1, unitId: selectedUnit.unit.id
+    } : undefined);
+  }
 
   function toggleFile(fileKey: string, chunks: readonly GitReviewChunk[]): void {
     const isCollapsing = !collapsedFileKeys.has(fileKey);
@@ -2128,13 +2096,22 @@ function ReviewBody({
               {compact &&
               !reviewSearch?.isSelected &&
               candidate.unit.id === selectedUnit?.unit.id ? (
-                <ReviewFileTree
-                  embedded
-                  repoPath={repoPath}
-                  units={selectedTreeUnits}
-                  selectedPath={selectedFilePath}
-                  onSelectPath={onSelectFile}
-                />
+                selectedGuideUnit ? (
+                  <div className="review-guide-ranked-files" aria-label="Ranked block files">
+                    {[...new Set(selectedUnit.visibleChunks.map((chunk) => chunk.path))].map((path) => {
+                      const file = visibleReviewGuideFiles(selectedUnit, selectedGuideUnit).find((item) => item.path === path);
+                      return <button type="button" key={path} data-active={selectedFilePath === path}
+                        disabled={Boolean(lineCollaboration?.selectedChunkId)} title={file?.reason || path}
+                        onClick={() => file ? selectGuideFile(file) : onSelectFile(path)}>
+                        <span title={path}>{path.split('/').pop()}</span>
+                        {file ? <ReviewGuidePriority priority={file.priority} reason={file.reason} /> : null}
+                      </button>;
+                    })}
+                  </div>
+                ) : (
+                  <ReviewFileTree embedded repoPath={repoPath} units={selectedTreeUnits}
+                    selectedPath={selectedFilePath} onSelectPath={onSelectFile} />
+                )
               ) : null}
             </div>
           ))}
@@ -2144,25 +2121,12 @@ function ReviewBody({
             {selectedUnit ? (
               <>
                 <details className="review-block-explanation">
-                  <summary>Why grouped?{selectedGuideUnit ? ' · AI guide' : ''}</summary>
+                  <summary>Why grouped?</summary>
                   <p>{selectedUnit.unit.explanation}</p>
                   <small>
                     {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
                     filters
                   </small>
-                  {reviewGuide && selectedGuideUnit ? (
-                    <ReviewGuidePopover
-                      guide={reviewGuide}
-                      guideUnit={selectedGuideUnit}
-                      reviewUnitTitle={selectedUnit.unit.title}
-                      onStart={onStartReviewGuide}
-                      trigger={
-                        <button type="button" className="btn-subtle btn-compact">
-                          Open AI guide
-                        </button>
-                      }
-                    />
-                  ) : null}
                 </details>
                 <div className="review-block-position">
                   <span>
@@ -2210,26 +2174,6 @@ function ReviewBody({
                 <header className="review-unit-header">
                   <div className="review-unit-heading">
                     <h2 title={selectedUnit.unit.title}>{selectedUnit.unit.title}</h2>
-                    {reviewGuide && selectedGuideUnit ? (
-                      <ReviewGuidePopover
-                        guide={reviewGuide}
-                        guideUnit={selectedGuideUnit}
-                        reviewUnitTitle={selectedUnit.unit.title}
-                        align="start"
-                        trigger={
-                          <button
-                            className="btn-subtle btn-compact review-guide-unit-trigger"
-                            type="button"
-                            aria-label={`Open AI guide for ${selectedUnit.unit.title}`}
-                            title="Open AI guide for this review block"
-                          >
-                            <Sparkles size={12} />
-                            AI
-                          </button>
-                        }
-                        onStart={onStartReviewGuide}
-                      />
-                    ) : null}
                     {selectedGuideUnit ? (
                       <ReviewGuidePriority priority={selectedGuideUnit.priority} />
                     ) : null}
@@ -2285,7 +2229,9 @@ function ReviewBody({
                   onScrollTopChange(selectedUnit.unit.id, scroller.scrollTop, visiblePath);
                 }}
               >
-                {createReviewSections(selectedUnit.visibleChunks).map(
+                {(isGuideRanked
+                  ? [{ key: 'other' as const, label: 'Ranked files', files: groupReviewFiles(selectedUnit.visibleChunks) }]
+                  : createReviewSections(selectedUnit.visibleChunks)).map(
                   (section, _sectionIndex, sections) => (
                     <section
                       className="review-chunk-section"
@@ -2306,6 +2252,11 @@ function ReviewBody({
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
                           agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
+                          guideNotes={selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES}
+                          guideFile={selectedGuideUnit?.files.find((item) => item.path === file.chunks[0].path)}
+                          guideLine={guideLocation?.navigationSignal === fileNavigationSignal &&
+                            guideLocation.file.path === selectedFilePath &&
+                            guideLocation.file.path === file.chunks[0].path ? guideLocation.file.line : undefined}
                           hiddenAgentNoteIds={hiddenAgentNoteIds}
                           onSetAgentNoteHidden={onSetAgentNoteHidden}
                           typeDefinitionPaths={typeDefinitionPaths}
@@ -2321,6 +2272,15 @@ function ReviewBody({
             </>
           ) : null)}
       </div>
+
+      {reviewGuide && isGuideOpen && !reviewSearch?.isSelected ? (
+        <ReviewGuidePanel guide={reviewGuide} units={units} selectedUnit={selectedUnit}
+          ranked={isGuideRanked}
+          hasUpdatedOrder={isGuideRanked && guideOrder?.guide.generatedAt !== reviewGuide.generatedAt}
+          rebuilding={isGuideRebuilding} disabled={Boolean(lineCollaboration?.selectedChunkId) || isMutating}
+          onSelectUnit={onGuideSelectUnit} onSelectFile={selectGuideFile}
+          onSetRanked={onSetGuideRanked} onClose={onCloseGuide} onRebuild={onStartReviewGuide} />
+      ) : null}
 
       {compact && fileTreePanel ? (
         <ReviewFileTree
@@ -2709,6 +2669,9 @@ function ReviewFile({
   diffOptions,
   lineCollaboration,
   agentNotes,
+  guideNotes = NO_GUIDE_NOTES,
+  guideFile,
+  guideLine,
   hiddenAgentNoteIds,
   onSetAgentNoteHidden,
   typeDefinitionPaths,
@@ -2722,6 +2685,9 @@ function ReviewFile({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   agentNotes: readonly GitAgentNote[];
+  guideNotes?: readonly GitReviewGuideNote[];
+  guideFile?: GitReviewGuideFile;
+  guideLine?: number;
   hiddenAgentNoteIds: ReadonlySet<string>;
   onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   typeDefinitionPaths: ReadonlySet<string>;
@@ -2731,6 +2697,10 @@ function ReviewFile({
   onToggleCollapsed: () => void;
 }): ReactElement {
   const fileComposerId = useId();
+  const guideDiffOptions = useMemo(() => guideLine ? {
+    ...diffOptions,
+    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n[data-line="${guideLine}"][data-line-type="change-addition"] { box-shadow: inset 3px 0 #5fd6c3; }`
+  } : diffOptions, [diffOptions, guideLine]);
   const firstChunk = file.chunks[0]!;
   const fileThreads = lineCollaboration?.threads.filter(
     (thread) => thread.subjectType === 'file' && thread.path === firstChunk.path
@@ -2766,6 +2736,7 @@ function ReviewFile({
             >
               {firstChunk.path}
             </span>
+            {guideFile ? <ReviewGuidePriority priority={guideFile.priority} reason={guideFile.reason} /> : null}
             <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>
             {firstChunk.source !== 'commit' ? <span className="badge-mini">{firstChunk.source}</span> : null}
             <span className="text-[var(--success-text)]">+{file.additions}</span>
@@ -2819,9 +2790,10 @@ function ReviewFile({
               key={chunk.id}
               chunk={chunk}
               preparedDiff={preparedDiffs.get(chunk.id)}
-              diffOptions={diffOptions}
+              diffOptions={guideDiffOptions}
               lineCollaboration={lineCollaboration}
               agentNotes={agentNotes}
+              guideNotes={guideNotes}
               hiddenAgentNoteIds={hiddenAgentNoteIds}
               onSetAgentNoteHidden={onSetAgentNoteHidden}
               typeDefinitionInteraction={
@@ -2847,6 +2819,7 @@ function ReviewChunk({
   diffOptions,
   lineCollaboration,
   agentNotes,
+  guideNotes = NO_GUIDE_NOTES,
   hiddenAgentNoteIds,
   onSetAgentNoteHidden,
   typeDefinitionInteraction,
@@ -2858,6 +2831,7 @@ function ReviewChunk({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   agentNotes: readonly GitAgentNote[];
+  guideNotes?: readonly GitReviewGuideNote[];
   hiddenAgentNoteIds: ReadonlySet<string>;
   onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   typeDefinitionInteraction?: ReviewTypeDefinitionInteraction;
@@ -2926,6 +2900,11 @@ function ReviewChunk({
             }]
           : []
       ) ?? []),
+      ...guideNotes.flatMap((note) =>
+        note.path === chunk.path && patchContainsLine(chunk.patch, note.line, 'right')
+          ? [{ lineNumber: note.line, side: 'additions' as const, metadata: { kind: 'guide-note' as const, note } }]
+          : []
+      ),
       ...agentNotes.flatMap((note) =>
         note.path === chunk.path && patchContainsLine(chunk.patch, note.line, 'right')
           ? [{
@@ -2949,6 +2928,7 @@ function ReviewChunk({
     ],
     [
       agentNotes,
+      guideNotes,
       chunk.patch,
       chunk.path,
       hiddenAgentNoteIds,
@@ -2991,6 +2971,8 @@ function ReviewChunk({
                       onUpdateComment={lineCollaboration?.onUpdateComment}
                       onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
                     />
+                  : annotation.metadata.kind === 'guide-note'
+                    ? <ReviewGuideInlineNote note={annotation.metadata.note} />
                   : annotation.metadata.kind === 'agent-note'
                     ? <ReviewAgentNoteAnnotation
                         note={annotation.metadata.note}
@@ -3017,6 +2999,8 @@ function ReviewChunk({
                       onUpdateComment={lineCollaboration?.onUpdateComment}
                       onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
                     />
+                  : annotation.metadata.kind === 'guide-note'
+                    ? <ReviewGuideInlineNote note={annotation.metadata.note} />
                   : annotation.metadata.kind === 'agent-note'
                     ? <ReviewAgentNoteAnnotation
                         note={annotation.metadata.note}
@@ -3030,6 +3014,17 @@ function ReviewChunk({
       )}
     </section>
   );
+}
+
+function ReviewGuideInlineNote({ note }: { note: GitReviewGuideNote }): ReactElement {
+  const [hidden, setHidden] = useState(false);
+  return <aside className="review-guide-inline-note" aria-label="AI guide note">
+    <span>AI guide</span>
+    {hidden ? <button type="button" onClick={() => setHidden(false)}>Show note</button> : <>
+      <p>{note.body}</p>
+      <button type="button" aria-label="Hide AI guide note" onClick={() => setHidden(true)}><X size={12} /></button>
+    </>}
+  </aside>;
 }
 
 export function AgentNoteAnnotation({

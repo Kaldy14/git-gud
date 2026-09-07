@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   WorkerPoolContextProvider,
@@ -30,10 +30,19 @@ if (!rootElement) {
   throw new Error('Root element not found.');
 }
 
+const guideTestRepo = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get('guide-test-repo')
+  : null;
+const GuidePlayground = import.meta.env.DEV && guideTestRepo
+  ? lazy(() => import('./components/review/ReviewGuidePlayground'))
+  : undefined;
+
 createRoot(rootElement).render(
   <React.StrictMode>
     <WorkerPoolContextProvider poolOptions={diffWorkerPoolOptions} highlighterOptions={diffHighlighterOptions}>
-      <AppRouter />
+      {GuidePlayground && guideTestRepo
+        ? <Suspense fallback={<p>Loading guide test…</p>}><GuidePlayground repoPath={guideTestRepo} /></Suspense>
+        : <AppRouter />}
       <ChangelogDialog releaseNotes={import.meta.env.VITE_RELEASE_NOTES} />
     </WorkerPoolContextProvider>
   </React.StrictMode>

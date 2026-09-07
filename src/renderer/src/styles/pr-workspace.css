@@ -787,3 +787,51 @@
     box-shadow: -8px 0 20px #0003;
   }
 }
+
+/* Guide copy sits beside the diff; block navigation never marks changes viewed. */
+.review-guide-panel {
+  display: flex;
+  flex: 0 0 280px;
+  width: 280px;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.review-guide-panel > header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.review-guide-panel-body { padding: 18px 15px; }
+.review-guide-position { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-3); font-size: 10px; }
+.review-guide-panel h2 { margin: 17px 0 10px; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; line-height: 1.5; }
+.review-guide-panel p { margin: 8px 0; color: var(--text-2); font-size: 12px; line-height: 1.8; }
+.review-guide-file-links { display: flex; flex-direction: column; gap: 5px; margin-top: 17px; }
+.review-guide-file-links button { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0; color: var(--accent-2); font-size: 10px; text-align: left; }
+.review-guide-file-links button span { overflow-wrap: anywhere; }
+.review-guide-navigation { display: flex; justify-content: space-between; gap: 8px; margin: 22px 0 12px; }
+.review-guide-panel small { display: block; color: var(--text-3); font-size: 9px; line-height: 1.7; }
+.review-guide-panel > footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding: 13px; border-top: 1px solid var(--border); }
+.review-guide-panel > footer small { flex-basis: 100%; }
+.review-guide-ranked-files { margin: 2px 8px 10px 25px; padding-left: 5px; border-left: 1px solid var(--border); }
+.review-guide-ranked-files button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 5px; padding: 6px; border-radius: 3px; text-align: left; color: var(--text-2); font-size: 10px; }
+.review-guide-ranked-files button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-guide-ranked-files button:hover { background: var(--bg-hover); }
+.review-guide-ranked-files button[data-active='true'] { background: var(--select-bg); color: var(--accent-2); }
+.review-guide-inline-note { display: flex; align-items: baseline; gap: 10px; margin: 6px 12px; padding: 8px 12px; border-left: 2px solid var(--accent-2); background: var(--bg-panel); font-family: var(--font-ui); font-size: 11px; line-height: 1.7; }
+.review-guide-inline-note > span { flex-shrink: 0; color: var(--accent-2); font-size: 9px; }
+.review-guide-inline-note p { margin: 0; color: var(--text-2); }
+.review-guide-inline-note button { flex-shrink: 0; margin-left: auto; color: var(--text-3); font-size: 10px; }
+.review-guide-priority[data-priority='focus'] { border-color: color-mix(in srgb, var(--accent-2) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--accent-2); }
+.review-guide-panel button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 1200px) { .review-guide-panel { width: 245px; flex-basis: 245px; } }
+.review-guide-playground { display: flex; height: 100%; flex-direction: column; padding-top: 30px; }
+.review-guide-playground > header { display: flex; align-items: center; gap: 15px; min-height: 43px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.review-guide-playground > header > span { color: var(--text-3); font-size: 10px; margin-right: auto; }
+.review-guide-playground > header select { font-size: 11px; padding: 4px; }

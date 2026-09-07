@@ -307,6 +307,7 @@ export type GitReviewPlan = {
   baseSha?: string;
   targetKey: string;
   sourceFingerprint: string;
+  title?: string;
   units: GitReviewUnit[];
   fileContexts: GitReviewFileContext[];
   reviewedChunkIds: string[];
@@ -331,13 +332,19 @@ export type ReviewGroupingBenchmarkPreview = {
   wronglySplit: Array<readonly [string, string]>;
 };
 
-export type GitReviewGuidePriority = 'critical' | 'review' | 'skim';
+export type GitReviewGuidePriority = 'focus' | 'review' | 'skim';
 
-export type GitReviewGuideIssue = {
-  summary: string;
+export type GitReviewGuideNote = {
   path: string;
   line: number;
-  evidence: string;
+  body: string;
+};
+
+export type GitReviewGuideFile = {
+  path: string;
+  priority: GitReviewGuidePriority;
+  reason: string;
+  line?: number;
 };
 
 export type GitReviewGuideUnit = {
@@ -345,7 +352,8 @@ export type GitReviewGuideUnit = {
   priority: GitReviewGuidePriority;
   why: string;
   what: string;
-  confirmedIssues: GitReviewGuideIssue[];
+  files: GitReviewGuideFile[];
+  inlineNotes: GitReviewGuideNote[];
 };
 
 export type GitReviewGuide = {
