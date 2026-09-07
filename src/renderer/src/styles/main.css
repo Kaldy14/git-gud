@@ -2645,39 +2645,6 @@ button.ref-chip {
   background: var(--bg-panel);
 }
 
-.review-file-tree-resizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -5px;
-  z-index: 30;
-  width: 10px;
-  cursor: col-resize;
-  outline: none;
-  touch-action: none;
-}
-
-.review-file-tree-resizer::before {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 4px;
-  width: 2px;
-  border-radius: 999px;
-  background: transparent;
-  content: '';
-  transition:
-    background 120ms ease,
-    box-shadow 120ms ease;
-}
-
-.review-file-tree-resizer:hover::before,
-.review-file-tree-resizer:focus-visible::before,
-.review-file-tree-resizer[data-active='true']::before {
-  background: var(--accent-2);
-  box-shadow: 0 0 0 1px rgba(95, 214, 195, 0.22);
-}
-
 .review-file-tree-panel > header {
   display: flex;
   min-height: 34px;

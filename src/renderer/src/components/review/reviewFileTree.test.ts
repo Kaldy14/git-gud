@@ -12,12 +12,21 @@ import {
   MAX_REVIEW_FILE_TREE_WIDTH,
   MIN_REVIEW_FILE_TREE_WIDTH,
   normalizeReviewFileTreeWidth,
+  reviewFileTreeCommonDirectory,
   saveReviewFileTreeOpen,
   saveReviewFileTreeWidth
 } from './reviewFileTree';
 import type { VisibleReviewUnit } from './reviewFilters';
 
 describe('review file tree', () => {
+  it('extracts only complete shared directories for the embedded tree', () => {
+    expect(reviewFileTreeCommonDirectory(['apps/ui/cart/add.ts', 'apps/ui/detail/view.tsx'])).toBe('apps/ui/');
+    expect(reviewFileTreeCommonDirectory(['src/cart.ts', 'src/catalog.ts'])).toBe('src/');
+    expect(reviewFileTreeCommonDirectory(['src/cart.ts', 'src-old/cart.ts'])).toBe('');
+    expect(reviewFileTreeCommonDirectory(['README.md', 'src/cart.ts'])).toBe('');
+    expect(reviewFileTreeCommonDirectory(['src/cart.ts'])).toBe('src/');
+    expect(reviewFileTreeCommonDirectory([])).toBe('');
+  });
   it('deduplicates visible files and preserves their git status', () => {
     const units = [
       visibleUnit('api', [

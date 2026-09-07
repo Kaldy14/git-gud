@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 
 import { PullRequestPanel } from './PullRequestPanel';
+import { PanelExpandButton } from '../ui/panelResize';
+import { usePanelResize } from '../ui/usePanelResize';
 import { getReviewImages } from '@renderer/components/review/reviewImages';
 import type { DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
@@ -421,6 +423,17 @@ function PullRequestReviewContent({
     loadPullRequestReviewDrafts(window.localStorage, draftStorageKey)
   );
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const allFilesStorageKey = `git-gud:pr-all-files-open:v1:${encodeURIComponent(detail.reviewPlan.repoPath)}`;
+  const [isAllFilesOpen, setIsAllFilesOpen] = useState(() => window.localStorage.getItem(allFilesStorageKey) === 'true');
+  const detailsResize = usePanelResize({
+    storageKey: `git-gud:pr-details-width:v1:${encodeURIComponent(detail.reviewPlan.repoPath)}`,
+    defaultWidth: 380,
+    expandedWidth: 640,
+    minWidth: 320,
+    maxWidth: 960,
+    minRemainingWidth: 440,
+    edge: 'left'
+  });
   const [contextTab, setContextTab] = useState<'overview' | 'comments' | 'images'>('overview');
   const [reviewEvent, setReviewEvent] = useState<ReviewEvent>('comment');
   const [reviewSubmissionKey, setReviewSubmissionKey] = useState(0);
@@ -444,7 +457,13 @@ function PullRequestReviewContent({
       });
   }
 
-  function openPanel(panel: 'details' | 'review' | 'merge'): void {
+  function setAllFilesOpen(open: boolean): void {
+    setIsAllFilesOpen(open);
+    window.localStorage.setItem(allFilesStorageKey, String(open));
+  }
+
+  function openPanel(panel: 'details' | 'review' | 'merge' | 'files'): void {
+    setAllFilesOpen(panel === 'files');
     setIsOverviewOpen(panel === 'details');
     setIsReviewDialogOpen(panel === 'review');
     setIsMergeDialogOpen(panel === 'merge');
@@ -812,6 +831,7 @@ function PullRequestReviewContent({
           detail={detail}
           repoPath={codexRepoPath}
           isOverviewOpen={isOverviewOpen}
+          isAllFilesOpen={isAllFilesOpen}
           reviewDraftCount={reviewDrafts.length}
           mergeLabel={mergeMethodLabel(detail.mergeSettings.defaultMethod)}
           mergeDisabled={
@@ -836,6 +856,7 @@ function PullRequestReviewContent({
           }
           isMergePending={mergeMutation.isPending}
           onToggleOverview={toggleOverview}
+          onToggleAllFiles={() => isAllFilesOpen ? setAllFilesOpen(false) : openPanel('files')}
           onFinishReview={() => openPanel('review')}
           onSelectReviewDecision={(event) => {
             setReviewEvent(event);
@@ -880,16 +901,19 @@ function PullRequestReviewContent({
             onClose={onClose}
             showCloseButton={false}
             layout="pull-request"
+            fileTreePanel={{ open: isAllFilesOpen, onClose: () => setAllFilesOpen(false) }}
           />
         </div>
 
         <PullRequestPanel
           open={isOverviewOpen}
+          resize={detailsResize}
           labelledBy={panelTitleId}
           onClose={() => setIsOverviewOpen(false)}
         >
           <header className="pr-side-panel-heading">
             <h2 id={panelTitleId}>Pull request details</h2>
+            <PanelExpandButton resize={detailsResize} label="pull request details" />
             <button
               className="icon-btn icon-btn-compact"
               type="button"
@@ -1023,9 +1047,9 @@ function PullRequestReviewContent({
         <ReviewSubmissionDialog
           key={reviewSubmissionKey}
           open={isReviewDialogOpen}
-          event={reviewEvent}
+          event={detail.author.toLowerCase() === detail.viewerLogin.toLowerCase() ? 'comment' : reviewEvent}
           onEventChange={setReviewEvent}
-          isOwnPullRequest={detail.author === detail.viewerLogin}
+          isOwnPullRequest={detail.author.toLowerCase() === detail.viewerLogin.toLowerCase()}
           drafts={reviewDrafts}
           isSubmitting={reviewMutation.isPending}
           isCopyingPrompt={copyPromptMutation.isPending}
@@ -1382,7 +1406,7 @@ function ReviewSubmissionDialog({
           </button>
         </header>
         <div className="pr-action-dialog-body">
-          <div>
+          {!isOwnPullRequest ? <div>
             <span className="pr-action-field-label">GitHub review decision</span>
             <div
               className="pr-review-decision-options"
@@ -1399,12 +1423,7 @@ function ReviewSubmissionDialog({
                 <button
                   key={value}
                   type="button"
-                  disabled={isBusy || (isOwnPullRequest && value !== 'comment')}
-                  title={
-                    isOwnPullRequest && value !== 'comment'
-                      ? 'You cannot approve or request changes on your own pull request.'
-                      : undefined
-                  }
+                  disabled={isBusy}
                   data-active={event === value}
                   aria-pressed={event === value}
                   onClick={() => onEventChange(value)}
@@ -1414,7 +1433,7 @@ function ReviewSubmissionDialog({
                 </button>
               ))}
             </div>
-          </div>
+          </div> : null}
           {drafts.length > 0 ? (
             <section className="pr-review-draft-list" aria-label="Draft review comments">
               <header>

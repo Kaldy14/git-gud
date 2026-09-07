@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  FolderTree,
   GitMerge,
   Loader2,
   MonitorUp,
@@ -38,12 +39,14 @@ type PullRequestHeaderActionsProps = {
   detail: GitHubPullRequestDetail;
   repoPath?: string;
   isOverviewOpen: boolean;
+  isAllFilesOpen: boolean;
   reviewDraftCount: number;
   mergeLabel: string;
   mergeDisabled: boolean;
   mergeTitle: string;
   isMergePending: boolean;
   onToggleOverview: () => void;
+  onToggleAllFiles: () => void;
   onFinishReview: () => void;
   onSelectReviewDecision: (event: 'comment' | 'approve' | 'request-changes') => void;
   onOpenMerge: () => void;
@@ -67,12 +70,14 @@ export function PullRequestHeaderActions({
   detail,
   repoPath,
   isOverviewOpen,
+  isAllFilesOpen,
   reviewDraftCount,
   mergeLabel,
   mergeDisabled,
   mergeTitle,
   isMergePending,
   onToggleOverview,
+  onToggleAllFiles,
   onFinishReview,
   onSelectReviewDecision,
   onOpenMerge,
@@ -84,6 +89,7 @@ export function PullRequestHeaderActions({
   const decisionTriggerRef = useRef<HTMLButtonElement>(null);
   const pendingActionRef = useRef<(() => void) | undefined>(undefined);
   const finishReviewLabel = reviewDraftCount > 0 ? `Review · ${reviewDraftCount}` : 'Review';
+  const isOwnPullRequest = detail.author.toLowerCase() === detail.viewerLogin.toLowerCase();
 
   function runAfterMenuClose(action: () => void): void {
     pendingActionRef.current = action;
@@ -91,10 +97,14 @@ export function PullRequestHeaderActions({
 
   return (
     <div className="pr-review-header-actions pr-review-actions-persistent">
+      <button className="btn-subtle btn-regular" type="button" aria-pressed={isAllFilesOpen} aria-expanded={isAllFilesOpen} onClick={onToggleAllFiles} title={isAllFilesOpen ? 'Hide all changed files' : 'Show all changed files'}>
+        <FolderTree size={13} />All files
+      </button>
       <button
         className="btn-subtle btn-regular"
         type="button"
         aria-expanded={isOverviewOpen}
+        aria-pressed={isOverviewOpen}
         onClick={onToggleOverview}
       >
         <PanelRightOpen size={13} />
@@ -105,7 +115,7 @@ export function PullRequestHeaderActions({
           <ShieldCheck size={13} />
           {finishReviewLabel}
         </button>
-        <DropdownMenu>
+        {!isOwnPullRequest ? <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               ref={decisionTriggerRef}
@@ -134,28 +144,29 @@ export function PullRequestHeaderActions({
               Send comments
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={detail.author === detail.viewerLogin}
               onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('approve'))}
             >
               Approve
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={detail.author === detail.viewerLogin}
               onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('request-changes'))}
             >
               Request changes
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu> : null}
       </div>
       <button
         className="btn-subtle btn-regular pr-header-merge"
         type="button"
         disabled={mergeDisabled}
         title={mergeTitle}
+        aria-label={mergeLabel}
         onClick={onOpenMerge}
       >
-        {isMergePending ? <Loader2 size={13} /> : <GitMerge size={13} />}Merge…
+        {isMergePending ? <Loader2 size={13} /> : <GitMerge size={13} />}
+        <span className="pr-merge-label-full">{mergeLabel}</span>
+        <span className="pr-merge-label-compact" aria-hidden="true">Merge</span>
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

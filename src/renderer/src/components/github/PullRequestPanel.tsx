@@ -1,5 +1,8 @@
 import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
+import { PanelResizeHandle } from '../ui/panelResize';
+import type { usePanelResize } from '../ui/usePanelResize';
 
 /** A non-modal inspector. Keep it mounted so closing it preserves drafts and scroll. */
 export function PullRequestPanel({
@@ -7,12 +10,14 @@ export function PullRequestPanel({
   labelledBy,
   className = '',
   children,
+  resize,
   onClose
 }: {
   open: boolean;
   labelledBy: string;
   className?: string;
   children: ReactNode;
+  resize?: ReturnType<typeof usePanelResize>;
   onClose: () => void;
 }): ReactElement {
   const panelRef = useRef<HTMLElement>(null);
@@ -29,8 +34,9 @@ export function PullRequestPanel({
 
   return (
     <aside
-      ref={panelRef}
+      ref={(node) => { panelRef.current = node; resize?.attachPanel(node); }}
       className={`pr-side-panel ${className}`}
+      style={resize ? { '--pr-panel-width': `${resize.width}px` } as CSSProperties : undefined}
       hidden={!open}
       aria-labelledby={labelledBy}
       tabIndex={-1}
@@ -42,6 +48,7 @@ export function PullRequestPanel({
         }
       }}
     >
+      {resize ? <PanelResizeHandle resize={resize} label="pull request details" /> : null}
       {children}
     </aside>
   );

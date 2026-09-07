@@ -42,7 +42,8 @@ const MAX_REVIEW_FILE_PATTERNS = 100;
 export function createReviewPresentation(
   plan: GitReviewPlan,
   preferences: ReviewPreferences,
-  reviewedChunkIds: ReadonlySet<string>
+  reviewedChunkIds: ReadonlySet<string>,
+  revealedFilePath?: string
 ): ReviewPresentation {
   let viewedCount = 0;
   let skippedCount = 0;
@@ -60,7 +61,7 @@ export function createReviewPresentation(
     for (const chunk of unit.chunks) {
       totalCount += 1;
 
-      if (isChunkSkipped(chunk, preferences, filePatternMatchers)) {
+      if (chunk.path !== revealedFilePath && isChunkSkipped(chunk, preferences, filePatternMatchers)) {
         skippedCount += 1;
         unitSkippedCount += 1;
         continue;

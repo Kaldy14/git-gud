@@ -1,8 +1,6 @@
 import type {
-  CSSProperties,
   FormEvent,
   KeyboardEvent,
-  PointerEvent as ReactPointerEvent,
   ReactElement,
   ReactNode
 } from 'react';
@@ -23,8 +21,6 @@ import type {
   SelectedLineRange
 } from '@pierre/diffs';
 import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
-import { prepareFileTreeInput } from '@pierre/trees';
-import { FileTree, useFileTree } from '@pierre/trees/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -38,7 +34,6 @@ import {
   EyeOff,
   FileCode2,
   FileCog,
-  FolderTree,
   GitBranch,
   Loader2,
   MessageSquare,
@@ -117,17 +112,10 @@ import {
   setReviewTypeDefinitionHoverAvailable
 } from './reviewTypeDefinitionInteraction';
 import {
-  createReviewFileTreeEntries,
-  DEFAULT_REVIEW_FILE_TREE_WIDTH,
   findAdjacentReviewFilePath,
   findReviewUnitIdForPath,
   loadReviewFileTreeOpen,
-  loadReviewFileTreeWidth,
-  MAX_REVIEW_FILE_TREE_WIDTH,
-  MIN_REVIEW_FILE_TREE_WIDTH,
-  normalizeReviewFileTreeWidth,
-  saveReviewFileTreeOpen,
-  saveReviewFileTreeWidth
+  saveReviewFileTreeOpen
 } from './reviewFileTree';
 import { rankReviewUnitsByGuide } from './reviewGuidePresentation';
 import {
@@ -135,10 +123,10 @@ import {
   normalizeReviewLineSelection
 } from './reviewLineSelection';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
-import {
-  ReviewFilePathContextMenu,
-  ReviewFileTreePathContextMenu
-} from './ReviewFilePathContextMenu';
+import { ReviewFilePathContextMenu } from './ReviewFilePathContextMenu';
+import { ReviewFileTree } from './ReviewFilesPanel';
+import { PanelExpandButton, PanelResizeHandle } from '../ui/panelResize';
+import { usePanelResize } from '../ui/usePanelResize';
 import {
   createReviewSearchResults,
   normalizeReviewSearchSelection,
@@ -181,6 +169,7 @@ type ReviewViewProps = {
   closeLabel?: string;
   showCloseButton?: boolean;
   layout?: 'standard' | 'pull-request';
+  fileTreePanel?: { open: boolean; onClose: () => void };
   initialViewState?: ReviewViewState;
   onViewStateChange?: (state: ReviewViewState) => void;
 };
@@ -335,6 +324,7 @@ export function ReviewView({
   closeLabel = 'Close review',
   showCloseButton = true,
   layout = 'standard',
+  fileTreePanel,
   initialViewState,
   onViewStateChange
 }: ReviewViewProps): ReactElement {
@@ -348,6 +338,7 @@ export function ReviewView({
       : loadReviewPreferences(window.localStorage, repoPath)
   );
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
+  const [revealedFilePath, setRevealedFilePath] = useState<string>();
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
@@ -450,9 +441,15 @@ export function ReviewView({
         : { status: 'idle', sourceFingerprint: reviewPlan.sourceFingerprint }
       : undefined;
   const basePresentation = useMemo(
-    () => reviewPlan ? createReviewPresentation(reviewPlan, preferences, reviewedChunkIds) : undefined,
-    [preferences, reviewPlan, reviewedChunkIds]
+    () => reviewPlan ? createReviewPresentation(reviewPlan, preferences, reviewedChunkIds, revealedFilePath) : undefined,
+    [preferences, reviewPlan, reviewedChunkIds, revealedFilePath]
   );
+  const allFileUnits = useMemo(() => reviewPlan?.units.map((unit) => ({
+    unit,
+    visibleChunks: unit.chunks,
+    skippedCount: 0,
+    isViewed: unit.chunks.every((chunk) => reviewedChunkIds.has(chunk.id))
+  })) ?? [], [reviewPlan, reviewedChunkIds]);
   const reviewGuide =
     currentReviewGuideState?.status === 'ready'
       ? currentReviewGuideState.guide
@@ -767,6 +764,7 @@ export function ReviewView({
       return;
     }
     setPreferences(next);
+    setRevealedFilePath(undefined);
     saveReviewPreferences(window.localStorage, repoPath, next);
   }
 
@@ -821,6 +819,7 @@ export function ReviewView({
       scrollTop === undefined ? undefined : { scrollTop, unitId }
     );
     setSelectedUnitId(unitId);
+    if (reason === 'unit') setRevealedFilePath(undefined);
   }
 
   function openReviewSearch(selection = ''): void {
@@ -921,6 +920,7 @@ export function ReviewView({
   }
 
   function selectFile(path: string | undefined): void {
+    if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
     setRequestedFilePath(path);
 
     if (!path) {
@@ -936,6 +936,17 @@ export function ReviewView({
     if (unitId) {
       selectReviewUnit(unitId, 'file');
     }
+  }
+
+  function selectAllFile(path: string | undefined): void {
+    if (!path || selectedCommentTarget !== undefined || commentMutation.isPending) return;
+    const unitId = findReviewUnitIdForPath(allFileUnits, path);
+    if (!unitId) return;
+    // Reveal this file only. Saved review filters continue to apply to every other file.
+    setRevealedFilePath(path);
+    setRequestedFilePath(path);
+    setFileNavigationSignal((signal) => signal + 1);
+    selectReviewUnit(unitId, 'file');
   }
 
   function navigateFiles(direction: -1 | 1): void {
@@ -1447,6 +1458,9 @@ export function ReviewView({
         reviewGuide={reviewGuide}
         reviewGuideUnits={reviewGuideUnits}
         isFileTreeOpen={isFileTreeOpen}
+        fileTreePanel={fileTreePanel}
+        allFileUnits={allFileUnits}
+        onSelectAllFile={selectAllFile}
         selectedFilePath={selectedFilePath}
         restoredScrollTop={
           selectedUnit &&
@@ -1842,6 +1856,9 @@ function ReviewBody({
   reviewGuide,
   reviewGuideUnits,
   isFileTreeOpen,
+  fileTreePanel,
+  allFileUnits,
+  onSelectAllFile,
   selectedFilePath,
   restoredScrollTop,
   fileNavigationSignal,
@@ -1874,6 +1891,9 @@ function ReviewBody({
   reviewGuide?: GitReviewGuide;
   reviewGuideUnits: ReadonlyMap<string, GitReviewGuideUnit>;
   isFileTreeOpen: boolean;
+  fileTreePanel?: ReviewViewProps['fileTreePanel'];
+  allFileUnits: VisibleReviewUnit[];
+  onSelectAllFile: (path: string | undefined) => void;
   selectedFilePath?: string;
   restoredScrollTop?: number;
   fileNavigationSignal: number;
@@ -1888,6 +1908,15 @@ function ReviewBody({
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
   const reviewQueueRef = useRef<HTMLElement>(null);
+  const queueResize = usePanelResize({
+    storageKey: `git-gud:review-queue-width:v1:${encodeURIComponent(repoPath)}`,
+    defaultWidth: 280,
+    expandedWidth: 410,
+    minWidth: 220,
+    maxWidth: 640,
+    minRemainingWidth: compact && fileTreePanel?.open ? 600 : 360,
+    edge: 'right'
+  });
   const renderedLocationRef = useRef<{
     fileNavigationSignal: number;
     filePath?: string;
@@ -2013,15 +2042,17 @@ function ReviewBody({
 
   return (
     <div className="review-layout">
-      <nav ref={reviewQueueRef} className="review-queue" data-nested={compact} aria-label="Context review units">
+      <nav ref={(node) => { reviewQueueRef.current = node; queueResize.attachPanel(node); }} className="review-queue" style={compact ? { width: queueResize.width, flexBasis: queueResize.width } : undefined} data-nested={compact} aria-label="Context review units">
         {compact ? (
           <header className="review-block-progress">
             <strong>Blocks</strong>
             <span>
               {units.filter((unit) => unit.isViewed).length} / {units.length} viewed
             </span>
+            <PanelExpandButton resize={queueResize} label="review sidebar" />
           </header>
         ) : null}
+        {compact ? <PanelResizeHandle resize={queueResize} label="review sidebar" /> : null}
         <div className="review-queue-items">
           {reviewSearch ? (
             <button
@@ -2291,7 +2322,18 @@ function ReviewBody({
           ) : null)}
       </div>
 
-      {!compact && isFileTreeOpen ? (
+      {compact && fileTreePanel ? (
+        <ReviewFileTree
+          allFiles
+          minRemainingWidth={queueResize.width + 360}
+          hidden={!fileTreePanel.open}
+          repoPath={repoPath}
+          units={allFileUnits}
+          selectedPath={selectedFilePath}
+          onSelectPath={onSelectAllFile}
+          onClose={fileTreePanel.onClose}
+        />
+      ) : !compact && isFileTreeOpen ? (
         <ReviewFileTree
           key={repoPath}
           repoPath={repoPath}
@@ -2659,284 +2701,6 @@ function formatReviewBlockSize(unit: VisibleReviewUnit): string {
   const files = new Set(unit.visibleChunks.map((chunk) => chunk.path)).size;
   const changes = unit.visibleChunks.length;
   return `${files} ${files === 1 ? 'file' : 'files'} · ${changes} ${changes === 1 ? 'change' : 'changes'}`;
-}
-
-function ReviewFileTree({
-  embedded = false,
-  repoPath,
-  units,
-  selectedPath,
-  onSelectPath
-}: {
-  embedded?: boolean;
-  repoPath: string;
-  units: VisibleReviewUnit[];
-  selectedPath?: string;
-  onSelectPath: (path: string | undefined) => void;
-}): ReactElement {
-  const isSyncingSelectionRef = useRef(false);
-  const onSelectPathRef = useRef(onSelectPath);
-  const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(
-    undefined
-  );
-  const [width, setWidth] = useState(() => loadReviewFileTreeWidth(window.localStorage, repoPath));
-  const [isResizing, setIsResizing] = useState(false);
-  const entries = useMemo(() => createReviewFileTreeEntries(units), [units]);
-  const paths = useMemo(() => entries.map((entry) => entry.path), [entries]);
-  const pathSet = useMemo(() => new Set(paths), [paths]);
-  const pathSetRef = useRef(pathSet);
-  const preparedInput = useMemo(
-    () => prepareFileTreeInput(paths, { flattenEmptyDirectories: true }),
-    [paths]
-  );
-
-  useEffect(() => {
-    onSelectPathRef.current = onSelectPath;
-    pathSetRef.current = pathSet;
-  }, [onSelectPath, pathSet]);
-
-  const { model } = useFileTree({
-    preparedInput,
-    gitStatus: entries,
-    initialExpansion: 'open',
-    initialSelectedPaths: selectedPath ? [selectedPath] : [],
-    onSelectionChange(selectedPaths) {
-      if (isSyncingSelectionRef.current) {
-        return;
-      }
-
-      onSelectPathRef.current(selectedPaths.find((path) => pathSetRef.current.has(path)));
-    },
-    search: false,
-    unsafeCSS: `
-      :host {
-        --trees-selected-bg-override: var(--select-bg);
-        --trees-border-color-override: var(--border);
-        --trees-fg-override: var(--text-2);
-        --trees-muted-fg-override: var(--text-3);
-        --trees-bg-override: transparent;
-        --trees-hover-bg-override: var(--bg-hover);
-        --trees-padding-inline-override: 2px;
-        --trees-item-padding-x-override: 2px;
-        font-size: 12px;
-      }
-      ${
-        embedded
-          ? `
-        [data-file-tree-virtualized-wrapper], [data-file-tree-virtualized-root] { height: auto; }
-        [data-file-tree-virtualized-scroll] { flex: none; max-height: clamp(150px, calc(100vh - 500px), 360px); }
-        [data-file-tree-virtualized-list] { min-height: 0; }
-      `
-          : ''
-      }
-    `
-  });
-
-  useEffect(() => {
-    if (!isResizing) {
-      return;
-    }
-
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    function handlePointerMove(event: PointerEvent): void {
-      const state = resizeStateRef.current;
-
-      if (!state) {
-        return;
-      }
-
-      const nextWidth = normalizeReviewFileTreeWidth(
-        state.startWidth + state.startX - event.clientX
-      );
-      state.width = nextWidth;
-      setWidth(nextWidth);
-    }
-
-    function stopResize(): void {
-      const nextWidth = resizeStateRef.current?.width;
-      resizeStateRef.current = undefined;
-      setIsResizing(false);
-
-      if (typeof nextWidth === 'number') {
-        saveReviewFileTreeWidth(window.localStorage, repoPath, nextWidth);
-      }
-    }
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', stopResize);
-    window.addEventListener('pointercancel', stopResize);
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', stopResize);
-      window.removeEventListener('pointercancel', stopResize);
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-    };
-  }, [isResizing, repoPath]);
-
-  useEffect(() => {
-    const selectedPaths = model.getSelectedPaths();
-    const currentSelectedPath = selectedPaths.find((path) => pathSet.has(path));
-
-    if (currentSelectedPath === selectedPath && selectedPaths.length <= (selectedPath ? 1 : 0)) {
-      return;
-    }
-
-    isSyncingSelectionRef.current = true;
-
-    try {
-      for (const path of selectedPaths) {
-        if (path !== selectedPath) {
-          model.getItem(path)?.deselect();
-        }
-      }
-
-      if (selectedPath && pathSet.has(selectedPath)) {
-        const selectedItem = model.getItem(selectedPath);
-
-        if (!selectedItem?.isSelected()) {
-          selectedItem?.select();
-        }
-
-        model.scrollToPath(selectedPath, { focus: false });
-      }
-    } finally {
-      isSyncingSelectionRef.current = false;
-    }
-  }, [model, pathSet, selectedPath]);
-
-  function handleResizeStart(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.focus();
-    resizeStateRef.current = {
-      startX: event.clientX,
-      startWidth: width,
-      width
-    };
-    setIsResizing(true);
-  }
-
-  function resizeAndSave(nextWidth: number): void {
-    const normalizedWidth = normalizeReviewFileTreeWidth(nextWidth);
-    setWidth(normalizedWidth);
-    saveReviewFileTreeWidth(window.localStorage, repoPath, normalizedWidth);
-  }
-
-  const panelStyle: CSSProperties & Record<'--review-file-tree-width', string> = {
-    '--review-file-tree-width': `${width}px`
-  };
-
-  return (
-    <aside
-      className="review-file-tree-panel"
-      data-embedded={embedded}
-      style={embedded ? undefined : panelStyle}
-      aria-label="Review files"
-    >
-      {!embedded ? (
-        <ReviewFileTreeResizeHandle
-          width={width}
-          isActive={isResizing}
-          onPointerDown={handleResizeStart}
-          onResize={resizeAndSave}
-        />
-      ) : null}
-      {!embedded ? (
-        <header>
-          <span>
-            <FolderTree size={13} />
-            Files
-            <span className="badge-mini">{entries.length}</span>
-          </span>
-        </header>
-      ) : null}
-      <div className="review-file-tree-body">
-        <FileTree
-          className="review-file-tree"
-          model={model}
-          onClickCapture={(event) => {
-            const selectedItem = event.nativeEvent
-              .composedPath()
-              .find(
-                (target): target is HTMLElement =>
-                  target instanceof HTMLElement &&
-                  target.dataset.itemType === 'file' &&
-                  target.dataset.itemPath !== undefined
-              );
-            const path = selectedItem?.dataset.itemPath;
-
-            if (path && pathSet.has(path) && model.getItem(path)?.isSelected()) {
-              onSelectPath(path);
-            }
-          }}
-          renderContextMenu={(item, context) => (
-            <ReviewFileTreePathContextMenu item={item} context={context} />
-          )}
-        />
-      </div>
-    </aside>
-  );
-}
-
-function ReviewFileTreeResizeHandle({
-  width,
-  isActive,
-  onPointerDown,
-  onResize
-}: {
-  width: number;
-  isActive: boolean;
-  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onResize: (width: number) => void;
-}): ReactElement {
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    const step = event.shiftKey ? 48 : 16;
-
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      onResize(width + step);
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      onResize(width - step);
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      onResize(MIN_REVIEW_FILE_TREE_WIDTH);
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      onResize(MAX_REVIEW_FILE_TREE_WIDTH);
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      onResize(DEFAULT_REVIEW_FILE_TREE_WIDTH);
-    }
-  }
-
-  return (
-    <div
-      className="review-file-tree-resizer"
-      role="separator"
-      tabIndex={0}
-      aria-label="Resize review file tree"
-      aria-orientation="vertical"
-      aria-valuemin={MIN_REVIEW_FILE_TREE_WIDTH}
-      aria-valuemax={MAX_REVIEW_FILE_TREE_WIDTH}
-      aria-valuenow={width}
-      data-active={isActive ? 'true' : undefined}
-      title="Drag to resize. Double-click to reset."
-      onPointerDown={onPointerDown}
-      onDoubleClick={() => onResize(DEFAULT_REVIEW_FILE_TREE_WIDTH)}
-      onKeyDown={handleKeyDown}
-    />
-  );
 }
 
 function ReviewFile({

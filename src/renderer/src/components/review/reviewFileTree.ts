@@ -8,6 +8,18 @@ export type ReviewFileTreeEntry = GitStatusEntry & {
   path: string;
 };
 
+/** Only strip complete shared directories; selection still uses repository paths. */
+export function reviewFileTreeCommonDirectory(paths: readonly string[]): string {
+  const directories = paths.map((path) => path.split('/').slice(0, -1));
+  const common = [...(directories[0] ?? [])];
+  for (const directory of directories.slice(1)) {
+    let length = 0;
+    while (length < common.length && common[length] === directory[length]) length += 1;
+    common.length = length;
+  }
+  return common.length ? `${common.join('/')}/` : '';
+}
+
 const REVIEW_FILE_TREE_STORAGE_PREFIX = 'git-gud:review-file-tree:v1:';
 const REVIEW_FILE_TREE_WIDTH_STORAGE_PREFIX = 'git-gud:review-file-tree-width:v1:';
 

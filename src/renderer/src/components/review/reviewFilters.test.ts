@@ -11,6 +11,18 @@ import {
 } from './reviewFilters';
 
 describe('review filters and progress', () => {
+  it('reveals a selected filtered file without revealing other files or changing preferences', () => {
+    const selected = chunk('test', 'added', 'code', 'src/selected.test.ts');
+    const other = chunk('test', 'added', 'code', 'src/other.test.ts');
+    const plan = reviewPlan([unit('selected tests', [selected]), unit('other tests', [other])]);
+    const preferences = { ...DEFAULT_REVIEW_PREFERENCES };
+    const presentation = createReviewPresentation(plan, preferences, new Set(), selected.path);
+
+    expect(presentation.units.map((entry) => entry.unit.id)).toEqual(['selected tests']);
+    expect(presentation).toMatchObject({ totalCount: 2, skippedCount: 1, pendingCount: 1, viewedCount: 0 });
+    expect(preferences).toEqual(DEFAULT_REVIEW_PREFERENCES);
+    expect(createReviewPresentation(plan, preferences, new Set()).units).toEqual([]);
+  });
   it('skips tests by default without counting them as viewed', () => {
     const plan = reviewPlan([
       unit('timeout', [chunk('source', 'modified'), chunk('test', 'modified')]),
