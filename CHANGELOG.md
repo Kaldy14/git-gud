@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.2] - 2026-09-07
+
+### Changed
+
+- Reworked the AI guide into a whole-PR walkthrough with Back and Next block, short context that stays visible, and links to relevant code. Inline explanations appear where useful without filling every block with commentary.
+- Added independent Focus, Review, and Skim rankings for blocks and files. Apply AI order when ready; guide navigation leaves viewed progress unchanged.
+- Switched AI guide and commit-message generation to GPT-6 Astra with medium thinking.
+- Made review sidebars expandable and added all-files navigation, including access to files hidden by review filters. Removed search from the review file tree.
+
+### Fixed
+
+- Kept the current guide, selection, and applied order available during rebuilding. Updated ordering waits for explicit application, and source changes invalidate stale guidance.
+- Kept guide links within visible added lines and canceled old code jumps and highlights when navigating to another block or opening search.
+
 ## [2026.9.1] - 2026-09-07
 
 ### Changed
