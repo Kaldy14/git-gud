@@ -6,9 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.1] - 2026-09-07
+
+### Changed
+
+- Reworked the pull-request inbox into a compact queue with search, review-request and author scopes, repository filters, and groups ordered by the next action.
+- Gave pull-request reviews more vertical code space with a 40px command bar and a shared sidebar for review blocks, file structure, and progress. The selected file follows code scrolling, and Viewed & next keeps the review moving.
+- Moved pull-request details, comments, review submission, and merge confirmation into hideable side panels. Panels preserve drafts when closed and overlay the code on smaller windows.
+- Reduced repository tab favicons to 16px.
+
 ### Added
 
+- Added a pull-request image gallery for attachments in descriptions, comments, and review summaries.
+- Added a reviewer picker to request or remove reviewers, with an Add reviewer action when nobody is assigned.
 - Added a branch context-menu action that pushes the branch, creates the suggested version tag, and then pushes that tag in order.
+
+### Fixed
+
+- Added explicit Retry actions for repository and commit-detail loading errors, separate from dismissing operation errors.
+- Clarified staged and unstaged empty states and added Stage all when changes are available to include in the next commit.
 
 ## [2026.8.18] - 2026-08-31
 
