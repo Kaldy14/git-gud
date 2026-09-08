@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.6] - 2026-09-08
+
+### Changed
+
+- Replaced bouncing AI guide status dots with fixed dots and synchronized progress rings, including guides that start later. Respects reduced motion preferences.
+- Added hover and keyboard-focus tooltips explaining AI guide status and available actions.
+
 ## [2026.9.5] - 2026-09-08
 
 ### Added

@@ -932,14 +932,33 @@
 .pr-row-guide[data-status='stale'] .pr-row-guide-dot,
 .pr-row-guide[data-status='running'] .pr-row-guide-dot { background: var(--warning-text); border-color: var(--warning-text); }
 .pr-row-guide[data-status='failed'] .pr-row-guide-dot { background: var(--danger-text); border-color: var(--danger-text); }
-/* Four discrete positions keep activity visible without repainting a spinner every frame. */
-.pr-row-guide[data-status='running'] .pr-row-guide-dot { animation: pr-guide-working 1.6s steps(1, end) infinite; }
+/* Advance the ring at a low cadence; the status dot stays fixed and fully visible. */
+.pr-row-guide[data-status='running'] .pr-row-guide-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 1px solid transparent;
+  border-top-color: var(--warning-text);
+  border-right-color: var(--warning-text);
+  border-radius: 50%;
+  animation: pr-guide-working 2.4s steps(8, end) infinite;
+}
 @keyframes pr-guide-working {
-  0%, 100% { transform: translateY(0); }
-  25% { transform: translateY(-2px); }
-  50% { transform: translateY(-4px); }
-  75% { transform: translateY(-2px); }
+  to { transform: rotate(360deg); }
+}
+.pr-row-guide-tooltip {
+  z-index: 100;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  color: var(--text-1);
+  box-shadow: 0 4px 12px #0003;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
-  .pr-row-guide[data-status='running'] .pr-row-guide-dot { animation: none; }
+  .pr-row-guide[data-status='running'] .pr-row-guide-dot::after { animation: none; }
 }

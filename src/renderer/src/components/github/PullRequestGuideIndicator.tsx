@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen } from 'lucide-react';
+import { Tooltip } from 'radix-ui';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
 
@@ -52,24 +53,43 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
             : 'No AI guide yet. Generate in the background';
 
   return (
-    <button
-      className="pr-row-guide"
-      type="button"
-      data-status={status}
-      title={label}
-      aria-label={label}
-      aria-disabled={status === 'running' || status === 'loading'}
-      aria-busy={status === 'running'}
-      onClick={(event) => {
-        event.stopPropagation();
-        if (status === 'running' || status === 'loading') return;
-        if (status === 'ready') onOpen();
-        else if (query.isError) void query.refetch();
-        else generation.mutate();
-      }}
-    >
-      <BookOpen size={14} aria-hidden="true" />
-      <span className="pr-row-guide-dot" aria-hidden="true" />
-    </button>
+    <Tooltip.Provider delayDuration={350}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <button
+            className="pr-row-guide"
+            type="button"
+            data-status={status}
+            aria-label={label}
+            aria-disabled={status === 'running' || status === 'loading'}
+            aria-busy={status === 'running'}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (status === 'running' || status === 'loading') return;
+              if (status === 'ready') onOpen();
+              else if (query.isError) void query.refetch();
+              else generation.mutate();
+            }}
+          >
+            <BookOpen size={14} aria-hidden="true" />
+            <span
+              className="pr-row-guide-dot"
+              aria-hidden="true"
+              onAnimationStart={(event) => {
+                // Share the document timeline, including late rows and motion preference changes.
+                for (const animation of event.currentTarget.getAnimations({ subtree: true })) {
+                  animation.startTime = 0;
+                }
+              }}
+            />
+          </button>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content className="pr-row-guide-tooltip" side="top" sideOffset={8} collisionPadding={12}>
+            {label}
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
   );
 }
