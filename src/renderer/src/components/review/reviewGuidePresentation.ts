@@ -1,8 +1,33 @@
-import { reviewGuidePatchAddsLine } from '@shared/reviewGuide';
+import { reviewGuidePatchChangesLine } from '@shared/reviewGuide';
 import type { VisibleReviewUnit } from './reviewFilters';
-import type { GitReviewGuide, GitReviewGuideFile, GitReviewGuidePriority, GitReviewGuideUnit } from '@shared/types';
+import type { GitReviewGuide, GitReviewGuideFile, GitReviewGuidePriority, GitReviewGuideUnit, GitReviewPlan, GitReviewGuideSummary } from '@shared/types';
 
 const priorityOrder: Record<GitReviewGuidePriority, number> = { focus: 0, review: 1, skim: 2 };
+
+// This is a presentation-only plan. Progress continues to use the original chunk IDs.
+export function createReviewGuidePlan(plan: GitReviewPlan, guide: GitReviewGuide | undefined): GitReviewPlan {
+  if (!guide || guide.sourceFingerprint !== plan.sourceFingerprint || guide.targetKey !== plan.targetKey) return plan;
+  const originals = new Map(plan.units.map((unit) => [unit.id, unit]));
+  const assigned = guide.units.flatMap((layer) => layer.sourceUnitIds ?? [layer.unitId]);
+  if (assigned.length !== originals.size || new Set(assigned).size !== originals.size || assigned.some((id) => !originals.has(id))) return plan;
+  return { ...plan, units: guide.units.map((layer) => {
+    const sources = (layer.sourceUnitIds ?? [layer.unitId]).map((id) => originals.get(id)!);
+    return { ...sources[0]!, id: layer.unitId, title: layer.title || sources[0]!.title,
+      explanation: layer.why || sources[0]!.explanation, chunks: sources.flatMap((source) => source.chunks) };
+  }) };
+}
+
+export function guideSummaries(layer: GitReviewGuideUnit | undefined): GitReviewGuideSummary[] {
+  if (!layer) return [];
+  // Older cached guides have only inline explanations; do not invent complexity for them.
+  const order = { high: 0, medium: 1, low: 2 };
+  return [...(layer.summaries ?? [])].sort((a, b) => order[a.complexity] - order[b.complexity]);
+}
+
+export function summaryIsVisible(summary: GitReviewGuideSummary, unit: VisibleReviewUnit | undefined): boolean {
+  return Boolean(unit?.visibleChunks.some((chunk) => chunk.path === summary.path &&
+    reviewGuidePatchChangesLine(chunk.patch, summary.line, summary.side)));
+}
 
 export function reviewGuideFileLabel(path: string, files: readonly { path: string }[]): string {
   const parts = path.split('/');
@@ -56,7 +81,7 @@ export function visibleReviewGuideFiles(unit: VisibleReviewUnit | undefined, gui
     const line = file.line;
     // Filters can hide the suggested hunk while leaving other hunks of this file visible.
     return [{ ...file, line: line && unit.visibleChunks.some((chunk) =>
-      chunk.path === path && reviewGuidePatchAddsLine(chunk.patch, line)
+      chunk.path === path && reviewGuidePatchChangesLine(chunk.patch, line, file.side ?? 'right')
     ) ? line : undefined }];
   });
 }

@@ -10,7 +10,7 @@ describe('ReviewView AI guide failures', () => {
     );
 
     expect(markup).toContain('role="alert"');
-    expect(markup).toContain('AI guide failed');
+    expect(markup).toContain('AI brief failed');
     expect(markup).toContain('Pi could not be found in the app environment.');
   });
 });

@@ -65,6 +65,7 @@ import {
 } from '@renderer/components/ui/dropdown-menu';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import { reviewPlanQueryKey, useAgentNotes, useReviewPlan } from '@renderer/queries/repository';
+import { reviewGuidePatchChangesLine } from '@shared/reviewGuide';
 import type {
   DiffSyntaxTheme,
   GitAgentNote,
@@ -117,8 +118,9 @@ import {
   loadReviewFileTreeOpen,
   saveReviewFileTreeOpen
 } from './reviewFileTree';
-import { rankReviewChunksByGuide, rankReviewUnitsByGuide, visibleReviewGuideFiles } from './reviewGuidePresentation';
-import { ReviewGuidePanel, ReviewGuidePriority } from './ReviewGuidePanel';
+import { createReviewGuidePlan, rankReviewChunksByGuide, visibleReviewGuideFiles } from './reviewGuidePresentation';
+import { createReviewGuideFindings, type ReviewGuideFinding } from './reviewGuideFindings';
+import { ReviewGuidePanel, ReviewGuidePriority, ReviewFindingDot, ReviewLayerTooltip } from './ReviewGuidePanel';
 import {
   createReviewLineSelectionOptions,
   normalizeReviewLineSelection
@@ -188,6 +190,9 @@ export type ReviewLineComment = {
   inReplyToId?: string | number;
   isDraft?: boolean;
   canEdit?: boolean;
+  isResolved?: boolean;
+  isOutdated?: boolean;
+  url?: string;
 };
 
 export type ReviewLineCommentInput = {
@@ -219,13 +224,10 @@ type ReviewDiffAnnotation =
   | { kind: 'guide-note'; note: GitReviewGuideNote }
   | { kind: 'agent-note'; note: GitAgentNote; hidden: boolean };
 
+const NO_GUIDE_FINDINGS: readonly ReviewGuideFinding[] = [];
+
 const NO_GUIDE_NOTES: readonly GitReviewGuideNote[] = [];
 
-type ReviewGuideOrder = {
-  guide: GitReviewGuide;
-  ranked: boolean;
-  anchor?: { path: string; offset: number };
-};
 
 const NO_AGENT_NOTES: readonly GitAgentNote[] = [];
 const NO_HIDDEN_AGENT_NOTE_IDS: ReadonlySet<string> = new Set();
@@ -398,7 +400,6 @@ export function ReviewView({
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [previousGuide, setPreviousGuide] = useState<GitReviewGuide>();
-  const [guideOrder, setGuideOrder] = useState<ReviewGuideOrder>();
   const [typeDefinitionPreview, setTypeDefinitionPreview] = useState<ReviewTypeDefinitionPreview>();
   const typeDefinitionRequestRef = useRef(0);
   const typeDefinitionHoverRef = useRef<ReviewTypeDefinitionHoverTarget | undefined>(undefined);
@@ -457,36 +458,28 @@ export function ReviewView({
     () => reviewPlan ? createReviewPresentation(reviewPlan, preferences, reviewedChunkIds, revealedFilePath) : undefined,
     [preferences, reviewPlan, reviewedChunkIds, revealedFilePath]
   );
-  const allFileUnits = useMemo(() => reviewPlan?.units.map((unit) => ({
-    unit,
-    visibleChunks: unit.chunks,
-    skippedCount: 0,
-    isViewed: unit.chunks.every((chunk) => reviewedChunkIds.has(chunk.id))
-  })) ?? [], [reviewPlan, reviewedChunkIds]);
-  const reviewGuide =
+  const generatedReviewGuide =
     currentReviewGuideState?.status === 'ready'
       ? currentReviewGuideState.guide
       : previousGuide?.sourceFingerprint === reviewPlan?.sourceFingerprint ? previousGuide : undefined;
-  const activeGuideOrder = guideOrder?.guide.sourceFingerprint === reviewPlan?.sourceFingerprint ? guideOrder : undefined;
-  const isGuideRanked = Boolean(activeGuideOrder?.ranked);
-  const orderGuide = activeGuideOrder?.guide;
+  const reviewGuide = isGuideOpen && generatedReviewGuide?.sourceFingerprint === reviewPlan?.sourceFingerprint &&
+    generatedReviewGuide?.targetKey === reviewPlan?.targetKey ? generatedReviewGuide : undefined;
+  const guidePlan = useMemo(() => reviewPlan ? createReviewGuidePlan(reviewPlan, reviewGuide) : undefined,
+    [reviewPlan, reviewGuide]);
+  const isGuideRanked = Boolean(reviewGuide);
+  const allFileUnits = useMemo(() => guidePlan?.units.map((unit) => ({
+    unit, visibleChunks: unit.chunks, skippedCount: 0,
+    isViewed: unit.chunks.every((chunk) => reviewedChunkIds.has(chunk.id))
+  })) ?? [], [guidePlan, reviewedChunkIds]);
   const reviewGuideUnits = useMemo(
-    () => new Map(reviewGuide?.units.map((unit) => [unit.unitId, unit]) ?? []),
-    [reviewGuide]
-  );
-  const presentation = useMemo(
-    () => basePresentation && isGuideRanked
-      ? {
-          ...basePresentation,
-          units: rankReviewUnitsByGuide(basePresentation.units, orderGuide, reviewPlan?.sourceFingerprint)
-            .map((unit) => ({
-              ...unit,
-              visibleChunks: rankReviewChunksByGuide(unit.visibleChunks, orderGuide?.units.find((item) => item.unitId === unit.unit.id))
-            }))
-        }
-      : basePresentation,
-    [basePresentation, isGuideRanked, orderGuide, reviewPlan?.sourceFingerprint]
-  );
+    () => new Map(reviewGuide?.units.map((unit) => [unit.unitId, unit]) ?? []), [reviewGuide]);
+  const presentation = useMemo(() => {
+    if (!guidePlan || !reviewGuide) return basePresentation;
+    const layered = createReviewPresentation(guidePlan, preferences, reviewedChunkIds, revealedFilePath);
+    return { ...layered, units: layered.units.map((unit) => ({ ...unit,
+      visibleChunks: rankReviewChunksByGuide(unit.visibleChunks, reviewGuideUnits.get(unit.unit.id))
+    })) };
+  }, [basePresentation, guidePlan, reviewGuide, preferences, reviewedChunkIds, revealedFilePath, reviewGuideUnits]);
   const activeFilterCount = [
     preferences.skipTests,
     preferences.skipImports,
@@ -512,6 +505,7 @@ export function ReviewView({
   );
   const selectedUnit =
     presentation?.units.find((candidate) => candidate.unit.id === selectedUnitId) ??
+    presentation?.units.find((candidate) => reviewGuideUnits.get(candidate.unit.id)?.sourceUnitIds?.includes(selectedUnitId ?? '')) ??
     presentation?.units.find((candidate) => !candidate.isViewed) ??
     presentation?.units[0];
   const selectedFilePath =
@@ -883,20 +877,16 @@ export function ReviewView({
     setActiveReviewSearchLocationIndex(0);
   }
 
-  function setGuideRanked(ranked: boolean): void {
-    if (!reviewGuide || selectedCommentTarget !== undefined || commentMutation.isPending) return;
-    const scroller = sectionRef.current?.querySelector<HTMLElement>('.review-chunks');
-    const file = scroller && [...scroller.querySelectorAll<HTMLElement>('[data-review-path]')]
-      .find((element) => element.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top + 40);
-    // Pin the selection and viewport before changing order; AI finishing never moves either.
-    if (selectedUnit) setSelectedUnitId(selectedUnit.unit.id);
+  function setGuideOpen(open: boolean): void {
+    if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
+    // Return to the original block owning the visible file, not the first member of a merged layer.
+    if (!open && selectedUnit) {
+      const chunk = selectedUnit.visibleChunks.find((item) => item.path === selectedFilePath) ?? selectedUnit.visibleChunks[0];
+      const original = basePresentation?.units.find((unit) => unit.visibleChunks.some((item) => item.id === chunk?.id));
+      if (original) setSelectedUnitId(original.unit.id);
+    }
     if (selectedFilePath) setRequestedFilePath(selectedFilePath);
-    setGuideOrder({
-      guide: reviewGuide, ranked,
-      anchor: file?.dataset.reviewPath && scroller
-        ? { path: file.dataset.reviewPath, offset: file.getBoundingClientRect().top - scroller.getBoundingClientRect().top }
-        : undefined
-    });
+    setIsGuideOpen(open);
   }
 
   function selectGuideUnit(unitId: string): void {
@@ -984,7 +974,7 @@ export function ReviewView({
 
   function selectAllFile(path: string | undefined): void {
     if (!path || selectedCommentTarget !== undefined || commentMutation.isPending) return;
-    const unitId = findReviewUnitIdForPath(allFileUnits, path);
+    const unitId = reviewGuide && selectedUnit?.unit.chunks.some((chunk) => chunk.path === path) ? selectedUnit.unit.id : findReviewUnitIdForPath(allFileUnits, path);
     if (!unitId) return;
     // Reveal this file only. Saved review filters continue to apply to every other file.
     setRevealedFilePath(path);
@@ -1426,7 +1416,7 @@ export function ReviewView({
             <ReviewGuideControl
               state={currentReviewGuideState}
               open={isGuideOpen}
-              onToggle={() => setIsGuideOpen((open) => !open)}
+              onToggle={() => setGuideOpen(!isGuideOpen)}
               onStart={() => void startReviewGuide()}
             />
           ) : null}
@@ -1505,10 +1495,8 @@ export function ReviewView({
         reviewGuideUnits={reviewGuideUnits}
         isGuideOpen={isGuideOpen}
         isGuideRanked={isGuideRanked}
-        guideOrder={activeGuideOrder}
         isGuideRebuilding={currentReviewGuideState?.status === 'running'}
-        onSetGuideRanked={setGuideRanked}
-        onCloseGuide={() => setIsGuideOpen(false)}
+        onCloseGuide={() => setGuideOpen(false)}
         onGuideSelectUnit={selectGuideUnit}
         isFileTreeOpen={isFileTreeOpen}
         fileTreePanel={fileTreePanel}
@@ -1598,7 +1586,7 @@ export function ReviewGuideFailureMessage({
     <div className="review-guide-error" role="alert">
       <AlertTriangle size={14} aria-hidden="true" />
       <span>
-        <strong>AI guide failed.</strong> {errorMessage}
+        <strong>AI brief failed.</strong> {errorMessage}
       </span>
     </div>
   );
@@ -1611,15 +1599,15 @@ function ReviewGuideControl({ state, open, onStart, onToggle }: {
   onToggle: () => void;
 }): ReactElement {
   if (state?.status === 'running') {
-    return <span className="review-guide-control" role="status">Preparing guide…</span>;
+    return <span className="review-guide-control" role="status">Preparing brief…</span>;
   }
   if (state?.status === 'ready') {
     return <button type="button" className="btn-subtle btn-compact" aria-expanded={open}
-      onClick={onToggle}><Sparkles size={12} /> AI guide</button>;
+      onClick={onToggle}><Sparkles size={12} /> AI brief</button>;
   }
   return <button type="button" className="btn-subtle btn-compact" onClick={onStart}
     title={state?.status === 'failed' ? state.errorMessage : undefined}>
-    {state?.status === 'failed' ? 'Retry AI guide' : 'Build AI guide'}
+    {state?.status === 'failed' ? 'Retry AI brief' : 'Build AI brief'}
   </button>;
 }
 
@@ -1754,8 +1742,6 @@ function ReviewBody({
   isGuideOpen,
   isGuideRanked,
   isGuideRebuilding,
-  guideOrder,
-  onSetGuideRanked,
   onCloseGuide,
   onGuideSelectUnit,
   isFileTreeOpen,
@@ -1796,8 +1782,6 @@ function ReviewBody({
   isGuideOpen: boolean;
   isGuideRanked: boolean;
   isGuideRebuilding: boolean;
-  guideOrder?: ReviewGuideOrder;
-  onSetGuideRanked: (ranked: boolean) => void;
   onCloseGuide: () => void;
   onGuideSelectUnit: (unitId: string) => void;
   isFileTreeOpen: boolean;
@@ -1817,8 +1801,11 @@ function ReviewBody({
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
-  const [guideLocation, setGuideLocation] = useState<{ file: GitReviewGuideFile; navigationSignal: number; unitId: string }>();
-  if (guideLocation && (guideLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
+  const [guideLocation, setGuideLocation] = useState<{ file: GitReviewGuideFile; navigationSignal: number; unitId: string; commentId?: string | number }>();
+  const [briefTab, setBriefTab] = useState<'summaries' | 'findings'>('summaries');
+  const guideFindings = useMemo(() => createReviewGuideFindings(reviewGuide ? allFileUnits : [], lineCollaboration?.threads ?? []), [reviewGuide, allFileUnits, lineCollaboration?.threads]);
+  const selectedFindings = guideFindings.get(selectedUnit?.unit.id ?? '') ?? NO_GUIDE_FINDINGS;
+  if (guideLocation && (!reviewGuide || guideLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
     setGuideLocation(undefined);
   }
   const consumedGuideLocation = useRef<typeof guideLocation>(undefined);
@@ -1910,16 +1897,9 @@ function ReviewBody({
     });
   }, [compact, fileNavigationSignal, restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
 
-  useLayoutEffect(() => {
-    const anchor = guideOrder?.anchor;
-    const scroller = reviewChunksRef.current;
-    if (!anchor || !scroller) return;
-    const file = scroller.querySelector<HTMLElement>(`[data-review-path="${CSS.escape(anchor.path)}"]`);
-    if (file) scroller.scrollTop += file.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.offset;
-  }, [guideOrder]);
 
   useEffect(() => {
-    if (!guideLocation?.file.line || guideLocation.navigationSignal !== fileNavigationSignal ||
+    if (!guideLocation || (!guideLocation.file.line && guideLocation.commentId === undefined) || guideLocation.navigationSignal !== fileNavigationSignal ||
       reviewSearch?.isSelected || consumedGuideLocation.current === guideLocation) return;
     consumedGuideLocation.current = guideLocation;
     const location = guideLocation.file;
@@ -1929,9 +1909,14 @@ function ReviewBody({
       const file = reviewChunksRef.current?.querySelector<HTMLElement>(
         `[data-review-path="${CSS.escape(location.path)}"]`
       );
+      const commentSelector = guideLocation.commentId === undefined ? undefined : `[data-review-comment-id="${CSS.escape(String(guideLocation.commentId))}"]`;
+      const comment = commentSelector ? file?.querySelector<HTMLElement>(commentSelector) : undefined;
+      if (comment) { comment.scrollIntoView({ block: 'center' }); return; }
       for (const diff of file?.querySelectorAll('.gg-diff') ?? []) {
+        const shadowComment = commentSelector ? diff.shadowRoot?.querySelector<HTMLElement>(commentSelector) : undefined;
+        if (shadowComment) { shadowComment.scrollIntoView({ block: 'center' }); return; }
         const line = diff.shadowRoot?.querySelector<HTMLElement>(
-          `[data-line="${location.line}"][data-line-type="change-addition"]`
+          `[data-line="${location.line}"][data-line-type="${location.side === 'left' ? 'change-deletion' : 'change-addition'}"]`
         );
         if (line) {
           line.scrollIntoView({ block: 'center' });
@@ -1947,20 +1932,28 @@ function ReviewBody({
     };
   }, [guideLocation, fileNavigationSignal, selectedUnit?.unit.id, reviewSearch?.isSelected, reviewGuide?.sourceFingerprint]);
 
-  function selectGuideFile(file: GitReviewGuideFile): void {
+  function selectGuideFile(file: GitReviewGuideFile, commentId?: string | number): void {
     setCollapsedFileKeys((current) => {
       const next = new Set(current);
-      for (const item of groupReviewFiles(selectedUnit?.visibleChunks ?? [])) {
+      for (const item of groupReviewFiles(selectedUnit?.unit.chunks ?? [])) {
         if (item.chunks[0].path === file.path) next.delete(item.key);
       }
       return next;
     });
-    onSelectFile(file.path);
-    const visibleFile = visibleReviewGuideFiles(selectedUnit, selectedGuideUnit).find((item) => item.path === file.path);
-    // Wait for this file navigation; a subsequent selection cancels the pending jump.
-    setGuideLocation(visibleFile && selectedUnit ? {
-      file: visibleFile, navigationSignal: fileNavigationSignal + 1, unitId: selectedUnit.unit.id
+    const locationVisible = selectedUnit?.visibleChunks.some((chunk) => chunk.path === file.path &&
+      (file.line === undefined || reviewGuidePatchChangesLine(chunk.patch, file.line, file.side ?? 'right')));
+    if (locationVisible) onSelectFile(file.path);
+    else onSelectAllFile(file.path);
+    // Keep the requested range, rather than replacing it with the file's default entry point.
+    setGuideLocation(selectedUnit ? {
+      file, commentId, navigationSignal: fileNavigationSignal + 1, unitId: selectedUnit.unit.id
     } : undefined);
+  }
+
+  function selectGuideFinding(finding: ReviewGuideFinding): void {
+    const { comment } = finding;
+    selectGuideFile({ path: comment.path, line: comment.line, side: comment.side,
+      priority: 'review', reason: 'Review finding' }, comment.id);
   }
 
   function toggleFile(fileKey: string, chunks: readonly GitReviewChunk[]): void {
@@ -2013,7 +2006,7 @@ function ReviewBody({
       <nav ref={(node) => { reviewQueueRef.current = node; queueResize.attachPanel(node); }} className="review-queue" style={compact ? { width: queueResize.width, flexBasis: queueResize.width } : undefined} data-nested={compact} aria-label="Context review units">
         {compact ? (
           <header className="review-block-progress">
-            <strong>Blocks</strong>
+            <strong>{reviewGuide ? <><Sparkles size={12} /> AI layers</> : 'Blocks'}</strong>
             <span>
               {units.filter((unit) => unit.isViewed).length} / {units.length} viewed
             </span>
@@ -2021,6 +2014,7 @@ function ReviewBody({
           </header>
         ) : null}
         {compact ? <PanelResizeHandle resize={queueResize} label="review sidebar" /> : null}
+        {reviewGuide ? <p className="review-ai-layer-overview">{reviewGuide.summary}</p> : null}
         <div className="review-queue-items">
           {reviewSearch ? (
             <button
@@ -2049,6 +2043,8 @@ function ReviewBody({
           ) : null}
           {units.map((candidate, index) => (
             <div className="review-block-entry" key={candidate.unit.id}>
+              <ReviewLayerTooltip enabled={Boolean(reviewGuide)} title={candidate.unit.title} description={candidate.unit.explanation}
+                findings={guideFindings.get(candidate.unit.id) ?? NO_GUIDE_FINDINGS}>
               <button
                 className="review-unit-row"
                 type="button"
@@ -2064,7 +2060,7 @@ function ReviewBody({
                   lineCollaboration?.selectedChunkId !== undefined &&
                   candidate.unit.id !== selectedUnit?.unit.id
                 }
-                onClick={() => onSelectUnit(candidate.unit.id)}
+                onClick={() => { setBriefTab('summaries'); onSelectUnit(candidate.unit.id); }}
               >
                 <span className="review-unit-status" data-viewed={candidate.isViewed}>
                   {candidate.isViewed ? <Check size={12} /> : index + 1}
@@ -2072,7 +2068,7 @@ function ReviewBody({
                 <span className="min-w-0 flex-1 text-left">
                   <span
                     className="block truncate text-xs font-semibold text-[var(--text-1)]"
-                    title={candidate.unit.explanation}
+                    title={reviewGuide ? undefined : candidate.unit.explanation}
                   >
                     {compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title}
                   </span>
@@ -2089,10 +2085,12 @@ function ReviewBody({
                     </span>
                   </span>
                 </span>
+                {reviewGuide ? <ReviewFindingDot findings={guideFindings.get(candidate.unit.id) ?? NO_GUIDE_FINDINGS} /> : null}
                 {!compact ? (
                   <span className="badge-mini">{candidate.visibleChunks.length}</span>
                 ) : null}
               </button>
+              </ReviewLayerTooltip>
               {compact &&
               !reviewSearch?.isSelected &&
               candidate.unit.id === selectedUnit?.unit.id ? (
@@ -2130,7 +2128,7 @@ function ReviewBody({
                 </details>
                 <div className="review-block-position">
                   <span>
-                    Block {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
+                    {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
                     {units.length}
                   </span>
                   <span>{selectedUnit.skippedCount} hidden</span>
@@ -2153,7 +2151,7 @@ function ReviewBody({
             ) : null}
             {navigationTools}
             <span className="review-navigation-shortcuts">
-              J / K blocks · [ / ] files · V viewed
+              J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
             </span>
           </footer>
         ) : null}
@@ -2252,8 +2250,10 @@ function ReviewBody({
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
                           agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
-                          guideNotes={selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES}
+                          guideNotes={selectedGuideUnit?.summaries ? NO_GUIDE_NOTES : selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES}
                           guideFile={selectedGuideUnit?.files.find((item) => item.path === file.chunks[0].path)}
+                          guideSide={guideLocation?.file.side}
+                          guideEndLine={guideLocation?.file.endLine}
                           guideLine={guideLocation?.navigationSignal === fileNavigationSignal &&
                             guideLocation.file.path === selectedFilePath &&
                             guideLocation.file.path === file.chunks[0].path ? guideLocation.file.line : undefined}
@@ -2274,12 +2274,11 @@ function ReviewBody({
       </div>
 
       {reviewGuide && isGuideOpen && !reviewSearch?.isSelected ? (
-        <ReviewGuidePanel guide={reviewGuide} units={units} selectedUnit={selectedUnit}
-          ranked={isGuideRanked}
-          hasUpdatedOrder={isGuideRanked && guideOrder?.guide.generatedAt !== reviewGuide.generatedAt}
+        <ReviewGuidePanel key={reviewGuide.generatedAt} guide={reviewGuide} units={units} selectedUnit={selectedUnit}
+          findings={selectedFindings} tab={briefTab} onTabChange={setBriefTab} onSelectFinding={selectGuideFinding}
           rebuilding={isGuideRebuilding} disabled={Boolean(lineCollaboration?.selectedChunkId) || isMutating}
           onSelectUnit={onGuideSelectUnit} onSelectFile={selectGuideFile}
-          onSetRanked={onSetGuideRanked} onClose={onCloseGuide} onRebuild={onStartReviewGuide} />
+          onClose={onCloseGuide} onRebuild={onStartReviewGuide} />
       ) : null}
 
       {compact && fileTreePanel ? (
@@ -2672,6 +2671,8 @@ function ReviewFile({
   guideNotes = NO_GUIDE_NOTES,
   guideFile,
   guideLine,
+  guideSide,
+  guideEndLine,
   hiddenAgentNoteIds,
   onSetAgentNoteHidden,
   typeDefinitionPaths,
@@ -2688,6 +2689,8 @@ function ReviewFile({
   guideNotes?: readonly GitReviewGuideNote[];
   guideFile?: GitReviewGuideFile;
   guideLine?: number;
+  guideSide?: 'left' | 'right';
+  guideEndLine?: number;
   hiddenAgentNoteIds: ReadonlySet<string>;
   onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   typeDefinitionPaths: ReadonlySet<string>;
@@ -2699,8 +2702,8 @@ function ReviewFile({
   const fileComposerId = useId();
   const guideDiffOptions = useMemo(() => guideLine ? {
     ...diffOptions,
-    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n[data-line="${guideLine}"][data-line-type="change-addition"] { box-shadow: inset 3px 0 #5fd6c3; }`
-  } : diffOptions, [diffOptions, guideLine]);
+    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n${Array.from({ length: Math.min((guideEndLine ?? guideLine) - guideLine + 1, 1000) }, (_, index) => `[data-line="${guideLine + index}"][data-line-type="${guideSide === 'left' ? 'change-deletion' : 'change-addition'}"]`).join(',')} { box-shadow: inset 3px 0 #5fd6c3; }`
+  } : diffOptions, [diffOptions, guideLine, guideSide, guideEndLine]);
   const firstChunk = file.chunks[0]!;
   const fileThreads = lineCollaboration?.threads.filter(
     (thread) => thread.subjectType === 'file' && thread.path === firstChunk.path
@@ -3302,6 +3305,7 @@ function ReviewCommentAnnotation({
   return (
     <article
       ref={articleRef}
+      data-review-comment-id={thread.id}
       className="review-line-comment"
       data-draft={thread.isDraft}
       data-subject-type={thread.subjectType}

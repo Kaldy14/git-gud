@@ -16,7 +16,7 @@ import {
 } from './reviewGuide';
 
 describe('AI review guides', () => {
-  it('builds an immutable-group prompt and accepts a valid fenced response', () => {
+  it('preserves source coverage and accepts an older fenced response', () => {
     const plan = reviewPlan();
     const unit = plan.units[0]!;
     const prompt = buildReviewGuidePrompt(plan);
@@ -39,9 +39,9 @@ describe('AI review guides', () => {
       plan
     );
 
-    expect(prompt).toContain('do not create, merge, split, or omit groups');
+    expect(prompt).toContain('never split, duplicate, or omit a source block');
     expect(prompt).toContain('No note quota');
-    expect(prompt).toContain('Use "AI guide" as the product term');
+    expect(prompt).toContain('Use "AI brief" as the product term');
     expect(guide).toMatchObject({
       sourceFingerprint: plan.sourceFingerprint,
       summary: 'Adds timeout-aware connection handling.',
@@ -136,6 +136,42 @@ describe('AI review guides', () => {
     expect(prompt).toContain('Respect connection timeout');
     expect(prompt).toContain('"truncated":true');
     expect(prompt).toContain('incomplete evidence');
+  });
+
+  it('combines source blocks only in the generated layer and validates dependency order', () => {
+    const plan = reviewPlan();
+    const source = plan.units[0]!;
+    plan.units.push({ ...source, id: 'second', chunks: source.chunks.map((chunk) => ({ ...chunk, id: 'second-chunk', path: 'src/other.ts' })) });
+    const guide = validGuide(plan);
+    const first = guide.units[0]!;
+    first.sourceUnitIds = [source.id, 'second'];
+    first.title = 'Respect timeouts across clients';
+    first.files.push({ ...first.files[0]!, path: 'src/other.ts' });
+    guide.units = [first];
+    const parsed = parseReviewGuideOutput(JSON.stringify(guide), plan);
+    expect(parsed.units[0]?.sourceUnitIds).toEqual([source.id, 'second']);
+    expect(plan.units).toHaveLength(2);
+    expect(plan.units[0]?.chunks).toHaveLength(1);
+    first.dependsOn = ['second'];
+    expect(() => parseReviewGuideOutput(JSON.stringify(guide), plan)).toThrow('earlier layers');
+    first.dependsOn = [];
+    first.sourceUnitIds = [source.id, source.id];
+    expect(() => parseReviewGuideOutput(JSON.stringify(guide), plan)).toThrow('exactly once');
+    first.sourceUnitIds = [source.id];
+    first.files.pop();
+    expect(() => parseReviewGuideOutput(JSON.stringify(guide), plan)).toThrow('every existing review group');
+  });
+
+  it('accepts deleted-line summaries and rejects invented ranges and complexity', () => {
+    const plan = reviewPlan();
+    const guide = validGuide(plan);
+    const layer = guide.units[0]!;
+    const summary = { path: 'src/client.ts', line: 2, endLine: 2, side: 'left' as const, complexity: 'low' as const, body: 'Remove the unbounded connection call.' };
+    layer.summaries = [summary];
+    expect(parseReviewGuideOutput(JSON.stringify(guide), plan).units[0]?.summaries).toEqual([summary]);
+    for (const invalid of [{ ...summary, line: 1 }, { ...summary, endLine: 99 }, { ...summary, complexity: 'critical' }, { ...summary, path: 'secret.ts' }]) {
+      expect(() => parseReviewGuideOutput(JSON.stringify({ ...guide, units: [{ ...layer, summaries: [invalid] }] }), plan)).toThrow();
+    }
   });
 
   it('runs generation in the background and deduplicates an active job', async () => {

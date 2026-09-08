@@ -1407,7 +1407,8 @@ export async function loadGitHubPullRequestDetail(
     commitsRaw,
     reviewCommentsRaw,
     conversationCommentsRaw,
-    reviewsRaw
+    reviewsRaw,
+    threadStates
   ] = await Promise.all([
     loadGitHubPullRequestSummaryForContext(context, locator),
     runGitHubJson(context, [
@@ -1426,7 +1427,8 @@ export async function loadGitHubPullRequestDetail(
       context,
       `repos/${encodeURIComponent(locator.owner)}/${encodeURIComponent(locator.repository)}/issues/${locator.number}/comments?per_page=100`
     ),
-    runGitHubPaginatedArray(context, `${endpoint}/reviews?per_page=100`)
+    runGitHubPaginatedArray(context, `${endpoint}/reviews?per_page=100`),
+    loadReviewThreadStates(context, locator)
   ]);
   const { pullRequest: summary, viewerLogin } = summaryResult;
 
@@ -1473,11 +1475,52 @@ export async function loadGitHubPullRequestDetail(
     reviewPlan,
     mergeSettings: parseGitHubRepositoryMergeSettings(repositoryRaw),
     viewerLogin,
-    reviewComments: reviewCommentsRaw.map(parseReviewComment),
+    reviewComments: reviewCommentsRaw.map((raw) => {
+      const comment = parseReviewComment(raw);
+      return { ...comment, ...threadStates.get(comment.id) };
+    }),
     conversationComments: conversationCommentsRaw.map(parseConversationComment),
     reviews: reviewsRaw.map(parseReview),
     loadedAt: new Date().toISOString()
   };
+}
+
+async function loadReviewThreadStates(context: GitHubContext, locator: GitHubPullRequestLocator) {
+  const states = new Map<number, { isResolved: boolean; isOutdated: boolean }>();
+  let cursor: string | undefined;
+  try {
+    do {
+      const raw = await runGitHubJson(context, ['api', '--hostname', context.host, 'graphql', '--input', '-'], {
+        query: `query($owner:String!,$repository:String!,$number:Int!,$cursor:String) {
+          repository(owner:$owner,name:$repository) { pullRequest(number:$number) {
+            reviewThreads(first:100,after:$cursor) {
+              nodes { isResolved isOutdated comments(first:1) { nodes { databaseId } } }
+              pageInfo { hasNextPage endCursor }
+            }
+          } }
+        }`,
+        variables: { owner: locator.owner, repository: locator.repository, number: locator.number, cursor }
+      });
+      const connection = readRecord(nestedValue(readRecord(raw, 'review thread response'), ['data', 'repository', 'pullRequest', 'reviewThreads']), 'review threads');
+      if (!Array.isArray(connection.nodes)) throw new Error('Review threads must be an array.');
+      for (const entry of connection.nodes) {
+        const thread = readRecord(entry, 'review thread');
+        const comments = nestedValue(thread, ['comments', 'nodes']);
+        if (!Array.isArray(comments)) throw new Error('Thread comments must be an array.');
+        const id = readOptionalNumber(nestedValue(comments[0], ['databaseId']));
+        if (id !== undefined && typeof thread.isResolved === 'boolean' && typeof thread.isOutdated === 'boolean') {
+          states.set(id, { isResolved: thread.isResolved, isOutdated: thread.isOutdated });
+        }
+      }
+      const page = readRecord(connection.pageInfo, 'review thread pagination');
+      const next = page.hasNextPage === true ? readString(page.endCursor, 'thread cursor') : undefined;
+      if (next === cursor && next !== undefined) throw new Error('Review thread pagination did not advance.');
+      cursor = next;
+    } while (cursor);
+  } catch {
+    // Keep the PR readable if GraphQL is unavailable. Unknown resolution is shown explicitly in the brief.
+  }
+  return states;
 }
 
 export async function loadGitHubPullRequestReviewerCandidates(
@@ -2844,7 +2887,8 @@ export function parseReviewComment(value: unknown): GitHubPullRequestReviewComme
     startSide: normalizeSide(
       readOptionalString(comment.start_side) ?? readOptionalString(comment.original_start_side)
     ),
-    inReplyToId: readOptionalNumber(comment.in_reply_to_id)
+    inReplyToId: readOptionalNumber(comment.in_reply_to_id),
+    isOutdated: comment.subject_type !== 'file' && comment.line === null ? true : undefined
   };
 }
 

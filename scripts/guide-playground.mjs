@@ -37,7 +37,7 @@ const git = (...args) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pi
 git('init', '-b', 'main');
 git('-c', 'user.name=Guide Test', '-c', 'user.email=guide-test@example.invalid', 'add', '.');
 git('-c', 'user.name=Guide Test', '-c', 'user.email=guide-test@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Initial fixture');
-writeFileSync(join(repo, 'src/search/search-client.ts'), files['src/search/search-client.ts'].replace('  results = data;', '  if (request !== latestRequest) return results;\n  results = data;'));
+writeFileSync(join(repo, 'src/search/search-client.ts'), files['src/search/search-client.ts'].replace("  const response = await fetch('/search?q=' + encodeURIComponent(query));", "  const searchUrl = '/search?q=' + encodeURIComponent(query.trim());\n  const response = await fetch(searchUrl);\n  if (!response.ok) throw new Error('Search failed');").replace('  results = data;', '  if (request !== latestRequest) return results;\n  results = data;'));
 writeFileSync(join(repo, 'src/status/loading.ts'), files['src/status/loading.ts'].replace('pending === 1', 'pending > 0'));
 writeFileSync(join(repo, 'locales/en.json'), '{"search": "Search", "empty": "No results found"}\n');
 writeFileSync(join(repo, 'docs/keyboard.md'), '# Keyboard shortcuts\n\nPress Enter to submit.\n');

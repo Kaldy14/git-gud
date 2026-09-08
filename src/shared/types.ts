@@ -345,10 +345,26 @@ export type GitReviewGuideFile = {
   priority: GitReviewGuidePriority;
   reason: string;
   line?: number;
+  endLine?: number;
+  side?: 'left' | 'right';
+};
+
+export type GitReviewGuideSummary = {
+  path: string;
+  line: number;
+  endLine: number;
+  side: 'left' | 'right';
+  complexity: 'low' | 'medium' | 'high';
+  body: string;
 };
 
 export type GitReviewGuideUnit = {
   unitId: string;
+  // Optional for guides generated before narrative layers were introduced.
+  sourceUnitIds?: string[];
+  title?: string;
+  dependsOn?: string[];
+  summaries?: GitReviewGuideSummary[];
   priority: GitReviewGuidePriority;
   why: string;
   what: string;
@@ -1406,6 +1422,8 @@ export type GitHubPullRequestReviewComment = {
   startLine?: number;
   startSide?: 'left' | 'right';
   inReplyToId?: number;
+  isResolved?: boolean;
+  isOutdated?: boolean;
 };
 
 export type GitHubPullRequestConversationComment = {
