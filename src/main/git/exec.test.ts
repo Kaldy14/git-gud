@@ -587,6 +587,7 @@ describe('GitExecutor coordination', () => {
     unsubscribe();
   });
 
+  // Allow Windows process-tree cleanup beyond the fixture's five-second sleep.
   it('does not start a queued tracked operation after shutdown begins', async () => {
     const executor = new GitExecutor();
     const cwd = process.cwd();
@@ -616,7 +617,7 @@ describe('GitExecutor coordination', () => {
     expect(queuedBodyStarted).toBe(false);
     await executor.waitForIdle();
     unsubscribe();
-  });
+  }, 15_000);
 });
 
 function nextTask(): Promise<void> {
