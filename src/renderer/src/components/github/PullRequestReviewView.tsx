@@ -655,8 +655,8 @@ function PullRequestReviewContent({
     },
     onSuccess: async (result) => {
       setNotice({ tone: 'success', message: result.message });
-      await refreshGitHubPullRequestInboxAfterMerge(queryClient, locator);
       onMerged();
+      await refreshGitHubPullRequestInboxAfterMerge(queryClient, locator);
     },
     onError: (error) => {
       setNotice({
