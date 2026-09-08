@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.4] - 2026-09-08
+
+### Added
+
+- Added AI guide status indicators to the pull-request inbox, with direct access to a pull request's guide.
+
+### Changed
+
+- Organized AI briefs into review layers with summaries linked to changed code ranges and ranked by complexity. Review progress stays attached to the original code chunks.
+- Aligned comment counts in the pull-request inbox for easier scanning.
+
+### Fixed
+
+- Return to the pull-request dashboard immediately after a successful merge while the inbox refreshes in the background.
+
 ## [2026.9.3] - 2026-09-08
 
 ### Changed
