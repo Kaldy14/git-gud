@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.3] - 2026-09-08
+
+### Changed
+
+- Shortened copy in the repository start page, settings, Codex dialog, and AI review guide. Simplified settings controls and the Codex dialog styling.
+
+### Fixed
+
+- Made AI review-guide links distinguish files with the same name by including enough parent folders. Tooltips now show the full path and line number when available.
+
 ## [2026.9.2] - 2026-09-07
 
 ### Changed
