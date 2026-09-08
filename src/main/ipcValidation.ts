@@ -303,6 +303,8 @@ const validators = {
       'github:open-pull-request-in-application',
       readOpenPullRequestInApplicationInput
     ),
+  'github:pull-request-guide-status': (args) =>
+    readOnlyArg(args, 'github:pull-request-guide-status', 'locator', readGitHubPullRequestLocator),
   'github:pull-request-review-guide-state': (args) =>
     readGitHubPullRequestReviewGuideArgs('github:pull-request-review-guide-state', args),
   'github:start-pull-request-review-guide': (args) =>

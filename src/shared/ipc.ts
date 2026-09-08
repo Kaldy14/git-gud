@@ -43,6 +43,7 @@ import type {
   GitHubPullRequestConflictInput,
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
+  GitHubPullRequestGuideStatus,
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewerCandidate,
@@ -563,6 +564,10 @@ export type IpcChannelMap = {
     args: [repoPath: string, input: OpenPullRequestInApplicationInput];
     result: OpenPullRequestInApplicationResult;
   };
+  'github:pull-request-guide-status': {
+    args: [locator: GitHubPullRequestLocator];
+    result: GitHubPullRequestGuideStatus;
+  };
   'github:pull-request-review-guide-state': {
     args: [locator: GitHubPullRequestLocator, sourceFingerprint: string];
     result: GitReviewGuideState;
@@ -759,6 +764,7 @@ export type RendererApi = {
     repoPath: string,
     input: OpenPullRequestInApplicationInput
   ) => Promise<OpenPullRequestInApplicationResult>;
+  getGitHubPullRequestGuideStatus: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestGuideStatus>;
   getGitHubPullRequestReviewGuideState: (
     locator: GitHubPullRequestLocator,
     sourceFingerprint: string

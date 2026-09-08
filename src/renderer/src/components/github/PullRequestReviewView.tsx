@@ -87,6 +87,7 @@ import {
 type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
   codexRepoPath?: string;
+  initialGuideOpen?: boolean;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
@@ -115,6 +116,7 @@ type PullRequestReviewDraft =
 export function PullRequestReviewView({
   pullRequest,
   codexRepoPath,
+  initialGuideOpen,
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
@@ -204,6 +206,7 @@ export function PullRequestReviewView({
       key={detail.reviewPlan.targetKey}
       detail={detail}
       codexRepoPath={codexRepoPath}
+      initialGuideOpen={initialGuideOpen}
       diffStyle={diffStyle}
       diffSyntaxTheme={diffSyntaxTheme}
       onSetDiffStyle={onSetDiffStyle}
@@ -366,6 +369,7 @@ function PullRequestReviewLoading({
 function PullRequestReviewContent({
   detail,
   codexRepoPath,
+  initialGuideOpen,
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
@@ -382,6 +386,7 @@ function PullRequestReviewContent({
 }: {
   detail: GitHubPullRequestDetail;
   codexRepoPath?: string;
+  initialGuideOpen?: boolean;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
@@ -888,6 +893,7 @@ function PullRequestReviewContent({
             target={detail.reviewPlan.target}
             plan={detail.reviewPlan}
             reviewGuideProvider={reviewGuideProvider}
+            initialGuideOpen={initialGuideOpen}
             reviewProgressKey={detail.reviewPlan.targetKey}
             lineComments={displayedLineComments}
             onAddDraftLineComment={addDraftLineComment}

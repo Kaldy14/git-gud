@@ -154,6 +154,7 @@ type ReviewViewProps = {
   target: GitReviewTarget;
   plan?: GitReviewPlan;
   initialPreferences?: ReviewPreferences;
+  initialGuideOpen?: boolean;
   reviewGuideProvider?: {
     getState: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
     start: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
@@ -321,6 +322,7 @@ export function ReviewView({
   target,
   plan: embeddedPlan,
   initialPreferences,
+  initialGuideOpen = false,
   reviewGuideProvider,
   reviewProgressKey,
   lineComments = [],
@@ -398,7 +400,7 @@ export function ReviewView({
   const [selectedCommentTarget, setSelectedCommentTarget] = useState<ReviewCommentTarget>();
   const [lineCommentBody] = useState<ReviewCommentBodyBuffer>(createReviewCommentBodyBuffer);
   const [reviewGuideState, setReviewGuideState] = useState<GitReviewGuideState>();
-  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(initialGuideOpen);
   const [previousGuide, setPreviousGuide] = useState<GitReviewGuide>();
   const [typeDefinitionPreview, setTypeDefinitionPreview] = useState<ReviewTypeDefinitionPreview>();
   const typeDefinitionRequestRef = useRef(0);

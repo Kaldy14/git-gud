@@ -3690,7 +3690,7 @@ button.ref-chip {
   display: grid;
   width: 100%;
   min-height: 62px;
-  grid-template-columns: 20px minmax(260px, 1fr) minmax(118px, auto) 80px 42px;
+  grid-template-columns: 20px minmax(260px, 1fr) minmax(118px, auto) 80px 28px 44px;
   align-items: center;
   gap: 10px;
   border-radius: 0;
@@ -4096,9 +4096,17 @@ button.ref-chip {
 }
 
 .pr-row-comments {
-  justify-content: flex-end;
+  justify-content: flex-start;
   color: var(--text-3);
 }
+
+.pr-row-comments > span {
+  min-width: 3ch;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-row-comments > svg { flex-shrink: 0; }
 
 .pr-group-empty {
   margin: 0 8px 4px;

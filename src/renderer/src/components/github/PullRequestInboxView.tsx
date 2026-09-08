@@ -24,6 +24,7 @@ import type {
   GitProfile
 } from '@shared/types';
 
+import { PullRequestGuideIndicator } from './PullRequestGuideIndicator';
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
@@ -38,7 +39,7 @@ type PullRequestInboxViewProps = {
   onRefresh: () => void;
   onClose: () => void;
   onOpenProfileSettings: () => void;
-  onSelectPullRequest: (pullRequest: GitHubPullRequestSummary) => void;
+  onSelectPullRequest: (pullRequest: GitHubPullRequestSummary, openGuide?: boolean) => void;
 };
 
 type UpdatedRange = '7' | '30' | '90' | 'all';
@@ -309,6 +310,7 @@ export function PullRequestInboxView({
                           key={pullRequest.id}
                           pullRequest={pullRequest}
                           onSelect={() => onSelectPullRequest(pullRequest)}
+                          onOpenGuide={() => onSelectPullRequest(pullRequest, true)}
                         />
                       ))}
                     </div>
@@ -383,10 +385,12 @@ export function PullRequestInboxView({
 
 function PullRequestRow({
   pullRequest,
-  onSelect
+  onSelect,
+  onOpenGuide
 }: {
   pullRequest: GitHubPullRequestSummary;
   onSelect: () => void;
+  onOpenGuide: () => void;
 }): ReactElement {
   const [didAvatarFail, setDidAvatarFail] = useState(false);
   const status = pullRequestStatus(pullRequest);
@@ -398,7 +402,8 @@ function PullRequestRow({
         : 'pending';
 
   return (
-    <button className="pr-inbox-row" type="button" onClick={onSelect}>
+    <div className="pr-inbox-row" onClick={onSelect}>
+      <button className="pr-row-open" type="button" aria-label={`Open pull request ${pullRequest.title}`} />
       <span className="pr-row-accent" data-category={pullRequest.category} />
       <GitPullRequest size={16} className="pr-row-icon" />
       <span className="pr-row-copy">
@@ -444,11 +449,12 @@ function PullRequestRow({
           ? `${pullRequest.checks.passed}/${pullRequest.checks.total}`
           : 'No checks'}
       </span>
-      <span className="pr-row-comments">
+      <PullRequestGuideIndicator pullRequest={pullRequest} onOpen={onOpenGuide} />
+      <span className="pr-row-comments" aria-label={`${pullRequest.comments} comments`}>
         <MessageSquare size={14} />
-        {pullRequest.comments}
+        <span>{pullRequest.comments}</span>
       </span>
-    </button>
+    </div>
   );
 }
 

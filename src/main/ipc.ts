@@ -96,6 +96,7 @@ import {
   updateGitHubPullRequestReviewComment
 } from './github';
 import { githubPullRequestReviewPlans } from './githubReviewPlans';
+import { GitHubPullRequestGuides } from './githubPullRequestGuides';
 import { validateRepository } from './git/repoInspector';
 import { clearReviewSyntaxCache, clearReviewSyntaxCacheForRepository } from './git/reviewSyntax';
 import { resolveReviewTypeDefinition } from './git/reviewTypeDefinition';
@@ -125,6 +126,7 @@ import {
 } from './profiles';
 import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
 import { reviewGuideManager } from './reviewGuide';
+
 import type { ApplicationUpdater } from './updater';
 import {
   activateWorkspaceTab,
@@ -168,6 +170,7 @@ type TrackedOperation = {
   cancelRequested: boolean;
 };
 
+const githubPullRequestGuides = new GitHubPullRequestGuides(reviewGuideManager);
 const activeOperations = new Map<string, TrackedOperation>();
 const localReviewPlans = new Map<string, GitReviewPlan>();
 const MAX_CACHED_LOCAL_REVIEW_PLANS = 8;
@@ -763,13 +766,14 @@ export function registerIpcHandlers(
   handle('github:open-pull-request-in-application', (_event, repoPath, input) =>
     openPullRequestInApplication(getOpenRepositoryTab(repoPath), input)
   );
+  handle('github:pull-request-guide-status', (_event, locator) => githubPullRequestGuides.getStatus(locator));
   handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {
     const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
     return reviewGuideManager.getState(plan.repoPath, sourceFingerprint);
   });
   handle('github:start-pull-request-review-guide', (_event, locator, sourceFingerprint) => {
     const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
-    return reviewGuideManager.start(plan);
+    return githubPullRequestGuides.start(locator, plan);
   });
   handle('github:submit-pull-request-review', (_event, input) => submitGitHubPullRequestReview(input));
   handle('github:update-pull-request-review-comment', (_event, input) =>

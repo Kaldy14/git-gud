@@ -1373,6 +1373,12 @@ export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   checks: GitHubPullRequestChecks;
 };
 
+export type GitHubPullRequestGuideStatus = {
+  status: GitReviewGuideState['status'];
+  headSha?: string;
+  errorMessage?: string;
+};
+
 export type GitHubPullRequestSuggestion = {
   id: string;
   owner: string;

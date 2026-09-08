@@ -130,7 +130,7 @@
 }
 .pr-inbox-results .pr-inbox-row {
   min-height: 54px;
-  grid-template-columns: 18px minmax(0, 1fr) 180px 64px 40px;
+  grid-template-columns: 18px minmax(0, 1fr) 180px 64px 28px 44px;
   gap: 12px;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
@@ -666,11 +666,8 @@
     display: none;
   }
   .pr-inbox-results .pr-inbox-row {
-    grid-template-columns: 16px minmax(0, 1fr) 125px 48px;
+    grid-template-columns: 16px minmax(0, 1fr) 125px 48px 28px 44px;
     gap: 8px;
-  }
-  .pr-inbox-results .pr-row-comments {
-    display: none;
   }
   .pr-side-panel {
     width: min(var(--pr-panel-width, 380px), 85%);
@@ -686,8 +683,9 @@
     max-width: 100px;
   }
   .pr-inbox-results .pr-inbox-row {
-    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-columns: 16px minmax(0, 1fr) 28px 44px;
   }
+  .pr-inbox-results .pr-row-copy { grid-column: 2 / -1; }
   .pr-inbox-results .pr-row-state {
     grid-column: 2;
   }
@@ -902,3 +900,46 @@
 
 .review-layout:has(.review-ai-brief) .review-block-progress strong { display: flex; align-items: center; gap: 5px; }
 .review-layout:has(.review-ai-brief) .review-block-progress strong svg { color: var(--accent-2); }
+
+/* The row opener and guide action are siblings so neither button nests inside the other. */
+.pr-row-open { position: absolute; inset: 0; width: 100%; border-radius: 0; pointer-events: none; }
+.pr-inbox-row { cursor: pointer; }
+.pr-row-open:focus-visible { outline-offset: -2px; }
+.pr-row-guide {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--text-3);
+}
+.pr-row-guide:hover, .pr-row-guide:focus-visible { color: var(--text-1); background: var(--bg-hover); }
+.pr-row-guide[aria-disabled='true'] { cursor: default; }
+.pr-row-guide-dot {
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bg-graph);
+  border: 1px solid var(--text-3);
+  box-shadow: 0 0 0 2px var(--bg-graph);
+}
+.pr-row-guide[data-status='ready'] .pr-row-guide-dot { background: var(--success-text); border-color: var(--success-text); }
+.pr-row-guide[data-status='stale'] .pr-row-guide-dot,
+.pr-row-guide[data-status='running'] .pr-row-guide-dot { background: var(--warning-text); border-color: var(--warning-text); }
+.pr-row-guide[data-status='failed'] .pr-row-guide-dot { background: var(--danger-text); border-color: var(--danger-text); }
+/* Four discrete positions keep activity visible without repainting a spinner every frame. */
+.pr-row-guide[data-status='running'] .pr-row-guide-dot { animation: pr-guide-working 1.6s steps(1, end) infinite; }
+@keyframes pr-guide-working {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-2px); }
+  50% { transform: translateY(-4px); }
+  75% { transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pr-row-guide[data-status='running'] .pr-row-guide-dot { animation: none; }
+}

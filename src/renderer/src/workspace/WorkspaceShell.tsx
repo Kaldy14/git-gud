@@ -246,7 +246,7 @@ type GitHubWorkspaceView =
       run: GitHubWorkflowRun;
     }
   | { kind: 'inbox' }
-  | { kind: 'review'; pullRequest: GitHubPullRequestSummary };
+  | { kind: 'review'; pullRequest: GitHubPullRequestSummary; openGuide?: boolean };
 
 const PROFILE_TRANSITION_MIN_MS = 240;
 const PROFILE_TRANSITION_EXIT_MS = 180;
@@ -3476,6 +3476,7 @@ export function WorkspaceShell(): ReactElement {
               <PullRequestReviewView
                 key={`${gitHubWorkspaceView.pullRequest.profileId}:${gitHubWorkspaceView.pullRequest.id}`}
                 pullRequest={gitHubWorkspaceView.pullRequest}
+                initialGuideOpen={gitHubWorkspaceView.openGuide}
                 codexRepoPath={pullRequestCodexRepoPath}
                 diffStyle={activeDiffStyle}
                 diffSyntaxTheme={settings.diffSyntaxTheme}
@@ -3503,8 +3504,8 @@ export function WorkspaceShell(): ReactElement {
                 onRefresh={() => void pullRequestInboxQuery.refetch()}
                 onClose={handleClosePullRequestWorkspace}
                 onOpenProfileSettings={handleOpenGitProfileMenu}
-                onSelectPullRequest={(pullRequest) =>
-                  setGitHubWorkspaceView({ kind: 'review', pullRequest })
+                onSelectPullRequest={(pullRequest, openGuide) =>
+                  setGitHubWorkspaceView({ kind: 'review', pullRequest, openGuide })
                 }
               />
             )}
