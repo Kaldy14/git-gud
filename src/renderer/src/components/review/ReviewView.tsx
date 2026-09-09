@@ -4,6 +4,7 @@ import type {
   ReactElement,
   ReactNode
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   useCallback,
   useDeferredValue,
@@ -155,6 +156,7 @@ type ReviewViewProps = {
   plan?: GitReviewPlan;
   initialPreferences?: ReviewPreferences;
   initialGuideOpen?: boolean;
+  guideHeaderTarget?: HTMLElement | null;
   reviewGuideProvider?: {
     getState: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
     start: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
@@ -323,6 +325,7 @@ export function ReviewView({
   plan: embeddedPlan,
   initialPreferences,
   initialGuideOpen = false,
+  guideHeaderTarget,
   reviewGuideProvider,
   reviewProgressKey,
   lineComments = [],
@@ -1390,6 +1393,20 @@ export function ReviewView({
       }
     : undefined;
 
+  const guideControls = isReviewGuideEnabled && reviewPlan?.units.length ? (
+    <div className="review-guide-header-controls">
+      <p className="review-mode-status" data-ai={Boolean(reviewGuide)} role="status">
+        {reviewGuide ? 'AI review' : 'Standard review'}
+      </p>
+      <ReviewGuideControl
+        state={currentReviewGuideState}
+        open={isGuideOpen}
+        onToggle={() => setGuideOpen(!isGuideOpen)}
+        onStart={() => void startReviewGuide()}
+      />
+    </div>
+  ) : null;
+
   const toolbar = (
     <>
       <div className="review-toolbar">
@@ -1414,14 +1431,7 @@ export function ReviewView({
         </div>
 
         <div className="review-toolbar-actions">
-          {isReviewGuideEnabled && reviewPlan?.units.length ? (
-            <ReviewGuideControl
-              state={currentReviewGuideState}
-              open={isGuideOpen}
-              onToggle={() => setGuideOpen(!isGuideOpen)}
-              onStart={() => void startReviewGuide()}
-            />
-          ) : null}
+          {layout === 'standard' && !guideHeaderTarget ? guideControls : null}
           <div className="segmented shrink-0">
             <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
               <Rows3 size={12} />
@@ -1465,6 +1475,9 @@ export function ReviewView({
 
   return (
     <section ref={sectionRef} className="review-view" data-layout={layout} tabIndex={0} onKeyDown={handleKeyDown}>
+      {guideHeaderTarget ? createPortal(guideControls, guideHeaderTarget) : layout === 'pull-request' && guideControls ? (
+        <header className="review-guide-header">{guideControls}</header>
+      ) : null}
       {layout === 'standard' ? toolbar : null}
 
       <ReviewBody
@@ -1604,8 +1617,10 @@ function ReviewGuideControl({ state, open, onStart, onToggle }: {
     return <span className="review-guide-control" role="status">Preparing brief…</span>;
   }
   if (state?.status === 'ready') {
-    return <button type="button" className="btn-subtle btn-compact" aria-expanded={open}
-      onClick={onToggle}><Sparkles size={12} /> AI brief</button>;
+    return <button type="button" className={`${open ? 'btn-subtle' : 'btn-primary'} btn-compact review-guide-ready`} aria-expanded={open}
+      title={open ? 'Return to standard blocks and close the AI brief' : 'Open the ready AI brief with AI titles, grouping and priorities'}
+      onClick={onToggle}><Sparkles size={12} /> {open ? 'Exit AI review' : 'Open AI brief'}
+      {!open ? <span className="review-guide-ready-label">Ready</span> : null}</button>;
   }
   return <button type="button" className="btn-subtle btn-compact" onClick={onStart}
     title={state?.status === 'failed' ? state.errorMessage : undefined}>

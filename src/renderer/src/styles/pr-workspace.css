@@ -405,6 +405,19 @@
   color: var(--text-3);
   font-size: 8px;
 }
+.review-mode-status {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.review-mode-status[data-ai='true'] { color: var(--accent-2); }
+.review-guide-header-controls { display: flex; align-items: center; gap: 8px; }
+.pr-review-guide-slot { flex-shrink: 0; }
+.pr-review-guide-slot:empty { display: none; }
+.review-guide-header { display: flex; justify-content: flex-end; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.review-guide-ready { white-space: nowrap; }
+.review-guide-ready-label { font-size: 9px; border-left: 1px solid currentColor; padding-left: 6px; }
 .review-navigation-error {
   margin: 8px 0;
   color: var(--danger-text);

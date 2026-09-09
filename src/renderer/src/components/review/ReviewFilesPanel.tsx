@@ -123,7 +123,12 @@ export function ReviewFileTree({
         <FileTree className="review-file-tree" model={model}
           onPointerOverCapture={(event) => {
             const row = event.nativeEvent.composedPath().find((target): target is HTMLElement => target instanceof HTMLElement && target.dataset.itemPath !== undefined);
-            if (row) row.title = commonDirectory + row.dataset.itemPath;
+            if (!row) return;
+            const status = treeEntries.find((entry) => entry.path === row.dataset.itemPath)?.status;
+            const description = status ? REVIEW_FILE_STATUS_DESCRIPTIONS[status] : undefined;
+            row.title = commonDirectory + row.dataset.itemPath + (description ? ` · ${description}` : '');
+            const badge = row.querySelector<HTMLElement>('[data-item-section="git"] > span');
+            if (badge && description) badge.title = description;
           }}
           onClickCapture={(event) => {
             const row = event.nativeEvent.composedPath().find((target): target is HTMLElement => target instanceof HTMLElement && target.dataset.itemType === 'file' && target.dataset.itemPath !== undefined);
@@ -137,3 +142,12 @@ export function ReviewFileTree({
     </aside>
   );
 }
+
+const REVIEW_FILE_STATUS_DESCRIPTIONS = {
+  added: 'A · Added file',
+  modified: 'M · Modified file',
+  deleted: 'D · Deleted file',
+  renamed: 'R · Renamed or moved file',
+  untracked: 'U · Untracked file',
+  ignored: 'Ignored file'
+};

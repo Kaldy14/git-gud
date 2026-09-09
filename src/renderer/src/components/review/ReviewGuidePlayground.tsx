@@ -17,6 +17,7 @@ export default function ReviewGuidePlayground({ repoPath }: { repoPath: string }
 }
 
 function Playground({ repoPath }: { repoPath: string }): ReactElement {
+  const [guideHeaderTarget, setGuideHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [mode, setMode] = useState<Mode>('sample');
   const [session, setSession] = useState(0);
   const [diffStyle, setDiffStyle] = useState<'unified' | 'split'>('unified');
@@ -51,10 +52,12 @@ function Playground({ repoPath }: { repoPath: string }): ReactElement {
         if (value === 'sample' || value === 'failure' || value === 'live') { setMode(value); setSession((n) => n + 1); }
       }}><option value="sample">Sample guide</option><option value="failure">Fail once, then retry</option><option value="live">Live AI generation</option></select>
       <button type="button" className="btn-subtle btn-compact" onClick={() => { setSession((n) => n + 1); void query.refetch(); }}>Reload changes</button>
+      <div ref={setGuideHeaderTarget} className="pr-review-guide-slot" />
     </header>
     {query.error ? <p role="alert">{query.error.message}</p> : plan && provider ? <ReviewView
       key={`${session}:${mode}`}
       repoPath={plan.repoPath} target={target} plan={plan} reviewGuideProvider={provider}
+      guideHeaderTarget={guideHeaderTarget}
       lineComments={[...comments, ...drafts]}
       onAddDraftLineComment={async (input) => {
         const id = crypto.randomUUID();

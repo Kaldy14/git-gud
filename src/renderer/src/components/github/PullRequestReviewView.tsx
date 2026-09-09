@@ -401,6 +401,7 @@ function PullRequestReviewContent({
   lastRefreshedAt: string;
   onRefresh: () => void;
 }): ReactElement {
+  const [guideHeaderTarget, setGuideHeaderTarget] = useState<HTMLDivElement | null>(null);
   const locator = {
     profileId: detail.profileId,
     owner: detail.owner,
@@ -832,6 +833,7 @@ function PullRequestReviewContent({
           compact
           onRefresh={onRefresh}
         />
+        <div ref={setGuideHeaderTarget} className="pr-review-guide-slot" />
         <PullRequestHeaderActions
           detail={detail}
           repoPath={codexRepoPath}
@@ -894,6 +896,7 @@ function PullRequestReviewContent({
             plan={detail.reviewPlan}
             reviewGuideProvider={reviewGuideProvider}
             initialGuideOpen={initialGuideOpen}
+            guideHeaderTarget={guideHeaderTarget}
             reviewProgressKey={detail.reviewPlan.targetKey}
             lineComments={displayedLineComments}
             onAddDraftLineComment={addDraftLineComment}
