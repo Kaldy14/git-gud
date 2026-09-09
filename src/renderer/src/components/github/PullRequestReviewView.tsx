@@ -1,3 +1,5 @@
+import { BugFinderButton } from './BugFinderButton';
+import { BugFinderView } from './BugFinderView';
 import type { CSSProperties, FormEvent, ReactElement } from 'react';
 import { useId, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -88,6 +90,7 @@ type PullRequestReviewViewProps = {
   pullRequest: GitHubPullRequestSummary;
   codexRepoPath?: string;
   initialGuideOpen?: boolean;
+  initialBugFinderOpen?: boolean;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
@@ -117,6 +120,7 @@ export function PullRequestReviewView({
   pullRequest,
   codexRepoPath,
   initialGuideOpen,
+  initialBugFinderOpen,
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
@@ -207,6 +211,7 @@ export function PullRequestReviewView({
       detail={detail}
       codexRepoPath={codexRepoPath}
       initialGuideOpen={initialGuideOpen}
+      initialBugFinderOpen={initialBugFinderOpen}
       diffStyle={diffStyle}
       diffSyntaxTheme={diffSyntaxTheme}
       onSetDiffStyle={onSetDiffStyle}
@@ -370,6 +375,7 @@ function PullRequestReviewContent({
   detail,
   codexRepoPath,
   initialGuideOpen,
+  initialBugFinderOpen,
   diffStyle,
   diffSyntaxTheme,
   onSetDiffStyle,
@@ -387,6 +393,7 @@ function PullRequestReviewContent({
   detail: GitHubPullRequestDetail;
   codexRepoPath?: string;
   initialGuideOpen?: boolean;
+  initialBugFinderOpen?: boolean;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
   onSetDiffStyle: (style: DiffStyle) => void;
@@ -401,6 +408,7 @@ function PullRequestReviewContent({
   lastRefreshedAt: string;
   onRefresh: () => void;
 }): ReactElement {
+  const [bugFinderOpen, setBugFinderOpen] = useState(initialBugFinderOpen ?? false);
   const [guideHeaderTarget, setGuideHeaderTarget] = useState<HTMLDivElement | null>(null);
   const locator = {
     profileId: detail.profileId,
@@ -834,6 +842,7 @@ function PullRequestReviewContent({
           onRefresh={onRefresh}
         />
         <div ref={setGuideHeaderTarget} className="pr-review-guide-slot" />
+        <BugFinderButton pullRequest={detail} inReview active={bugFinderOpen} onOpen={() => setBugFinderOpen((open) => !open)} />
         <PullRequestHeaderActions
           detail={detail}
           repoPath={codexRepoPath}
@@ -885,7 +894,10 @@ function PullRequestReviewContent({
         </div>
       ) : null}
 
+      {bugFinderOpen ? <BugFinderView detail={detail} repoPath={codexRepoPath} diffSyntaxTheme={diffSyntaxTheme} diffStyle={diffStyle} onClose={() => setBugFinderOpen(false)} /> : null}
+
       <div
+        style={bugFinderOpen ? { display: 'none' } : undefined}
         className="pr-review-workspace"
         data-panel-open={isOverviewOpen || isReviewDialogOpen || isMergeDialogOpen}
       >

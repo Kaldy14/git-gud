@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { access, mkdir, realpath, rmdir } from 'node:fs/promises';
+import { access, mkdir, realpath, rmdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { app } from 'electron';
 import Store from 'electron-store';
@@ -493,6 +493,9 @@ export async function openPullRequestInApplication(
   tab: RepoTab,
   pullRequest: OpenPullRequestInApplicationInput
 ): Promise<OpenPullRequestInApplicationResult> {
+  if (pullRequest.file && ['finder', 'terminal', 'iterm2', 'ghostty', 'warp'].includes(pullRequest.applicationId)) {
+    throw new Error('Choose a code editor under “Open PR in…” to open evidence files.');
+  }
   const service = getProductionService();
   await service.cleanupExpired();
   const entry = await service.prepare({ tab, pullRequest });
@@ -501,7 +504,8 @@ export async function openPullRequestInApplication(
   try {
     launchedApplication = await launchExternalApplication(
       pullRequest.applicationId,
-      entry.path
+      entry.path,
+      pullRequest.file ? { ...pullRequest.file, path: await resolveEvidenceFile(entry.path, pullRequest.file.path) } : undefined
     );
   } catch (error) {
     await service.cleanup(entry).catch(() => false);
@@ -694,4 +698,17 @@ function testStoreDirectory(name: string): { cwd: string } | Record<string, neve
   return {
     cwd: join(tmpdir(), 'git-gud-vitest-store', name)
   };
+}
+
+/** Resolve symlinks too: evidence must never open a file outside the reviewed checkout. */
+export async function resolveEvidenceFile(worktreePath: string, filePath: string): Promise<string> {
+  const root = await realpath(worktreePath);
+  const target = await realpath(resolve(root, filePath)).catch(() => {
+    throw new Error(`Evidence file "${filePath}" is unavailable in the reviewed revision.`);
+  });
+  const child = relative(root, target);
+  if (!child || child === '..' || child.startsWith(`..${sep}`) || isAbsolute(child) || !(await stat(target)).isFile()) {
+    throw new Error('Evidence must reference a file inside the reviewed checkout.');
+  }
+  return target;
 }

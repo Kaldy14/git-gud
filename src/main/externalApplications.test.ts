@@ -127,3 +127,16 @@ describe('Windows external application integration', () => {
     );
   });
 });
+
+it('opens Cursor at a line without shell interpolation and preserves the checkout folder', () => {
+  expect(externalApplicationsTestUtils.externalApplicationLaunchCommand({
+    appPath: '/Applications/Cursor.app', waitCliPath: '/cursor'
+  }, '/checkout', 'darwin', { path: '/checkout/src/a file.ts', line: 42 })).toEqual({
+    executable: '/cursor', args: ['--new-window', '--wait', '/checkout', '--goto', '/checkout/src/a file.ts:42']
+  });
+  expect(externalApplicationsTestUtils.externalApplicationLaunchCommand({
+    appPath: '/Applications/Zed.app'
+  }, '/checkout', 'darwin', { path: '/checkout/src/a.ts', line: 42 }).args).toEqual([
+    '-W', '-n', '-a', '/Applications/Zed.app', '/checkout/src/a.ts'
+  ]);
+});

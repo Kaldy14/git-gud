@@ -72,3 +72,26 @@ describe('review comment Markdown', () => {
     expect(markup).not.toContain('<img width=');
   });
 });
+
+it('enables evidence file links only when a file opener is supplied', () => {
+  const body = '[Source](src/a.ts#L42) and `README.md:1` and [Web](https://example.com/a.ts).';
+  const evidence = renderToStaticMarkup(createElement(ReviewCommentBody, { body, onOpenFile: () => {} }));
+  expect(evidence.match(/class="evidence-file-chip"/g)).toHaveLength(2);
+  expect(evidence).toContain('href="https://example.com/a.ts" target="_blank"');
+  const comment = renderToStaticMarkup(createElement(ReviewCommentBody, { body }));
+  expect(comment).not.toContain('title="Open file');
+  expect(comment).toContain('<code>README.md:1</code>');
+});
+
+it('renders AI prose tables and fenced code as message blocks without converting code into file chips', () => {
+  const markup = renderToStaticMarkup(createElement(ReviewCommentBody, {
+    body: '## Findings\n\n[Source](src/a.ts#L42)\n\n| File | Status |\n| --- | --- |\n| a.ts | checked |\n\n```typescript\nconst label = "README.md:1";\n```',
+    aiMessageTheme: 'git-gud-dark', onOpenFile: () => {}
+  }));
+  expect(markup).toContain('ai-message-body');
+  expect(markup).toContain('ai-message-table');
+  expect(markup).toContain('ai-message-codeblock');
+  expect(markup).toContain('aria-label="Copy code"');
+  expect(markup).toContain('aria-label="Wrap code"');
+  expect(markup.match(/class="evidence-file-chip"/g)).toHaveLength(1);
+});

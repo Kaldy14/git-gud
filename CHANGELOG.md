@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.8] - 2026-09-09
+
+### Added
+
+- Run Bug finder from the pull-request inbox or review view, inspect evidence-backed findings, and select which findings to post as review comments.
+- Copy a self-contained investigation prompt for an AI agent. The local Git Gud CLI can add, update, dismiss, restore, or remove findings with revision and version checks.
+- Open evidence file references in the selected code editor at the reviewed revision, including supporting files outside the diff. Cursor and VS Code jump to the referenced line.
+
+### Changed
+
+- Render Bug finder explanations and evidence as readable messages with file chips, headings, lists, tables, and highlighted code blocks with copy and wrap controls.
+- Reuse PR syntax themes and expandable surrounding context for finding code snippets.
+- Clarify AI review mode and move AI brief controls into the PR header.
+- Smooth the AI guide status ring animation.
+
+### Fixed
+
+- Keep inline comment typing responsive in large diffs.
+- Preserve code wrapping when findings refresh, and center file chips within message text.
+
 ## [2026.9.7] - 2026-09-09
 
 ### Fixed

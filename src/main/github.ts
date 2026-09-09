@@ -3441,3 +3441,31 @@ function nestedValue(record: Record<string, unknown>, path: Array<string | numbe
 
   return value;
 }
+
+/** Fetch current identity cheaply before a finding mutation, independent of cached PR detail. */
+export async function loadBugFinderHead(locator: GitHubPullRequestLocator): Promise<{ headSha: string; host: string }> {
+  const context = await getGitHubContext(locator.profileId);
+  const raw = readRecord(await runGitHubJson(context, ['api', '--hostname', context.host, pullRequestEndpoint(locator)]), 'pull request');
+  return { headSha: readNestedString(raw, ['head', 'sha'], 'head SHA'), host: context.host };
+}
+
+export async function loadBugFinderSource(locator: GitHubPullRequestLocator, paths: string[], headSha: string): Promise<Array<{ path: string; text?: string }>> {
+  const context = await getGitHubContext(locator.profileId);
+  const result: Array<{ path: string; text?: string }> = [];
+  for (let i = 0; i < paths.length; i += 6) {
+    result.push(...await Promise.all(paths.slice(i, i + 6).map(async (path) => ({ path, text: await loadGitHubFileText(context, locator, path, headSha) }))));
+  }
+  return result;
+}
+
+/** A comment-only review is submitted in one request, without an intermediate pending review. */
+export async function postBugFinderReview(input: GitHubPullRequestReviewInput): Promise<{ reviewId: number }> {
+  const context = await getGitHubContext(input.profileId);
+  const response = readRecord(await runGitHubJson(context, ['api', '--hostname', context.host, '--method', 'POST', '--input', '-', `${pullRequestEndpoint(input)}/reviews`], {
+    commit_id: input.commitId,
+    event: 'COMMENT',
+    comments: input.comments.map((comment) => ({ body: comment.body, path: comment.path, line: comment.line, side: comment.side === 'right' ? 'RIGHT' : 'LEFT',
+      ...(comment.startLine === undefined ? {} : { start_line: comment.startLine, start_side: comment.startSide === 'left' ? 'LEFT' : 'RIGHT' }) }))
+  }), 'bug finder review');
+  return { reviewId: readNumber(response.id, 'review ID') };
+}

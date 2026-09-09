@@ -31,7 +31,7 @@ import type {
   ExternalApplication,
   ExternalApplicationId
 } from '@shared/externalApplications';
-import { isExternalApplicationId } from '@shared/externalApplications';
+import { selectApplication, loadPreferredApplication, savePreferredApplication } from './preferredApplication';
 import type { GitHubPullRequestDetail } from '@shared/types';
 
 
@@ -63,7 +63,6 @@ type OpenApplicationController = {
   openInApplication: (application: ExternalApplication) => void;
 };
 
-const preferredApplicationStorageKey = 'git-gud:open-pr-application:v1';
 const emptyApplications: readonly ExternalApplication[] = [];
 
 export function PullRequestHeaderActions({
@@ -376,28 +375,4 @@ function useOpenApplication(
     isOpening: openMutation.isPending,
     openInApplication
   };
-}
-
-function selectApplication(
-  applications: readonly ExternalApplication[],
-  preferredApplicationId: ExternalApplicationId | undefined
-): ExternalApplication | undefined {
-  return (
-    applications.find((application) => application.id === preferredApplicationId) ??
-    applications.find((application) => application.id === 'cursor') ??
-    applications.find((application) => application.id === 'vscode') ??
-    applications[0]
-  );
-}
-
-function loadPreferredApplication(storage: Storage): ExternalApplicationId | undefined {
-  const value = storage.getItem(preferredApplicationStorageKey);
-  return value && isExternalApplicationId(value) ? value : undefined;
-}
-
-function savePreferredApplication(
-  storage: Storage,
-  applicationId: ExternalApplicationId
-): void {
-  storage.setItem(preferredApplicationStorageKey, applicationId);
 }

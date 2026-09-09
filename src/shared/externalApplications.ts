@@ -26,6 +26,7 @@ export type OpenPullRequestInApplicationInput = {
   repository: string;
   number: number;
   headSha: string;
+  file?: { path: string; line?: number };
 };
 
 export type OpenPullRequestInApplicationResult = {

@@ -1093,3 +1093,12 @@ describe('IPC argument validation', () => {
     ).toThrow('autoFetchIntervalMinutes must be a non-negative integer.');
   });
 });
+
+it('validates optional evidence file coordinates at the IPC boundary', () => {
+  const input = { applicationId: 'cursor', url: 'https://github.com/acme/widgets/pull/42', owner: 'acme', repository: 'widgets', number: 42, headSha: 'a'.repeat(40) };
+  expect(validateIpcArgs('github:open-pull-request-in-application', ['/repo', { ...input, file: { path: 'src/file.ts', line: 42 } }])).toEqual(['/repo', { ...input, file: { path: 'src/file.ts', line: 42 } }]);
+  for (const path of ['../private.ts', '/private.ts', 'src/file.ts:42', 'https://example.com/file.ts']) {
+    expect(() => validateIpcArgs('github:open-pull-request-in-application', ['/repo', { ...input, file: { path } }])).toThrow('repository-relative');
+  }
+  expect(() => validateIpcArgs('github:open-pull-request-in-application', ['/repo', { ...input, file: { path: 'src/file.ts', line: 0 } }])).toThrow('positive integer');
+});

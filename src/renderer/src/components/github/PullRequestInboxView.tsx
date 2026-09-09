@@ -1,3 +1,4 @@
+import { BugFinderButton } from './BugFinderButton';
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
 import {
@@ -39,7 +40,7 @@ type PullRequestInboxViewProps = {
   onRefresh: () => void;
   onClose: () => void;
   onOpenProfileSettings: () => void;
-  onSelectPullRequest: (pullRequest: GitHubPullRequestSummary, openGuide?: boolean) => void;
+  onSelectPullRequest: (pullRequest: GitHubPullRequestSummary, openGuide?: boolean, openBugFinder?: boolean) => void;
 };
 
 type UpdatedRange = '7' | '30' | '90' | 'all';
@@ -311,6 +312,7 @@ export function PullRequestInboxView({
                           pullRequest={pullRequest}
                           onSelect={() => onSelectPullRequest(pullRequest)}
                           onOpenGuide={() => onSelectPullRequest(pullRequest, true)}
+                          onOpenBugFinder={() => onSelectPullRequest(pullRequest, false, true)}
                         />
                       ))}
                     </div>
@@ -386,11 +388,13 @@ export function PullRequestInboxView({
 function PullRequestRow({
   pullRequest,
   onSelect,
-  onOpenGuide
+  onOpenGuide,
+  onOpenBugFinder
 }: {
   pullRequest: GitHubPullRequestSummary;
   onSelect: () => void;
   onOpenGuide: () => void;
+  onOpenBugFinder: () => void;
 }): ReactElement {
   const [didAvatarFail, setDidAvatarFail] = useState(false);
   const status = pullRequestStatus(pullRequest);
@@ -450,6 +454,7 @@ function PullRequestRow({
           : 'No checks'}
       </span>
       <PullRequestGuideIndicator pullRequest={pullRequest} onOpen={onOpenGuide} />
+      <BugFinderButton pullRequest={pullRequest} onOpen={onOpenBugFinder} />
       <span className="pr-row-comments" aria-label={`${pullRequest.comments} comments`}>
         <MessageSquare size={14} />
         <span>{pullRequest.comments}</span>

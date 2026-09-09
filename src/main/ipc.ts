@@ -1,3 +1,4 @@
+import { handleBugFinder } from './bugFinder';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -766,6 +767,7 @@ export function registerIpcHandlers(
   handle('github:open-pull-request-in-application', (_event, repoPath, input) =>
     openPullRequestInApplication(getOpenRepositoryTab(repoPath), input)
   );
+  handle('bug-finder:request', (_event, request) => handleBugFinder(request));
   handle('github:pull-request-guide-status', (_event, locator) => githubPullRequestGuides.getStatus(locator));
   handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {
     const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);

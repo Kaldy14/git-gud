@@ -130,7 +130,7 @@
 }
 .pr-inbox-results .pr-inbox-row {
   min-height: 54px;
-  grid-template-columns: 18px minmax(0, 1fr) 180px 64px 28px 44px;
+  grid-template-columns: 18px minmax(0, 1fr) 180px 64px 28px 28px 44px;
   gap: 12px;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
@@ -679,7 +679,7 @@
     display: none;
   }
   .pr-inbox-results .pr-inbox-row {
-    grid-template-columns: 16px minmax(0, 1fr) 125px 48px 28px 44px;
+    grid-template-columns: 16px minmax(0, 1fr) 125px 48px 28px 28px 44px;
     gap: 8px;
   }
   .pr-side-panel {
@@ -696,7 +696,7 @@
     max-width: 100px;
   }
   .pr-inbox-results .pr-inbox-row {
-    grid-template-columns: 16px minmax(0, 1fr) 28px 44px;
+    grid-template-columns: 16px minmax(0, 1fr) 28px 28px 44px;
   }
   .pr-inbox-results .pr-row-copy { grid-column: 2 / -1; }
   .pr-inbox-results .pr-row-state {
@@ -981,3 +981,62 @@
 @media (prefers-reduced-motion: reduce) {
   .pr-row-guide[data-status='running'] .pr-row-guide-dot::after { animation: none; }
 }
+
+/* Bug finder uses the existing PR controls and fixed status dots. */
+.pr-bug-finder-button { flex-shrink: 0; }
+.pr-bug-finder-button-labelled { width: auto; padding: 0 10px 0 6px; gap: 5px; font-size: 11px; white-space: nowrap; }
+.pr-bug-finder-button[aria-pressed='true'] { color: var(--text-1); background: var(--select-bg); }
+.pr-bug-finder-button[data-status='running'] .pr-row-guide-dot::after { animation: none; }
+.bug-finder-view { display: flex; flex: 1; flex-direction: column; min-height: 0; background: var(--bg-graph); color: var(--text-1); font-size: 12px; }
+.bug-finder-toolbar,.bug-finder-footer { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--bg-graph-header); flex-shrink: 0; }
+.bug-finder-toolbar { border-bottom: 1px solid var(--border); }
+.bug-finder-toolbar strong { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.bug-finder-toolbar > button:first-of-type { margin-left: auto; }
+.bug-finder-columns { display: grid; grid-template-columns: minmax(260px, 30%) minmax(0, 1fr); flex: 1; min-height: 0; }
+.bug-finder-list { background: var(--bg-sidebar); border-right: 1px solid var(--border); overflow: auto; }
+.bug-finder-list nav { display: flex; gap: 3px; padding: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.bug-finder-list nav button { font-size: 10px; padding: 4px 5px; color: var(--text-3); border-radius: 3px; }
+.bug-finder-list nav button[aria-pressed='true'] { color: var(--text-1); background: var(--select-bg); }
+.bug-finder-item { padding: 12px; border-bottom: 1px solid var(--border); }
+.bug-finder-item[data-active='true'] { background: var(--select-bg); box-shadow: inset 2px 0 var(--select-border); }
+.bug-finder-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--text-3); font-size: 11px; }
+.bug-finder-meta input { accent-color: var(--accent); }
+.bug-finder-badge { padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 3px; font-size: 10px; text-transform: capitalize; }
+.bug-finder-badge[data-severity='critical'],.bug-finder-badge[data-severity='major'] { color: #ff949b; }
+.bug-finder-badge[data-severity='minor'],.bug-finder-outdated { color: var(--warning-text); }
+.bug-finder-item-link { display: block; text-align: left; width: 100%; padding-top: 6px; }
+.bug-finder-item-link strong { display: block; font-size: 12px; font-weight: 600; }
+.bug-finder-item-link small { display: block; margin-top: 5px; font-size: 10px; color: var(--text-3); overflow-wrap: anywhere; }
+.bug-finder-detail { overflow: auto; padding: 20px; min-width: 0; }
+.bug-finder-detail > h2 { font-size: 16px; margin: 14px 0; }
+.bug-finder-detail .review-comment-body { font-size: 12px; }
+.bug-finder-actions { margin-left: auto; display: flex; gap: 4px; }
+.bug-finder-code { margin: 18px 0; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-field); overflow: auto; }
+.bug-finder-code header { color: var(--text-3); font-size: 11px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.bug-finder-evidence { background: var(--bg-panel); border-left: 2px solid var(--accent); padding: 10px 12px; }
+.bug-finder-evidence > strong { font-size: 11px; }
+.bug-finder-empty { padding: 20px 12px; color: var(--text-3); }
+.bug-finder-history,.bug-finder-coverage { margin-top: 18px; color: var(--text-3); font-size: 11px; }
+.bug-finder-history p,.bug-finder-coverage p { margin: 8px 0; white-space: pre-wrap; }
+.bug-finder-footer { border-top: 1px solid var(--border); justify-content: space-between; }
+.bug-finder-footer > div { display: flex; gap: 6px; }
+.bug-finder-warning,.bug-finder-status,.bug-finder-error { padding: 9px 12px; margin: 0; font-size: 11px; border-bottom: 1px solid var(--border); }
+.bug-finder-warning { color: var(--warning-text); background: var(--bg-panel); }
+.bug-finder-status { color: var(--text-2); }
+.bug-finder-error { color: #ff949b; background: #401e24; overflow-wrap: anywhere; }
+.bug-finder-form { padding: 14px 0; display: grid; gap: 10px; }
+.bug-finder-form label,.bug-finder-review-comments label { display: grid; gap: 5px; color: var(--text-2); font-size: 11px; }
+.bug-finder-form input,.bug-finder-form select,.bug-finder-form textarea,.bug-finder-review-comments textarea { border: 1px solid var(--border-strong); border-radius: 4px; padding: 8px; background: var(--bg-field); color: var(--text-1); width: 100%; }
+.bug-finder-form textarea { min-height: 90px; resize: vertical; }
+.bug-finder-form-row { display: flex; gap: 10px; }
+.bug-finder-form-row > label { flex: 1; min-width: 0; }
+.bug-finder-review-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: #0009; padding: 30px; }
+.bug-finder-review-dialog { display: flex; flex-direction: column; width: min(740px, 100%); max-height: 85vh; background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 6px; outline: none; }
+.bug-finder-review-dialog > header,.bug-finder-review-dialog > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; }
+.bug-finder-review-dialog h2 { margin: 0; font-size: 15px; }
+.bug-finder-review-dialog footer { font-size: 11px; }
+.bug-finder-review-comments { padding: 0 14px; overflow: auto; display: grid; gap: 14px; }
+.bug-finder-review-comments textarea { min-height: 145px; resize: vertical; font-size: 12px; line-height: 1.6; }
+@container pr-workspace (max-width: 950px) { .bug-finder-columns { grid-template-columns: 270px minmax(0, 1fr); } .bug-finder-detail { padding: 14px; } .bug-finder-footer { flex-wrap: wrap; } }
+
+.bug-finder-code .gg-diff { max-height: 440px; overflow: auto; }

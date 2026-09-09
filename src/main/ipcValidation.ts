@@ -1,3 +1,5 @@
+import { parseCodeReference } from '@shared/codeReference';
+import { parseBugRequest } from '@shared/bugFinder';
 import type {
   IpcChannelMap,
   IpcChannelName,
@@ -303,6 +305,7 @@ const validators = {
       'github:open-pull-request-in-application',
       readOpenPullRequestInApplicationInput
     ),
+  'bug-finder:request': (args) => readOnlyArg(args, 'bug-finder:request', 'request', parseBugRequest),
   'github:pull-request-guide-status': (args) =>
     readOnlyArg(args, 'github:pull-request-guide-status', 'locator', readGitHubPullRequestLocator),
   'github:pull-request-review-guide-state': (args) =>
@@ -661,6 +664,15 @@ function readOpenPullRequestInApplicationInput(
     throw new Error('headSha must be a full Git object ID.');
   }
 
+  let file: OpenPullRequestInApplicationInput['file'];
+  if (record.file !== undefined) {
+    const input = readRecord(record.file, 'file');
+    const path = readNonEmptyLimitedString(input.path, 'file.path', 4096);
+    const reference = parseCodeReference(path);
+    if (!reference || reference.path !== path || reference.line !== undefined) throw new Error('file.path must be repository-relative.');
+    file = { path, ...(input.line === undefined ? {} : { line: readPositiveInteger(input.line, 'file.line') }) };
+  }
+
   return {
     applicationId: readEnum(
       record.applicationId,
@@ -671,7 +683,8 @@ function readOpenPullRequestInApplicationInput(
     owner: readGitHubName(record.owner, 'owner'),
     repository: readGitHubName(record.repository, 'repository'),
     number: readPositiveInteger(record.number, 'number'),
-    headSha
+    headSha,
+    ...(file ? { file } : {})
   };
 }
 

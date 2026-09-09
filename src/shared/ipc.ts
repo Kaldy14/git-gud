@@ -1,3 +1,4 @@
+import type { BugFinderRequest, BugFinderResult } from './bugFinder';
 import type {
   ApplicationUpdateState,
   AppSettings,
@@ -564,6 +565,7 @@ export type IpcChannelMap = {
     args: [repoPath: string, input: OpenPullRequestInApplicationInput];
     result: OpenPullRequestInApplicationResult;
   };
+  'bug-finder:request': { args: [request: BugFinderRequest]; result: BugFinderResult };
   'github:pull-request-guide-status': {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestGuideStatus;
@@ -764,6 +766,7 @@ export type RendererApi = {
     repoPath: string,
     input: OpenPullRequestInApplicationInput
   ) => Promise<OpenPullRequestInApplicationResult>;
+  bugFinder: (request: BugFinderRequest) => Promise<BugFinderResult>;
   getGitHubPullRequestGuideStatus: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestGuideStatus>;
   getGitHubPullRequestReviewGuideState: (
     locator: GitHubPullRequestLocator,

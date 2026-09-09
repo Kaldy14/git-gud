@@ -146,6 +146,7 @@ const api: RendererApi = {
     invoke('github:pull-request-conflicts', repoPath, input),
   openGitHubPullRequestInApplication: (repoPath, input) =>
     invoke('github:open-pull-request-in-application', repoPath, input),
+  bugFinder: (request) => invoke('bug-finder:request', request),
   getGitHubPullRequestGuideStatus: (locator) => invoke('github:pull-request-guide-status', locator),
   getGitHubPullRequestReviewGuideState: (locator, sourceFingerprint) =>
     invoke('github:pull-request-review-guide-state', locator, sourceFingerprint),

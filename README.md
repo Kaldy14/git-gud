@@ -97,6 +97,10 @@ Press <kbd>⌘</kbd> <kbd>P</kbd> to search actions, commits, branches, reposito
 - Pi CLI available on `PATH`, or configured through `PI_EXECUTABLE_PATH` (optional, for AI review walkthroughs and commit-message generation)
 - Portainer Business Edition API access (optional, for Swarm and Compose stack monitoring)
 
+## PR Bug finder
+
+Run Bug finder beside AI brief in the PR dashboard, inspect findings with their code, and post only selected comments. Copy a self-contained prompt to discuss findings with another agent; the bundled local CLI lets that agent update the records in Git Gud. See [Bug finder usage and CLI](docs/bug-finder.md) for setup, evidence limits, and revision checks.
+
 ## Codex Agent Notes
 
 Agent Notes let Codex attach short implementation context directly to changed lines in Git Gud. Most tasks should produce no notes. A note is useful only when the diff cannot explain a constraint, behavior contract, or concrete risk that matters during review.

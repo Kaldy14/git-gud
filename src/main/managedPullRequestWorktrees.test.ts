@@ -1,4 +1,4 @@
-import { access, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises';
+import { access, symlink, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +10,7 @@ import type { RepoTab } from '@shared/types';
 
 import { gitExecutor } from './git/exec';
 import {
+  resolveEvidenceFile,
   ManagedPullRequestWorktreeService,
   type ManagedPullRequestWorktreeEntry,
   type ManagedPullRequestWorktreeRegistry
@@ -206,3 +207,21 @@ function runGit(
 ) {
   return gitExecutor.run(args, { cwd, kind, allowedExitCodes });
 }
+
+it('resolves evidence files but rejects missing files, directories and symlink escapes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'evidence-test-'));
+  const outside = await mkdtemp(join(tmpdir(), 'evidence-outside-'));
+  try {
+    await writeFile(join(root, 'source.ts'), 'code');
+    await writeFile(join(outside, 'secret.ts'), 'outside');
+    await symlink(join(outside, 'secret.ts'), join(root, 'escape.ts'));
+    await expect(resolveEvidenceFile(root, 'source.ts')).resolves.toBe(await realpath(join(root, 'source.ts')));
+    await expect(resolveEvidenceFile(root, 'missing.ts')).rejects.toThrow();
+    await expect(resolveEvidenceFile(root, '.')).rejects.toThrow('inside the reviewed checkout');
+    await expect(resolveEvidenceFile(root, 'escape.ts')).rejects.toThrow('inside the reviewed checkout');
+    await expect(resolveEvidenceFile(root, join(outside, 'secret.ts'))).rejects.toThrow('inside the reviewed checkout');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});

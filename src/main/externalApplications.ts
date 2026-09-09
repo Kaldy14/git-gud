@@ -122,7 +122,8 @@ export async function listExternalApplications(): Promise<ExternalApplication[]>
 
 export async function launchExternalApplication(
   applicationId: ExternalApplicationId,
-  worktreePath: string
+  worktreePath: string,
+  file?: { path: string; line?: number }
 ): Promise<{ application: ExternalApplication; launch: ExternalApplicationLaunch }> {
   const installedApplication = (await loadInstalledExternalApplications())
     .find((candidate) => candidate.id === applicationId);
@@ -134,7 +135,8 @@ export async function launchExternalApplication(
   const command = externalApplicationLaunchCommand(
     installedApplication,
     worktreePath,
-    process.platform
+    process.platform,
+    file
   );
   const launch = await spawnObserved(command.executable, command.args);
 
@@ -409,18 +411,19 @@ async function resolveWindowsApplicationPath(
 function externalApplicationLaunchCommand(
   application: Pick<InstalledExternalApplication, 'appPath' | 'waitCliPath'>,
   worktreePath: string,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  file?: { path: string; line?: number }
 ): { executable: string; args: string[] } {
   if (platform === 'win32' || application.waitCliPath) {
     return {
       executable: application.waitCliPath ?? application.appPath,
-      args: ['--new-window', '--wait', worktreePath]
+      args: ['--new-window', '--wait', worktreePath, ...(file ? ['--goto', file.line ? `${file.path}:${file.line}` : file.path] : [])]
     };
   }
 
   return {
     executable: '/usr/bin/open',
-    args: ['-W', '-n', '-a', application.appPath, worktreePath]
+    args: ['-W', '-n', '-a', application.appPath, file?.path ?? worktreePath]
   };
 }
 
