@@ -3158,38 +3158,40 @@ function ReviewInlineComposer({
           ? `Draft comment on ${collaboration.selectedPath}:${formatReviewLineSelection(normalizedSelection)}`
           : 'Select lines from only one side of the diff to comment.'}
       </div>
-      <textarea
-        ref={textareaRef}
-        rows={3}
-        defaultValue={initialBody}
-        placeholder={collaboration.selectedSubject === 'file'
-          ? 'Leave a whole-file review comment…'
-          : 'Leave an inline review comment…'}
-        aria-label={collaboration.selectedSubject === 'file'
-          ? 'File review comment'
-          : 'Inline review comment'}
-        onChange={(event) => {
-          const nextBody = event.target.value;
-          const nextHasBody = Boolean(nextBody.trim());
+      <div className="review-inline-composer-input">
+        <textarea
+          ref={textareaRef}
+          rows={3}
+          defaultValue={initialBody}
+          placeholder={collaboration.selectedSubject === 'file'
+            ? 'Leave a whole-file review comment…'
+            : 'Leave an inline review comment…'}
+          aria-label={collaboration.selectedSubject === 'file'
+            ? 'File review comment'
+            : 'Inline review comment'}
+          onChange={(event) => {
+            const nextBody = event.target.value;
+            const nextHasBody = Boolean(nextBody.trim());
 
-          collaboration.onBodyChange(nextBody);
-          if (nextHasBody !== hasBody) {
-            setHasBody(nextHasBody);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (
-            (event.metaKey || event.ctrlKey) &&
-            event.key === 'Enter' &&
-            !event.nativeEvent.isComposing &&
-            canSubmitLineComment &&
-            !collaboration.isSubmitting
-          ) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-      />
+            collaboration.onBodyChange(nextBody);
+            if (nextHasBody !== hasBody) {
+              setHasBody(nextHasBody);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (
+              (event.metaKey || event.ctrlKey) &&
+              event.key === 'Enter' &&
+              !event.nativeEvent.isComposing &&
+              canSubmitLineComment &&
+              !collaboration.isSubmitting
+            ) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+        />
+      </div>
       <p className="review-inline-composer-hint">
         Saved in Git Gud only. Nothing is posted until you submit the review.
       </p>

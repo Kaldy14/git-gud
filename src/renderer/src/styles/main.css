@@ -5421,8 +5421,19 @@ button.ref-chip {
   line-height: 16px;
 }
 
-.review-inline-composer textarea {
+.review-inline-composer-input {
+  position: relative;
+  height: 66px;
+  overflow: hidden;
   resize: vertical;
+}
+
+.review-inline-composer-input textarea {
+  /* Keep typing from recalculating every row of the surrounding diff subgrid. */
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  resize: none;
 }
 
 .review-inline-composer-hint {
