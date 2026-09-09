@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.7] - 2026-09-09
+
+### Fixed
+
+- Fixed AI brief failures caused by valid links to unchanged context lines. Summary ranges can include context while still covering a change within one diff hunk.
+- Give AI brief generation explicit diff line coordinates and one correction attempt for invalid output, preserving explanations instead of silently dropping them.
+- Keep context-line links visible and navigable in the AI brief.
+
+### Changed
+
+- Made failed AI brief indicators more visible with a stronger red book icon and a larger status dot.
+
 ## [2026.9.6] - 2026-09-08
 
 ### Changed

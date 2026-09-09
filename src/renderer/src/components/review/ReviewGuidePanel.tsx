@@ -115,7 +115,7 @@ export function ReviewGuidePanel({ guide, units, selectedUnit, findings, tab, re
             {hidden ? <small>Hidden by review filters. Open the location to reveal it.</small> : null}
           </details>;
         })}
-        {!visibleSummaries.length ? <p className="review-brief-empty">{summaries.length ? `No ${complexity}-complexity summaries in this layer.` : layer?.summaries === undefined ? 'Rebuild this brief to generate range summaries.' : 'No range explanations needed for this layer.'}</p> : null}
+        {!visibleSummaries.length ? <p className="review-brief-empty">{summaries.length ? `No ${complexity}-complexity summaries in this layer.` : layer?.summaries === undefined ? 'Rebuild this brief to generate range summaries.' : 'No range summaries available for this layer.'}</p> : null}
         {!summaries.length && files.length ? <div className="review-guide-file-links">{files.map((file) => <button type="button" key={file.path} disabled={disabled} onClick={() => onSelectFile(file)}>{reviewGuideFileLabel(file.path, guideFiles)} <ArrowRight size={12} /></button>)}</div> : null}
       </> : <>
         <p className="review-brief-findings-status">{findings.some(({ comment }) => comment.isResolved === undefined) ? 'Some resolution statuses are unavailable.' : 'Unresolved review findings'}</p>

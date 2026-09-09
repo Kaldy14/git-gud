@@ -1,4 +1,4 @@
-import { reviewGuidePatchChangesLine } from '@shared/reviewGuide';
+import { reviewGuidePatchChangesRange, reviewGuidePatchContainsLine } from '@shared/reviewGuide';
 import type { VisibleReviewUnit } from './reviewFilters';
 import type { GitReviewGuide, GitReviewGuideFile, GitReviewGuidePriority, GitReviewGuideUnit, GitReviewPlan, GitReviewGuideSummary } from '@shared/types';
 
@@ -26,7 +26,7 @@ export function guideSummaries(layer: GitReviewGuideUnit | undefined): GitReview
 
 export function summaryIsVisible(summary: GitReviewGuideSummary, unit: VisibleReviewUnit | undefined): boolean {
   return Boolean(unit?.visibleChunks.some((chunk) => chunk.path === summary.path &&
-    reviewGuidePatchChangesLine(chunk.patch, summary.line, summary.side)));
+    reviewGuidePatchChangesRange(chunk.patch, summary.line, summary.endLine, summary.side)));
 }
 
 export function reviewGuideFileLabel(path: string, files: readonly { path: string }[]): string {
@@ -81,7 +81,7 @@ export function visibleReviewGuideFiles(unit: VisibleReviewUnit | undefined, gui
     const line = file.line;
     // Filters can hide the suggested hunk while leaving other hunks of this file visible.
     return [{ ...file, line: line && unit.visibleChunks.some((chunk) =>
-      chunk.path === path && reviewGuidePatchChangesLine(chunk.patch, line, file.side ?? 'right')
+      chunk.path === path && reviewGuidePatchContainsLine(chunk.patch, line, file.side ?? 'right')
     ) ? line : undefined }];
   });
 }

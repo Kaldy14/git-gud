@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GitReviewGuide, GitReviewUnit } from '@shared/types';
 
-import { rankReviewChunksByGuide, rankReviewUnitsByGuide, reviewGuideFileLabel, visibleReviewGuideFiles } from './reviewGuidePresentation';
+import { rankReviewChunksByGuide, rankReviewUnitsByGuide, reviewGuideFileLabel, summaryIsVisible, visibleReviewGuideFiles } from './reviewGuidePresentation';
 
 describe('guide file labels', () => {
   it('includes enough parent folders to distinguish repeated filenames', () => {
@@ -83,6 +83,11 @@ describe('AI review guide presentation', () => {
     expect(visibleReviewGuideFiles(visible, block)).toEqual([{ ...block.files[0], line: undefined }]);
     block.files[0]!.line = 2;
     expect(visibleReviewGuideFiles(visible, block)[0]?.line).toBe(2);
+    block.files[0]!.line = 1;
+    expect(visibleReviewGuideFiles(visible, block)[0]?.line).toBe(1);
+    const summary = { path: 'client.ts', line: 1, endLine: 2, side: 'right' as const, complexity: 'low' as const, body: 'Update the guard.' };
+    expect(summaryIsVisible(summary, visible)).toBe(true);
+    expect(summaryIsVisible(summary, { ...visible, visibleChunks: [] })).toBe(false);
     expect(visibleReviewGuideFiles({ ...visible, visibleChunks: [] }, block)).toEqual([]);
   });
 });

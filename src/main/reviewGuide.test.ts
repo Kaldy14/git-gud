@@ -2,11 +2,11 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
-
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GitReviewGuide, GitReviewPlan } from '@shared/types';
 
 import { buildReviewPlan, type ReviewPatchInput } from './git/reviewPlan';
+import * as piHarness from './piHarness';
 import {
   buildReviewGuidePrompt,
   parseReviewGuideOutput,
@@ -14,6 +14,8 @@ import {
   ReviewGuideManager,
   type ReviewGuideEngine
 } from './reviewGuide';
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('AI review guides', () => {
   it('preserves source coverage and accepts an older fenced response', () => {
@@ -131,11 +133,12 @@ describe('AI review guides', () => {
   it('includes author intent as quoted context and identifies partial patches', () => {
     const plan = reviewPlan();
     plan.title = 'Respect connection timeout';
-    plan.units[0]!.chunks[0]!.patch += 'x'.repeat(400_001);
+    plan.units[0]!.chunks[0]!.patch += `+${'x'.repeat(400_001)}`;
     const prompt = buildReviewGuidePrompt(plan);
     expect(prompt).toContain('Respect connection timeout');
     expect(prompt).toContain('"truncated":true');
     expect(prompt).toContain('incomplete evidence');
+    expect(prompt).not.toContain('xxxxx');
   });
 
   it('combines source blocks only in the generated layer and validates dependency order', () => {
@@ -162,16 +165,80 @@ describe('AI review guides', () => {
     expect(() => parseReviewGuideOutput(JSON.stringify(guide), plan)).toThrow('every existing review group');
   });
 
-  it('accepts deleted-line summaries and rejects invented ranges and complexity', () => {
+  it('accepts context endpoints around changes, but rejects ungrounded summary ranges', () => {
     const plan = reviewPlan();
     const guide = validGuide(plan);
-    const layer = guide.units[0]!;
-    const summary = { path: 'src/client.ts', line: 2, endLine: 2, side: 'left' as const, complexity: 'low' as const, body: 'Remove the unbounded connection call.' };
-    layer.summaries = [summary];
+    const summary = { path: 'src/client.ts', line: 1, endLine: 2, side: 'left' as const, complexity: 'low' as const, body: 'Replace the unbounded connection call.' };
+    guide.units[0]!.summaries = [summary];
     expect(parseReviewGuideOutput(JSON.stringify(guide), plan).units[0]?.summaries).toEqual([summary]);
-    for (const invalid of [{ ...summary, line: 1 }, { ...summary, endLine: 99 }, { ...summary, complexity: 'critical' }, { ...summary, path: 'secret.ts' }]) {
-      expect(() => parseReviewGuideOutput(JSON.stringify({ ...guide, units: [{ ...layer, summaries: [invalid] }] }), plan)).toThrow();
+    for (const invalid of [
+      { ...summary, endLine: 1 }, { ...summary, endLine: 99 }, { ...summary, path: 'secret.ts' },
+      { ...summary, side: 'unknown' }, { ...summary, line: -1 }, { ...summary, line: '2' },
+      { ...summary, line: 2.5 }, { ...summary, endLine: 0 }
+    ]) {
+      const output = { ...guide, units: [{ ...guide.units[0], summaries: [invalid] }] };
+      expect(() => parseReviewGuideOutput(JSON.stringify(output), plan)).toThrow('Invalid summary range');
     }
+  });
+
+  it('accepts a visible context line as a file starting point without allowing invented lines', () => {
+    const plan = reviewPlan();
+    const guide = validGuide(plan);
+    guide.units[0]!.files[0]!.line = 1;
+    expect(parseReviewGuideOutput(JSON.stringify(guide), plan).units[0]?.files[0]?.line).toBe(1);
+    guide.units[0]!.files[0]!.line = 99;
+    expect(() => parseReviewGuideOutput(JSON.stringify(guide), plan)).toThrow('Invalid file starting line src/client.ts:99');
+  });
+
+  it('supplies explicit left and right coordinates instead of requiring diff line counting', () => {
+    const prompt = buildReviewGuidePrompt(reviewPlan());
+    expect(prompt).toContain('H1 L1 R1 | export function connect() {');
+    expect(prompt).toContain('H1 L2 R- |-  return open();');
+    expect(prompt).toContain('H1 L- R2 |+  return open(timeout);');
+    expect(prompt).toContain('Visible unchanged context');
+  });
+
+  it('corrects invalid locations once and preserves explanations in the completed brief', async () => {
+    const plan = reviewPlan();
+    const corrected = validGuide(plan);
+    corrected.units[0]!.summaries = [{ path: 'src/client.ts', line: 1, endLine: 2, side: 'right', complexity: 'medium', body: 'Bound the connection attempt with the requested timeout.' }];
+    const invalid = structuredClone(corrected);
+    invalid.units[0]!.summaries![0]!.endLine = 99;
+    const run = vi.spyOn(piHarness, 'runPiPrompt')
+      .mockResolvedValueOnce(JSON.stringify(invalid))
+      .mockResolvedValueOnce(JSON.stringify(corrected));
+    const manager = new ReviewGuideManager(new PiReviewGuideEngine());
+    manager.start(plan);
+    await vi.waitFor(() => expect(manager.getState(plan.repoPath, plan.sourceFingerprint)).toMatchObject({
+      status: 'ready', guide: { units: [{ summaries: corrected.units[0]!.summaries }] }
+    }));
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1]![0].prompt).toContain('Invalid summary range src/client.ts:1-99');
+    expect(run.mock.calls[1]![0].prompt).toContain('Bound the connection attempt');
+    expect(run.mock.calls[1]![0].timeoutMs).toBeLessThanOrEqual(run.mock.calls[0]![0].timeoutMs);
+  });
+
+  it('does not turn repeated invalid output into a ready brief with missing explanations', async () => {
+    const plan = reviewPlan();
+    const guide = validGuide(plan);
+    guide.units[0]!.files[0]!.line = 99;
+    const run = vi.spyOn(piHarness, 'runPiPrompt').mockResolvedValue(JSON.stringify(guide));
+    await expect(new PiReviewGuideEngine().generate(plan)).rejects.toThrow('Invalid file starting line');
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry provider failures as output corrections', async () => {
+    const run = vi.spyOn(piHarness, 'runPiPrompt').mockRejectedValue(new Error('Provider unavailable.'));
+    await expect(new PiReviewGuideEngine().generate(reviewPlan())).rejects.toThrow('Provider unavailable.');
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('does not start a correction after the generation deadline', async () => {
+    const plan = reviewPlan();
+    const run = vi.spyOn(piHarness, 'runPiPrompt').mockResolvedValue('invalid JSON');
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(600_000);
+    await expect(new PiReviewGuideEngine().generate(plan)).rejects.toThrow('not valid JSON');
+    expect(run).toHaveBeenCalledOnce();
   });
 
   it('runs generation in the background and deduplicates an active job', async () => {

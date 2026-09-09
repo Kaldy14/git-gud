@@ -931,7 +931,13 @@
 .pr-row-guide[data-status='ready'] .pr-row-guide-dot { background: var(--success-text); border-color: var(--success-text); }
 .pr-row-guide[data-status='stale'] .pr-row-guide-dot,
 .pr-row-guide[data-status='running'] .pr-row-guide-dot { background: var(--warning-text); border-color: var(--warning-text); }
-.pr-row-guide[data-status='failed'] .pr-row-guide-dot { background: var(--danger-text); border-color: var(--danger-text); }
+.pr-row-guide[data-status='failed'] { color: #ff4545; }
+.pr-row-guide[data-status='failed'] .pr-row-guide-dot {
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  border-color: currentColor;
+}
 /* Advance the ring at a low cadence; the status dot stays fixed and fully visible. */
 .pr-row-guide[data-status='running'] .pr-row-guide-dot::after {
   content: '';
