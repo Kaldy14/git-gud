@@ -938,7 +938,7 @@
   background: currentColor;
   border-color: currentColor;
 }
-/* Advance the ring at a low cadence; the status dot stays fixed and fully visible. */
+/* Rotate only the ring; the status dot stays fixed and fully visible. */
 .pr-row-guide[data-status='running'] .pr-row-guide-dot::after {
   content: '';
   position: absolute;
@@ -947,7 +947,7 @@
   border-top-color: var(--warning-text);
   border-right-color: var(--warning-text);
   border-radius: 50%;
-  animation: pr-guide-working 2.4s steps(8, end) infinite;
+  animation: pr-guide-working 2.4s linear infinite;
 }
 @keyframes pr-guide-working {
   to { transform: rotate(360deg); }
