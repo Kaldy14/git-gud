@@ -37,6 +37,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
+import { CopyRepairPromptButton } from '@renderer/components/operations/CopyRepairPromptButton';
 import { CommitSearchBar } from '@renderer/components/graph/CommitSearchBar';
 import { buildCommitSearchIndex, findCommitSearchMatches } from '@renderer/components/graph/commitSearch';
 import {
@@ -138,6 +139,8 @@ type GraphViewProps = {
   isLoading: boolean;
   isFetching: boolean;
   errorMessage?: string;
+  repairPrompt?: string;
+  onRetry?: () => void;
   hasMore: boolean;
   onSelectRow: (sha: string) => void;
   onBulkSelectionChange: (shas: string[]) => void;
@@ -242,6 +245,8 @@ export function GraphView({
   isLoading,
   isFetching,
   errorMessage,
+  repairPrompt,
+  onRetry,
   hasMore,
   onSelectRow,
   onBulkSelectionChange,
@@ -826,6 +831,34 @@ export function GraphView({
         {visibleColumns.sha ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">SHA</span> : null}
       </div>
 
+      {repairPrompt ? (
+        <section className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-8 py-10" aria-label="Repository repair">
+          <div className="w-full max-w-lg">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-1)]">
+              <AlertCircle size={16} className="shrink-0 text-[var(--danger-text)]" />
+              Git data is damaged
+            </h2>
+            <p className="mt-3 text-xs leading-5 text-[var(--text-2)]">
+              Git cannot read this repository’s history. Copy a repair prompt for your AI agent to diagnose the problem and preserve your local work before making changes.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <CopyRepairPromptButton prompt={repairPrompt} />
+              {onRetry ? (
+                <button className="btn-subtle h-6 px-2 text-[11px]" type="button" disabled={isFetching} onClick={onRetry}>
+                  Retry
+                </button>
+              ) : null}
+            </div>
+            {errorMessage ? (
+              <details className="mt-4 text-xs text-[var(--text-3)]">
+                <summary className="cursor-pointer">Git error details</summary>
+                <p className="mt-2 whitespace-pre-wrap break-all leading-5">{errorMessage}</p>
+              </details>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       <div
         ref={scrollRef}
         tabIndex={0}
@@ -836,7 +869,7 @@ export function GraphView({
         aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
         onScroll={handleListScroll}
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
+        className={repairPrompt ? 'hidden' : 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none'}
       >
         {isLoading && rows.length === 0 ? (
           <GraphMessage icon={<GitCommit size={15} />} label="Loading commit history…" />

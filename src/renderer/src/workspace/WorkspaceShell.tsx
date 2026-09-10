@@ -42,6 +42,7 @@ import {
   type RepositoryInspectorMode
 } from '@renderer/components/inspection/RepositoryInspectorDialog';
 import { CommandDialog, type CommandDialogConfig, type CommandDialogValues } from '@renderer/components/operations/CommandDialog';
+import { buildRepositoryRepairPrompt, isRepositoryCorruptionError } from '@renderer/lib/repositoryRepair';
 import { ConflictBanner } from '@renderer/components/operations/ConflictBanner';
 import { OperationLog, type OperationLogEntry } from '@renderer/components/operations/OperationLog';
 import {
@@ -551,6 +552,12 @@ export function WorkspaceShell(): ReactElement {
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
+  const corruptionErrors = [repositoryError, graphError].filter(
+    (message): message is string => isRepositoryCorruptionError(message)
+  );
+  const repairPrompt = activeTab && corruptionErrors.length > 0
+    ? buildRepositoryRepairPrompt(activeTab.path, corruptionErrors)
+    : undefined;
   const repositoryUnavailable =
     isRepositoryUnavailableError(repositoryQuery.error) ||
     isRepositoryUnavailableError(graphQuery.error);
@@ -3406,7 +3413,7 @@ export function WorkspaceShell(): ReactElement {
         </div>
       ) : null}
 
-      {!gitHubWorkspaceView && !repositoryUnavailable && (errorMessage || repositoryError) ? (
+      {!gitHubWorkspaceView && !repositoryUnavailable && (errorMessage || (repositoryError && !repairPrompt)) ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
           <span className="min-w-0 flex-1">{errorMessage ?? repositoryError}</span>
           {errorMessage ? (
@@ -3417,8 +3424,11 @@ export function WorkspaceShell(): ReactElement {
             <button
               className="btn-subtle h-6 shrink-0 px-2 text-[11px]"
               type="button"
-              disabled={repositoryQuery.isFetching}
-              onClick={() => void repositoryQuery.refetch()}
+              disabled={repositoryQuery.isFetching || graphQuery.isFetching}
+              onClick={() => {
+                void repositoryQuery.refetch();
+                void graphQuery.refetch();
+              }}
             >
               Retry
             </button>
@@ -3666,6 +3676,11 @@ export function WorkspaceShell(): ReactElement {
                   isLoading={graphQuery.isLoading}
                   isFetching={graphQuery.isFetching}
                   errorMessage={graphError}
+                  repairPrompt={repairPrompt}
+                  onRetry={() => {
+                    void repositoryQuery.refetch();
+                    void graphQuery.refetch();
+                  }}
                   hasMore={graphQuery.data?.hasMore ?? false}
                   onSelectRow={handleSelectRow}
                   onBulkSelectionChange={handleBulkSelectionChange}
