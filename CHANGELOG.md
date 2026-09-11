@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.9] - 2026-09-11
+
+### Added
+
+- Copy a diagnostic and repair prompt when repository corruption prevents the overview or commit graph from loading. The prompt asks an AI agent to preserve local work before attempting repairs.
+- Write general pull-request comments in a collapsible composer.
+- Open images from pull-request discussions and review threads in the image gallery.
+
+### Fixed
+
+- Load supported images from private repositories in pull-request descriptions, comments, and reviews using the selected GitHub profile.
+
 ## [2026.9.8] - 2026-09-09
 
 ### Added
