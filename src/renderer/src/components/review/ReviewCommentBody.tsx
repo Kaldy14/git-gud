@@ -4,7 +4,7 @@ import { EvidenceFileLink } from './EvidenceFileLink';
 import { parseCodeReference, type CodeReference } from '@shared/codeReference';
 import type { ComponentProps, ReactElement } from 'react';
 import { createContext, useContext, useState } from 'react';
-import ReactMarkdown, { type ExtraProps } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import type { ReviewImageGallerySelection } from './ReviewImageGalleryDialog';
@@ -52,6 +52,12 @@ export function ReviewCommentBody({
       <div className={`review-line-comment-body${aiMessageTheme ? ' ai-message-body' : ''}`} data-compact={compact}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
+          urlTransform={(url, key, node) =>
+            node.tagName === 'img' && key === 'src' &&
+            /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/]+={0,2}$/u.test(url)
+              ? url
+              : defaultUrlTransform(url)
+          }
           skipHtml
           components={{
             a: ({ children, href }) => {

@@ -1413,6 +1413,7 @@ export type GitHubPullRequestFile = {
 };
 
 export type GitHubPullRequestReviewComment = {
+  bodyImageUrls?: Record<string, string>;
   id: number;
   reviewId?: number;
   body: string;
@@ -1433,6 +1434,7 @@ export type GitHubPullRequestReviewComment = {
 };
 
 export type GitHubPullRequestConversationComment = {
+  bodyImageUrls?: Record<string, string>;
   id: number;
   body: string;
   author: string;
@@ -1443,6 +1445,7 @@ export type GitHubPullRequestConversationComment = {
 };
 
 export type GitHubPullRequestReview = {
+  bodyImageUrls?: Record<string, string>;
   id: number;
   author: string;
   authorAvatarUrl?: string;

@@ -95,3 +95,15 @@ it('renders AI prose tables and fenced code as message blocks without converting
   expect(markup).toContain('aria-label="Wrap code"');
   expect(markup.match(/class="evidence-file-chip"/g)).toHaveLength(1);
 });
+
+it('renders authenticated repository image data without allowing executable URLs', () => {
+  const source = 'https://github.com/acme/private/blob/abc/screen.jpg?raw=true';
+  const image = 'data:image/jpeg;base64,aGk=';
+  const markup = renderToStaticMarkup(createElement(ReviewCommentBody, {
+    body: `![Screenshot](${source})\n\n[Unsafe](javascript:alert)\n\n![Unsafe](data:text/html;base64,aGk=)`,
+    imageUrls: { [source]: image }
+  }));
+  expect(markup).toContain(`src="${image}"`);
+  expect(markup).not.toContain('javascript:');
+  expect(markup).not.toContain('data:text/html');
+});

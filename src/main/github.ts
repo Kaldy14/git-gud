@@ -1,3 +1,4 @@
+import { repositoryImageRequest } from './githubImages';
 import { execFile } from 'node:child_process';
 
 import type {
@@ -1422,12 +1423,12 @@ export async function loadGitHubPullRequestDetail(
     runGitHubJson(context, ['api', '--hostname', context.host, repositoryEndpoint(locator)]),
     runGitHubPaginatedArray(context, `${endpoint}/files?per_page=100`),
     runGitHubPaginatedArray(context, `${endpoint}/commits?per_page=100`),
-    runGitHubPaginatedArray(context, `${endpoint}/comments?per_page=100`),
+    runGitHubPaginatedArray(context, `${endpoint}/comments?per_page=100`, true),
     runGitHubPaginatedArray(
       context,
-      `repos/${encodeURIComponent(locator.owner)}/${encodeURIComponent(locator.repository)}/issues/${locator.number}/comments?per_page=100`
+      `repos/${encodeURIComponent(locator.owner)}/${encodeURIComponent(locator.repository)}/issues/${locator.number}/comments?per_page=100`, true
     ),
-    runGitHubPaginatedArray(context, `${endpoint}/reviews?per_page=100`),
+    runGitHubPaginatedArray(context, `${endpoint}/reviews?per_page=100`, true),
     loadReviewThreadStates(context, locator)
   ]);
   const { pullRequest: summary, viewerLogin } = summaryResult;
@@ -1459,13 +1460,49 @@ export async function loadGitHubPullRequestDetail(
   });
   githubPullRequestReviewPlans.remember(locator, reviewPlan);
 
+  const body = readOptionalString(pull.body) ?? '';
+  const bodyImageUrls = parseGitHubBodyImageUrls(body, readOptionalString(pull.body_html) ?? '');
+  const reviewComments = reviewCommentsRaw.map((raw) => {
+    const comment = parseReviewComment(raw);
+    return { ...comment, ...threadStates.get(comment.id) };
+  });
+  const conversationComments = conversationCommentsRaw.map(parseConversationComment);
+  const reviews = reviewsRaw.map(parseReview);
+  const bodies = [{ body, bodyImageUrls }, ...reviewComments, ...conversationComments, ...reviews];
+  const repositoryImages = new Map<string, string>();
+  // Bound authenticated downloads; broken or oversized images must not block the PR.
+  const sources = [...new Set(bodies.flatMap(item => extractBodyImageUrls(item.body)))];
+  const requests = sources.flatMap(source => {
+    const request = repositoryImageRequest(source, context.host, locator);
+    return request ? [{ source, ...request }] : [];
+  }).slice(0, 12);
+  await Promise.all(requests.map(async ({ source, endpoint: imageEndpoint, mime }) => {
+    try {
+      let file = readRecord(await runGitHubJson(context, ['api', '--hostname', context.host, imageEndpoint]), 'repository image');
+      const size = readNumber(file.size, 'image size');
+      if (file.type !== 'file' || size > 5 * 1024 * 1024) return;
+      if (file.encoding === 'none' && typeof file.sha === 'string' && /^[a-f0-9]{40,64}$/u.test(file.sha)) {
+        file = readRecord(await runGitHubJson(context, ['api', '--hostname', context.host, `${repositoryEndpoint(locator)}/git/blobs/${file.sha}`]), 'image blob');
+      }
+      if (file.encoding !== 'base64' || typeof file.content !== 'string') return;
+      const content = file.content.replace(/\s/gu, '');
+      if (content.length > 7 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(content)) return;
+      repositoryImages.set(source, `data:${mime};base64,${content}`);
+    } catch {
+      // Retain the original URL so the UI can show its image-unavailable fallback.
+    }
+  }));
+  for (const item of bodies) {
+    for (const source of extractBodyImageUrls(item.body)) {
+      const resolved = repositoryImages.get(source);
+      if (resolved) (item.bodyImageUrls ??= {})[source] = resolved;
+    }
+  }
+
   return {
     ...summary,
-    body: readOptionalString(pull.body) ?? '',
-    bodyImageUrls: parseGitHubBodyImageUrls(
-      readOptionalString(pull.body) ?? '',
-      readOptionalString(pull.body_html) ?? ''
-    ),
+    body,
+    bodyImageUrls,
     headSha,
     baseSha,
     baseRefSha,
@@ -1475,12 +1512,9 @@ export async function loadGitHubPullRequestDetail(
     reviewPlan,
     mergeSettings: parseGitHubRepositoryMergeSettings(repositoryRaw),
     viewerLogin,
-    reviewComments: reviewCommentsRaw.map((raw) => {
-      const comment = parseReviewComment(raw);
-      return { ...comment, ...threadStates.get(comment.id) };
-    }),
-    conversationComments: conversationCommentsRaw.map(parseConversationComment),
-    reviews: reviewsRaw.map(parseReview),
+    reviewComments,
+    conversationComments,
+    reviews,
     loadedAt: new Date().toISOString()
   };
 }
@@ -2874,6 +2908,7 @@ export function parseReviewComment(value: unknown): GitHubPullRequestReviewComme
     id: readNumber(comment.id, 'review comment id'),
     reviewId: readOptionalNumber(comment.pull_request_review_id),
     body: readString(comment.body, 'review comment body'),
+    bodyImageUrls: parseGitHubBodyImageUrls(readOptionalString(comment.body) ?? '', readOptionalString(comment.body_html) ?? ''),
     author: readNestedString(comment, ['user', 'login'], 'review comment author'),
     authorAvatarUrl: readNestedOptionalString(comment, ['user', 'avatar_url']),
     url: readString(comment.html_url, 'review comment URL'),
@@ -3000,6 +3035,7 @@ function parseConversationComment(value: unknown): GitHubPullRequestConversation
   return {
     id: readNumber(comment.id, 'conversation comment id'),
     body: readString(comment.body, 'conversation comment body'),
+    bodyImageUrls: parseGitHubBodyImageUrls(readOptionalString(comment.body) ?? '', readOptionalString(comment.body_html) ?? ''),
     author: readNestedString(comment, ['user', 'login'], 'conversation comment author'),
     authorAvatarUrl: readNestedOptionalString(comment, ['user', 'avatar_url']),
     url: readString(comment.html_url, 'conversation comment URL'),
@@ -3097,6 +3133,7 @@ function parseReview(value: unknown): GitHubPullRequestReview {
     author: readNestedString(review, ['user', 'login'], 'review author'),
     authorAvatarUrl: readNestedOptionalString(review, ['user', 'avatar_url']),
     body: readOptionalString(review.body) ?? '',
+    bodyImageUrls: parseGitHubBodyImageUrls(readOptionalString(review.body) ?? '', readOptionalString(review.body_html) ?? ''),
     state: normalizeReviewState(readOptionalString(review.state)),
     submittedAt: readOptionalString(review.submitted_at),
     url: readString(review.html_url, 'review URL')
@@ -3294,13 +3331,14 @@ async function deletePendingReview(
   }
 }
 
-async function runGitHubPaginatedArray(context: GitHubContext, endpoint: string): Promise<unknown[]> {
+async function runGitHubPaginatedArray(context: GitHubContext, endpoint: string, fullBody = false): Promise<unknown[]> {
   const raw = await runGitHubJson(context, [
     'api',
     '--hostname',
     context.host,
     '--paginate',
     '--slurp',
+    ...(fullBody ? ['-H', 'Accept: application/vnd.github.full+json'] : []),
     endpoint
   ]);
 
