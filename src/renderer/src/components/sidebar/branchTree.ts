@@ -55,3 +55,16 @@ export function buildBranchTree<Item>(
 
   return root;
 }
+
+export function prioritizeWorktreeBranches<Item>(
+  items: readonly Item[],
+  getName: (item: Item) => string,
+  isCurrent: (item: Item) => boolean,
+  worktreeBranchNames: ReadonlySet<string>
+): Item[] {
+  return [...items].sort((left, right) => {
+    const priority = (item: Item): number =>
+      isCurrent(item) ? 0 : worktreeBranchNames.has(getName(item)) ? 1 : 2;
+    return priority(left) - priority(right) || getName(left).localeCompare(getName(right));
+  });
+}

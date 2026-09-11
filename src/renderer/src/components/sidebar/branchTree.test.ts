@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBranchTree } from './branchTree';
+import { buildBranchTree, prioritizeWorktreeBranches } from './branchTree';
 
 describe('buildBranchTree', () => {
   it('groups slash-delimited branches and keeps root branches at the root', () => {
@@ -64,5 +64,25 @@ describe('buildBranchTree', () => {
     const tree = buildBranchTree(['release/next', 'main', 'feature/card'], (branch) => branch);
 
     expect(tree.map((node) => node.name)).toEqual(['release', 'main', 'feature']);
+  });
+});
+
+describe('prioritizeWorktreeBranches', () => {
+  it('keeps the current branch first and promotes linked-worktree branches above regular branches', () => {
+    const branches = [
+      { name: 'alpha/branch', current: false },
+      { name: 'main', current: true },
+      { name: 't3code/two', current: false },
+      { name: 't3code/one', current: false }
+    ];
+
+    expect(
+      prioritizeWorktreeBranches(
+        branches,
+        (branch) => branch.name,
+        (branch) => branch.current,
+        new Set(['t3code/one', 't3code/two'])
+      ).map((branch) => branch.name)
+    ).toEqual(['main', 't3code/one', 't3code/two', 'alpha/branch']);
   });
 });

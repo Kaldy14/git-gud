@@ -89,6 +89,12 @@ import {
   syncWipGraphRow
 } from '@renderer/workspace/selection';
 import {
+  EMPTY_BRANCH_VISIBILITY,
+  filterGraphRowsByBranchVisibility,
+  toggleBranchVisibility,
+  type BranchVisibilityState
+} from '@renderer/workspace/branchVisibility';
+import {
   resolveLocalBranchActivation,
   resolveRemoteBranchActivation
 } from '@renderer/workspace/branchActivation';
@@ -293,6 +299,7 @@ export function WorkspaceShell(): ReactElement {
   const diffWorkerPool = useWorkerPool();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
   const [graphScrollResetByTab, setGraphScrollResetByTab] = useState<Record<string, number>>({});
+  const [branchVisibilityByTab, setBranchVisibilityByTab] = useState<Record<string, BranchVisibilityState>>({});
   const [bulkSelectionByTab, setBulkSelectionByTab] = useState<Record<string, string[]>>({});
   const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
   const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
@@ -568,9 +575,22 @@ export function WorkspaceShell(): ReactElement {
   );
   const isRecoveringRepository =
     recoveringRepoPath === activeTab?.path || shouldRecoverRepository;
-  const graphRows = useMemo(
+  const unfilteredGraphRows = useMemo(
     () => syncWipGraphRow(graphQuery.data?.rows ?? emptyGraphRows, repositoryQuery.data?.status),
     [graphQuery.data?.rows, repositoryQuery.data?.status]
+  );
+  const branchVisibility = activeTab
+    ? (branchVisibilityByTab[activeTab.id] ?? EMPTY_BRANCH_VISIBILITY)
+    : EMPTY_BRANCH_VISIBILITY;
+  const graphRows = useMemo(
+    () => repositoryQuery.data
+      ? filterGraphRowsByBranchVisibility(
+          unfilteredGraphRows,
+          repositoryQuery.data.refs,
+          branchVisibility
+        )
+      : unfilteredGraphRows,
+    [branchVisibility, repositoryQuery.data, unfilteredGraphRows]
   );
   const linkedWorktreeBranches = useMemo(
     () =>
@@ -586,14 +606,17 @@ export function WorkspaceShell(): ReactElement {
     repositoryQuery.data?.remotes[0]?.name;
   const suggestedTagName = suggestNextTagName(repositoryQuery.data?.refs.tags ?? []);
   const selectedSha = activeTab?.selectedCommit;
+  const visibleSelectedSha = selectedSha && graphRows.some((row) => row.sha === selectedSha)
+    ? selectedSha
+    : undefined;
   const conflictedPaths = useMemo(
     () => repositoryQuery.data?.conflictState.files.map((file) => file.path) ?? [],
     [repositoryQuery.data?.conflictState.files]
   );
   const isSelectedFileConflicted = Boolean(activeTab?.selectedFile && conflictedPaths.includes(activeTab.selectedFile));
   const selectedRow = useMemo(
-    () => resolveSelectedGraphRow(graphRows, selectedSha),
-    [graphRows, selectedSha]
+    () => resolveSelectedGraphRow(graphRows, visibleSelectedSha),
+    [graphRows, visibleSelectedSha]
   );
   const activeBulkSelectedShas = activeTab
     ? (bulkSelectionByTab[activeTab.id] ?? emptySelectedShas)
@@ -3571,6 +3594,31 @@ export function WorkspaceShell(): ReactElement {
                 onTogglePullRequestInbox={handleTogglePullRequestInbox}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
+                branchVisibility={branchVisibility}
+                onToggleBranchVisibility={(mode, target) => {
+                  if (!activeTab) {
+                    return;
+                  }
+
+                  setBranchVisibilityByTab((current) => ({
+                    ...current,
+                    [activeTab.id]: toggleBranchVisibility(
+                      current[activeTab.id] ?? EMPTY_BRANCH_VISIBILITY,
+                      mode,
+                      target
+                    )
+                  }));
+                }}
+                onClearBranchVisibility={() => {
+                  if (!activeTab) {
+                    return;
+                  }
+
+                  setBranchVisibilityByTab((current) => ({
+                    ...current,
+                    [activeTab.id]: EMPTY_BRANCH_VISIBILITY
+                  }));
+                }}
                 isOperationBusy={isOperationBusy}
                 onAddRemote={handleAddRemote}
                 onFetchRemote={handleFetchRemote}

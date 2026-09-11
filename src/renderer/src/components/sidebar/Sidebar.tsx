@@ -9,8 +9,10 @@ import {
   Cloud,
   Copy,
   Download,
+  EyeOff,
   Folder,
   FolderGit2,
+  Focus,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -25,7 +27,9 @@ import {
   Search,
   Tag,
   Trash2,
-  Trees
+  TreePine,
+  Trees,
+  X
 } from 'lucide-react';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
@@ -34,6 +38,13 @@ import { CreateSuggestedTagMenuItem } from '@renderer/components/operations/Crea
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
+import {
+  branchVisibilityModeForRef,
+  isBranchVisibilityTargetActive,
+  type BranchVisibilityMode,
+  type BranchVisibilityState,
+  type BranchVisibilityTarget
+} from '@renderer/workspace/branchVisibility';
 import type {
   GitBranchRef,
   GitHubPullRequestSummary,
@@ -47,7 +58,7 @@ import type {
 } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
-import { buildBranchTree, type BranchTreeNode } from './branchTree';
+import { buildBranchTree, prioritizeWorktreeBranches, type BranchTreeNode } from './branchTree';
 
 type SidebarProps = {
   repositoryOverview?: GitRepositoryOverview;
@@ -64,6 +75,9 @@ type SidebarProps = {
   onTogglePullRequestInbox: () => void;
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
+  branchVisibility: BranchVisibilityState;
+  onToggleBranchVisibility: (mode: BranchVisibilityMode, target: BranchVisibilityTarget) => void;
+  onClearBranchVisibility: () => void;
   isOperationBusy: boolean;
   onAddRemote: () => void;
   onFetchRemote: (remote: GitRemote) => void;
@@ -118,6 +132,11 @@ type SidebarContextMenuTarget =
   | {
       kind: 'stash';
       stash: GitStashEntry;
+    }
+  | {
+      kind: 'folder';
+      label: string;
+      visibilityTarget: BranchVisibilityTarget;
     };
 
 type SidebarContextMenuState = SidebarContextMenuTarget & {
@@ -168,6 +187,9 @@ export function Sidebar({
   onTogglePullRequestInbox,
   onResize,
   onResizeCommit,
+  branchVisibility,
+  onToggleBranchVisibility,
+  onClearBranchVisibility,
   isOperationBusy,
   onAddRemote,
   onFetchRemote,
@@ -220,6 +242,7 @@ export function Sidebar({
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
   const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
+  const visibilityFilterCount = branchVisibility.solo.length + branchVisibility.hidden.length;
 
   useEffect(() => {
     if (filterFocusSignal > 0 && !isCollapsed) {
@@ -422,7 +445,20 @@ export function Sidebar({
           <span>
             Viewing <span className="font-semibold text-[var(--text-1)]">{viewingCount}</span>
           </span>
-          {isRefreshing ? (
+          {visibilityFilterCount > 0 ? (
+            <button
+              className="side-visibility-summary"
+              type="button"
+              aria-label="Clear branch visibility filters"
+              title="Clear all Solo and Hide filters"
+              onClick={onClearBranchVisibility}
+            >
+              {branchVisibility.solo.length > 0 ? `${branchVisibility.solo.length} solo` : null}
+              {branchVisibility.solo.length > 0 && branchVisibility.hidden.length > 0 ? ' · ' : null}
+              {branchVisibility.hidden.length > 0 ? `${branchVisibility.hidden.length} hidden` : null}
+              <X size={11} aria-hidden="true" />
+            </button>
+          ) : isRefreshing ? (
             <span className="flex items-center gap-1 text-[var(--text-3)]">
               <Loader2 size={11} className="animate-spin" />
               Refreshing
@@ -515,6 +551,7 @@ export function Sidebar({
                   onCheckoutBranch={onCheckoutBranch}
                   onCheckoutRemoteBranch={onCheckoutRemoteBranch}
                   onRemoteActions={handleRemoteActions}
+                  branchVisibility={branchVisibility}
                 />
               ) : null}
             </section>
@@ -564,6 +601,8 @@ export function Sidebar({
           onStashApply={onStashApply}
           onStashPop={onStashPop}
           onStashDrop={onStashDrop}
+          branchVisibility={branchVisibility}
+          onToggleBranchVisibility={onToggleBranchVisibility}
         />
       ) : null}
     </aside>
@@ -649,6 +688,7 @@ type SectionRowsProps = {
   onCheckoutBranch: (name: string) => void;
   onCheckoutRemoteBranch: (name: string) => void;
   onRemoteActions: (event: MouseEvent<HTMLButtonElement>, remote: GitRemote) => void;
+  branchVisibility: BranchVisibilityState;
 };
 
 function SectionRows({
@@ -661,7 +701,8 @@ function SectionRows({
   onContextMenu,
   onCheckoutBranch,
   onCheckoutRemoteBranch,
-  onRemoteActions
+  onRemoteActions,
+  branchVisibility
 }: SectionRowsProps): ReactElement {
   if (errorMessage) {
     return <EmptySection label="Could not load Git data." />;
@@ -678,39 +719,48 @@ function SectionRows({
   const normalizedFilter = filter.trim().toLowerCase();
 
   if (sectionId === 'local') {
-    const rows = repositoryOverview.refs.localBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter));
-    return (
-      <PaginatedRefRows
-        items={rows}
-        renderItems={(branches) => (
-          <BranchTreeRows
-            items={branches}
-            getName={(branch) => branch.name}
-            isFiltering={normalizedFilter.length > 0}
-            renderBranch={(branch, label, depth) => (
-              <SidebarRow
-                key={branch.fullName}
-                icon={<GitBranch size={12} />}
-                label={label}
-                meta={formatAheadBehind(branch.ahead, branch.behind)}
-                depth={depth}
-                isActive={branch.current}
-                isActionDisabled={branch.current || isOperationBusy}
-                title={isOperationBusy && !branch.current ? 'A Git operation is running' : branch.name}
-                onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
-                onDoubleClick={() => {
-                  if (!branch.current) {
-                    onCheckoutBranch(branch.name);
-                  }
-                }}
-              />
-            )}
-          />
-        )}
-        emptyLabel="No local branches."
-        itemLabel="local branches"
-        isFiltering={normalizedFilter.length > 0}
-      />
+    const linkedWorktreeBranches = new Set(
+      repositoryOverview.worktrees.flatMap((worktree) => worktree.branch ? [worktree.branch] : [])
+    );
+    const rows = prioritizeWorktreeBranches(
+      repositoryOverview.refs.localBranches.filter((branch) => matchesFilter(branch.name, normalizedFilter)),
+      (branch) => branch.name,
+      (branch) => branch.current,
+      linkedWorktreeBranches
+    );
+
+    return rows.length > 0 ? (
+      <div className="py-1">
+        <BranchTreeRows
+          items={rows}
+          getName={(branch) => branch.name}
+          scope="local"
+          isFiltering={normalizedFilter.length > 0}
+          branchVisibility={branchVisibility}
+          onFolderContextMenu={onContextMenu}
+          renderBranch={(branch, label, depth) => (
+            <SidebarRow
+              key={branch.fullName}
+              icon={linkedWorktreeBranches.has(branch.name) ? <TreePine size={12} /> : <GitBranch size={12} />}
+              label={label}
+              meta={formatAheadBehind(branch.ahead, branch.behind)}
+              visibilityMode={branchVisibilityModeForRef(branchVisibility, 'local', branch.name)}
+              depth={depth}
+              isActive={branch.current}
+              isActionDisabled={branch.current || isOperationBusy}
+              title={isOperationBusy && !branch.current ? 'A Git operation is running' : branch.name}
+              onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
+              onDoubleClick={() => {
+                if (!branch.current) {
+                  onCheckoutBranch(branch.name);
+                }
+              }}
+            />
+          )}
+        />
+      </div>
+    ) : (
+      <EmptySection label="No local branches." />
     );
   }
 
@@ -724,6 +774,7 @@ function SectionRows({
         onContextMenu={onContextMenu}
         onRemoteActions={onRemoteActions}
         onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+        branchVisibility={branchVisibility}
       />
     );
   }
@@ -808,7 +859,8 @@ function RemoteSectionRows({
   isOperationBusy,
   onContextMenu,
   onRemoteActions,
-  onCheckoutRemoteBranch
+  onCheckoutRemoteBranch,
+  branchVisibility
 }: {
   remotes: readonly GitRemote[];
   branches: readonly GitRemoteBranchRef[];
@@ -817,6 +869,7 @@ function RemoteSectionRows({
   onContextMenu: (event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget) => void;
   onRemoteActions: (event: MouseEvent<HTMLButtonElement>, remote: GitRemote) => void;
   onCheckoutRemoteBranch: (name: string) => void;
+  branchVisibility: BranchVisibilityState;
 }): ReactElement {
   const [collapsedRemotes, setCollapsedRemotes] = useState<ReadonlySet<string>>(() => new Set());
   const remoteNames = remotes.map((remote) => remote.name).sort((left, right) => right.length - left.length);
@@ -908,8 +961,12 @@ function RemoteSectionRows({
                     <BranchTreeRows
                       items={visibleBranches}
                       getName={(branch) => remoteBranchDisplayName(branch.name, remote.name)}
+                      scope="remote"
+                      folderPathPrefix={remote.name}
                       isFiltering={normalizedFilter.length > 0}
                       depthOffset={1}
+                      branchVisibility={branchVisibility}
+                      onFolderContextMenu={onContextMenu}
                       renderBranch={(branch, label, depth) => (
                         <SidebarRow
                           key={branch.fullName}
@@ -917,6 +974,7 @@ function RemoteSectionRows({
                           icon={<GitBranch size={12} />}
                           label={label}
                           meta={branch.sha.slice(0, 7)}
+                          visibilityMode={branchVisibilityModeForRef(branchVisibility, 'remote', branch.name)}
                           depth={depth}
                           isActionDisabled={isOperationBusy}
                           title={isOperationBusy ? 'A Git operation is running' : branch.name}
@@ -1024,14 +1082,22 @@ function PaginatedRefRows<Item>({
 function BranchTreeRows<Item>({
   items,
   getName,
+  scope,
+  folderPathPrefix,
   isFiltering,
   depthOffset = 0,
+  branchVisibility,
+  onFolderContextMenu,
   renderBranch
 }: {
   items: readonly Item[];
   getName: (item: Item) => string;
+  scope: BranchVisibilityTarget['scope'];
+  folderPathPrefix?: string;
   isFiltering: boolean;
   depthOffset?: number;
+  branchVisibility: BranchVisibilityState;
+  onFolderContextMenu: (event: MouseEvent<HTMLElement>, state: SidebarContextMenuTarget) => void;
   renderBranch: (item: Item, label: string, depth: number) => ReactElement;
 }): ReactElement {
   const [collapsedFolders, setCollapsedFolders] = useState<ReadonlySet<string>>(() => new Set());
@@ -1058,6 +1124,17 @@ function BranchTreeRows<Item>({
       }
 
       const isExpanded = isFiltering || !collapsedFolders.has(node.path);
+      const visibilityPath = folderPathPrefix ? `${folderPathPrefix}/${node.path}` : node.path;
+      const visibilityTarget: BranchVisibilityTarget = {
+        scope,
+        kind: 'folder',
+        path: visibilityPath
+      };
+      const visibilityMode = branchVisibilityModeForRef(
+        branchVisibility,
+        scope,
+        `${visibilityPath}/__folder_descendant__`
+      );
 
       return (
         <div key={node.path} role="none">
@@ -1069,12 +1146,18 @@ function BranchTreeRows<Item>({
             aria-level={depth + 2}
             aria-expanded={isExpanded}
             title={node.path}
+            onContextMenu={(event) => onFolderContextMenu(event, {
+              kind: 'folder',
+              label: visibilityPath,
+              visibilityTarget
+            })}
             onClick={() => toggleFolder(node.path)}
             onKeyDown={handleSidebarTreeKeyDown}
           >
             {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <Folder size={12} />
             <span className="side-row-label">{node.name}</span>
+            <BranchVisibilityIcon mode={visibilityMode} />
           </button>
           {isExpanded ? <div role="group">{renderNodes(node.children, depth + 1)}</div> : null}
         </div>
@@ -1091,6 +1174,7 @@ function SidebarRow({
   icon,
   label,
   meta,
+  visibilityMode,
   depth = 0,
   isActive = false,
   isActionDisabled = false,
@@ -1103,6 +1187,7 @@ function SidebarRow({
   icon: ReactNode;
   label: string;
   meta?: string;
+  visibilityMode?: BranchVisibilityMode;
   depth?: number;
   isActive?: boolean;
   isActionDisabled?: boolean;
@@ -1148,8 +1233,26 @@ function SidebarRow({
     >
       <span className="side-row-icon">{isActive ? <Check size={12} /> : icon}</span>
       <span className="side-row-label">{label}</span>
+      <BranchVisibilityIcon mode={visibilityMode} />
       {meta ? <span className="side-row-meta">{meta}</span> : null}
     </div>
+  );
+}
+
+function BranchVisibilityIcon({ mode }: { mode?: BranchVisibilityMode }): ReactElement | null {
+  if (!mode) {
+    return null;
+  }
+
+  return (
+    <span
+      className="side-visibility-icon"
+      data-mode={mode}
+      title={mode === 'solo' ? 'Soloed in graph' : 'Hidden from graph'}
+      aria-label={mode === 'solo' ? 'Soloed in graph' : 'Hidden from graph'}
+    >
+      {mode === 'solo' ? <Focus size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
+    </span>
   );
 }
 
@@ -1217,7 +1320,9 @@ function SidebarContextMenu({
   onDeleteTag,
   onStashApply,
   onStashPop,
-  onStashDrop
+  onStashDrop,
+  branchVisibility,
+  onToggleBranchVisibility
 }: {
   state: SidebarContextMenuState;
   isOperationBusy: boolean;
@@ -1252,6 +1357,8 @@ function SidebarContextMenu({
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
   onStashDrop: (input: GitStashRefInput) => void;
+  branchVisibility: BranchVisibilityState;
+  onToggleBranchVisibility: (mode: BranchVisibilityMode, target: BranchVisibilityTarget) => void;
 }): ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: state.x, top: state.y });
@@ -1271,6 +1378,14 @@ function SidebarContextMenu({
     Boolean(currentBranchName) &&
     Boolean(branchName) &&
     (state.kind === 'remote' || branchName !== currentBranchName);
+  const visibilityTarget: BranchVisibilityTarget | undefined =
+    state.kind === 'local'
+      ? { scope: 'local', kind: 'branch', path: state.branch.name }
+      : state.kind === 'remote'
+        ? { scope: 'remote', kind: 'branch', path: state.branch.name }
+        : state.kind === 'folder'
+          ? state.visibilityTarget
+          : undefined;
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -1297,7 +1412,38 @@ function SidebarContextMenu({
       onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       onClick={(event) => event.stopPropagation()}
     >
-      {state.kind === 'remote-config' ? (
+      {visibilityTarget ? (
+        <>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={isBranchVisibilityTargetActive(branchVisibility, 'solo', visibilityTarget)}
+            onClick={() => {
+              onToggleBranchVisibility('solo', visibilityTarget);
+              onClose();
+            }}
+          >
+            <Focus size={14} />
+            <span>{isBranchVisibilityTargetActive(branchVisibility, 'solo', visibilityTarget) ? 'Stop soloing' : 'Solo'}</span>
+          </button>
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={isBranchVisibilityTargetActive(branchVisibility, 'hidden', visibilityTarget)}
+            onClick={() => {
+              onToggleBranchVisibility('hidden', visibilityTarget);
+              onClose();
+            }}
+          >
+            <EyeOff size={14} />
+            <span>{isBranchVisibilityTargetActive(branchVisibility, 'hidden', visibilityTarget) ? 'Show in graph' : 'Hide'}</span>
+          </button>
+          {state.kind === 'folder' ? null : <ContextMenuSeparator />}
+        </>
+      ) : null}
+      {state.kind === 'folder' ? null : state.kind === 'remote-config' ? (
         <>
           <button
             className="menu-row"
