@@ -59,6 +59,7 @@ import {
 import type {
   DiffSyntaxTheme,
   GitHubPullRequestConflictDetails,
+  GitHubPullRequestLocator,
   GitHubPullRequestDetail,
   GitHubPullRequestDraftFileComment,
   GitHubPullRequestDraftLineComment,
@@ -448,6 +449,7 @@ function PullRequestReviewContent({
     minRemainingWidth: 440,
     edge: 'left'
   });
+  const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [contextTab, setContextTab] = useState<'overview' | 'comments' | 'images'>('overview');
   const [reviewEvent, setReviewEvent] = useState<ReviewEvent>('comment');
   const [reviewSubmissionKey, setReviewSubmissionKey] = useState(0);
@@ -793,9 +795,9 @@ function PullRequestReviewContent({
     ...new Map(
       [
         ...getReviewImages(detail.body, detail.bodyImageUrls),
-        ...detail.conversationComments.flatMap((comment) => getReviewImages(comment.body)),
-        ...detail.reviewComments.flatMap((comment) => getReviewImages(comment.body)),
-        ...detail.reviews.flatMap((review) => getReviewImages(review.body))
+        ...detail.conversationComments.flatMap((comment) => getReviewImages(comment.body, comment.bodyImageUrls)),
+        ...detail.reviewComments.flatMap((comment) => getReviewImages(comment.body, comment.bodyImageUrls)),
+        ...detail.reviews.flatMap((review) => getReviewImages(review.body, review.bodyImageUrls))
       ].map((image) => [image.src, image])
     ).values()
   ];
@@ -959,6 +961,19 @@ function PullRequestReviewContent({
                     : `Images · ${galleryImages.length}`}
               </button>
             ))}
+            {contextTab === 'comments' ? (
+              <button
+                className="pr-context-comment-toggle"
+                type="button"
+                aria-label={isCommentOpen ? 'Hide comment' : 'Add a comment'}
+                title={isCommentOpen ? 'Hide comment' : 'Add a comment'}
+                aria-expanded={isCommentOpen}
+                aria-controls={`${panelTitleId}-comment-form`}
+                onClick={() => setIsCommentOpen((open) => !open)}
+              >
+                {isCommentOpen ? <X size={14} /> : <MessageSquare size={14} />}
+              </button>
+            ) : null}
           </nav>
           <div className="pr-context-page" hidden={contextTab !== 'overview'}>
             <h3>{detail.title}</h3>
@@ -1023,24 +1038,37 @@ function PullRequestReviewContent({
               {timeline.map((entry) => (
                 <PullRequestTimelineItem
                   entry={entry}
+                  onOpenImage={setImageGallery}
                   key={entry.key}
                   onOpenCommit={onOpenCommit}
                 />
               ))}
             </details>
           </div>
+          <PullRequestCommentComposer
+            hidden={contextTab !== 'comments'}
+            isOpen={isCommentOpen}
+            formId={`${panelTitleId}-comment-form`}
+            onClose={() => setIsCommentOpen(false)}
+            locator={locator}
+            onPosted={(message) => {
+              setNotice({ tone: 'success', message });
+              void refreshPullRequest();
+            }}
+          />
           <div className="pr-context-page pr-review-timeline" hidden={contextTab !== 'comments'}>
             {discussion.length ? (
               discussion.map((entry) => (
                 <PullRequestTimelineItem
                   entry={entry}
+                  onOpenImage={setImageGallery}
                   key={entry.key}
                   onOpenCommit={onOpenCommit}
                 />
               ))
             ) : (
               <p className="pr-context-empty">
-                No comments or reviews yet. Add a comment from a code line or file header.
+                No comments or reviews yet. Start the conversation above.
               </p>
             )}
           </div>
@@ -1107,6 +1135,53 @@ function PullRequestReviewContent({
   );
 }
 
+function PullRequestCommentComposer({ hidden, isOpen, formId, onClose, locator, onPosted }: {
+  hidden: boolean;
+  isOpen: boolean;
+  formId: string;
+  onClose: () => void;
+  locator: GitHubPullRequestLocator;
+  onPosted: (message: string) => void;
+}): ReactElement {
+  const inputId = useId();
+  const [commentBody, setCommentBody] = useState('');
+  const commentMutation = useMutation({
+    mutationFn: (body: string) => window.api.addGitHubPullRequestComment({ ...locator, body }),
+    onSuccess: (result) => {
+      setCommentBody('');
+      onClose();
+      onPosted(result.message);
+    }
+  });
+  return (
+    <div className="pr-comment-composer" hidden={hidden || !isOpen}>
+      {isOpen ? (
+        <form id={formId} onSubmit={(event) => {
+          event.preventDefault();
+          if (commentBody.trim() && !commentMutation.isPending) commentMutation.mutate(commentBody.trim());
+        }}>
+          <textarea
+            id={inputId}
+            aria-label="Add a comment"
+            autoFocus
+            value={commentBody}
+            onChange={(event) => setCommentBody(event.target.value)}
+            placeholder="Leave a comment on this pull request…"
+            rows={3}
+            maxLength={65_536}
+            disabled={commentMutation.isPending}
+          />
+          {commentMutation.error ? <p role="alert">{commentMutation.error.message}</p> : null}
+          <button className="btn-primary btn-compact" type="submit" disabled={!commentBody.trim() || commentMutation.isPending}>
+            <Send size={12} />
+            {commentMutation.isPending ? 'Posting…' : 'Post comment'}
+          </button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
 function PullRequestImageThumbnail({ src, alt }: { src: string; alt: string }): ReactElement {
   const [failedSrc, setFailedSrc] = useState<string>();
   return failedSrc === src ? (
@@ -1118,9 +1193,11 @@ function PullRequestImageThumbnail({ src, alt }: { src: string; alt: string }): 
 
 function PullRequestTimelineItem({
   entry,
+  onOpenImage,
   onOpenCommit
 }: {
   entry: PullRequestTimelineEntry;
+  onOpenImage: (selection: ReviewImageGallerySelection) => void;
   onOpenCommit?: (sha: string) => void;
 }): ReactElement {
   if (entry.kind === 'commit') {
@@ -1182,7 +1259,7 @@ function PullRequestTimelineItem({
             createdAt={entry.createdAt}
             url={entry.comment.url}
           />
-          <ReviewCommentBody body={entry.comment.body} />
+          <ReviewCommentBody body={entry.comment.body} imageUrls={entry.comment.bodyImageUrls} onOpenImage={onOpenImage} />
         </div>
       </article>
     );
@@ -1203,7 +1280,7 @@ function PullRequestTimelineItem({
             url={entry.thread.root.url}
           />
           <div className="pr-timeline-review-threads">
-            <ReviewTimelineThread thread={entry.thread} />
+            <ReviewTimelineThread onOpenImage={onOpenImage} thread={entry.thread} />
           </div>
         </div>
       </article>
@@ -1224,11 +1301,11 @@ function PullRequestTimelineItem({
           url={entry.review.url}
           state={entry.review.state}
         />
-        {entry.review.body.trim() ? <ReviewCommentBody body={entry.review.body} /> : null}
+        {entry.review.body.trim() ? <ReviewCommentBody body={entry.review.body} imageUrls={entry.review.bodyImageUrls} onOpenImage={onOpenImage} /> : null}
         {entry.threads.length > 0 ? (
           <div className="pr-timeline-review-threads">
             {entry.threads.map((thread) => (
-              <ReviewTimelineThread thread={thread} key={thread.root.id} />
+              <ReviewTimelineThread onOpenImage={onOpenImage} thread={thread} key={thread.root.id} />
             ))}
           </div>
         ) : null}
@@ -1299,8 +1376,10 @@ function TimelineEventHeader({
 }
 
 function ReviewTimelineThread({
-  thread
+  thread,
+  onOpenImage
 }: {
+  onOpenImage: (selection: ReviewImageGallerySelection) => void;
   thread: PullRequestReviewThread;
 }): ReactElement {
   const lineLabel = thread.root.subjectType === 'file'
@@ -1321,9 +1400,9 @@ function ReviewTimelineThread({
         </a>
       </header>
       <div className="pr-timeline-thread-comments">
-        <ReviewTimelineThreadMessage comment={thread.root} />
+        <ReviewTimelineThreadMessage onOpenImage={onOpenImage} comment={thread.root} />
         {thread.replies.map((reply) => (
-          <ReviewTimelineThreadMessage comment={reply} isReply key={reply.id} />
+          <ReviewTimelineThreadMessage onOpenImage={onOpenImage} comment={reply} isReply key={reply.id} />
         ))}
       </div>
     </article>
@@ -1332,9 +1411,11 @@ function ReviewTimelineThread({
 
 function ReviewTimelineThreadMessage({
   comment,
+  onOpenImage,
   isReply = false
 }: {
   comment: GitHubPullRequestDetail['reviewComments'][number];
+  onOpenImage: (selection: ReviewImageGallerySelection) => void;
   isReply?: boolean;
 }): ReactElement {
   return (
@@ -1358,7 +1439,7 @@ function ReviewTimelineThreadMessage({
             <ExternalLink size={9} />
           </a>
         </header>
-        <ReviewCommentBody body={comment.body} />
+        <ReviewCommentBody body={comment.body} imageUrls={comment.bodyImageUrls} onOpenImage={onOpenImage} />
       </div>
     </div>
   );

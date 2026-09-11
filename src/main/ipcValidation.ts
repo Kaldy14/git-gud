@@ -30,6 +30,7 @@ import type {
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewerUpdateInput,
   GitHubPullRequestReviewInput,
+  GitHubPullRequestCommentInput,
   GitHubPullRequestReviewCommentUpdateInput,
   GitInteractiveRebaseAction,
   GitInteractiveRebaseInput,
@@ -314,6 +315,8 @@ const validators = {
     readGitHubPullRequestReviewGuideArgs('github:start-pull-request-review-guide', args),
   'github:submit-pull-request-review': (args) =>
     readOnlyArg(args, 'github:submit-pull-request-review', 'input', readGitHubPullRequestReviewInput),
+  'github:add-pull-request-comment': (args) =>
+    readOnlyArg(args, 'github:add-pull-request-comment', 'input', readGitHubPullRequestCommentInput),
   'github:update-pull-request-review-comment': (args) =>
     readOnlyArg(
       args,
@@ -1051,6 +1054,11 @@ function readGitHubPullRequestReviewerUpdateInput(
       : { kind, slug: readGitHubName(reviewer.slug, 'reviewer.slug') },
     requested: readBoolean(record.requested, 'requested')
   };
+}
+
+function readGitHubPullRequestCommentInput(value: unknown): GitHubPullRequestCommentInput {
+  const record = readRecord(value, 'pull request comment input');
+  return { ...readGitHubPullRequestLocator(record), body: readNonEmptyLimitedString(record.body, 'body', 65_536) };
 }
 
 function readGitHubPullRequestReviewCommentUpdateInput(

@@ -153,6 +153,7 @@ const api: RendererApi = {
   startGitHubPullRequestReviewGuide: (locator, sourceFingerprint) =>
     invoke('github:start-pull-request-review-guide', locator, sourceFingerprint),
   submitGitHubPullRequestReview: (input) => invoke('github:submit-pull-request-review', input),
+  addGitHubPullRequestComment: (input) => invoke('github:add-pull-request-comment', input),
   updateGitHubPullRequestReviewComment: (input) =>
     invoke('github:update-pull-request-review-comment', input),
   mergeGitHubPullRequest: (input) => invoke('github:merge-pull-request', input),

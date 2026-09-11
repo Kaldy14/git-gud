@@ -1102,3 +1102,15 @@ it('validates optional evidence file coordinates at the IPC boundary', () => {
   }
   expect(() => validateIpcArgs('github:open-pull-request-in-application', ['/repo', { ...input, file: { path: 'src/file.ts', line: 0 } }])).toThrow('positive integer');
 });
+
+describe('general PR comment validation', () => {
+  const input = { profileId: 'work', owner: 'VosoBrands', repository: 'hive', number: 931, body: 'A general comment' };
+  it('accepts a comment without a code location', () => {
+    expect(validateIpcArgs('github:add-pull-request-comment', [input])).toEqual([input]);
+  });
+  it('rejects empty, oversized and invalidly targeted comments', () => {
+    for (const invalid of [{ ...input, body: '  ' }, { ...input, body: 'x'.repeat(65_537) }, { ...input, number: -1 }]) {
+      expect(() => validateIpcArgs('github:add-pull-request-comment', [invalid])).toThrow();
+    }
+  });
+});

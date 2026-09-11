@@ -1530,6 +1530,10 @@ export type GitHubPullRequestReviewInput = GitHubPullRequestLocator & {
   replies: GitHubPullRequestDraftReply[];
 };
 
+export type GitHubPullRequestCommentInput = GitHubPullRequestLocator & {
+  body: string;
+};
+
 export type GitHubPullRequestReviewCommentUpdateInput = GitHubPullRequestLocator & {
   commentId: number;
   body: string;

@@ -1040,3 +1040,24 @@
 @container pr-workspace (max-width: 950px) { .bug-finder-columns { grid-template-columns: 270px minmax(0, 1fr); } .bug-finder-detail { padding: 14px; } .bug-finder-footer { flex-wrap: wrap; } }
 
 .bug-finder-code .gg-diff { max-height: 440px; overflow: auto; }
+
+.pr-comment-composer {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.pr-comment-composer[hidden] { display: none; }
+.pr-comment-composer form { display: grid; gap: 8px; }
+.pr-comment-composer textarea { width: 100%; min-height: 64px; max-height: 180px; resize: vertical; padding: 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg-field); color: var(--text-1); }
+.pr-comment-composer button { justify-self: end; }
+.pr-comment-composer [role="alert"] { color: var(--danger-text); font-size: 11px; }
+
+.pr-context-tabs .pr-context-comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  color: var(--accent-2);
+}

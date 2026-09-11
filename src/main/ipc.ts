@@ -94,6 +94,7 @@ import {
   mergeGitHubPullRequest,
   submitGitHubPullRequestReview,
   updateGitHubPullRequestReviewer,
+  addGitHubPullRequestComment,
   updateGitHubPullRequestReviewComment
 } from './github';
 import { githubPullRequestReviewPlans } from './githubReviewPlans';
@@ -778,6 +779,7 @@ export function registerIpcHandlers(
     return githubPullRequestGuides.start(locator, plan);
   });
   handle('github:submit-pull-request-review', (_event, input) => submitGitHubPullRequestReview(input));
+  handle('github:add-pull-request-comment', (_event, input) => addGitHubPullRequestComment(input));
   handle('github:update-pull-request-review-comment', (_event, input) =>
     updateGitHubPullRequestReviewComment(input)
   );

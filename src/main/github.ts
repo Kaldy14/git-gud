@@ -22,6 +22,7 @@ import type {
   GitHubPullRequestReview,
   GitHubPullRequestReviewer,
   GitHubPullRequestReviewComment,
+  GitHubPullRequestCommentInput,
   GitHubPullRequestReviewCommentUpdateInput,
   GitHubPullRequestReviewInput,
   GitHubPullRequestSummary,
@@ -2368,6 +2369,20 @@ export function createGitHubFileReviewCommentPayload(
     path: comment.path,
     subject_type: 'file'
   };
+}
+
+export async function addGitHubPullRequestComment(
+  input: GitHubPullRequestCommentInput
+): Promise<GitHubPullRequestActionResult> {
+  const body = input.body.trim();
+  if (!body) throw new Error('Write a comment before posting.');
+  const context = await getGitHubContext(input.profileId);
+  await runGitHubJson(context, [
+    'api', '--hostname', context.host, '--method', 'POST', '--input', '-',
+    `${repositoryEndpoint(input)}/issues/${input.number}/comments`
+  ], { body });
+  gitHubPullRequestInboxCache.delete(input.profileId);
+  return { message: 'Comment posted.' };
 }
 
 export async function updateGitHubPullRequestReviewComment(
