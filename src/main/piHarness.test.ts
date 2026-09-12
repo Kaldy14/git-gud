@@ -6,11 +6,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPiEnvironment,
   piLaunchCommand,
+  piFinalResponse,
   resolvePiExecutable,
   runPiPrompt
 } from './piHarness';
 
 describe('Pi harness', () => {
+  it('extracts the final answer after repository tools and rejects provider errors', () => {
+    const events = [
+      { type: 'message_end', message: { role: 'assistant', stopReason: 'toolUse', content: [{ type: 'text', text: 'Investigating' }] } },
+      { type: 'message_end', message: { role: 'toolResult', content: [{ type: 'text', text: 'test output' }] } },
+      { type: 'message_end', message: { role: 'assistant', stopReason: 'stop', content: [{ type: 'thinking', thinking: 'reasoning' }, { type: 'text', text: '{"findings":[]}' }] } }
+    ];
+    expect(piFinalResponse(events.map((event) => JSON.stringify(event)).join('\n'))).toBe('{"findings":[]}');
+    expect(() => piFinalResponse(JSON.stringify({ type: 'message_end', message: { role: 'assistant', stopReason: 'error', errorMessage: 'rate limited' } }))).toThrow('rate limited');
+    expect(() => piFinalResponse(JSON.stringify(events[0]))).toThrow('no final response');
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
   });

@@ -3502,6 +3502,23 @@ export async function loadBugFinderHead(locator: GitHubPullRequestLocator): Prom
   return { headSha: readNestedString(raw, ['head', 'sha'], 'head SHA'), host: context.host };
 }
 
+export async function loadBugFinderGitContext(locator: GitHubPullRequestLocator) {
+  const context = await getGitHubContext(locator.profileId);
+  return {
+    url: `https://${context.host}/${locator.owner}/${locator.repository}.git`,
+    executable: context.executable,
+    env: {
+      GH_CONFIG_DIR: context.profile.ghConfigDir,
+      GH_HOST: context.host,
+      GH_TOKEN: '',
+      GITHUB_TOKEN: '',
+      GH_ENTERPRISE_TOKEN: '',
+      GITHUB_ENTERPRISE_TOKEN: '',
+      GIT_TERMINAL_PROMPT: '0'
+    }
+  };
+}
+
 export async function loadBugFinderSource(locator: GitHubPullRequestLocator, paths: string[], headSha: string): Promise<Array<{ path: string; text?: string }>> {
   const context = await getGitHubContext(locator.profileId);
   const result: Array<{ path: string; text?: string }> = [];

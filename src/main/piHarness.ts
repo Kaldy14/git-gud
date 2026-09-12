@@ -12,6 +12,7 @@ export type PiPromptOptions = {
   prompt: string;
   timeoutMs: number;
   tools?: string;
+  finalResponseOnly?: boolean;
   maxOutputCharacters?: number;
   errorLabel: string;
 };
@@ -26,7 +27,7 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
     '--print',
     '--no-session',
     '--mode',
-    'text',
+    options.finalResponseOnly ? 'json' : 'text',
     ...(options.tools ? ['--tools', options.tools] : ['--no-tools']),
     '--no-extensions',
     '--no-skills',
@@ -49,16 +50,36 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
   activeProcesses.add(child);
 
   try {
-    return await collectProcessOutput(
+    const output = await collectProcessOutput(
       child,
       options.prompt,
       options.timeoutMs,
       options.maxOutputCharacters ?? DEFAULT_MAX_OUTPUT_CHARACTERS,
       options.errorLabel
     );
+    return options.finalResponseOnly ? piFinalResponse(output) : output;
   } finally {
     activeProcesses.delete(child);
   }
+}
+
+export function piFinalResponse(output: string): string {
+  let final = '';
+  for (const line of output.split('\n')) {
+    if (!line.trim()) continue;
+    const event: unknown = JSON.parse(line);
+    if (!event || typeof event !== 'object' || !('type' in event) || event.type !== 'message_end' || !('message' in event)) continue;
+    const message = event.message;
+    if (!message || typeof message !== 'object' || !('role' in message) || message.role !== 'assistant' || !('stopReason' in message)) continue;
+    if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+      throw new Error('errorMessage' in message && typeof message.errorMessage === 'string' ? message.errorMessage : 'Pi investigation failed.');
+    }
+    if (message.stopReason === 'toolUse') continue;
+    if (!('content' in message) || !Array.isArray(message.content)) continue;
+    final = message.content.flatMap((part: unknown) => part && typeof part === 'object' && 'type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string' ? [part.text] : []).join('\n');
+  }
+  if (!final.trim()) throw new Error('Pi investigation returned no final response.');
+  return final;
 }
 
 export async function buildPiEnvironment(
