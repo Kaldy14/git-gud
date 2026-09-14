@@ -741,6 +741,12 @@ function PullRequestReviewContent({
     });
   }
 
+  function updateDraft(id: string, body: string): void {
+    updateReviewDrafts((current) =>
+      current.map((draft) => draft.id === id ? { ...draft, body } : draft)
+    );
+  }
+
   function removeDraft(id: string): void {
     updateReviewDrafts((current) => current.filter((draft) => draft.id !== id));
   }
@@ -917,6 +923,7 @@ function PullRequestReviewContent({
             onAddDraftFileComment={addDraftFileComment}
             onAddDraftReply={addDraftReply}
             onUpdateComment={updateComment}
+            onUpdateDraftComment={updateDraft}
             onRemoveDraftComment={removeDraft}
             diffStyle={diffStyle}
             diffSyntaxTheme={diffSyntaxTheme}

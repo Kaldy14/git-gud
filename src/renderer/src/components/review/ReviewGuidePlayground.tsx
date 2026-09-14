@@ -67,6 +67,9 @@ function Playground({ repoPath }: { repoPath: string }): ReactElement {
         const id = crypto.randomUUID();
         setDrafts((current) => [...current, { ...input, id, author: 'You', createdAt: new Date().toISOString(), subjectType: 'file', isDraft: true }]);
       }}
+      onUpdateDraftComment={(id, body) => setDrafts((current) =>
+        current.map((draft) => draft.id === id ? { ...draft, body } : draft)
+      )}
       onRemoveDraftComment={(id) => setDrafts((current) => current.filter((draft) => draft.id !== id))}
       reviewProgressKey={`guide-playground:${session}:${mode}`} initialPreferences={preferences}
       layout="pull-request" diffStyle={diffStyle} diffSyntaxTheme="git-gud-dark"

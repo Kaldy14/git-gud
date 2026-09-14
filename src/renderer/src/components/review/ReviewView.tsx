@@ -167,6 +167,7 @@ type ReviewViewProps = {
   onAddDraftFileComment?: (input: ReviewFileCommentInput) => Promise<void>;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
   onUpdateComment?: (commentId: number, body: string) => Promise<void>;
+  onUpdateDraftComment?: (id: string, body: string) => void;
   onRemoveDraftComment?: (id: string) => void;
   diffStyle: DiffStyle;
   diffSyntaxTheme: DiffSyntaxTheme;
@@ -257,6 +258,7 @@ type ReviewLineCollaboration = {
   onSubmit: (event: FormEvent<HTMLFormElement>, body: string) => void;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
   onUpdateComment?: (commentId: number, body: string) => Promise<void>;
+  onUpdateDraftComment?: (id: string, body: string) => void;
   onRemoveDraftComment?: (id: string) => void;
 };
 
@@ -333,6 +335,7 @@ export function ReviewView({
   onAddDraftFileComment,
   onAddDraftReply,
   onUpdateComment,
+  onUpdateDraftComment,
   onRemoveDraftComment,
   diffStyle,
   diffSyntaxTheme,
@@ -1389,6 +1392,7 @@ export function ReviewView({
         onSubmit: handleSubmitComment,
         onAddDraftReply,
         onUpdateComment,
+        onUpdateDraftComment,
         onRemoveDraftComment
       }
     : undefined;
@@ -2794,6 +2798,7 @@ function ReviewFile({
               thread={thread}
               onAddDraftReply={lineCollaboration?.onAddDraftReply}
               onUpdateComment={lineCollaboration?.onUpdateComment}
+              onUpdateDraftComment={lineCollaboration?.onUpdateDraftComment}
               onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
             />
           ))}
@@ -2989,6 +2994,7 @@ function ReviewChunk({
                       thread={annotation.metadata.thread}
                       onAddDraftReply={lineCollaboration?.onAddDraftReply}
                       onUpdateComment={lineCollaboration?.onUpdateComment}
+                      onUpdateDraftComment={lineCollaboration?.onUpdateDraftComment}
                       onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
                     />
                   : annotation.metadata.kind === 'guide-note'
@@ -3017,6 +3023,7 @@ function ReviewChunk({
                       thread={annotation.metadata.thread}
                       onAddDraftReply={lineCollaboration?.onAddDraftReply}
                       onUpdateComment={lineCollaboration?.onUpdateComment}
+                      onUpdateDraftComment={lineCollaboration?.onUpdateDraftComment}
                       onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
                     />
                   : annotation.metadata.kind === 'guide-note'
@@ -3229,19 +3236,21 @@ function ReviewCommentAnnotation({
   thread,
   onAddDraftReply,
   onUpdateComment,
+  onUpdateDraftComment,
   onRemoveDraftComment
 }: {
   thread: ReviewCommentThread;
   onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
   onUpdateComment?: (commentId: number, body: string) => Promise<void>;
+  onUpdateDraftComment?: (id: string, body: string) => void;
   onRemoveDraftComment?: (id: string) => void;
 }): ReactElement {
   const articleRef = useRef<HTMLElement>(null);
   const [isReplying, setIsReplying] = useState(false);
   const [replyBody, setReplyBody] = useState('');
-  const [editingCommentId, setEditingCommentId] = useState<number>();
+  const [editingCommentId, setEditingCommentId] = useState<ReviewLineComment['id']>();
   const [editBody, setEditBody] = useState('');
-  const [restoreFocusId, setRestoreFocusId] = useState<number>();
+  const [restoreFocusId, setRestoreFocusId] = useState<ReviewLineComment['id']>();
   const replyMutation = useMutation({
     mutationFn: async () => {
       if (
@@ -3266,11 +3275,17 @@ function ReviewCommentAnnotation({
     typeof thread.id === 'number' &&
     Boolean(onAddDraftReply);
   const editMutation = useMutation({
-    mutationFn: async ({ commentId, body }: { commentId: number; body: string }) => {
-      if (!body.trim() || !onUpdateComment) {
+    mutationFn: async ({ commentId, body }: { commentId: ReviewLineComment['id']; body: string }) => {
+      if (!body.trim()) {
         throw new Error('Editing is unavailable for this comment.');
       }
-      await onUpdateComment(commentId, body.trim());
+      if (typeof commentId === 'string' && onUpdateDraftComment) {
+        onUpdateDraftComment(commentId, body.trim());
+      } else if (typeof commentId === 'number' && onUpdateComment) {
+        await onUpdateComment(commentId, body.trim());
+      } else {
+        throw new Error('Editing is unavailable for this comment.');
+      }
     },
     onSuccess: (_result, { commentId }) => {
       setRestoreFocusId(commentId);
@@ -3294,7 +3309,6 @@ function ReviewCommentAnnotation({
 
   function startEditing(comment: ReviewLineComment): void {
     if (
-      typeof comment.id !== 'number' ||
       editMutation.isPending ||
       replyMutation.isPending
     ) {
@@ -3378,7 +3392,7 @@ function ReviewCommentAnnotation({
                     <Trash2 size={11} />
                   </button>
                 ) : null}
-                {reply.canEdit && onUpdateComment && editingCommentId !== reply.id ? (
+                {(reply.isDraft ? onUpdateDraftComment : reply.canEdit && onUpdateComment) && editingCommentId !== reply.id ? (
                   <button
                     className="review-comment-action"
                     type="button"
@@ -3420,7 +3434,7 @@ function ReviewCommentAnnotation({
             Remove draft
           </button>
         ) : null}
-        {thread.canEdit && onUpdateComment && editingCommentId !== thread.id ? (
+        {(thread.isDraft ? onUpdateDraftComment : thread.canEdit && onUpdateComment) && editingCommentId !== thread.id ? (
           <button
             className="review-comment-action"
             type="button"
