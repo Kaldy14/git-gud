@@ -1,5 +1,6 @@
 import type { DiffSyntaxTheme } from '@shared/types';
 import { AiMessageCodeBlock } from './AiMessageCodeBlock';
+import { MermaidDiagram } from './MermaidDiagram';
 import { EvidenceFileLink } from './EvidenceFileLink';
 import { parseCodeReference, type CodeReference } from '@shared/codeReference';
 import type { ComponentProps, ReactElement } from 'react';
@@ -86,10 +87,12 @@ export function ReviewCommentBody({
 function MarkdownPre({ children, node }: ComponentProps<'pre'> & ExtraProps) {
   const { aiMessageTheme } = useContext(ReviewImagePreviewContext);
   const code = node?.children.find(child => child.type === 'element' && child.tagName === 'code');
-  if (!aiMessageTheme || code?.type !== 'element') return <pre>{children}</pre>;
+  if (code?.type !== 'element') return <pre>{children}</pre>;
   const contents = code.children.map(child => child.type === 'text' ? child.value : '').join('');
   const classes = code.properties.className;
   const language = Array.isArray(classes) ? String(classes.find(value => String(value).startsWith('language-')) ?? '').replace(/^language-/, '') : '';
+  if (language.toLowerCase() === 'mermaid') return <MermaidDiagram key={contents} source={contents} />;
+  if (!aiMessageTheme) return <pre>{children}</pre>;
   return <AiMessageCodeBlock key={contents} code={contents} language={language} theme={aiMessageTheme} />;
 }
 

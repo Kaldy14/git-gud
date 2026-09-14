@@ -5,6 +5,20 @@ import { describe, expect, it } from 'vitest';
 import { ReviewCommentBody } from './ReviewCommentBody';
 
 describe('review comment Markdown', () => {
+  it('renders a single usable text action for CodeRabbit theme buttons', () => {
+    const body = ['light', 'dark'].map(theme => `<a href="https://app.coderabbit.ai/change-stack/org/repo/pull/1#gh-${theme}-mode-only"><img src="https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui${theme === 'dark' ? '-dark' : ''}.svg" alt="Review Change Stack"></a>`).join('');
+    const markup = renderToStaticMarkup(createElement(ReviewCommentBody, { body }));
+    expect(markup).toContain('href="https://app.coderabbit.ai/change-stack/org/repo/pull/1"');
+    expect(markup.match(/Review Change Stack/gu)).toHaveLength(1);
+    expect(markup).not.toContain('<img');
+  });
+
+  it('routes Mermaid fences to a diagram with an accessible source control', () => {
+    const markup = renderToStaticMarkup(createElement(ReviewCommentBody, { body: '```mermaid\nsequenceDiagram\nA->>B: Hello\n```' }));
+    expect(markup).toContain('class="review-mermaid"');
+    expect(markup).toContain('Show source');
+    expect(markup).toContain('Rendering diagram');
+  });
   it('renders GitHub-flavored Markdown structures and safe external links', () => {
     const markup = renderToStaticMarkup(
       createElement(ReviewCommentBody, {

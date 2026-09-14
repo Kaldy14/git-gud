@@ -98,7 +98,12 @@ export function ReviewImageGalleryDialog({
             onError={() => setFailedSrc(image.src)}
           />
         ) : (
-          <p role="alert">This image could not be displayed.</p>
+          <div>
+            <p role="alert">This image could not be displayed.</p>
+            {image && /^https?:\/\//iu.test(image.src) ? (
+              <a href={image.src} target="_blank" rel="noopener noreferrer">Open image in browser</a>
+            ) : null}
+          </div>
         )}
         {hasMultipleImages ? (
           <>
