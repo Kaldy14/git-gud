@@ -26,6 +26,52 @@ describe('Pi harness', () => {
     vi.unstubAllEnvs();
   });
 
+  it.runIf(process.platform !== 'win32').each([
+    { name: 'long investigation with fragmented events and an unterminated final line', mode: 'long', expected: '{"findings":[]}' },
+    { name: 'oversized final answer', mode: 'answer', error: 'output exceeded the safe size limit' },
+    { name: 'oversized event', mode: 'event', error: 'event exceeded the safe size limit' },
+    { name: 'plain text output limit', mode: 'text', error: 'output exceeded the safe size limit' },
+    { name: 'provider failure after tool output', mode: 'provider', error: 'rate limited' },
+    { name: 'malformed event', mode: 'malformed', error: 'JSON' },
+    { name: 'missing final answer', mode: 'missing', error: 'no final response' }
+  ])('handles $name', async ({ mode, expected, error }) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-pi-stream-'));
+    const executable = join(directory, 'pi');
+    await writeFile(executable, `#!/usr/bin/env node
+const mode = ${JSON.stringify(mode)};
+const write = (text) => new Promise(resolve => process.stdout.write(text, resolve));
+const event = (message) => JSON.stringify({ type: 'message_end', message });
+process.stdin.resume();
+process.stdin.on('end', async () => {
+  if (mode === 'event') { await write('x'.repeat(16_000_001)); return; }
+  if (mode === 'text') { await write('x'.repeat(2_000_001)); return; }
+  if (mode === 'malformed') { await write('invalid JSON\\n'); return; }
+  const tool = event({ role: 'toolResult', content: [{ type: 'text', text: 'x'.repeat(40_000) }] }) + '\\n';
+  for (let i = 0; i < 60; i++) {
+    await write(tool.slice(0, 17));
+    await write(tool.slice(17));
+  }
+  if (mode === 'missing') return;
+  if (mode === 'provider') {
+    await write(event({ role: 'assistant', stopReason: 'error', errorMessage: 'rate limited' }) + '\\n');
+    return;
+  }
+  const final = event({ role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: mode === 'answer' ? 'x'.repeat(2_000_001) : '{"findings":[]}' }] });
+  await write(final.slice(0, 23));
+  await write(final.slice(23));
+});
+`);
+    await chmod(executable, 0o755);
+    vi.stubEnv('PI_EXECUTABLE_PATH', executable);
+    try {
+      const result = runPiPrompt({ cwd: directory, prompt: 'review', timeoutMs: 10_000, errorLabel: 'Test', finalResponseOnly: mode !== 'text' });
+      if (error) await expect(result).rejects.toThrow(error);
+      else await expect(result).resolves.toBe(expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(process.platform !== 'win32')('pins app generation to Astra with medium thinking', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'git-gud-pi-model-'));
     const executable = join(directory, 'pi');

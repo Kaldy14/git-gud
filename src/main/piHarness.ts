@@ -5,6 +5,7 @@ import { delimiter, dirname, join, win32 } from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 const DEFAULT_MAX_OUTPUT_CHARACTERS = 2_000_000;
+const MAX_EVENT_CHARACTERS = 16_000_000;
 const activeProcesses = new Set<ChildProcessWithoutNullStreams>();
 
 export type PiPromptOptions = {
@@ -50,14 +51,14 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
   activeProcesses.add(child);
 
   try {
-    const output = await collectProcessOutput(
+    return await collectProcessOutput(
       child,
       options.prompt,
       options.timeoutMs,
       options.maxOutputCharacters ?? DEFAULT_MAX_OUTPUT_CHARACTERS,
-      options.errorLabel
+      options.errorLabel,
+      options.finalResponseOnly ?? false
     );
-    return options.finalResponseOnly ? piFinalResponse(output) : output;
   } finally {
     activeProcesses.delete(child);
   }
@@ -67,19 +68,23 @@ export function piFinalResponse(output: string): string {
   let final = '';
   for (const line of output.split('\n')) {
     if (!line.trim()) continue;
-    const event: unknown = JSON.parse(line);
-    if (!event || typeof event !== 'object' || !('type' in event) || event.type !== 'message_end' || !('message' in event)) continue;
-    const message = event.message;
-    if (!message || typeof message !== 'object' || !('role' in message) || message.role !== 'assistant' || !('stopReason' in message)) continue;
-    if (message.stopReason === 'error' || message.stopReason === 'aborted') {
-      throw new Error('errorMessage' in message && typeof message.errorMessage === 'string' ? message.errorMessage : 'Pi investigation failed.');
-    }
-    if (message.stopReason === 'toolUse') continue;
-    if (!('content' in message) || !Array.isArray(message.content)) continue;
-    final = message.content.flatMap((part: unknown) => part && typeof part === 'object' && 'type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string' ? [part.text] : []).join('\n');
+    final = piEventResponse(line) ?? final;
   }
   if (!final.trim()) throw new Error('Pi investigation returned no final response.');
   return final;
+}
+
+function piEventResponse(line: string): string | undefined {
+  const event: unknown = JSON.parse(line);
+  if (!event || typeof event !== 'object' || !('type' in event) || event.type !== 'message_end' || !('message' in event)) return undefined;
+  const message = event.message;
+  if (!message || typeof message !== 'object' || !('role' in message) || message.role !== 'assistant' || !('stopReason' in message)) return undefined;
+  if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+    throw new Error('errorMessage' in message && typeof message.errorMessage === 'string' ? message.errorMessage : 'Pi investigation failed.');
+  }
+  if (message.stopReason === 'toolUse') return undefined;
+  if (!('content' in message) || !Array.isArray(message.content)) return undefined;
+  return message.content.flatMap((part: unknown) => part && typeof part === 'object' && 'type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string' ? [part.text] : []).join('\n');
 }
 
 export async function buildPiEnvironment(
@@ -288,11 +293,24 @@ function collectProcessOutput(
   prompt: string,
   timeoutMs: number,
   maxOutputCharacters: number,
-  errorLabel: string
+  errorLabel: string,
+  finalResponseOnly: boolean
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
+    let pendingEvent = '';
+
+    function consumeEvent(line: string): void {
+      if (!line.trim()) return;
+      const response = piEventResponse(line);
+      if (response !== undefined) {
+        if (response.length > maxOutputCharacters) {
+          throw new Error(`${errorLabel} output exceeded the safe size limit.`);
+        }
+        stdout = response;
+      }
+    }
     let settled = false;
     const timeout = setTimeout(() => {
       terminatePiProcess(child);
@@ -316,10 +334,33 @@ function collectProcessOutput(
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
-      stdout += chunk;
-      if (stdout.length > maxOutputCharacters) {
+      if (settled) return;
+      try {
+        if (finalResponseOnly) {
+          // Pi emits NDJSON, including repeated snapshots and tool output. Retain
+          // only the final answer instead of accumulating the whole investigation.
+          let start = 0;
+          while (start < chunk.length) {
+            const newline = chunk.indexOf('\n', start);
+            const end = newline < 0 ? chunk.length : newline;
+            if (pendingEvent.length + end - start > MAX_EVENT_CHARACTERS) {
+              throw new Error(`${errorLabel} event exceeded the safe size limit.`);
+            }
+            pendingEvent += chunk.slice(start, end);
+            if (newline < 0) break;
+            consumeEvent(pendingEvent);
+            pendingEvent = '';
+            start = newline + 1;
+          }
+        } else {
+          if (stdout.length + chunk.length > maxOutputCharacters) {
+            throw new Error(`${errorLabel} output exceeded the safe size limit.`);
+          }
+          stdout += chunk;
+        }
+      } catch (error) {
         terminatePiProcess(child);
-        finish(new Error(`${errorLabel} output exceeded the safe size limit.`));
+        finish(error instanceof Error ? error : new Error(String(error)));
       }
     });
     child.stderr.on('data', (chunk: string) => {
@@ -332,7 +373,17 @@ function collectProcessOutput(
     });
     child.on('error', (error) => finish(error));
     child.on('close', (code) => {
+      if (settled) return;
       if (code === 0) {
+        try {
+          if (finalResponseOnly) {
+            consumeEvent(pendingEvent);
+            if (!stdout.trim()) throw new Error('Pi investigation returned no final response.');
+          }
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
         finish(undefined, stdout);
         return;
       }
