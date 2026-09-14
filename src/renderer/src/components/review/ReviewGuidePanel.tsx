@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowRight, ChevronDown, ChevronsUp, Code2, Eye, RefreshCw, 
 import { Tooltip } from 'radix-ui';
 
 import type { GitReviewGuide, GitReviewGuideFile, GitReviewGuidePriority, GitReviewGuideSummary } from '@shared/types';
+import { PanelExpandButton, PanelResizeHandle } from '../ui/panelResize';
+import { usePanelResize } from '../ui/usePanelResize';
 import { ReviewCommentBody } from './ReviewCommentBody';
 import type { VisibleReviewUnit } from './reviewFilters';
 import { guideSummaries, reviewGuideFileLabel, reviewGuidePriorityDescriptions, summaryIsVisible, visibleReviewGuideFiles } from './reviewGuidePresentation';
@@ -48,7 +50,8 @@ export function ReviewGuideComplexity({ level }: { level: GitReviewGuideSummary[
   return <span className="review-summary-complexity" data-level={level} title={`${level} change complexity`}><ChevronsUp size={12} aria-hidden="true" />{level}</span>;
 }
 
-export function ReviewGuidePanel({ guide, units, selectedUnit, findings, tab, rebuilding, disabled, onSelectUnit, onSelectFile, onSelectFinding, onTabChange, onClose, onRebuild }: {
+export function ReviewGuidePanel({ repoPath, guide, units, selectedUnit, findings, tab, rebuilding, disabled, onSelectUnit, onSelectFile, onSelectFinding, onTabChange, onClose, onRebuild }: {
+  repoPath: string;
   guide: GitReviewGuide;
   units: readonly VisibleReviewUnit[];
   selectedUnit?: VisibleReviewUnit;
@@ -63,6 +66,15 @@ export function ReviewGuidePanel({ guide, units, selectedUnit, findings, tab, re
   onClose: () => void;
   onRebuild: () => void;
 }): ReactElement {
+  const resize = usePanelResize({
+    storageKey: `git-gud:review-brief-width:v1:${encodeURIComponent(repoPath)}`,
+    defaultWidth: 310,
+    expandedWidth: 480,
+    minWidth: 280,
+    maxWidth: 640,
+    minRemainingWidth: 360,
+    edge: 'left'
+  });
   const [complexity, setComplexity] = useState<'all' | GitReviewGuideSummary['complexity']>('all');
   const [expansions, setExpansions] = useState<Record<string, boolean>>({});
   const [readSummaries, setReadSummaries] = useState<ReadonlySet<string>>(() => new Set());
@@ -75,8 +87,9 @@ export function ReviewGuidePanel({ guide, units, selectedUnit, findings, tab, re
   const guideFiles = guide.units.flatMap((unit) => unit.files);
   const summaryKey = (summary: GitReviewGuideSummary): string => `${layer?.unitId}:${summary.path}:${summary.side}:${summary.line}:${summary.endLine}`;
 
-  return <aside className="review-guide-panel review-ai-brief" aria-label="AI brief">
-    <header><strong><Sparkles size={13} /> AI brief</strong><button type="button" className="icon-btn icon-btn-compact" aria-label="Close AI brief" disabled={disabled} onClick={onClose}><X size={14} /></button></header>
+  return <aside className="review-guide-panel review-ai-brief" aria-label="AI brief" ref={(node) => resize.attachPanel(node)} style={{ width: resize.width, flexBasis: resize.width }}>
+    <PanelResizeHandle resize={resize} label="AI brief" />
+    <header><strong><Sparkles size={13} /> AI brief</strong><div className="review-brief-header-actions"><PanelExpandButton resize={resize} label="AI brief" /><button type="button" className="icon-btn icon-btn-compact" aria-label="Close AI brief" disabled={disabled} onClick={onClose}><X size={14} /></button></div></header>
     <div className="review-brief-intro">
       <div className="review-guide-position"><span>{index >= 0 ? `Layer ${index + 1} of ${units.length}` : 'No visible layers'}</span><span>{files.length} {files.length === 1 ? 'file' : 'files'}</span></div>
       {selectedUnit ? <h2>{layer?.title || selectedUnit.unit.title.replace(/^Changes in /u, '')}</h2> : null}

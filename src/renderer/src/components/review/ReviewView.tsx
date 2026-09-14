@@ -2291,7 +2291,7 @@ function ReviewBody({
       </div>
 
       {reviewGuide && isGuideOpen && !reviewSearch?.isSelected ? (
-        <ReviewGuidePanel key={reviewGuide.generatedAt} guide={reviewGuide} units={units} selectedUnit={selectedUnit}
+        <ReviewGuidePanel repoPath={repoPath} key={reviewGuide.generatedAt} guide={reviewGuide} units={units} selectedUnit={selectedUnit}
           findings={selectedFindings} tab={briefTab} onTabChange={setBriefTab} onSelectFinding={selectGuideFinding}
           rebuilding={isGuideRebuilding} disabled={Boolean(lineCollaboration?.selectedChunkId) || isMutating}
           onSelectUnit={onGuideSelectUnit} onSelectFile={selectGuideFile}
