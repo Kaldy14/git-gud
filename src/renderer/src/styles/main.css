@@ -6412,6 +6412,7 @@ button.ref-chip {
 }
 
 .dashboard-content {
+  scrollbar-gutter: stable;
   min-width: 0;
   flex: 1;
   overflow-y: auto;
@@ -6644,11 +6645,6 @@ button.ref-chip {
   gap: 8px;
 }
 
-.dashboard-grid-placeholder {
-  min-width: 0;
-  visibility: hidden;
-}
-
 .dashboard-tile-slot {
   position: relative;
   min-width: 0;
@@ -6658,25 +6654,31 @@ button.ref-chip {
   opacity: 0.5;
 }
 
-.dashboard-tile-slot[data-drop-position]::before {
+.dashboard-grid:focus {
+  outline: none;
+}
+
+.dashboard-tile-slot[data-drop-preview='true'] {
+  opacity: 1;
+}
+
+.dashboard-tile-slot[data-drop-preview='true'] > * {
+  visibility: hidden;
+}
+
+.dashboard-tile-slot[data-drop-preview='true']::before {
   position: absolute;
-  z-index: 4;
-  top: 5px;
-  bottom: 5px;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--accent-2);
-  box-shadow: 0 0 0 1px rgb(95 214 195 / 0.2);
-  content: '';
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--accent-2);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-2) 8%, transparent);
+  color: var(--accent-2);
+  font-size: 12px;
+  content: 'Drop here';
   pointer-events: none;
-}
-
-.dashboard-tile-slot[data-drop-position='before']::before {
-  left: -6px;
-}
-
-.dashboard-tile-slot[data-drop-position='after']::before {
-  right: -6px;
 }
 
 .dashboard-new-row-drop-zone {
@@ -8227,23 +8229,6 @@ button.ref-chip {
 
   .dashboard-grid-row {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dashboard-tile-slot[data-drop-position]::before {
-    right: 5px;
-    left: 5px;
-    width: auto;
-    height: 3px;
-  }
-
-  .dashboard-tile-slot[data-drop-position='before']::before {
-    top: -6px;
-    bottom: auto;
-  }
-
-  .dashboard-tile-slot[data-drop-position='after']::before {
-    top: auto;
-    bottom: -6px;
   }
 
   .portainer-service-row {

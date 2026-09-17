@@ -128,6 +128,27 @@ export function dashboardTileDropPositionForPointer(
   return clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
 }
 
+/** Resolve gaps and unused row space as generously as the tile surfaces. */
+export function nearestDashboardTileForPointer<T extends { bounds: TileBounds }>(
+  clientX: number,
+  clientY: number,
+  tiles: T[]
+): T | undefined {
+  let nearest: T | undefined;
+  let nearestDistance = Infinity;
+  for (const tile of tiles) {
+    const { left, top, width, height } = tile.bounds;
+    const dx = Math.max(left - clientX, 0, clientX - left - width);
+    const dy = Math.max(top - clientY, 0, clientY - top - height);
+    const distance = dx * dx + dy * dy;
+    if (distance < nearestDistance) {
+      nearest = tile;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
 function flattenDashboardTileRows<Tile extends DashboardTileIdentity>(
   originalTiles: Tile[],
   rows: Tile[][]

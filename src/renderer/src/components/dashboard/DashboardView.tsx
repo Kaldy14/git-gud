@@ -69,6 +69,7 @@ import { dashboardRepositoryOptions } from './dashboardRepositoryOptions';
 import { resolveActiveDashboard } from './dashboardSelection';
 import {
   dashboardTileRows,
+  nearestDashboardTileForPointer,
   dashboardTileDropPositionForPointer,
   moveDashboardTile,
   moveDashboardTileToNewRow,
@@ -146,6 +147,12 @@ type DashboardTileDragSession = {
   startX: number;
   startY: number;
   dragging: boolean;
+  layout?: {
+    grid: HTMLElement;
+    left: number;
+    top: number;
+    rows: { bounds: DOMRect; columnCount: number; tiles: { tileId: string; bounds: DOMRect }[] }[];
+  };
 };
 
 type DashboardTileDropTarget =
@@ -153,6 +160,7 @@ type DashboardTileDropTarget =
       kind: 'tile';
       tileId: string;
       position: DashboardTileDropPosition;
+      axis: 'horizontal' | 'vertical';
     }
   | {
       kind: 'new-row';
@@ -203,6 +211,12 @@ export function DashboardView({
     requestedDashboardId,
     dashboardsQuery.data?.selectedDashboardId
   );
+  const previewTiles = activeDashboard && draggedTileId && dropTarget
+    ? dropTarget.kind === 'new-row'
+      ? moveDashboardTileToNewRow(activeDashboard.tiles, draggedTileId)
+      : reorderDashboardTiles(activeDashboard.tiles, draggedTileId, dropTarget.tileId, dropTarget.position)
+    : activeDashboard?.tiles;
+  const hasDropPreview = previewTiles !== activeDashboard?.tiles;
   const editingTileId = dialog?.kind === 'edit-tile' ? dialog.tileId : undefined;
   const availableRepositories = useMemo(
     () =>
@@ -481,10 +495,10 @@ export function DashboardView({
     };
     tileDropTargetRef.current = undefined;
     setDropTarget(undefined);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.closest<HTMLElement>('.dashboard-grid')?.setPointerCapture(event.pointerId);
   }
 
-  function handleTilePointerMove(event: ReactPointerEvent<HTMLButtonElement>): void {
+  function handleTilePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
     const session = tileDragSessionRef.current;
 
     if (!session || session.pointerId !== event.pointerId) {
@@ -502,17 +516,44 @@ export function DashboardView({
 
     if (!session.dragging) {
       session.dragging = true;
+      const grid = event.currentTarget.closest<HTMLElement>('.dashboard-grid');
+      if (grid) {
+        const { left, top } = grid.getBoundingClientRect();
+        // Keep insertion feedback from moving the hit targets under the pointer.
+        session.layout = {
+          grid,
+          left,
+          top,
+          rows: Array.from(grid.querySelectorAll<HTMLElement>('.dashboard-grid-row'))
+            .map((row) => ({
+              bounds: row.getBoundingClientRect(),
+              columnCount: getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length,
+              tiles: Array.from(row.querySelectorAll<HTMLElement>('[data-dashboard-tile-id]'))
+                .map((element) => ({ tileId: element.dataset.dashboardTileId!, bounds: element.getBoundingClientRect() }))
+            }))
+        };
+      }
+      grid?.focus({ preventScroll: true });
       setDraggedTileId(session.tileId);
     }
 
     event.preventDefault();
-    const targetElement = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>(
-        '[data-dashboard-tile-id], [data-dashboard-new-row]'
-      );
-
-    if (targetElement?.dataset.dashboardNewRow !== undefined) {
+    const hoveredElement = document.elementFromPoint(event.clientX, event.clientY);
+    const gridElement = hoveredElement?.closest<HTMLElement>('.dashboard-grid');
+    if (hoveredElement?.closest('[data-drop-preview="true"]')) {
+      return;
+    }
+    const layout = session.layout;
+    const gridBounds = layout?.grid.getBoundingClientRect();
+    const clientX = event.clientX - ((gridBounds?.left ?? 0) - (layout?.left ?? 0));
+    const clientY = event.clientY - ((gridBounds?.top ?? 0) - (layout?.top ?? 0));
+    const nearestRow = gridElement && layout
+      ? nearestDashboardTileForPointer(clientX, clientY, layout.rows)
+      : undefined;
+    const nearestTile = nearestRow
+      ? nearestDashboardTileForPointer(clientX, clientY, nearestRow.tiles)
+      : undefined;
+    if (hoveredElement?.closest('[data-dashboard-new-row]')) {
       const nextDropTarget = { kind: 'new-row' } as const;
       tileDropTargetRef.current = nextDropTarget;
       setDropTarget((current) =>
@@ -521,40 +562,39 @@ export function DashboardView({
       return;
     }
 
-    const targetTileId = targetElement?.dataset.dashboardTileId;
+    const targetTileId = nearestTile?.tileId;
 
-    if (!targetElement || !targetTileId) {
+    if (!nearestTile || !targetTileId) {
       tileDropTargetRef.current = undefined;
       setDropTarget(undefined);
       return;
     }
 
-    const grid = targetElement.parentElement;
-    const gridColumnCount = grid
-      ? getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length
-      : 1;
+    const gridColumnCount = nearestRow?.columnCount ?? 1;
     const position = dashboardTileDropPositionForPointer(
-      event.clientX,
-      event.clientY,
-      targetElement.getBoundingClientRect(),
+      clientX,
+      clientY,
+      nearestTile.bounds,
       gridColumnCount
     );
     const nextDropTarget = {
       kind: 'tile',
       tileId: targetTileId,
-      position
+      position,
+      axis: gridColumnCount > 1 ? 'horizontal' : 'vertical'
     } as const;
     tileDropTargetRef.current = nextDropTarget;
     setDropTarget((current) =>
       current?.kind === 'tile' &&
       current.tileId === targetTileId &&
-      current.position === position
+      current.position === position &&
+      current.axis === nextDropTarget.axis
         ? current
         : nextDropTarget
     );
   }
 
-  function handleTilePointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
+  function handleTilePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
     const session = tileDragSessionRef.current;
 
     if (!session || session.pointerId !== event.pointerId) {
@@ -590,6 +630,11 @@ export function DashboardView({
     event: ReactKeyboardEvent<HTMLButtonElement>,
     tileId: string
   ): void {
+    if (event.key === 'Escape') {
+      finishTileDrag();
+      return;
+    }
+
     const offset =
       event.key === 'ArrowLeft' || event.key === 'ArrowUp'
         ? -1
@@ -823,8 +868,18 @@ export function DashboardView({
             </p>
 
             {activeDashboard.tiles.length > 0 ? (
-              <div className="dashboard-grid">
-                {dashboardTileRows(activeDashboard.tiles).map((row, rowIndex) => (
+              <div
+                className="dashboard-grid"
+                tabIndex={-1}
+                onPointerMove={handleTilePointerMove}
+                onPointerUp={handleTilePointerUp}
+                onPointerCancel={finishTileDrag}
+                onLostPointerCapture={finishTileDrag}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') finishTileDrag();
+                }}
+              >
+                {dashboardTileRows(previewTiles ?? activeDashboard.tiles).map((row, rowIndex) => (
                   <div
                     className="dashboard-grid-row"
                     key={`row:${row[0]?.id ?? rowIndex}`}
@@ -847,9 +902,6 @@ export function DashboardView({
                           onPointerDown={(event) =>
                             handleTilePointerDown(event, tile.id)
                           }
-                          onPointerMove={handleTilePointerMove}
-                          onPointerUp={handleTilePointerUp}
-                          onPointerCancel={finishTileDrag}
                           onKeyDown={(event) =>
                             handleTileReorderKeyDown(event, tile.id)
                           }
@@ -862,13 +914,7 @@ export function DashboardView({
                           key={tile.id}
                           data-dashboard-tile-id={tile.id}
                           data-dragging={draggedTileId === tile.id}
-                          data-drop-position={
-                            dropTarget?.kind === 'tile' &&
-                            dropTarget.tileId === tile.id &&
-                            draggedTileId !== tile.id
-                              ? dropTarget.position
-                              : undefined
-                          }
+                          data-drop-preview={hasDropPreview && draggedTileId === tile.id}
                         >
                           {tile.kind === 'github-actions' ? (
                             <GitHubActionsTile
@@ -914,15 +960,7 @@ export function DashboardView({
                         </div>
                       );
                     })}
-                    {Array.from({
-                      length: activeDashboard.tiles.length - row.length
-                    }).map((_, placeholderIndex) => (
-                      <span
-                        aria-hidden="true"
-                        className="dashboard-grid-placeholder"
-                        key={`placeholder:${placeholderIndex}`}
-                      />
-                    ))}
+
                   </div>
                 ))}
                 {draggedTileId ? (
@@ -1114,9 +1152,6 @@ type TileDragHandleProps = {
   isDragging: boolean;
   isDisabled: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onPointerCancel: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
 };
 
@@ -1127,9 +1162,6 @@ function TileDragHandle({
   isDragging,
   isDisabled,
   onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
   onKeyDown
 }: TileDragHandleProps): ReactElement {
   const isReorderable = tileCount > 1 && !isDisabled;
@@ -1147,9 +1179,6 @@ function TileDragHandle({
       }
       data-dragging={isDragging}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
       onKeyDown={onKeyDown}
     >
       <GripVertical size={12} />

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dashboardTileDropPositionForPointer,
   dashboardTileRows,
+  nearestDashboardTileForPointer,
   moveDashboardTile,
   moveDashboardTileToNewRow,
   reorderDashboardTiles
@@ -89,5 +90,35 @@ describe('dashboard tile layout', () => {
       { id: 'alpha', startsNewRow: undefined },
       { id: 'gamma', startsNewRow: true }
     ]);
+  });
+});
+
+describe('nearest dashboard drop target', () => {
+  const targets = [
+    { id: 'short', bounds: { left: 0, top: 0, width: 400, height: 100 } },
+    { id: 'tall', bounds: { left: 408, top: 0, width: 400, height: 400 } },
+    { id: 'next-row', bounds: { left: 0, top: 408, width: 400, height: 100 } }
+  ];
+
+  it('accepts gaps between tiles and unused space beside a partial row', () => {
+    expect(nearestDashboardTileForPointer(405, 50, targets)?.id).toBe('tall');
+    expect(nearestDashboardTileForPointer(700, 500, targets)?.id).toBe('tall');
+    expect(nearestDashboardTileForPointer(900, 508, [targets[2]!])?.id).toBe('next-row');
+  });
+
+  it('selects the row before its tile so empty columns belong to that row', () => {
+    const rows = [
+      { bounds: { left: 0, top: 0, width: 808, height: 400 }, tiles: targets.slice(0, 2) },
+      { bounds: { left: 0, top: 408, width: 808, height: 100 }, tiles: targets.slice(2) }
+    ];
+    const row = nearestDashboardTileForPointer(700, 450, rows);
+    expect(nearestDashboardTileForPointer(700, 450, row?.tiles ?? [])?.id).toBe('next-row');
+  });
+
+  it('uses distance to tile edges for unequal heights and row gaps', () => {
+    expect(nearestDashboardTileForPointer(200, 150, targets)?.id).toBe('short');
+    expect(nearestDashboardTileForPointer(200, 405, targets)?.id).toBe('next-row');
+    expect(nearestDashboardTileForPointer(500, 300, targets)?.id).toBe('tall');
+    expect(nearestDashboardTileForPointer(0, 0, [])).toBeUndefined();
   });
 });
