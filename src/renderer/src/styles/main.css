@@ -3619,7 +3619,8 @@ button.ref-chip {
 .pr-create-suggestion {
   display: grid;
   min-height: 49px;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-areas: 'icon copy action dismiss';
+  grid-template-columns: 18px minmax(0, 1fr) auto 28px;
   align-items: center;
   gap: 10px;
   padding: 7px 9px 7px 13px;
@@ -3630,12 +3631,14 @@ button.ref-chip {
 }
 
 .pr-create-suggestion > svg {
+  grid-area: icon;
   color: var(--warning-text);
 }
 
 .pr-create-suggestion-copy {
   display: flex;
   min-width: 0;
+  grid-area: copy;
   flex-direction: column;
   gap: 2px;
 }
@@ -3660,6 +3663,7 @@ button.ref-chip {
 .pr-create-suggestion-action {
   display: inline-flex;
   height: 30px;
+  grid-area: action;
   align-items: center;
   gap: 6px;
   border: 1px solid color-mix(in srgb, var(--success-text) 38%, transparent);
@@ -3680,6 +3684,11 @@ button.ref-chip {
 .pr-create-suggestion-action:focus-visible {
   outline: 1px solid var(--select-border);
   outline-offset: 2px;
+}
+
+.pr-create-suggestion-dismiss {
+  grid-area: dismiss;
+  color: var(--text-3);
 }
 
 .pr-inbox-groups {
@@ -8312,11 +8321,13 @@ button.ref-chip {
   }
 
   .pr-create-suggestion {
-    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-areas:
+      'icon copy dismiss'
+      '. action action';
+    grid-template-columns: 18px minmax(0, 1fr) 28px;
   }
 
   .pr-create-suggestion-action {
-    grid-column: 2;
     justify-self: start;
   }
 

@@ -10,6 +10,10 @@ import {
   hasPullRequestMergeConflicts,
   pullRequestStatus
 } from './pullRequestInboxStatus';
+import {
+  loadDismissedPullRequestSuggestionIds,
+  saveDismissedPullRequestSuggestionIds
+} from './pullRequestSuggestions';
 
 describe('pull request inbox group expansion', () => {
   it('expands populated groups and collapses empty groups by default', () => {
@@ -66,6 +70,36 @@ describe('pull request creation suggestions', () => {
     expect(markup).toContain('Compare &amp; create pull request');
     expect(markup).toContain('href="https://github.com/acme/widgets/compare/main...feature%2Frecent-work?quick_pull=1"');
     expect(markup).toContain('target="_blank"');
+    expect(markup).toContain(
+      'aria-label="Dismiss pull request suggestion for feature/recent-work"'
+    );
+  });
+
+  it('persists dismissed suggestions per GitHub profile', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value)
+    };
+
+    saveDismissedPullRequestSuggestionIds(
+      storage,
+      'work/profile',
+      new Set(['acme/widgets:feature/recent-work'])
+    );
+
+    expect(loadDismissedPullRequestSuggestionIds(storage, 'work/profile')).toEqual(
+      new Set(['acme/widgets:feature/recent-work'])
+    );
+    expect(loadDismissedPullRequestSuggestionIds(storage, 'personal')).toEqual(new Set());
+  });
+
+  it('ignores malformed dismissed suggestion state', () => {
+    const storage = {
+      getItem: () => '{not json'
+    };
+
+    expect(loadDismissedPullRequestSuggestionIds(storage, 'profile-1')).toEqual(new Set());
   });
 });
 

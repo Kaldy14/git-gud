@@ -30,6 +30,10 @@ import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
 import { pullRequestStatus } from './pullRequestInboxStatus';
+import {
+  loadDismissedPullRequestSuggestionIds,
+  saveDismissedPullRequestSuggestionIds
+} from './pullRequestSuggestions';
 
 type PullRequestInboxViewProps = {
   profile?: GitProfile;
@@ -102,10 +106,44 @@ export function PullRequestInboxView({
   const [expandedGroups, setExpandedGroups] = useState<
     Partial<Record<GitHubPullRequestCategory, boolean>>
   >({});
+  const suggestionProfileId = inbox?.profileId ?? profile?.id ?? '';
+  const persistedDismissedSuggestions = useMemo(
+    () =>
+      typeof window === 'undefined' || !suggestionProfileId
+        ? new Set<string>()
+        : loadDismissedPullRequestSuggestionIds(window.localStorage, suggestionProfileId),
+    [suggestionProfileId]
+  );
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<{
+    profileId: string;
+    ids: Set<string>;
+  }>({ profileId: suggestionProfileId, ids: persistedDismissedSuggestions });
+  const dismissedSuggestionIds =
+    dismissedSuggestions.profileId === suggestionProfileId
+      ? dismissedSuggestions.ids
+      : persistedDismissedSuggestions;
   const filteredPullRequests = useMemo(
     () => filterPullRequests(inbox?.pullRequests ?? [], search, updatedRange),
     [inbox?.pullRequests, search, updatedRange]
   );
+  const visibleSuggestions = (inbox?.suggestions ?? []).filter(
+    (suggestion) => !dismissedSuggestionIds.has(suggestion.id)
+  );
+
+  function dismissSuggestion(suggestionId: string): void {
+    setDismissedSuggestions((current) => {
+      const ids = new Set(
+        current.profileId === suggestionProfileId ? current.ids : persistedDismissedSuggestions
+      );
+      ids.add(suggestionId);
+
+      if (suggestionProfileId) {
+        saveDismissedPullRequestSuggestionIds(window.localStorage, suggestionProfileId, ids);
+      }
+
+      return { profileId: suggestionProfileId, ids };
+    });
+  }
 
   const repositories = [
     ...new Set((inbox?.pullRequests ?? []).map((pr) => `${pr.owner}/${pr.repository}`))
@@ -344,17 +382,17 @@ export function PullRequestInboxView({
               </button>
             </div>
           ) : null}
-          {inbox?.suggestions.length ? (
+          {visibleSuggestions.length ? (
             <section className="pr-create-suggestions" aria-label="Recently pushed branches">
               <div className="pr-create-suggestions-heading">
                 <div>
                   <h2>Recently pushed branches</h2>
                   <p>Start a pull request for your branches that do not have one yet.</p>
                 </div>
-                <span>{inbox.suggestions.length}</span>
+                <span>{visibleSuggestions.length}</span>
               </div>
               <div className="pr-create-suggestion-list">
-                {inbox.suggestions.map((suggestion) => (
+                {visibleSuggestions.map((suggestion) => (
                   <article className="pr-create-suggestion" key={suggestion.id}>
                     <GitBranch size={15} aria-hidden="true" />
                     <span className="pr-create-suggestion-copy">
@@ -374,6 +412,15 @@ export function PullRequestInboxView({
                       Compare &amp; create pull request
                       <ExternalLink size={12} aria-hidden="true" />
                     </a>
+                    <button
+                      className="icon-btn icon-btn-compact pr-create-suggestion-dismiss"
+                      type="button"
+                      aria-label={`Dismiss pull request suggestion for ${suggestion.branch}`}
+                      title="Dismiss suggestion"
+                      onClick={() => dismissSuggestion(suggestion.id)}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
                   </article>
                 ))}
               </div>
