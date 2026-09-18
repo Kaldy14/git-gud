@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.9.12] - 2026-09-18
+
+### Added
+
+- Render Mermaid diagrams in pull-request discussions and filter diagram source blocks out of the image gallery.
+- Expand or resize the AI brief sidebar while reviewing a pull request.
+- Dismiss pull-request suggestions from the inbox.
+
+### Changed
+
+- Show full-size dashboard tile previews while rearranging the dashboard.
+- Limit pull-request suggestions to activity from the last 12 hours.
+
+### Fixed
+
+- Allow draft review comments to be reopened and edited.
+- Stream Bug finder events without retaining the full process output in memory.
+
 ## [2026.9.9] - 2026-09-11
 
 ### Added
