@@ -157,7 +157,9 @@ jobs:
       - name: Build macOS application
         env:
           GIT_GUD_VERSION: ${{ github.ref_name }}
-        run: pnpm dist
+        run: |
+          ulimit -n 10240
+          pnpm dist
 
       - name: Notarize and staple macOS application
         env:
