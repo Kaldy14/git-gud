@@ -1,15 +1,20 @@
 #!/usr/bin/env node
+import { Buffer } from 'node:buffer';
 import { execFileSync } from 'node:child_process';
 import { sign } from '@electron/osx-sign';
 import { createRequire } from 'node:module';
 import { env, stdout } from 'node:process';
 import {
   chmodSync,
+  closeSync,
   copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync
@@ -36,6 +41,16 @@ const bundledAppPath = join(resourcesPath, 'app');
 const macOsPath = join(contentsPath, 'MacOS');
 const infoPlistPath = join(contentsPath, 'Info.plist');
 const deployedAppPath = join(distDir, '.deployed-app');
+const machOMagicValues = new Set([
+  'cafebabe',
+  'bebafeca',
+  'cafebabf',
+  'bfbafeca',
+  'feedface',
+  'cefaedfe',
+  'feedfacf',
+  'cffaedfe'
+]);
 
 assertExists(join(repoRoot, 'out'), 'Build output is missing. Run pnpm build first.');
 assertExists(join(repoRoot, 'node_modules'), 'node_modules is missing. Run pnpm install first.');
@@ -176,27 +191,69 @@ async function signApp() {
     platform: 'darwin'
   });
   installAppPayload();
+  signPayloadBinaries(identity);
   // The payload changes the outer resource seal but not the nested code signatures.
   resignAppBundle(identity);
   stdout.write(`Signed with Developer ID identity: ${identity}\n`);
 }
 
+function signPayloadBinaries(identity) {
+  const binaries = findNativeBinaries(bundledAppPath);
+
+  for (const binary of binaries) {
+    execFileSync('codesign', [...signingArguments(identity), binary], { stdio: 'inherit' });
+  }
+
+  stdout.write(`Signed ${binaries.length} native payload binaries.\n`);
+}
+
 function resignAppBundle(identity) {
-  const args = [
-    '--force',
-    '--timestamp',
-    '--preserve-metadata=identifier,entitlements,requirements,flags,runtime',
-    '--sign',
-    identity
-  ];
+  const args = signingArguments(identity);
+
+  args.push('--preserve-metadata=identifier,entitlements,requirements,flags,runtime', appPath);
+  execFileSync('codesign', args, { stdio: 'inherit' });
+}
+
+function signingArguments(identity) {
+  const args = ['--force', '--timestamp', '--options', 'runtime', '--sign', identity];
   const keychain = env.MACOS_SIGNING_KEYCHAIN?.trim();
 
   if (keychain) {
     args.push('--keychain', keychain);
   }
 
-  args.push(appPath);
-  execFileSync('codesign', args, { stdio: 'inherit' });
+  return args;
+}
+
+function findNativeBinaries(directory) {
+  const binaries = [];
+
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      binaries.push(...findNativeBinaries(entryPath));
+    } else if (entry.isFile() && entry.name.endsWith('.node') && isMachOBinary(entryPath)) {
+      binaries.push(entryPath);
+    }
+  }
+
+  return binaries;
+}
+
+function isMachOBinary(path) {
+  const descriptor = openSync(path, 'r');
+  const magic = Buffer.alloc(4);
+
+  try {
+    if (readSync(descriptor, magic, 0, magic.length, 0) !== magic.length) {
+      return false;
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+
+  return machOMagicValues.has(magic.toString('hex'));
 }
 
 function adHocSign() {
