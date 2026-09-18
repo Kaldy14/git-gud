@@ -48,7 +48,6 @@ mkdirSync(distDir, { recursive: true });
 execFileSync('ditto', [electronAppPath, appPath]);
 
 renameExecutable();
-installAppPayload();
 installIcons();
 updateInfoPlist();
 await signApp();
@@ -162,18 +161,42 @@ async function signApp() {
   const identity = env.MACOS_SIGNING_IDENTITY?.trim();
 
   if (!identity) {
+    installAppPayload();
     adHocSign();
     stdout.write('Applied an ad-hoc signature (MACOS_SIGNING_IDENTITY is not set).\n');
     return;
   }
 
+  // osx-sign walks every file it sees in parallel, so sign Electron's native bundle
+  // before installing the much larger JavaScript dependency tree.
   await sign({
     app: appPath,
     identity,
     keychain: env.MACOS_SIGNING_KEYCHAIN?.trim() || undefined,
     platform: 'darwin'
   });
+  installAppPayload();
+  // The payload changes the outer resource seal but not the nested code signatures.
+  resignAppBundle(identity);
   stdout.write(`Signed with Developer ID identity: ${identity}\n`);
+}
+
+function resignAppBundle(identity) {
+  const args = [
+    '--force',
+    '--timestamp',
+    '--preserve-metadata=identifier,entitlements,requirements,flags,runtime',
+    '--sign',
+    identity
+  ];
+  const keychain = env.MACOS_SIGNING_KEYCHAIN?.trim();
+
+  if (keychain) {
+    args.push('--keychain', keychain);
+  }
+
+  args.push(appPath);
+  execFileSync('codesign', args, { stdio: 'inherit' });
 }
 
 function adHocSign() {
