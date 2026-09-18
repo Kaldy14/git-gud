@@ -67,7 +67,7 @@ const GITHUB_PULL_REQUEST_SUGGESTION_CACHE_TTL_MS = 5 * 60_000;
 const GITHUB_PULL_REQUEST_SUGGESTION_RETRY_BACKOFF_MS = 60_000;
 const GITHUB_PULL_REQUEST_SUGGESTION_LIMIT = 3;
 const GITHUB_RECENT_PUSH_EVENT_PAGE_CAP = 3;
-const GITHUB_RECENT_PUSH_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const GITHUB_RECENT_PUSH_MAX_AGE_MS = 12 * 60 * 60_000;
 const GITHUB_RECENT_PUSH_EVALUATION_BATCH_SIZE = 6;
 const GITHUB_RECENT_PUSH_CANDIDATE_LIMIT = 18;
 const GITHUB_PULL_REQUEST_REVIEW_SEED_LIMIT = 8;
@@ -575,6 +575,11 @@ async function loadGitHubPullRequestSuggestions(
   const cached = gitHubPullRequestSuggestionCache.get(cacheKey);
 
   if (cached && cached.expiresAt > Date.now()) {
+    const earliestPushedAt = Date.now() - GITHUB_RECENT_PUSH_MAX_AGE_MS;
+    cached.suggestions = cached.suggestions.filter((suggestion) =>
+      isRecentGitHubPush(suggestion.pushedAt, earliestPushedAt)
+    );
+
     if (cached.retryAfter && cached.retryAfter > Date.now()) {
       return {
         suggestions: cached.suggestions.slice(0, GITHUB_PULL_REQUEST_SUGGESTION_LIMIT),
@@ -2577,7 +2582,6 @@ export function parseGitHubRecentPushEvents(
     const payload = nestedRecord(eventValue, ['payload']);
     const ref = payload ? readOptionalString(payload.ref) : undefined;
     const headSha = payload ? readOptionalString(payload.head) : undefined;
-    const pushedAtTime = pushedAt ? Date.parse(pushedAt) : Number.NaN;
 
     if (
       !actorLogin ||
@@ -2586,8 +2590,7 @@ export function parseGitHubRecentPushEvents(
       !repositoryName ||
       !ref?.startsWith('refs/heads/') ||
       !headSha ||
-      !Number.isFinite(pushedAtTime) ||
-      pushedAtTime < earliestPushedAt
+      !isRecentGitHubPush(pushedAt, earliestPushedAt)
     ) {
       continue;
     }
@@ -2608,6 +2611,11 @@ export function parseGitHubRecentPushEvents(
   return [...candidates.values()].sort(
     (first, second) => Date.parse(second.pushedAt) - Date.parse(first.pushedAt)
   );
+}
+
+function isRecentGitHubPush(pushedAt: string, earliestPushedAt: number): boolean {
+  const pushedAtTime = Date.parse(pushedAt);
+  return Number.isFinite(pushedAtTime) && pushedAtTime >= earliestPushedAt;
 }
 
 export function buildGitHubPullRequestSuggestion(

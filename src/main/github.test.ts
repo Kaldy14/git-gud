@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
 
@@ -157,6 +157,25 @@ describe('GitHub pull request file context', () => {
 });
 
 describe('GitHub pull request suggestions', () => {
+  it('only suggests branches pushed within the last 12 hours', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime('2026-08-13T10:00:00Z');
+
+    try {
+      const candidates = parseGitHubRecentPushEvents(
+        [
+          pushEvent({ createdAt: '2026-08-12T22:00:00Z', branch: 'feature/boundary' }),
+          pushEvent({ createdAt: '2026-08-12T21:59:59Z', branch: 'feature/stale' })
+        ],
+        'octocat'
+      );
+
+      expect(candidates.map((candidate) => candidate.branch)).toEqual(['feature/boundary']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('selects the newest branch push by the authenticated user and ignores stale or unrelated events', () => {
     const candidates = parseGitHubRecentPushEvents(
       [
