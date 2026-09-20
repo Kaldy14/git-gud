@@ -7,6 +7,7 @@ type OptimisticOperationInput = {
   label: string;
   happenedAt: string;
   retryable: boolean;
+  background?: boolean;
 };
 
 export function createOptimisticOperationEntry(input: OptimisticOperationInput): OperationLogEntry {
@@ -19,7 +20,8 @@ export function createOptimisticOperationEntry(input: OptimisticOperationInput):
     startedAt: input.happenedAt,
     happenedAt: input.happenedAt,
     canRetry: input.retryable,
-    waitsForRefresh: true
+    waitsForRefresh: true,
+    background: input.background
   };
 }
 

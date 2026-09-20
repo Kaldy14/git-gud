@@ -23,6 +23,7 @@ export type OperationLogEntry = {
   cancellable?: boolean;
   canRetry?: boolean;
   waitsForRefresh?: boolean;
+  background?: boolean;
 };
 
 type OperationLogProps = {

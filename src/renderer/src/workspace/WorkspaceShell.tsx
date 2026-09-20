@@ -104,6 +104,7 @@ import {
   autoFetchRepository,
   createRepositoryAutoFetchCoordinator
 } from '@renderer/workspace/autoFetch';
+import { createRepositoryOperationQueue } from '@renderer/workspace/repositoryOperationQueue';
 import {
   indexPullRequestsByBranch,
   repositoryMatchesGitHubRepository,
@@ -213,6 +214,7 @@ type StashDialogState = {
 type RepositoryOperationOptions = {
   repoPath?: string;
   retryable?: boolean;
+  background?: boolean;
   checkout?: Omit<CheckoutTransition, 'phase'>;
   onFailure?: (failure: { repoPath: string; message: string }) => void;
 };
@@ -228,6 +230,7 @@ type ActiveRepositoryOperation = {
   repoPath: string;
   label: string;
   phase: 'running' | 'refreshing';
+  background?: boolean;
   checkout?: Omit<CheckoutTransition, 'phase'>;
 };
 
@@ -352,6 +355,7 @@ export function WorkspaceShell(): ReactElement {
   const autoFetchCoordinatorRef = useRef(
     createRepositoryAutoFetchCoordinator<Pick<RepoTab, 'commonDir' | 'path'>>()
   );
+  const repositoryOperationQueueRef = useRef(createRepositoryOperationQueue());
   const runRepositoryOperationRef = useRef<RepositoryOperationRunner | undefined>(undefined);
   const openingPullRequestDeepLinkRef = useRef<string | undefined>(undefined);
   const operationRetryActionsRef = useRef(
@@ -636,9 +640,14 @@ export function WorkspaceShell(): ReactElement {
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
   const activeReviewTarget = activeTab ? reviewTargetByTab[activeTab.id] : undefined;
   const isReviewOpen = Boolean(activeReviewTarget);
-  const pendingOperationForActiveRepo = operationLogEntries.find(
+  const pendingOperationsForActiveRepo = operationLogEntries.filter(
     (entry) => entry.repoPath === activeTab?.path && entry.status === 'pending'
   );
+  const pendingForegroundOperationForActiveRepo = pendingOperationsForActiveRepo.find(
+    (entry) => !entry.background
+  );
+  const pendingOperationForActiveRepo =
+    pendingForegroundOperationForActiveRepo ?? pendingOperationsForActiveRepo[0];
   const visibleActiveOperation: ActiveRepositoryOperation | undefined =
     activeTab && activeRepositoryOperations[activeTab.path]
       ? activeRepositoryOperations[activeTab.path]
@@ -647,7 +656,8 @@ export function WorkspaceShell(): ReactElement {
             id: pendingOperationForActiveRepo.id,
             repoPath: pendingOperationForActiveRepo.repoPath,
             label: pendingOperationForActiveRepo.label,
-            phase: pendingOperationForActiveRepo.phase === 'refreshing' ? 'refreshing' : 'running'
+            phase: pendingOperationForActiveRepo.phase === 'refreshing' ? 'refreshing' : 'running',
+            background: pendingOperationForActiveRepo.background
           }
         : undefined;
   const checkoutTransition: CheckoutTransition | undefined = visibleActiveOperation?.checkout
@@ -655,8 +665,12 @@ export function WorkspaceShell(): ReactElement {
     : undefined;
   const isOperationBusy =
     localMutationCount > 0 ||
-    Boolean(activeTab && activeRepositoryOperations[activeTab.path]) ||
-    Boolean(pendingOperationForActiveRepo);
+    Boolean(
+      activeTab &&
+        activeRepositoryOperations[activeTab.path] &&
+        !activeRepositoryOperations[activeTab.path]?.background
+    ) ||
+    Boolean(pendingForegroundOperationForActiveRepo);
   const usesCompactDetail = viewportWidth < 900;
   const usesCompactSidebar = viewportWidth < 700;
   const sidebarWidthCap = viewportWidth < 900 ? 230 : viewportWidth < 1200 ? 280 : 560;
@@ -1661,32 +1675,37 @@ export function WorkspaceShell(): ReactElement {
   ): Promise<boolean> {
     const requestedRepoPath = options.repoPath ?? activeTab?.path;
     const retryable = options.retryable ?? false;
+    const background = options.background ?? false;
 
     if (!requestedRepoPath) {
       return false;
     }
 
-    const requestedRepoIsBusy =
-      Boolean(activeRepositoryOperations[requestedRepoPath]) ||
-      operationLogEntries.some((entry) => entry.repoPath === requestedRepoPath && entry.status === 'pending');
+    const requestedRepoHasForegroundOperation =
+      Boolean(
+        activeRepositoryOperations[requestedRepoPath] &&
+          !activeRepositoryOperations[requestedRepoPath]?.background
+      ) ||
+      operationLogEntries.some(
+        (entry) =>
+          entry.repoPath === requestedRepoPath &&
+          entry.status === 'pending' &&
+          !entry.background
+      );
 
-    if (requestedRepoIsBusy || operationStartGuardRef.current.has(requestedRepoPath)) {
+    if (
+      requestedRepoHasForegroundOperation ||
+      operationStartGuardRef.current.has(requestedRepoPath)
+    ) {
       return false;
     }
 
-    operationStartGuardRef.current.add(requestedRepoPath);
+    if (!background) {
+      operationStartGuardRef.current.add(requestedRepoPath);
+    }
+
     const id = createLogId();
     const happenedAt = new Date().toISOString();
-    setActiveRepositoryOperations((operations) => ({
-      ...operations,
-      [requestedRepoPath]: {
-        id,
-        repoPath: requestedRepoPath,
-        label,
-        phase: 'running',
-        checkout: options.checkout
-      }
-    }));
     if (retryable) {
       operationRetryActionsRef.current.set(id, { label, action, repoPath: requestedRepoPath, retryable: true });
     }
@@ -1696,76 +1715,105 @@ export function WorkspaceShell(): ReactElement {
         repoPath: requestedRepoPath,
         label,
         happenedAt,
-        retryable
+        retryable,
+        background
       }),
       ...entries
     ]);
 
     try {
-      const result = await action(requestedRepoPath);
-      setActiveRepositoryOperations((operations) => {
-        const operation = operations[requestedRepoPath];
-        return operation?.id === id
-          ? { ...operations, [requestedRepoPath]: { ...operation, phase: 'refreshing' } }
-          : operations;
-      });
-      setOperationLogEntries((entries) =>
-        entries.map((entry) =>
-          entry.id === id
-            ? {
-                ...entry,
-                status: 'pending',
-                phase: 'refreshing',
-                detail: 'Updating repository data…'
-              }
-            : entry
-        )
-      );
-      await invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
+      const repositoryKey =
+        useWorkspaceStore
+          .getState()
+          .workspace.tabs.find((tab) => tab.path === requestedRepoPath)?.commonDir ??
+        requestedRepoPath;
 
-      const status = result.operation?.status === 'conflicted' || result.conflictState?.isActive ? 'conflict' : 'success';
-      const detail = result.conflictState?.message ?? result.operation?.message;
-      operationRetryActionsRef.current.delete(id);
-      setOperationLogEntries((entries) =>
-        entries.map((entry) =>
-          entry.id === id
-            ? {
-                ...entry,
-                label: result.operation?.label ?? label,
-                status,
-                phase: 'completed',
-                canRetry: false,
-                waitsForRefresh: false,
-                detail,
-                happenedAt: result.happenedAt
-              }
-            : entry
-        )
-      );
-      return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Git operation failed.';
-      setOperationLogEntries((entries) =>
-        applyOperationFailure(
-          entries,
-          id,
-          message,
-          new Date().toISOString()
-        )
-      );
-      options.onFailure?.({ repoPath: requestedRepoPath, message });
-      return false;
-    } finally {
-      operationStartGuardRef.current.delete(requestedRepoPath);
-      setActiveRepositoryOperations((operations) => {
-        if (operations[requestedRepoPath]?.id !== id) {
-          return operations;
+      return await repositoryOperationQueueRef.current.schedule(repositoryKey, async () => {
+        setActiveRepositoryOperations((operations) => ({
+          ...operations,
+          [requestedRepoPath]: {
+            id,
+            repoPath: requestedRepoPath,
+            label,
+            phase: 'running',
+            background,
+            checkout: options.checkout
+          }
+        }));
+        setOperationLogEntries((entries) =>
+          entries.map((entry) =>
+            entry.id === id ? { ...entry, phase: 'running' } : entry
+          )
+        );
+
+        try {
+          const result = await action(requestedRepoPath);
+          setActiveRepositoryOperations((operations) => {
+            const operation = operations[requestedRepoPath];
+            return operation?.id === id
+              ? { ...operations, [requestedRepoPath]: { ...operation, phase: 'refreshing' } }
+              : operations;
+          });
+          setOperationLogEntries((entries) =>
+            entries.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    status: 'pending',
+                    phase: 'refreshing',
+                    detail: 'Updating repository data…'
+                  }
+                : entry
+            )
+          );
+          await invalidateRepositoryQueries(queryClient, result.repoPath, result.invalidates ?? []);
+
+          const status =
+            result.operation?.status === 'conflicted' || result.conflictState?.isActive
+              ? 'conflict'
+              : 'success';
+          const detail = result.conflictState?.message ?? result.operation?.message;
+          operationRetryActionsRef.current.delete(id);
+          setOperationLogEntries((entries) =>
+            entries.map((entry) =>
+              entry.id === id
+                ? {
+                    ...entry,
+                    label: result.operation?.label ?? label,
+                    status,
+                    phase: 'completed',
+                    canRetry: false,
+                    waitsForRefresh: false,
+                    detail,
+                    happenedAt: result.happenedAt
+                  }
+                : entry
+            )
+          );
+          return true;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Git operation failed.';
+          setOperationLogEntries((entries) =>
+            applyOperationFailure(entries, id, message, new Date().toISOString())
+          );
+          options.onFailure?.({ repoPath: requestedRepoPath, message });
+          return false;
+        } finally {
+          setActiveRepositoryOperations((operations) => {
+            if (operations[requestedRepoPath]?.id !== id) {
+              return operations;
+            }
+
+            const nextOperations = { ...operations };
+            delete nextOperations[requestedRepoPath];
+            return nextOperations;
+          });
         }
-
-        const nextOperations = { ...operations };
-        delete nextOperations[requestedRepoPath];
-        return nextOperations;
       });
+    } finally {
+      if (!background) {
+        operationStartGuardRef.current.delete(requestedRepoPath);
+      }
     }
   }
 
@@ -1818,7 +1866,8 @@ export function WorkspaceShell(): ReactElement {
                   (repoPath) => window.api.fetchRepository(repoPath),
                   {
                     repoPath: scheduledRepository.path,
-                    retryable: true
+                    retryable: true,
+                    background: true
                   }
                 )) ?? false;
 
