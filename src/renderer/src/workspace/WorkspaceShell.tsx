@@ -92,6 +92,8 @@ import {
 import {
   EMPTY_BRANCH_VISIBILITY,
   filterGraphRowsByBranchVisibility,
+  loadBranchVisibilityByRepository,
+  saveBranchVisibilityByRepository,
   toggleBranchVisibility,
   type BranchVisibilityState
 } from '@renderer/workspace/branchVisibility';
@@ -303,7 +305,9 @@ export function WorkspaceShell(): ReactElement {
   const diffWorkerPool = useWorkerPool();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
   const [graphScrollResetByTab, setGraphScrollResetByTab] = useState<Record<string, number>>({});
-  const [branchVisibilityByTab, setBranchVisibilityByTab] = useState<Record<string, BranchVisibilityState>>({});
+  const [branchVisibilityByRepository, setBranchVisibilityByRepository] = useState<
+    Record<string, BranchVisibilityState>
+  >(() => loadBranchVisibilityByRepository(window.localStorage));
   const [bulkSelectionByTab, setBulkSelectionByTab] = useState<Record<string, string[]>>({});
   const [diffStyleByTab, setDiffStyleByTab] = useState<Record<string, DiffStyle>>({});
   const [wipScopeByTab, setWipScopeByTab] = useState<Record<string, Record<string, WipDiffScope>>>({});
@@ -381,6 +385,10 @@ export function WorkspaceShell(): ReactElement {
     onFocusSidebarFilter: () => {}
   });
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    saveBranchVisibilityByRepository(window.localStorage, branchVisibilityByRepository);
+  }, [branchVisibilityByRepository]);
 
   const workspaceActiveTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId),
@@ -584,8 +592,9 @@ export function WorkspaceShell(): ReactElement {
     () => syncWipGraphRow(graphQuery.data?.rows ?? emptyGraphRows, repositoryQuery.data?.status),
     [graphQuery.data?.rows, repositoryQuery.data?.status]
   );
-  const branchVisibility = activeTab
-    ? (branchVisibilityByTab[activeTab.id] ?? EMPTY_BRANCH_VISIBILITY)
+  const branchVisibilityRepositoryKey = activeTab?.commonDir;
+  const branchVisibility = branchVisibilityRepositoryKey
+    ? (branchVisibilityByRepository[branchVisibilityRepositoryKey] ?? EMPTY_BRANCH_VISIBILITY)
     : EMPTY_BRANCH_VISIBILITY;
   const graphRows = useMemo(
     () => repositoryQuery.data
@@ -3653,28 +3662,32 @@ export function WorkspaceShell(): ReactElement {
                 onResizeCommit={handleSidebarResizeCommit}
                 branchVisibility={branchVisibility}
                 onToggleBranchVisibility={(mode, target) => {
-                  if (!activeTab) {
+                  if (!branchVisibilityRepositoryKey) {
                     return;
                   }
 
-                  setBranchVisibilityByTab((current) => ({
-                    ...current,
-                    [activeTab.id]: toggleBranchVisibility(
-                      current[activeTab.id] ?? EMPTY_BRANCH_VISIBILITY,
-                      mode,
-                      target
-                    )
-                  }));
+                  setBranchVisibilityByRepository((current) => {
+                    const next = {
+                      ...current,
+                      [branchVisibilityRepositoryKey]: toggleBranchVisibility(
+                        current[branchVisibilityRepositoryKey] ?? EMPTY_BRANCH_VISIBILITY,
+                        mode,
+                        target
+                      )
+                    };
+                    return next;
+                  });
                 }}
                 onClearBranchVisibility={() => {
-                  if (!activeTab) {
+                  if (!branchVisibilityRepositoryKey) {
                     return;
                   }
 
-                  setBranchVisibilityByTab((current) => ({
-                    ...current,
-                    [activeTab.id]: EMPTY_BRANCH_VISIBILITY
-                  }));
+                  setBranchVisibilityByRepository((current) => {
+                    const next = { ...current };
+                    delete next[branchVisibilityRepositoryKey];
+                    return next;
+                  });
                 }}
                 isOperationBusy={isOperationBusy}
                 onAddRemote={handleAddRemote}

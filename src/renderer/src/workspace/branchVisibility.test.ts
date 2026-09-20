@@ -6,6 +6,8 @@ import {
   branchVisibilityModeForRef,
   EMPTY_BRANCH_VISIBILITY,
   filterGraphRowsByBranchVisibility,
+  loadBranchVisibilityByRepository,
+  saveBranchVisibilityByRepository,
   toggleBranchVisibility,
   type BranchVisibilityState
 } from './branchVisibility';
@@ -44,6 +46,28 @@ describe('branch visibility selection', () => {
     expect(state.solo).toEqual([{ scope: 'local', kind: 'folder', path: 't3code' }]);
     expect(state.hidden).toEqual([{ scope: 'local', kind: 'branch', path: 'main' }]);
     expect(branchVisibilityModeForRef(state, 'local', 't3code/one')).toBe('solo');
+  });
+});
+
+describe('branch visibility persistence', () => {
+  it('restores hidden and solo targets for the same repository after a restart', () => {
+    const storage = memoryStorage();
+    const selections = {
+      '/repo/.git': {
+        solo: [{ scope: 'local', kind: 'folder', path: 't3code' }],
+        hidden: [{ scope: 'local', kind: 'branch', path: 't3code/two' }]
+      }
+    } satisfies Record<string, BranchVisibilityState>;
+
+    saveBranchVisibilityByRepository(storage, selections);
+
+    expect(loadBranchVisibilityByRepository(storage)).toEqual(selections);
+  });
+
+  it('starts clean when persisted data is malformed', () => {
+    const storage = memoryStorage('{"/repo/.git":{"solo":"not-a-list"}}');
+
+    expect(loadBranchVisibilityByRepository(storage)).toEqual({});
   });
 });
 
@@ -141,5 +165,16 @@ function row(
     rails: [],
     refs: ref ? [{ kind, label: ref, current: kind === 'branch' && ref === 'main' }] : undefined,
     files: []
+  };
+}
+
+function memoryStorage(initialValue: string | null = null) {
+  let value = initialValue;
+
+  return {
+    getItem: () => value,
+    setItem: (_key: string, nextValue: string) => {
+      value = nextValue;
+    }
   };
 }

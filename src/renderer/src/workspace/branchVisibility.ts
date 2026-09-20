@@ -14,10 +14,58 @@ export type BranchVisibilityState = {
   hidden: BranchVisibilityTarget[];
 };
 
+export type BranchVisibilityByRepository = Record<string, BranchVisibilityState>;
+
+type BranchVisibilityStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+};
+
+const BRANCH_VISIBILITY_STORAGE_KEY = 'git-gud:branch-visibility:v1';
+
 export const EMPTY_BRANCH_VISIBILITY: BranchVisibilityState = {
   solo: [],
   hidden: []
 };
+
+export function loadBranchVisibilityByRepository(
+  storage: BranchVisibilityStorage
+): BranchVisibilityByRepository {
+  try {
+    const serialized = storage.getItem(BRANCH_VISIBILITY_STORAGE_KEY);
+    if (!serialized) {
+      return {};
+    }
+
+    const parsed: unknown = JSON.parse(serialized);
+    if (!isRecord(parsed)) {
+      return {};
+    }
+
+    const restored: BranchVisibilityByRepository = {};
+    for (const [repositoryKey, value] of Object.entries(parsed)) {
+      const state = parseBranchVisibilityState(value);
+      if (repositoryKey && state) {
+        restored[repositoryKey] = state;
+      }
+    }
+
+    return restored;
+  } catch {
+    return {};
+  }
+}
+
+export function saveBranchVisibilityByRepository(
+  storage: BranchVisibilityStorage,
+  values: BranchVisibilityByRepository
+): void {
+  try {
+    storage.setItem(BRANCH_VISIBILITY_STORAGE_KEY, JSON.stringify(values));
+  } catch {
+    // Visibility preferences are optional; storage failures must not block the workspace.
+  }
+}
 
 export function toggleBranchVisibility(
   state: BranchVisibilityState,
@@ -170,6 +218,53 @@ function targetMatchesBranch(
 
 function sameTarget(left: BranchVisibilityTarget, right: BranchVisibilityTarget): boolean {
   return left.scope === right.scope && left.kind === right.kind && left.path === right.path;
+}
+
+function parseBranchVisibilityState(value: unknown): BranchVisibilityState | undefined {
+  if (!isRecord(value) || !Array.isArray(value.solo) || !Array.isArray(value.hidden)) {
+    return undefined;
+  }
+
+  const solo = parseBranchVisibilityTargets(value.solo);
+  const hidden = parseBranchVisibilityTargets(value.hidden);
+  if (!solo || !hidden) {
+    return undefined;
+  }
+
+  return { solo, hidden };
+}
+
+function parseBranchVisibilityTargets(
+  values: unknown[]
+): BranchVisibilityTarget[] | undefined {
+  const targets: BranchVisibilityTarget[] = [];
+
+  for (const value of values) {
+    if (
+      !isRecord(value) ||
+      (value.scope !== 'local' && value.scope !== 'remote') ||
+      (value.kind !== 'branch' && value.kind !== 'folder') ||
+      typeof value.path !== 'string' ||
+      value.path.length === 0
+    ) {
+      return undefined;
+    }
+
+    const target: BranchVisibilityTarget = {
+      scope: value.scope,
+      kind: value.kind,
+      path: value.path
+    };
+    if (!targets.some((candidate) => sameTarget(candidate, target))) {
+      targets.push(target);
+    }
+  }
+
+  return targets;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function reachableShas(
