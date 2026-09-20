@@ -63,6 +63,7 @@ import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
+  prepareLinkedWorktreeGraphTransition,
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   useCommitGraph,
@@ -911,6 +912,14 @@ export function WorkspaceShell(): ReactElement {
     }
 
     const previousTab = activeTab;
+    if (previousTab.path !== worktreePath) {
+      await prepareLinkedWorktreeGraphTransition(
+        queryClient,
+        graphQuery.data,
+        worktreePath,
+        graphLimit
+      );
+    }
     const nextWorkspace = previousTab.path === worktreePath
       ? workspace
       : await replaceRepositoryAtPath(previousTab.id, worktreePath);
@@ -922,7 +931,6 @@ export function WorkspaceShell(): ReactElement {
     }
 
     if (previousTab.id !== worktreeTab.id) {
-      clearRepositoryQueries(queryClient, previousTab.path);
       setGraphLimitByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
       setBulkSelectionByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id, []));
       setDiffStyleByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));

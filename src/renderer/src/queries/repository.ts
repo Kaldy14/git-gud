@@ -174,6 +174,26 @@ export function placeholderGraphForRepository(
   };
 }
 
+export async function prepareLinkedWorktreeGraphTransition(
+  queryClient: QueryClient,
+  currentGraph: CommitGraphPage | undefined,
+  worktreePath: string,
+  graphLimit: number
+): Promise<void> {
+  const targetKey = commitGraphQueryKey(worktreePath, graphLimit);
+  const placeholder = placeholderGraphForRepository(
+    currentGraph,
+    worktreePath,
+    currentGraph ? [currentGraph.repoPath, worktreePath] : []
+  );
+
+  if (placeholder) {
+    queryClient.setQueryData(targetKey, placeholder);
+  }
+
+  await invalidateRepositoryQueries(queryClient, worktreePath, currentWorktreeInvalidations);
+}
+
 export async function prepareRepositoryForProfileTransition(
   queryClient: QueryClient,
   repoPath: string,

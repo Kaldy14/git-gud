@@ -8,6 +8,7 @@ import {
   clearRepositoryQueries,
   invalidateRepositoryQueries,
   placeholderGraphForRepository,
+  prepareLinkedWorktreeGraphTransition,
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   scopesForRepositoryChange,
@@ -114,6 +115,60 @@ describe('graph cache pruning', () => {
       ['wip', '/repo/second', true]
     ]);
     expect(placeholderGraphForRepository(previous, '/other', ['/other'])).toBeUndefined();
+  });
+
+  it('reuses a retargeted graph without reloading shared history', async () => {
+    const queryClient = new QueryClient();
+    const previous = {
+      repoPath: '/repo/main',
+      loadedAt: '2026-07-20T20:00:00.000Z',
+      limit: 1500,
+      loadedCommitCount: 1,
+      hasMore: false,
+      nextLimit: 1500,
+      rows: [
+        graphRow('wip', '/repo/main', true),
+        graphRow('wip:/repo/second', '/repo/second', false)
+      ]
+    };
+    let resolveRefresh: (value: typeof previous) => void = () => {};
+    const refreshPromise = new Promise<typeof previous>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const queryFn = vi.fn(() => refreshPromise);
+    queryClient.setQueryData(['commit-graph', '/repo/main', 1500], previous);
+    queryClient.setQueryData(['commit-graph', '/repo/second', 1500], {
+      ...previous,
+      repoPath: '/repo/second',
+      loadedAt: 'stale',
+      rows: []
+    });
+
+    await prepareLinkedWorktreeGraphTransition(queryClient, previous, '/repo/second', 1500);
+
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ['commit-graph', '/repo/second', 1500],
+      queryFn,
+      staleTime: 1500
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    const loadingResult = observer.getCurrentResult();
+
+    expect(loadingResult.isLoading).toBe(false);
+    expect(loadingResult.isFetching).toBe(false);
+    expect(loadingResult.data?.repoPath).toBe('/repo/second');
+    expect(loadingResult.data?.rows.map((row) => [row.sha, row.worktree?.current])).toEqual([
+      ['wip:/repo/main', false],
+      ['wip', true]
+    ]);
+    expect(queryFn).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(['commit-graph', '/repo/main', 1500])).toBe(previous);
+
+    resolveRefresh({ ...previous, repoPath: '/repo/second', loadedAt: 'fresh' });
+    await Promise.resolve();
+
+    unsubscribe();
+    queryClient.clear();
   });
 });
 
