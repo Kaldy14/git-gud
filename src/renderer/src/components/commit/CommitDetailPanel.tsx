@@ -1114,7 +1114,7 @@ function SummarySection({
     <>
       <CommitMessageSummary
         subject={detail.subject}
-        body={detail.body}
+        body={detail.bodyWithoutCoAuthors}
         isEditable={canEditCommitMessage}
         isDisabled={isMutating}
         onEdit={onEditCommitMessage}
@@ -1186,9 +1186,9 @@ function CommitSignatureSection({
   return (
     <div className="shrink-0 space-y-1.5 px-5 py-2.5">
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <SignatureRow
-          person={detail.author}
-          action="authored"
+        <CommitAttributionRow
+          author={detail.author}
+          coAuthors={detail.coAuthors}
           remoteAvatars={remoteAvatars}
         />
         {parentSha ? (
@@ -1206,6 +1206,67 @@ function CommitSignatureSection({
       ) : null}
     </div>
   );
+}
+
+function CommitAttributionRow({
+  author,
+  coAuthors,
+  remoteAvatars
+}: {
+  author: GitCommitPerson;
+  coAuthors: GitCommitPerson[];
+  remoteAvatars: boolean;
+}): ReactElement {
+  const people = [author, ...coAuthors];
+  const visiblePeople = people.slice(0, 3);
+  const hiddenCount = people.length - visiblePeople.length;
+  const title = people.map(formatCommitPerson).join(', ');
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2.5" data-testid="commit-attribution">
+      <div className="commit-attribution-avatar-stack" aria-hidden="true">
+        {visiblePeople.map((person) => (
+          <AuthorAvatar
+            key={`${person.name}\0${person.email ?? ''}`}
+            name={person.name}
+            email={person.email}
+            avatarUrl={remoteAvatars ? person.avatarUrl : undefined}
+            size={34}
+            className="commit-attribution-avatar"
+          />
+        ))}
+        {hiddenCount > 0 ? (
+          <span className="commit-attribution-overflow">+{hiddenCount}</span>
+        ) : null}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-medium text-[var(--text-1)]" title={title}>
+          {commitAttribution(author, coAuthors)}
+        </p>
+        <p className="truncate text-[12px] text-[var(--text-3)]">
+          authored {formatCommitDate(author.date)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function commitAttribution(author: GitCommitPerson, coAuthors: GitCommitPerson[]): string {
+  const authorName = author.name || 'Unknown author';
+
+  if (coAuthors.length === 0) {
+    return authorName;
+  }
+
+  if (coAuthors.length === 1) {
+    return `${authorName} and ${coAuthors[0]?.name || 'Unknown author'}`;
+  }
+
+  return `${authorName} and ${coAuthors.length} co-authors`;
+}
+
+function formatCommitPerson(person: GitCommitPerson): string {
+  return person.email ? `${person.name} <${person.email}>` : person.name;
 }
 
 function splitCommitMessage(message: string): { summary: string; description: string } {

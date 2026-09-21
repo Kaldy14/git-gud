@@ -60,8 +60,10 @@ export async function loadCommitDetail(tab: DetailTab, sha: string): Promise<Git
     parentShas: metadata.parentShas,
     subject: metadata.subject,
     body: metadata.body,
+    bodyWithoutCoAuthors: metadata.bodyWithoutCoAuthors,
     message: metadata.message,
     author: metadata.author,
+    coAuthors: metadata.coAuthors,
     committer: metadata.committer,
     stats,
     files,
@@ -587,7 +589,15 @@ export async function commitChanges(tab: DetailTab, input: GitCommitInput): Prom
 
 type CommitMetadata = Pick<
   GitCommitDetail,
-  'sha' | 'parentShas' | 'subject' | 'body' | 'message' | 'author' | 'committer'
+  | 'sha'
+  | 'parentShas'
+  | 'subject'
+  | 'body'
+  | 'bodyWithoutCoAuthors'
+  | 'message'
+  | 'author'
+  | 'coAuthors'
+  | 'committer'
 >;
 
 type ResolvedCommitSelection = {
@@ -729,7 +739,13 @@ async function loadCommitMetadata(
   env: NodeJS.ProcessEnv | undefined
 ): Promise<CommitMetadata> {
   const result = await gitExecutor.run(
-    ['show', '-s', '--date=iso-strict', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B', sha],
+    [
+      'show',
+      '-s',
+      '--date=iso-strict',
+      '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%B%x00%(trailers:key=Co-Authored-By,valueonly,separator=%x1e)',
+      sha
+    ],
     { cwd: repoPath, env }
   );
   const tokens = result.stdout.split('\0');
@@ -741,12 +757,15 @@ async function loadCommitMetadata(
 
   const message = (tokens[8] ?? '').trimEnd();
   const [subject = '(no subject)', ...bodyLines] = message.split('\n');
+  const body = bodyLines.join('\n').trim();
+  const coAuthors = parseCoAuthors(tokens[9] ?? '');
 
   return {
     sha: fullSha,
     parentShas: splitParents(tokens[1] ?? ''),
     subject,
-    body: bodyLines.join('\n').trim(),
+    body,
+    bodyWithoutCoAuthors: removeCoAuthorTrailers(body, coAuthors),
     message,
     author: {
       name: tokens[2] ?? '',
@@ -754,6 +773,7 @@ async function loadCommitMetadata(
       date: tokens[4] || undefined,
       avatarUrl: gravatarUrlForEmail(tokens[3], 96)
     },
+    coAuthors,
     committer: {
       name: tokens[5] ?? '',
       email: tokens[6] || undefined,
@@ -761,6 +781,70 @@ async function loadCommitMetadata(
       avatarUrl: gravatarUrlForEmail(tokens[6], 96)
     }
   };
+}
+
+function parseCoAuthors(value: string): GitCommitDetail['coAuthors'] {
+  const coAuthors: GitCommitDetail['coAuthors'] = [];
+  const seen = new Set<string>();
+
+  for (const trailerValue of value.trim().split('\x1e')) {
+    const match = trailerValue.trim().match(/^(.*?)\s*<([^<>]+)>$/);
+
+    if (!match) {
+      continue;
+    }
+
+    const name = match[1]?.trim() ?? '';
+    const email = match[2]?.trim() ?? '';
+
+    if (!name || !email) {
+      continue;
+    }
+
+    const identity = `${name}\0${email.toLowerCase()}`;
+
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    seen.add(identity);
+    coAuthors.push({
+      name,
+      email,
+      avatarUrl: gravatarUrlForEmail(email, 96)
+    });
+  }
+
+  return coAuthors;
+}
+
+function removeCoAuthorTrailers(
+  body: string,
+  coAuthors: GitCommitDetail['coAuthors']
+): string {
+  if (coAuthors.length === 0) {
+    return body;
+  }
+
+  const identities = new Set(
+    coAuthors.map(({ name, email }) => `${name}\0${email?.toLowerCase() ?? ''}`)
+  );
+
+  return body
+    .split('\n')
+    .filter((line) => {
+      const match = line.match(/^Co-Authored-By\s*:\s*(.*?)\s*<([^<>]+)>\s*$/i);
+
+      if (!match) {
+        return true;
+      }
+
+      const name = match[1]?.trim() ?? '';
+      const email = match[2]?.trim().toLowerCase() ?? '';
+      return !identities.has(`${name}\0${email}`);
+    })
+    .join('\n')
+    .trim();
 }
 
 async function loadCommitFiles(

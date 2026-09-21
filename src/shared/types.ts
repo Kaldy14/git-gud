@@ -123,8 +123,10 @@ export type GitCommitDetail = {
   parentShas: string[];
   subject: string;
   body: string;
+  bodyWithoutCoAuthors: string;
   message: string;
   author: GitCommitPerson;
+  coAuthors: GitCommitPerson[];
   committer: GitCommitPerson;
   stats: GitCommitStats;
   files: GitFileChangeDetail[];

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CommitGraphRow, GitFileChangeDetail, GitWipDetail } from '@shared/types';
+import type { CommitGraphRow, GitCommitDetail, GitFileChangeDetail, GitWipDetail } from '@shared/types';
 
 import { CommitDetailPanel } from './CommitDetailPanel';
 
@@ -45,6 +45,32 @@ function renderWip(files: GitFileChangeDetail[], isOperationBusy = false): strin
   }
 }
 
+function renderCommit(detail: GitCommitDetail): string {
+  const queryClient = new QueryClient();
+  const row: CommitGraphRow = {
+    sha: detail.sha, parentShas: detail.parentShas, subject: detail.subject,
+    author: { name: detail.author.name, initials: 'DT', color: '#000000' },
+    dateLabel: 'Now', node: { lane: 0, kind: 'commit' }, rails: [], files: []
+  };
+  queryClient.setQueryData(['commit-detail', detail.repoPath, detail.sha], detail);
+
+  try {
+    return renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <CommitDetailPanel
+          repoPath={detail.repoPath} row={row} commitFocusSignal={0} isOperationBusy={false}
+          remoteAvatars onSelectCommit={vi.fn()} onSelectFile={vi.fn()} onSetReviewOpen={vi.fn()}
+          onOpenWipChanges={vi.fn()} onDiscardAllWip={vi.fn()} onDiscardWipFile={vi.fn()}
+          onIgnoreWipFile={vi.fn()} onInspectWipFile={vi.fn()} onCopyWipFilePath={vi.fn()}
+          onOpenWipFile={vi.fn()} onRevealWipFile={vi.fn()} onStashWipFile={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+  } finally {
+    queryClient.clear();
+  }
+}
+
 describe('WIP empty-state staging', () => {
   it.each([
     { label: 'ordinary changes', files: [modifiedFile], busy: false, disabled: false },
@@ -66,5 +92,29 @@ describe('WIP empty-state staging', () => {
 
     expect(markup).toContain('Conflicts (1)');
     expect(markup).not.toContain('working tree clean');
+  });
+});
+
+describe('commit co-author attribution', () => {
+  it('renders co-author avatars and names instead of raw trailers', () => {
+    const markup = renderCommit({
+      kind: 'commit', repoPath: '/repo', sha: 'abc123', shortSha: 'abc123', parentShas: ['parent'],
+      subject: 'Shared change',
+      body: 'Useful context.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>',
+      bodyWithoutCoAuthors: 'Useful context.',
+      message: 'Shared change\n\nUseful context.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>',
+      author: { name: 'Details Test', email: 'details@example.test', date: '2026-09-21T10:00:00Z' },
+      coAuthors: [{
+        name: 'Claude Opus 4.6', email: 'noreply@anthropic.com',
+        avatarUrl: 'https://www.gravatar.com/avatar/claude?s=96'
+      }],
+      committer: { name: 'Details Test', email: 'details@example.test', date: '2026-09-21T10:00:00Z' },
+      stats: { filesChanged: 0, additions: 0, deletions: 0 }, files: [], loadedAt: '2026-09-21T10:00:00Z'
+    });
+
+    expect(markup).toContain('data-testid="commit-attribution"');
+    expect(markup).toContain('Details Test and Claude Opus 4.6');
+    expect(markup).toContain('https://www.gravatar.com/avatar/claude?s=96');
+    expect(markup).not.toContain('Co-Authored-By:');
   });
 });

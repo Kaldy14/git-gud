@@ -83,6 +83,43 @@ describe('repository details integration', () => {
     }
   });
 
+  it('separates co-author trailers from the commit body for attribution', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await git(repoPath, [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'shared change',
+        '-m',
+        [
+          'Explain the shared change.',
+          '',
+          'Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>',
+          'co-authored-by: Pair Partner <pair@example.test>',
+          'Signed-off-by: Details Test <details@example.test>'
+        ].join('\n')
+      ]);
+      const sha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+
+      const detail = await loadCommitDetail({ path: repoPath }, sha);
+
+      expect(detail.body).toContain('Co-Authored-By: Claude Opus 4.6');
+      expect(detail.bodyWithoutCoAuthors).toBe(
+        'Explain the shared change.\n\nSigned-off-by: Details Test <details@example.test>'
+      );
+      expect(detail.coAuthors).toEqual([
+        expect.objectContaining({ name: 'Claude Opus 4.6', email: 'noreply@anthropic.com' }),
+        expect.objectContaining({ name: 'Pair Partner', email: 'pair@example.test' })
+      ]);
+      expect(detail.coAuthors[0]?.avatarUrl).toMatch(/^https:\/\/www\.gravatar\.com\/avatar\//);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('preserves staged rename detection while using path-scoped status reads', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
 
