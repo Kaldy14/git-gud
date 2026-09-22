@@ -3544,6 +3544,18 @@ function ReviewCommentEditForm({
         aria-label={`Edit ${author}'s review comment`}
         disabled={isSaving}
         onChange={(event) => onBodyChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.key === 'Enter' &&
+            !event.nativeEvent.isComposing &&
+            body.trim() &&
+            !isSaving
+          ) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
       />
       {errorMessage ? <span>{errorMessage}</span> : null}
       <div>
