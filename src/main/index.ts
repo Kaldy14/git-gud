@@ -284,7 +284,9 @@ function createApplicationUpdater(): ApplicationUpdater {
       autoUpdater.on('update-not-available', listener);
     },
     onUpdateDownloaded: (listener) => {
-      autoUpdater.on('update-downloaded', (_event, _releaseNotes, releaseName) => listener(releaseName));
+      autoUpdater.on('update-downloaded', (_event, _releaseNotes, releaseName, _releaseDate, updateUrl) =>
+        listener(releaseName, updateUrl)
+      );
     },
     onError: (listener) => {
       autoUpdater.on('error', listener);

@@ -21,7 +21,7 @@ export interface UpdateTransport {
   checkForUpdates: () => void | Promise<unknown>;
   onUpdateAvailable: (listener: () => void) => void;
   onUpdateNotAvailable: (listener: () => void) => void;
-  onUpdateDownloaded: (listener: (releaseName: string) => void) => void;
+  onUpdateDownloaded: (listener: (releaseName: string, updateUrl: string) => void) => void;
   onError: (listener: (error: Error) => void) => void;
 }
 
@@ -47,6 +47,7 @@ export class ApplicationUpdater {
   readonly supportsAutomaticUpdates: boolean;
 
   private readonly appVersion: string;
+  private readonly feedUrl: string;
   private readonly transport: UpdateTransport;
   private readonly requestInstall: () => void;
   private readonly openManualDownload: NonNullable<ApplicationUpdaterOptions['openManualDownload']>;
@@ -57,10 +58,13 @@ export class ApplicationUpdater {
   private isChecking = false;
   private isManualCheck = false;
   private downloadedReleaseName: string | undefined;
+  private downloadedUpdateUrl: string | undefined;
+  private installUpdateUrl: string | undefined;
   private state: ApplicationUpdateState = { status: 'idle' };
 
   constructor(options: ApplicationUpdaterOptions) {
     this.appVersion = options.appVersion;
+    this.feedUrl = buildUpdateFeedUrl(options.platform, options.architecture, options.appVersion);
     this.transport = options.transport;
     this.requestInstall = options.requestInstall;
     this.openManualDownload = options.openManualDownload ?? (() => undefined);
@@ -90,12 +94,12 @@ export class ApplicationUpdater {
       return;
     }
 
-    this.transport.setFeedUrl(
-      buildUpdateFeedUrl(options.platform, options.architecture, options.appVersion)
-    );
+    this.transport.setFeedUrl(this.feedUrl);
     this.transport.onUpdateAvailable(() => this.handleUpdateAvailable());
     this.transport.onUpdateNotAvailable(() => this.handleUpdateNotAvailable());
-    this.transport.onUpdateDownloaded((releaseName) => this.handleUpdateDownloaded(releaseName));
+    this.transport.onUpdateDownloaded((releaseName, updateUrl) =>
+      this.handleUpdateDownloaded(releaseName, updateUrl)
+    );
     this.transport.onError((error) => this.handleError(error));
   }
 
@@ -132,8 +136,12 @@ export class ApplicationUpdater {
       return this.state;
     }
 
+    if (this.isChecking) {
+      return this.state;
+    }
+
     if (this.downloadedReleaseName) {
-      this.requestInstall();
+      void this.installLatestUpdate();
       return this.state;
     }
 
@@ -142,6 +150,43 @@ export class ApplicationUpdater {
     }
 
     return this.state;
+  }
+
+  private async installLatestUpdate(): Promise<void> {
+    this.isChecking = true;
+    this.isManualCheck = true;
+    this.clearFeedbackReset();
+    this.setState({ status: 'checking' });
+
+    try {
+      const response = await fetch(this.feedUrl, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(30_000)
+      });
+      if (!response.ok || response.status === 204) {
+        throw new Error(`Update feed returned ${response.status}.`);
+      }
+      const update: unknown = await response.json();
+      if (
+        typeof update !== 'object' || update === null ||
+        !('url' in update) || typeof update.url !== 'string' || !update.url
+      ) {
+        throw new Error('Update feed did not include a package URL.');
+      }
+
+      // Rechecking the same package through Squirrel can clear Electron's
+      // ready-to-install flag. Only ask it to download when the URL changed.
+      if (update.url === this.downloadedUpdateUrl) {
+        this.requestInstall();
+        return;
+      }
+
+      this.downloadedUpdateUrl = undefined;
+      this.installUpdateUrl = update.url;
+      await this.transport.checkForUpdates();
+    } catch (error) {
+      this.handleError(asError(error));
+    }
   }
 
   checkForUpdates(manual = false): void {
@@ -184,6 +229,11 @@ export class ApplicationUpdater {
   }
 
   private handleUpdateNotAvailable(): void {
+    if (this.installUpdateUrl) {
+      this.handleError(new Error('The latest update is no longer available.'));
+      return;
+    }
+
     if (this.state.status !== 'checking') {
       return;
     }
@@ -203,16 +253,27 @@ export class ApplicationUpdater {
     this.scheduleFeedbackReset();
   }
 
-  private handleUpdateDownloaded(releaseName: string): void {
+  private handleUpdateDownloaded(releaseName: string, updateUrl: string): void {
+    this.downloadedUpdateUrl = updateUrl;
+    const installUpdateUrl = this.installUpdateUrl;
+    this.installUpdateUrl = undefined;
     this.downloadedReleaseName = releaseName || 'A new Git Gud version';
+    if (installUpdateUrl && updateUrl !== installUpdateUrl) {
+      this.handleError(new Error('The downloaded package does not match the latest update.'));
+      return;
+    }
     this.finishCheck();
     this.setState({
       status: 'downloaded',
       releaseName: this.downloadedReleaseName
     });
+    if (installUpdateUrl) {
+      this.requestInstall();
+    }
   }
 
   private handleError(error: Error): void {
+    this.installUpdateUrl = undefined;
     const wasDownloading = this.state.status === 'downloading';
     const showResult = this.isManualCheck || wasDownloading;
     this.finishCheck();

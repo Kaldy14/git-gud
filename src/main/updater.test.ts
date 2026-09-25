@@ -16,7 +16,7 @@ class FakeUpdateTransport implements UpdateTransport {
   checks = 0;
   updateAvailableListener: (() => void) | undefined;
   updateNotAvailableListener: (() => void) | undefined;
-  updateDownloadedListener: ((releaseName: string) => void) | undefined;
+  updateDownloadedListener: ((releaseName: string, updateUrl: string) => void) | undefined;
   errorListener: ((error: Error) => void) | undefined;
 
   setFeedUrl(url: string): void {
@@ -35,7 +35,7 @@ class FakeUpdateTransport implements UpdateTransport {
     this.updateNotAvailableListener = listener;
   }
 
-  onUpdateDownloaded(listener: (releaseName: string) => void): void {
+  onUpdateDownloaded(listener: (releaseName: string, updateUrl: string) => void): void {
     this.updateDownloadedListener = listener;
   }
 
@@ -54,6 +54,7 @@ interface UpdaterFixture {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('ApplicationUpdater', () => {
@@ -152,7 +153,7 @@ describe('ApplicationUpdater', () => {
     });
   });
 
-  it('downloads quietly and waits for an explicit restart', () => {
+  it('downloads quietly and verifies the staged package before an explicit restart', async () => {
     const { updater, transport, requestInstall, states } = createUpdater();
 
     updater.checkForUpdates();
@@ -168,7 +169,7 @@ describe('ApplicationUpdater', () => {
     });
     expect(requestInstall).not.toHaveBeenCalled();
 
-    transport.updateDownloadedListener?.('Git Gud v0.4.6');
+    transport.updateDownloadedListener?.('Git Gud v0.4.6', 'https://example.com/0.4.6.zip');
     expect(requestInstall).not.toHaveBeenCalled();
     expect(updater.getState()).toEqual({
       status: 'downloaded',
@@ -179,7 +180,95 @@ describe('ApplicationUpdater', () => {
       releaseName: 'Git Gud v0.4.6'
     });
 
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ url: 'https://example.com/0.4.6.zip' })));
     updater.applyUpdate();
+    expect(requestInstall).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(requestInstall).toHaveBeenCalledOnce());
+    expect(transport.checks).toBe(1);
+  });
+
+  it('replaces a stale download with the latest release and restarts once', async () => {
+    const { updater, transport, requestInstall } = createUpdater();
+    transport.updateDownloadedListener?.('Git Gud v0.4.6', 'https://example.com/0.4.6.zip');
+    const fetchFeed = vi.fn().mockResolvedValue(Response.json({ url: 'https://example.com/0.4.9.zip' }));
+    vi.stubGlobal('fetch', fetchFeed);
+
+    updater.applyUpdate();
+    updater.applyUpdate();
+    expect(updater.getState().status).toBe('checking');
+    await vi.waitFor(() => expect(transport.checks).toBe(1));
+    expect(fetchFeed).toHaveBeenCalledOnce();
+    expect(requestInstall).not.toHaveBeenCalled();
+    transport.updateAvailableListener?.();
+    expect(updater.getState().status).toBe('downloading');
+    transport.updateDownloadedListener?.('Git Gud v0.4.9', 'https://example.com/0.4.9.zip');
+    expect(updater.getState()).toEqual({ status: 'downloaded', releaseName: 'Git Gud v0.4.9' });
+    expect(requestInstall).toHaveBeenCalledOnce();
+  });
+
+  it.each(['offline', 'invalid response', 'withdrawn release'])(
+    'does not install the staged version when the latest check fails: %s', async (failure) => {
+      const { updater, transport, requestInstall } = createUpdater();
+      transport.updateDownloadedListener?.('Git Gud v0.4.6', 'https://example.com/0.4.6.zip');
+      const fetchFeed = vi.fn();
+      if (failure === 'offline') fetchFeed.mockRejectedValueOnce(new Error('offline'));
+      else fetchFeed.mockResolvedValueOnce(failure === 'withdrawn release'
+        ? new Response(null, { status: 204 }) : Response.json({ url: 42 }));
+      vi.stubGlobal('fetch', fetchFeed);
+      updater.applyUpdate();
+      await vi.waitFor(() => expect(updater.getState().status).toBe('error'));
+      expect(requestInstall).not.toHaveBeenCalled();
+
+      fetchFeed.mockResolvedValueOnce(Response.json({ url: 'https://example.com/0.4.9.zip' }));
+      updater.applyUpdate();
+      await vi.waitFor(() => expect(transport.checks).toBe(1));
+      transport.updateDownloadedListener?.('Git Gud v0.4.9', 'https://example.com/0.4.9.zip');
+      expect(requestInstall).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('keeps a failed replacement download retryable without installing the old package', async () => {
+    const { updater, transport, requestInstall } = createUpdater();
+    transport.updateDownloadedListener?.('Git Gud v0.4.6', 'https://example.com/0.4.6.zip');
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+      Promise.resolve(Response.json({ url: 'https://example.com/0.4.9.zip' }))));
+    updater.applyUpdate();
+    await vi.waitFor(() => expect(transport.checks).toBe(1));
+    transport.updateAvailableListener?.();
+    transport.errorListener?.(new Error('download interrupted'));
+    expect(updater.getState().status).toBe('error');
+    expect(requestInstall).not.toHaveBeenCalled();
+    updater.applyUpdate();
+    await vi.waitFor(() => expect(transport.checks).toBe(2));
+    transport.updateDownloadedListener?.('Git Gud v0.4.9', 'https://example.com/0.4.9.zip');
+    expect(requestInstall).toHaveBeenCalledOnce();
+  });
+
+  it('does not restart if a newer release disappears before the native check completes', async () => {
+    const { updater, transport, requestInstall } = createUpdater();
+    transport.updateDownloadedListener?.('Git Gud v0.4.6', 'https://example.com/0.4.6.zip');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ url: 'https://example.com/0.4.9.zip' })));
+    updater.applyUpdate();
+    await vi.waitFor(() => expect(transport.checks).toBe(1));
+    transport.updateNotAvailableListener?.();
+    expect(updater.getState().status).toBe('error');
+    expect(requestInstall).not.toHaveBeenCalled();
+  });
+
+  it('rejects a native download that differs from the latest package and rechecks on retry', async () => {
+    const { updater, transport, requestInstall } = createUpdater();
+    transport.updateDownloadedListener?.('Git Gud v0.4.6', 'https://example.com/0.4.6.zip');
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+      Promise.resolve(Response.json({ url: 'https://example.com/0.4.9.zip' }))));
+    updater.applyUpdate();
+    await vi.waitFor(() => expect(transport.checks).toBe(1));
+    transport.updateAvailableListener?.();
+    transport.updateDownloadedListener?.('Git Gud v0.4.7', 'https://example.com/0.4.7.zip');
+    expect(updater.getState().status).toBe('error');
+    expect(requestInstall).not.toHaveBeenCalled();
+    updater.applyUpdate();
+    await vi.waitFor(() => expect(transport.checks).toBe(2));
+    transport.updateDownloadedListener?.('Git Gud v0.4.9', 'https://example.com/0.4.9.zip');
     expect(requestInstall).toHaveBeenCalledOnce();
   });
 
