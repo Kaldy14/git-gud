@@ -49,8 +49,9 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
-    minWidth: 1100,
-    minHeight: 720,
+    // Let macOS resize freely, including quarter-screen window tiling.
+    minWidth: process.platform === 'darwin' ? 0 : 1100,
+    minHeight: process.platform === 'darwin' ? 0 : 720,
     show: false,
     title: appDisplayName,
     backgroundColor: '#0e1218',
