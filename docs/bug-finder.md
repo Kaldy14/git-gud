@@ -1,6 +1,6 @@
 # PR Bug finder
 
-Run Bug finder from the bug icon beside AI brief in the PR dashboard. The fixed dot indicates idle, running, ready, failed, or outdated. Hover or focus the button for its status. A scan runs in the background; the ready button opens the findings. The PR header's **Bug finder** button opens the same view at any time.
+Run Bug finder from the bug icon beside AI brief in the PR dashboard. The fixed dot indicates idle, running, ready, failed, or outdated. Hover or focus the button for its status. A dashboard scan runs in the background; the ready button opens the findings. In PR review, the bug icon at the top of the sidebar starts a missing, failed, or outdated scan and opens its progress. Running or completed scans open without starting again. If checking the status failed, one click retries the check and then opens or starts the report.
 
 Select findings to inspect their code and evidence. Bugs have severity; convention findings are separate. **Edit** updates a finding, **Dismiss** records why it is incorrect, **Remove** hides an accidental record, and the status filters let you restore records. Older findings remain visibly outdated after a PR update until revalidated.
 

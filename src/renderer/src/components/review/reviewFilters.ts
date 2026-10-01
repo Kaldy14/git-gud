@@ -43,7 +43,8 @@ export function createReviewPresentation(
   plan: GitReviewPlan,
   preferences: ReviewPreferences,
   reviewedChunkIds: ReadonlySet<string>,
-  revealedFilePath?: string
+  revealedFilePath?: string,
+  previouslySeenIds?: ReadonlySet<string>
 ): ReviewPresentation {
   let viewedCount = 0;
   let skippedCount = 0;
@@ -61,7 +62,7 @@ export function createReviewPresentation(
     for (const chunk of unit.chunks) {
       totalCount += 1;
 
-      if (chunk.path !== revealedFilePath && isChunkSkipped(chunk, preferences, filePatternMatchers)) {
+      if (chunk.path !== revealedFilePath && (previouslySeenIds?.has(chunk.id) || isChunkSkipped(chunk, preferences, filePatternMatchers))) {
         skippedCount += 1;
         unitSkippedCount += 1;
         continue;

@@ -4,7 +4,7 @@ import type {
   ReactElement,
   ReactNode
 } from 'react';
-import { createPortal } from 'react-dom';
+import { Tooltip } from 'radix-ui';
 import {
   useCallback,
   useDeferredValue,
@@ -35,6 +35,7 @@ import {
   EyeOff,
   FileCode2,
   FileCog,
+  FolderTree,
   GitBranch,
   Loader2,
   MessageSquare,
@@ -55,6 +56,8 @@ import {
   X
 } from 'lucide-react';
 
+import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
+import { useReviewContinuity, type ReviewContinuityIdentity } from './useReviewContinuity';
 import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import {
   DropdownMenu,
@@ -156,12 +159,13 @@ type ReviewViewProps = {
   plan?: GitReviewPlan;
   initialPreferences?: ReviewPreferences;
   initialGuideOpen?: boolean;
-  guideHeaderTarget?: HTMLElement | null;
+  sidebarActions?: ReactNode;
   reviewGuideProvider?: {
     getState: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
     start: (sourceFingerprint: string) => Promise<GitReviewGuideState>;
   };
   reviewProgressKey?: string;
+  continuityIdentity?: ReviewContinuityIdentity;
   lineComments?: ReviewLineComment[];
   onAddDraftLineComment?: (input: ReviewLineCommentInput) => Promise<void>;
   onAddDraftFileComment?: (input: ReviewFileCommentInput) => Promise<void>;
@@ -176,7 +180,7 @@ type ReviewViewProps = {
   closeLabel?: string;
   showCloseButton?: boolean;
   layout?: 'standard' | 'pull-request';
-  fileTreePanel?: { open: boolean; onClose: () => void };
+  fileTreePanel?: { open: boolean; onClose: () => void; onToggle: () => void };
   initialViewState?: ReviewViewState;
   onViewStateChange?: (state: ReviewViewState) => void;
 };
@@ -327,9 +331,10 @@ export function ReviewView({
   plan: embeddedPlan,
   initialPreferences,
   initialGuideOpen = false,
-  guideHeaderTarget,
+  sidebarActions,
   reviewGuideProvider,
   reviewProgressKey,
+  continuityIdentity,
   lineComments = [],
   onAddDraftLineComment,
   onAddDraftFileComment,
@@ -357,6 +362,9 @@ export function ReviewView({
       ? { ...initialPreferences, filePatterns: [...initialPreferences.filePatterns] }
       : loadReviewPreferences(window.localStorage, repoPath)
   );
+  const continuity = useReviewContinuity(continuityIdentity, embeddedPlan, preferences, sectionRef);
+  const [isPreviousReviewOpen, setPreviousReviewOpen] = useState(false);
+  const previousReviewTitleId = useId();
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
   const [revealedFilePath, setRevealedFilePath] = useState<string>();
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
@@ -376,7 +384,7 @@ export function ReviewView({
     ? hiddenAgentNotesState.ids
     : storedHiddenAgentNoteIds;
   const [selectedUnitId, setSelectedUnitId] = useState<string | undefined>(
-    () => initialViewState?.selectedUnitId
+    () => initialViewState?.selectedUnitId ?? continuity.initialUnitId
   );
   const [requestedFilePath, setRequestedFilePath] = useState<string | undefined>(
     () => initialViewState?.requestedFilePath
@@ -462,9 +470,10 @@ export function ReviewView({
         ? reviewGuideState
         : { status: 'idle', sourceFingerprint: reviewPlan.sourceFingerprint }
       : undefined;
+  const continuityHiddenIds = continuity.hideSeen ? continuity.hiddenIds : undefined;
   const basePresentation = useMemo(
-    () => reviewPlan ? createReviewPresentation(reviewPlan, preferences, reviewedChunkIds, revealedFilePath) : undefined,
-    [preferences, reviewPlan, reviewedChunkIds, revealedFilePath]
+    () => reviewPlan ? createReviewPresentation(reviewPlan, preferences, reviewedChunkIds, revealedFilePath, continuityHiddenIds) : undefined,
+    [preferences, reviewPlan, reviewedChunkIds, revealedFilePath, continuityHiddenIds]
   );
   const generatedReviewGuide =
     currentReviewGuideState?.status === 'ready'
@@ -483,12 +492,13 @@ export function ReviewView({
     () => new Map(reviewGuide?.units.map((unit) => [unit.unitId, unit]) ?? []), [reviewGuide]);
   const presentation = useMemo(() => {
     if (!guidePlan || !reviewGuide) return basePresentation;
-    const layered = createReviewPresentation(guidePlan, preferences, reviewedChunkIds, revealedFilePath);
+    const layered = createReviewPresentation(guidePlan, preferences, reviewedChunkIds, revealedFilePath, continuityHiddenIds);
     return { ...layered, units: layered.units.map((unit) => ({ ...unit,
       visibleChunks: rankReviewChunksByGuide(unit.visibleChunks, reviewGuideUnits.get(unit.unit.id))
     })) };
-  }, [basePresentation, guidePlan, reviewGuide, preferences, reviewedChunkIds, revealedFilePath, reviewGuideUnits]);
+  }, [basePresentation, guidePlan, reviewGuide, preferences, reviewedChunkIds, revealedFilePath, reviewGuideUnits, continuityHiddenIds]);
   const activeFilterCount = [
+    continuity.hideSeen && continuity.hiddenIds.size > 0,
     preferences.skipTests,
     preferences.skipImports,
     preferences.skipGenerated,
@@ -584,6 +594,7 @@ export function ReviewView({
   const progressMutation = useMutation({
     mutationFn: async ({ chunkIds, viewed }: { chunkIds: string[]; viewed: boolean }) => {
       if (embeddedPlan) {
+        continuity.markChunks(chunkIds, viewed);
         const nextReviewedChunkIds = new Set(embeddedReviewedChunkIds);
         for (const chunkId of chunkIds) {
           if (viewed) {
@@ -1031,6 +1042,8 @@ export function ReviewView({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    // Portaled menus still bubble through React; their keys must not navigate or close the review.
+    if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('[role="menu"]'))) return;
     if (
       (event.metaKey || event.ctrlKey) &&
       !event.altKey &&
@@ -1430,12 +1443,14 @@ export function ReviewView({
             disabled={selectedCommentTarget !== undefined}
             onChange={updatePreferences}
             onConfigurePatterns={() => setIsPatternEditorOpen(true)}
+            continuity={continuity}
+            onInspectPrevious={() => setPreviousReviewOpen(true)}
           />
           {layout === 'standard' ? <ReviewProgress presentation={presentation} /> : null}
         </div>
 
         <div className="review-toolbar-actions">
-          {layout === 'standard' && !guideHeaderTarget ? guideControls : null}
+          {layout === 'standard' ? guideControls : null}
           <div className="segmented shrink-0">
             <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
               <Rows3 size={12} />
@@ -1479,14 +1494,25 @@ export function ReviewView({
 
   return (
     <section ref={sectionRef} className="review-view" data-layout={layout} tabIndex={0} onKeyDown={handleKeyDown}>
-      {guideHeaderTarget ? createPortal(guideControls, guideHeaderTarget) : layout === 'pull-request' && guideControls ? (
-        <header className="review-guide-header">{guideControls}</header>
-      ) : null}
       {layout === 'standard' ? toolbar : null}
 
       <ReviewBody
         compact={layout === 'pull-request'}
         navigationTools={toolbar}
+        navigationHeader={<>
+          {continuity.enabled ? <ReviewScopeControl continuity={continuity} disabled={selectedCommentTarget !== undefined} /> :
+            <strong className="review-sidebar-heading">{reviewGuide ? 'AI layers' : 'Blocks'}</strong>}
+          {fileTreePanel ? <ReviewToolTooltip content="All files. Browse every changed file in this PR, including files hidden by review filters.">
+            <button type="button" className="icon-btn review-sidebar-tool" aria-label="All files"
+              aria-expanded={fileTreePanel.open} aria-pressed={fileTreePanel.open} onClick={fileTreePanel.onToggle}>
+              <FolderTree size={14} />
+            </button>
+          </ReviewToolTooltip> : null}
+          {isReviewGuideEnabled && reviewPlan?.units.length ? <ReviewGuideControl
+            compact state={currentReviewGuideState} open={isGuideOpen}
+            onToggle={() => setGuideOpen(!isGuideOpen)} onStart={() => void startReviewGuide()} /> : null}
+          {sidebarActions}
+        </>}
         repoPath={repoPath}
         isLoading={embeddedPlan ? false : reviewQuery.isLoading}
         errorMessage={
@@ -1495,6 +1521,14 @@ export function ReviewView({
             : undefined
         }
         hasReviewUnits={Boolean(reviewPlan?.units.length)}
+        resumePosition={continuity.resumePosition}
+        continuityEmpty={(continuity.hideSeen && continuity.hiddenIds.size > 0) || continuity.previousChanges.length > 0 ? (
+          <div className="grid h-full place-content-center gap-3 p-6 text-center text-xs text-[var(--text-2)]">
+            <p>{continuity.hiddenIds.size > 0 && continuity.hideSeen ? 'Previously seen, unchanged code is hidden.' : 'The current PR has no visible changes. Previous changes were replaced or removed.'}</p>
+            {continuity.hideSeen && continuity.hiddenIds.size > 0 ? <button className="btn-subtle justify-self-center" type="button" onClick={() => continuity.setHideSeen(false)}>Show previously seen code</button> : null}
+            {continuity.previousChanges.length > 0 ? <button className="btn-subtle justify-self-center" type="button" onClick={() => setPreviousReviewOpen(true)}>Inspect replaced or removed changes ({continuity.previousChanges.length})</button> : null}
+          </div>
+        ) : undefined}
         emptyReviewMessage={
           target.kind === 'branch'
             ? `${target.name} has no changes compared with the default branch.`
@@ -1582,6 +1616,23 @@ export function ReviewView({
           }}
         />
       ) : null}
+      {isPreviousReviewOpen ? (
+        <ModalSurface labelledBy={previousReviewTitleId} className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded border border-[var(--border)] bg-[var(--bg-panel)]" onClose={() => setPreviousReviewOpen(false)}>
+          <header className="flex items-center gap-3 border-b border-[var(--border)] p-3">
+            <h2 id={previousReviewTitleId} className="flex-1 text-sm font-semibold">Previous review: replaced or removed changes</h2>
+            <button type="button" className="btn-subtle btn-compact" onClick={() => { if (continuity.acknowledgeHistory()) setPreviousReviewOpen(false); }}>Mark inspected</button>
+            <button type="button" className="icon-btn" aria-label="Close previous review" onClick={() => setPreviousReviewOpen(false)}><X size={14} /></button>
+          </header>
+          <p className="p-3 text-xs text-[var(--text-2)]">Saved patches from your previous review. These are historical changes, not the current PR diff. They may have been edited, reverted, renamed, or regrouped into different hunks.</p>
+          {continuity.error ? <p role="alert" className="px-3 pb-3 text-xs text-[var(--danger-text)]">{continuity.error}</p> : null}
+          <div className="min-h-0 flex-1 overflow-auto">
+            {continuity.previousChanges.map((chunk, index) => <section key={`${chunk.id}:${index}`}>
+              <h3 className="bg-[var(--bg-graph-header)] px-3 py-2 font-mono text-xs">{chunk.path}</h3>
+              {chunk.patch.includes('@@') ? <PatchDiff className="gg-diff" patch={chunk.patch} options={diffOptions} /> : <p className="p-3 text-xs">No saved text preview.</p>}
+            </section>)}
+          </div>
+        </ModalSurface>
+      ) : null}
       {typeDefinitionPreview?.sourceFingerprint === reviewPlan?.sourceFingerprint ? (
         <ReviewTypeDefinitionDialog
           {...typeDefinitionPreview}
@@ -1611,12 +1662,72 @@ export function ReviewGuideFailureMessage({
   );
 }
 
-function ReviewGuideControl({ state, open, onStart, onToggle }: {
+function ReviewToolTooltip({ content, children }: { content: ReactNode; children: ReactElement }): ReactElement {
+  return <Tooltip.Provider delayDuration={350}><Tooltip.Root>
+    <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+    <Tooltip.Portal><Tooltip.Content className="pr-row-guide-tooltip" side="bottom" sideOffset={6} collisionPadding={12}>
+      {content}
+    </Tooltip.Content></Tooltip.Portal>
+  </Tooltip.Root></Tooltip.Provider>;
+}
+
+function ReviewScopeControl({ continuity, disabled }: {
+  continuity: ReturnType<typeof useReviewContinuity>;
+  disabled: boolean;
+}): ReactElement {
+  const canResume = continuity.hasSavedCheckpoint && !continuity.baseChanged;
+  const changesOnly = canResume && continuity.hideSeen;
+  return <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <button type="button" className="btn-subtle review-scope-control" disabled={disabled}
+        aria-label={`Review scope: ${changesOnly ? 'Changes since review' : 'Full PR'}`}>
+        <span>{changesOnly ? 'Changes since review' : 'Full PR'}</span><ChevronDown size={12} />
+      </button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="start" className="w-64" aria-label="Review scope">
+      <DropdownMenuLabel>Show</DropdownMenuLabel>
+      <DropdownMenuItem role="menuitemradio" aria-checked={changesOnly} disabled={!canResume}
+        onSelect={() => continuity.setHideSeen(true)}>
+        <Check size={13} className={changesOnly ? 'shrink-0' : 'invisible shrink-0'} />
+        <span>Changes since review<small className="block text-[10px] text-[var(--text-3)]">
+          {continuity.baseChanged ? 'Comparison base changed; all code stays visible' : !canResume ?
+            'Available after reviewing half the changed lines' : 'Hide previously seen, unchanged code'}
+        </small></span>
+      </DropdownMenuItem>
+      <DropdownMenuItem role="menuitemradio" aria-checked={!changesOnly} onSelect={() => continuity.setHideSeen(false)}>
+        <Check size={13} className={!changesOnly ? 'shrink-0' : 'invisible shrink-0'} />
+        <span>Full PR<small className="block text-[10px] text-[var(--text-3)]">Include previously reviewed code</small></span>
+      </DropdownMenuItem>
+      <p className="px-2.5 py-1 text-[10px] text-[var(--text-3)]">Other review filters still apply.</p>
+    </DropdownMenuContent>
+  </DropdownMenu>;
+}
+
+function ReviewGuideControl({ state, open, onStart, onToggle, compact = false }: {
+  compact?: boolean;
   state: GitReviewGuideState | undefined;
   open: boolean;
   onStart: () => void;
   onToggle: () => void;
 }): ReactElement {
+  if (compact) {
+    const running = state?.status === 'running';
+    const ready = state?.status === 'ready';
+    const action = running ? 'Preparing AI brief' : ready ? open ? 'Exit AI review' : 'Open AI brief' :
+      state?.status === 'failed' ? 'Retry AI brief' : 'Build AI brief';
+    const explanation = running ? 'Preparing summaries, grouping, and priorities in the background.' : ready ?
+      open ? 'Return to standard review blocks.' : 'Open AI summaries, grouping, and review priorities.' :
+      state?.status === 'failed' ? `Generation failed: ${state.errorMessage}. Try again.` :
+      'Generate summaries, group related changes, and suggest review priorities with AI.';
+    return <ReviewToolTooltip content={<><strong>{action}</strong><br />{explanation}</>}>
+      <button type="button" className="icon-btn review-sidebar-tool" aria-label={action}
+        aria-pressed={ready ? open : undefined} aria-busy={running} aria-disabled={running}
+        data-status={state?.status} onClick={() => { if (!running) { if (ready) onToggle(); else onStart(); } }}>
+        <Sparkles size={14} />
+        {running || ready || state?.status === 'failed' ? <span className="review-sidebar-tool-dot" aria-hidden="true" /> : null}
+      </button>
+    </ReviewToolTooltip>;
+  }
   if (state?.status === 'running') {
     return <span className="review-guide-control" role="status">Preparing brief…</span>;
   }
@@ -1637,24 +1748,44 @@ function ReviewFilterMenu({
   activeCount,
   disabled,
   onChange,
-  onConfigurePatterns
+  onConfigurePatterns,
+  continuity,
+  onInspectPrevious
 }: {
   preferences: ReviewPreferences;
   activeCount: number;
   disabled: boolean;
   onChange: (preferences: ReviewPreferences) => void;
   onConfigurePatterns: () => void;
+  continuity: ReturnType<typeof useReviewContinuity>;
+  onInspectPrevious: () => void;
 }): ReactElement {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="btn-subtle btn-compact" type="button" disabled={disabled}>
-          <Settings2 size={12} />
+        <button className="btn-subtle btn-compact" type="button" disabled={disabled}
+          title={continuity.enabled ? `${continuity.hideSeen ? continuity.hiddenIds.size : 0} previously seen chunks hidden; ${continuity.previousChanges.length} previous changes to inspect` : undefined}>
+          {continuity.previousChanges.length > 0 ? <Clock3 size={12} className="text-[var(--warning-text)]" /> : <Settings2 size={12} />}
           Filters
           {activeCount > 0 ? <span className="badge-mini">{activeCount}</span> : null}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64" aria-label="Review filters">
+        {continuity.enabled ? <>
+          <DropdownMenuLabel>Review continuity</DropdownMenuLabel>
+          {continuity.hasSavedCheckpoint ? <>
+            <ReviewFilterMenuItem checked={continuity.hideSeen} icon={<EyeOff size={13} />}
+              label={`Seen and unchanged (${continuity.hiddenIds.size})`}
+              onChange={continuity.setHideSeen} />
+            {continuity.previousChanges.length > 0 ? <DropdownMenuItem onSelect={onInspectPrevious}>
+              Inspect previous changes ({continuity.previousChanges.length})
+            </DropdownMenuItem> : null}
+            <DropdownMenuItem onSelect={continuity.reset}>Reset saved review</DropdownMenuItem>
+            {continuity.baseChanged ? <p className="px-2 py-1 text-xs text-[var(--text-3)]">The comparison base changed. All current code stays visible.</p> : null}
+          </> : <p className="px-2 py-1 text-xs text-[var(--text-3)]">A checkpoint is saved after you see half the changed lines included by your filters.</p>}
+          {continuity.error ? <p role="alert" className="px-2 py-1 text-xs text-[var(--danger-text)]">{continuity.error}</p> : null}
+          <DropdownMenuSeparator />
+        </> : null}
         <DropdownMenuLabel>Skip from review</DropdownMenuLabel>
         <ReviewFilterMenuItem
           checked={preferences.skipTests}
@@ -1743,11 +1874,14 @@ function ReviewFilterMenuItem({
 function ReviewBody({
   compact,
   navigationTools,
+  navigationHeader,
   repoPath,
   isLoading,
   errorMessage,
   hasReviewUnits,
   emptyReviewMessage,
+  continuityEmpty,
+  resumePosition,
   units,
   selectedUnit,
   preparedDiffs,
@@ -1783,11 +1917,14 @@ function ReviewBody({
 }: {
   compact: boolean;
   navigationTools: ReactNode;
+  navigationHeader: ReactNode;
   repoPath: string;
   isLoading: boolean;
   errorMessage?: string;
   hasReviewUnits: boolean;
   emptyReviewMessage: string;
+  continuityEmpty?: ReactNode;
+  resumePosition?: { chunkId: string; path: string; offset: number };
   units: VisibleReviewUnit[];
   selectedUnit?: VisibleReviewUnit;
   preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
@@ -1971,6 +2108,25 @@ function ReviewBody({
     } : undefined);
   }
 
+  const resumeAttempted = useRef(false);
+  useEffect(() => {
+    if (resumeAttempted.current || !resumePosition || !selectedUnit || reviewSearch?.isSelected) return;
+    const scroller = reviewChunksRef.current;
+    const anchor = scroller?.querySelector<HTMLElement>(`[data-review-chunk-id="${CSS.escape(resumePosition.chunkId)}"]`) ??
+      scroller?.querySelector<HTMLElement>(`[data-review-path="${CSS.escape(resumePosition.path)}"]`);
+    if (!scroller || !anchor) return;
+    // Syntax highlighting may finish after React commits. Wait for real code height before restoring.
+    const restore = () => {
+      if (resumeAttempted.current || anchor.clientHeight === 0) return;
+      scroller.scrollTop += anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top + Math.min(resumePosition.offset, anchor.clientHeight);
+      resumeAttempted.current = true;
+    };
+    const observer = new ResizeObserver(restore);
+    observer.observe(anchor);
+    const frame = requestAnimationFrame(restore);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [resumePosition, selectedUnit, reviewSearch?.isSelected]);
+
   function selectGuideFinding(finding: ReviewGuideFinding): void {
     const { comment } = finding;
     selectGuideFile({ path: comment.path, line: comment.line, side: comment.side,
@@ -1997,7 +2153,7 @@ function ReviewBody({
     });
   }
 
-  let bodyMessage: ReactElement | undefined;
+  let bodyMessage: ReactNode;
   if (isLoading) {
     bodyMessage = (
       <ReviewMessage
@@ -2010,27 +2166,24 @@ function ReviewBody({
       <ReviewMessage icon={<AlertTriangle size={16} />} text={errorMessage} tone="danger" />
     );
   } else if (units.length === 0 && !reviewSearch) {
-    bodyMessage = hasReviewUnits ? (
+    bodyMessage = continuityEmpty ?? (hasReviewUnits ? (
       <ReviewMessage
         icon={<SkipForward size={16} />}
         text="All changes are skipped by the current review filters."
       />
     ) : (
       <ReviewMessage icon={<Check size={16} />} text={emptyReviewMessage} />
-    );
+    ));
   }
 
-  if (!compact && bodyMessage) return bodyMessage;
+  if (!compact && bodyMessage) return <>{bodyMessage}</>;
 
   return (
     <div className="review-layout">
       <nav ref={(node) => { reviewQueueRef.current = node; queueResize.attachPanel(node); }} className="review-queue" style={compact ? { width: queueResize.width, flexBasis: queueResize.width } : undefined} data-nested={compact} aria-label="Context review units">
         {compact ? (
           <header className="review-block-progress">
-            <strong>{reviewGuide ? <><Sparkles size={12} /> AI layers</> : 'Blocks'}</strong>
-            <span>
-              {units.filter((unit) => unit.isViewed).length} / {units.length} viewed
-            </span>
+            {navigationHeader}
             <PanelExpandButton resize={queueResize} label="review sidebar" />
           </header>
         ) : null}
@@ -2969,7 +3122,7 @@ function ReviewChunk({
     : contextualDiffOptions;
 
   return (
-    <section className="review-chunk">
+    <section className="review-chunk" data-review-chunk-id={chunk.id}>
       {chunk.omittedReason ? (
         <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
           {chunk.omittedReason === 'binary'

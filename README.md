@@ -31,6 +31,10 @@ Within each story, Git Gud puts storage changes and definitions first, followed 
 
 The review plan appears immediately and does not depend on AI. The optional background guide uses that exact plan to summarize intent and suggest where to start, without replacing or reordering the underlying evidence.
 
+PR reviews save a local checkpoint after you see at least half the changed lines included by your filters. On return, unchanged chunks you fully saw are hidden; changed or directly related chunks stay visible. This uses deterministic patch matching and requires no AI setup. Checkpoints include patch text, stay on this machine, and retain up to 20 recent PRs within a storage limit.
+
+Use the scope menu at the top of the review sidebar to switch between **Changes since review** and **Full PR**. Other filters still apply. **Filters** also lets you inspect replaced or removed patches and reset the saved review. A changed comparison base keeps all current code visible. The adjacent icons open all files, generate or open an AI brief, and run Bug finder.
+
 Draft line, file, and reply comments stay local until the review is ready:
 
 ![Git Gud pull-request review with local draft comments](docs/images/pr-comment-drafts-inline.png)

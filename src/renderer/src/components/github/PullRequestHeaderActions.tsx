@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  FolderTree,
   GitMerge,
   Loader2,
   MonitorUp,
@@ -39,14 +38,12 @@ type PullRequestHeaderActionsProps = {
   detail: GitHubPullRequestDetail;
   repoPath?: string;
   isOverviewOpen: boolean;
-  isAllFilesOpen: boolean;
   reviewDraftCount: number;
   mergeLabel: string;
   mergeDisabled: boolean;
   mergeTitle: string;
   isMergePending: boolean;
   onToggleOverview: () => void;
-  onToggleAllFiles: () => void;
   onFinishReview: () => void;
   onSelectReviewDecision: (event: 'comment' | 'approve' | 'request-changes') => void;
   onOpenMerge: () => void;
@@ -69,14 +66,12 @@ export function PullRequestHeaderActions({
   detail,
   repoPath,
   isOverviewOpen,
-  isAllFilesOpen,
   reviewDraftCount,
   mergeLabel,
   mergeDisabled,
   mergeTitle,
   isMergePending,
   onToggleOverview,
-  onToggleAllFiles,
   onFinishReview,
   onSelectReviewDecision,
   onOpenMerge,
@@ -96,9 +91,6 @@ export function PullRequestHeaderActions({
 
   return (
     <div className="pr-review-header-actions pr-review-actions-persistent">
-      <button className="btn-subtle btn-regular" type="button" aria-pressed={isAllFilesOpen} aria-expanded={isAllFilesOpen} onClick={onToggleAllFiles} title={isAllFilesOpen ? 'Hide all changed files' : 'Show all changed files'}>
-        <FolderTree size={13} />All files
-      </button>
       <button
         className="btn-subtle btn-regular"
         type="button"

@@ -410,7 +410,6 @@ function PullRequestReviewContent({
   onRefresh: () => void;
 }): ReactElement {
   const [bugFinderOpen, setBugFinderOpen] = useState(initialBugFinderOpen ?? false);
-  const [guideHeaderTarget, setGuideHeaderTarget] = useState<HTMLDivElement | null>(null);
   const locator = {
     profileId: detail.profileId,
     owner: detail.owner,
@@ -797,6 +796,12 @@ function PullRequestReviewContent({
     });
   }
 
+  const continuityIdentity = useMemo(() => ({
+    key: JSON.stringify([detail.profileId, detail.reviewPlan.repoPath, detail.number]),
+    headSha: detail.headSha,
+    baseSha: detail.baseSha
+  }), [detail.profileId, detail.reviewPlan.repoPath, detail.number, detail.headSha, detail.baseSha]);
+
   const galleryImages = [
     ...new Map(
       [
@@ -849,13 +854,10 @@ function PullRequestReviewContent({
           compact
           onRefresh={onRefresh}
         />
-        <div ref={setGuideHeaderTarget} className="pr-review-guide-slot" />
-        <BugFinderButton pullRequest={detail} inReview active={bugFinderOpen} onOpen={() => setBugFinderOpen((open) => !open)} />
         <PullRequestHeaderActions
           detail={detail}
           repoPath={codexRepoPath}
           isOverviewOpen={isOverviewOpen}
-          isAllFilesOpen={isAllFilesOpen}
           reviewDraftCount={reviewDrafts.length}
           mergeLabel={mergeMethodLabel(detail.mergeSettings.defaultMethod)}
           mergeDisabled={
@@ -880,7 +882,6 @@ function PullRequestReviewContent({
           }
           isMergePending={mergeMutation.isPending}
           onToggleOverview={toggleOverview}
-          onToggleAllFiles={() => isAllFilesOpen ? setAllFilesOpen(false) : openPanel('files')}
           onFinishReview={() => openPanel('review')}
           onSelectReviewDecision={(event) => {
             setReviewEvent(event);
@@ -911,12 +912,14 @@ function PullRequestReviewContent({
       >
         <div className="pr-focused-review">
           <ReviewView
+            key={`${continuityIdentity.key}:${detail.headSha}:${detail.baseSha}`}
+            continuityIdentity={continuityIdentity}
             repoPath={detail.reviewPlan.repoPath}
             target={detail.reviewPlan.target}
             plan={detail.reviewPlan}
             reviewGuideProvider={reviewGuideProvider}
             initialGuideOpen={initialGuideOpen}
-            guideHeaderTarget={guideHeaderTarget}
+            sidebarActions={<BugFinderButton pullRequest={detail} inReview iconOnly active={bugFinderOpen} onOpen={() => setBugFinderOpen(true)} />}
             reviewProgressKey={detail.reviewPlan.targetKey}
             lineComments={displayedLineComments}
             onAddDraftLineComment={addDraftLineComment}
@@ -931,7 +934,7 @@ function PullRequestReviewContent({
             onClose={onClose}
             showCloseButton={false}
             layout="pull-request"
-            fileTreePanel={{ open: isAllFilesOpen, onClose: () => setAllFilesOpen(false) }}
+            fileTreePanel={{ open: isAllFilesOpen, onClose: () => setAllFilesOpen(false), onToggle: () => isAllFilesOpen ? setAllFilesOpen(false) : openPanel('files') }}
           />
         </div>
 

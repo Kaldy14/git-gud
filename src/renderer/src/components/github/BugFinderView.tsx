@@ -57,6 +57,7 @@ export function BugFinderView({
   const changedSelection = Object.keys(selection).length - selected.length;
   const reviewChanged = review?.some((item) => !findings.some((finding) => finding.id === item.id && finding.version === item.version && finding.status === 'open' && !finding.publication && finding.headSha === detail.headSha)) ?? false;
   const pending = mutation.isPending;
+  const scanning = state?.status === 'running' || (pending && mutation.variables?.action === 'start');
   const error = mutation.error?.message ?? query.error?.message ?? state?.error;
   async function openEvidence(reference: CodeReference) {
     try {
@@ -100,7 +101,7 @@ export function BugFinderView({
           <Bug size={14} /> Bug finder
         </strong>
         <span className="text-muted">
-          {state?.headSha
+          {scanning ? 'Scanning current PR' : state?.headSha
             ? `Scanned ${state.headSha.slice(0, 8)}`
             : 'No scan yet'}
         </span>
@@ -112,7 +113,7 @@ export function BugFinderView({
             mutation.mutate({ action: 'start' });
           }}
         >
-          {state?.status === 'idle' || !state
+          {scanning ? 'Scanning…' : state?.status === 'idle' || !state
             ? 'Run bug finder'
             : state.status === 'failed'
               ? 'Retry scan'
@@ -132,7 +133,7 @@ export function BugFinderView({
           findings before copying or posting them.
         </p>
       ) : null}
-      {state?.status === 'running' ? (
+      {scanning ? (
         <p className="bug-finder-status" role="status">
           Inspecting this PR in the background. You can close this view and
           return when it finishes.
@@ -241,7 +242,7 @@ export function BugFinderView({
           ))}
           {!filtered.length ? (
             <p className="bug-finder-empty">
-              {state?.status === 'ready' && filter === 'open'
+              {scanning ? 'Generating findings…' : state?.status === 'ready' && filter === 'open'
                 ? 'No open findings. See scan coverage for what was inspected.'
                 : `No ${filter} findings.`}
             </p>
@@ -633,13 +634,18 @@ export function BugFinderView({
             <div className="bug-finder-empty">
               <Bug size={24} />
               <h2>
-                {state?.status === 'idle' || !state
+                {scanning ? 'Generating bug report…' : state?.status === 'failed'
+                  ? 'Bug report could not be generated'
+                  : state?.status === 'ready' && !filtered.length ? 'No findings in this view'
+                  : state?.status === 'idle' || !state
                   ? 'Find bugs in this PR'
                   : 'Select a finding to inspect its evidence'}
               </h2>
               <p>
-                Inspect changed code, review supported findings, or discuss them
-                with your own agent.
+                {scanning ? 'Inspecting the changed code. Findings will appear here when the scan finishes.' :
+                  state?.status === 'failed' ? 'Retry the scan to generate the report.' :
+                  state?.status === 'ready' && !filtered.length ? 'Check the other filters or scan coverage for what was inspected.' :
+                  'Inspect changed code, review supported findings, or discuss them with your own agent.'}
               </p>
             </div>
           )}

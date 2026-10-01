@@ -210,6 +210,10 @@
   flex: 0 0 auto;
   font-size: 10px;
 }
+.pr-review-view .pr-refresh-control {
+  /* Keep adjacent header actions from covering the refresh button. */
+  flex: 0 0 auto;
+}
 .pr-review-actions-persistent {
   display: flex;
   flex: 0 0 auto;
@@ -287,17 +291,43 @@
   min-height: 36px;
   flex: 0 0 36px;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 13px;
+  gap: 3px;
+  padding: 0 7px;
   color: var(--text-2);
   font-size: 11px;
 }
-.review-block-progress > span {
-  margin-left: auto;
-  margin-right: 8px;
-  color: var(--text-3);
+.review-sidebar-heading { flex: 1; min-width: 0; }
+.review-scope-control {
+  height: 28px;
+  min-width: 0;
+  flex: 1;
+  justify-content: space-between;
+  padding: 0 6px;
   font-size: 10px;
 }
+.review-scope-control > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-scope-control > svg { flex-shrink: 0; }
+.review-block-progress .review-sidebar-tool {
+  position: relative;
+  width: 26px;
+  height: 28px;
+  flex: 0 0 26px;
+  padding: 0;
+}
+.review-sidebar-tool-dot {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-2);
+}
+.review-sidebar-tool[data-status='running'] .review-sidebar-tool-dot { background: var(--warning-text); }
+.review-sidebar-tool[data-status='failed'] .review-sidebar-tool-dot { background: var(--danger-text); }
+.review-sidebar-tool[aria-pressed='true'] { background: var(--control-active-bg); color: var(--accent-2); }
+.review-sidebar-tool[aria-disabled='true'] { cursor: default; }
+.review-sidebar-tool .pr-row-guide-dot::after { animation: none; }
 .review-queue-items {
   min-height: 0;
 }
@@ -413,9 +443,6 @@
 }
 .review-mode-status[data-ai='true'] { color: var(--accent-2); }
 .review-guide-header-controls { display: flex; align-items: center; gap: 8px; }
-.pr-review-guide-slot { flex-shrink: 0; }
-.pr-review-guide-slot:empty { display: none; }
-.review-guide-header { display: flex; justify-content: flex-end; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .review-guide-ready { white-space: nowrap; }
 .review-guide-ready-label { font-size: 9px; border-left: 1px solid currentColor; padding-left: 6px; }
 .review-navigation-error {
