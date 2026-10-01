@@ -284,14 +284,8 @@ function WorkflowDependencyGraph({
       });
 
       setCanvasSize({
-        width: Math.max(
-          measuredContainer.scrollWidth,
-          measuredContainer.clientWidth
-        ),
-        height: Math.max(
-          measuredContainer.scrollHeight,
-          measuredContainer.clientHeight
-        )
+        width: measuredContainer.clientWidth,
+        height: measuredContainer.clientHeight
       });
       setEdges(nextEdges);
     }

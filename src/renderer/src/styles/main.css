@@ -7403,9 +7403,8 @@ button.ref-chip {
 .workflow-run-summary-page,
 .workflow-job-detail {
   display: grid;
-  max-width: 1120px;
+  min-width: 0;
   gap: 14px;
-  margin: 0 auto;
 }
 
 .workflow-run-facts {
@@ -7451,11 +7450,8 @@ button.ref-chip {
 }
 
 .workflow-run-graph {
+  min-width: 0;
   min-height: 390px;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--bg-panel);
 }
 
 .workflow-run-graph > header {
@@ -7465,7 +7461,7 @@ button.ref-chip {
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--border);
-  padding: 10px 16px;
+  padding: 10px 0;
 }
 
 .workflow-run-graph > header > div {
@@ -7511,11 +7507,7 @@ button.ref-chip {
   min-width: max-content;
   align-items: flex-start;
   gap: 60px;
-  padding: 32px;
-}
-
-.workflow-run-job-scroll {
-  overflow: auto;
+  padding: 24px 0;
 }
 
 .workflow-run-job-column {
@@ -7593,13 +7585,6 @@ button.ref-chip {
   margin: -8px 2px 0;
   color: var(--text-3);
   font-size: 8.5px;
-}
-
-.workflow-job-detail {
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--bg-panel);
 }
 
 .workflow-job-detail > header {
