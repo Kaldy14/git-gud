@@ -17,6 +17,7 @@ import type {
   DashboardActionFailureAlert,
   GitOperationProgressEvent,
   GitReviewPlan,
+  RepoChangedEvent,
   WorkspaceState
 } from '@shared/types';
 
@@ -31,6 +32,7 @@ import { generateCommitMessage } from './commitMessage';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
+import { RepositoryAutoFetch } from './git/autoFetch';
 import { loadPullRequestConflictDetails } from './git/pullRequestConflicts';
 import { cloneRepository, initializeRepository } from './git/repositoryCreation';
 import {
@@ -77,7 +79,7 @@ import {
   unstageAll,
   unstageFile
 } from './git/repositoryDetails';
-import { loadRepositoryOverview } from './git/repositoryOverview';
+import { loadRemotes, loadRepositoryOverview } from './git/repositoryOverview';
 import { loadRepositoryIconDataUrl } from './git/repositoryIcon';
 import { loadComparison, loadFileBlame, loadFileHistory } from './git/repositoryInspection';
 import { findBaseRepositoryForMissingWorktree } from './git/repositoryRecovery';
@@ -170,10 +172,13 @@ type TrackedOperation = {
   startedAt: number;
   cancellable: boolean;
   cancelRequested: boolean;
+  background?: boolean;
 };
 
 const githubPullRequestGuides = new GitHubPullRequestGuides(reviewGuideManager);
 const activeOperations = new Map<string, TrackedOperation>();
+const backgroundOperations = new Map<string, TrackedOperation>();
+let repositoryAutoFetch: RepositoryAutoFetch | undefined;
 const localReviewPlans = new Map<string, GitReviewPlan>();
 const MAX_CACHED_LOCAL_REVIEW_PLANS = 8;
 const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: string; cancellable?: boolean }>> = {
@@ -221,7 +226,54 @@ export function registerIpcHandlers(
   repoWatchers: RepoWatcherRegistry,
   applicationUpdater: Pick<ApplicationUpdater, 'applyUpdate' | 'getState'>,
   isDevelopment = false
-): void {
+): () => void {
+  const autoFetch = new RepositoryAutoFetch({
+    lastFetchedAt: getRepositoryLastFetchedAt,
+    cancel: (operationId) => {
+      const operation = backgroundOperations.get(operationId);
+      if (operation) operation.cancelRequested = true;
+      gitExecutor.cancelOperation(operationId);
+    },
+    fetch: async (tab, operationId) => {
+      const operation: TrackedOperation = {
+        operationId, repoPath: tab.path, label: 'Auto-fetch',
+        startedAt: Date.now(), cancellable: true, cancelRequested: false, background: true
+      };
+      backgroundOperations.set(operationId, operation);
+      try {
+        return await gitExecutor.withProgressContext(operationId, () =>
+          gitExecutor.transaction(tab.commonDir, async () => {
+            const env = createProfileCommandEnv(tab.assignedProfileId);
+            if ((await loadRemotes(tab.path, env)).length === 0) return 'skipped' as const;
+            emitOperationProgress(operation, 'queued');
+            const result = await repoWatchers.runDuringRefMutation(tab.commonDir, () =>
+              fetchRepository(tab, { background: true }));
+            recordRepositoryFetch(tab.commonDir, result.happenedAt);
+            for (const linkedTab of getWorkspace().tabs.filter((candidate) => candidate.commonDir === tab.commonDir)) {
+              const event: RepoChangedEvent = {
+                repoPath: linkedTab.path, reason: 'common-dir', reasons: ['common-dir'], paths: [],
+                happenedAt: result.happenedAt, lastFetchedAt: result.happenedAt,
+                invalidates: result.invalidates
+              };
+              for (const window of BrowserWindow.getAllWindows()) {
+                if (!window.isDestroyed()) window.webContents.send('repo:changed', event);
+              }
+            }
+            emitOperationProgress(operation, 'completed');
+            return 'succeeded' as const;
+          })
+        );
+      } catch (error) {
+        emitOperationProgress(operation, operation.cancelRequested ? 'cancelled' : 'failed',
+          operation.cancelRequested ? 'Auto-fetch cancelled.' : error instanceof Error ? error.message : 'Auto-fetch failed.');
+        if (operation.cancelRequested) return 'skipped' as const;
+        throw error;
+      } finally {
+        backgroundOperations.delete(operationId);
+      }
+    }
+  });
+  repositoryAutoFetch = autoFetch;
   handle('app:pull-request-deep-links-ready', () =>
     pullRequestDeepLinkQueue.markRendererReady()
   );
@@ -294,8 +346,10 @@ export function registerIpcHandlers(
     operation: (tab: WorkspaceState['tabs'][number]) => Promise<T>
   ): Promise<T> {
     const tab = getOpenRepositoryTab(repoPath);
-    return gitExecutor.transaction(tab.commonDir, () =>
-      repoWatchers.runDuringMutation(repoPath, () => operation(tab))
+    return autoFetch.runForeground(tab.commonDir, () =>
+      gitExecutor.transaction(tab.commonDir, () =>
+        repoWatchers.runDuringMutation(repoPath, () => operation(tab))
+      )
     );
   }
 
@@ -317,7 +371,9 @@ export function registerIpcHandlers(
   }
 
   gitExecutor.onProgress((event) => {
-    const operation = activeOperations.get(event.cwd);
+    const operation = event.operationId
+      ? backgroundOperations.get(event.operationId) ?? activeOperations.get(event.cwd)
+      : activeOperations.get(event.cwd);
 
     if (!operation) {
       return;
@@ -690,7 +746,11 @@ export function registerIpcHandlers(
     cancelRepositoryOperation(repoPath, operationId)
   );
   handle('settings:get', () => getAppSettings());
-  handle('settings:update', (_event, settings) => updateAppSettings(settings));
+  handle('settings:update', (_event, settings) => {
+    const updated = updateAppSettings(settings);
+    autoFetch.sync(getWorkspace().tabs, updated.autoFetchIntervalMinutes);
+    return updated;
+  });
   handle('codex:agent-notes-skill-state', () => getCodexAgentNotesSkillState());
   handle('codex:install-agent-notes-skill', () => installCodexAgentNotesSkill());
   handle('codex:remove-agent-notes-skill', () => removeCodexAgentNotesSkill());
@@ -798,6 +858,8 @@ export function registerIpcHandlers(
       assignProfileToRepository(repoPath, profileId, tab.assignedProfileId)
     );
   });
+  autoFetch.sync(getWorkspace().tabs, getAppSettings().autoFetchIntervalMinutes);
+  return () => autoFetch.stop();
 }
 
 function isSafeExternalUrl(value: string): boolean {
@@ -874,7 +936,7 @@ function cancelRepositoryOperation(
   operationId: string
 ): IpcChannelMap['repo:cancel-operation']['result'] {
   return requestOperationCancellation(
-    activeOperations.get(repoPath),
+    backgroundOperations.get(operationId) ?? activeOperations.get(repoPath),
     repoPath,
     operationId,
     (ownedOperationId) => gitExecutor.cancelOperation(ownedOperationId)
@@ -896,6 +958,7 @@ function emitOperationProgress(
     ...(message ? { message } : {}),
     elapsedMs: Math.max(0, Date.now() - operation.startedAt),
     cancellable: operation.cancellable,
+    ...(operation.background ? { background: true } : {}),
     happenedAt: new Date().toISOString()
   };
 
@@ -922,6 +985,7 @@ function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
 
 function syncWorkspaceWatchers(workspace: WorkspaceState, repoWatchers: RepoWatcherRegistry): WorkspaceState {
   repoWatchers.sync(workspace.tabs);
+  repositoryAutoFetch?.sync(workspace.tabs, getAppSettings().autoFetchIntervalMinutes);
   return workspace;
 }
 

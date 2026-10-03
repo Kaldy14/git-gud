@@ -36,6 +36,7 @@ const hardQuitTimeoutMs = 3000;
 const updateInstallHardQuitTimeoutMs = 10_000;
 const appDisplayName = 'Git Gud';
 let isQuitting = false;
+let stopRepositoryAutoFetch = (): void => {};
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 const repoWatchers = new RepoWatcherRegistry((event) => {
@@ -206,7 +207,7 @@ app.whenReady().then(() => {
     app.dock?.setIcon(iconPath);
   }
 
-  registerIpcHandlers(repoWatchers, applicationUpdater, is.dev);
+  stopRepositoryAutoFetch = registerIpcHandlers(repoWatchers, applicationUpdater, is.dev);
   repoWatchers.sync(getWorkspace().tabs);
   void cleanupExpiredPullRequestWorktrees().catch((error: unknown) => {
     console.warn('Could not clean expired pull request worktrees:', error);
@@ -360,6 +361,7 @@ function requestUpdateInstall(): void {
 
 async function quitAfterCleanup(afterCleanup: () => void = exitWithoutNodeCleanup): Promise<void> {
   try {
+    stopRepositoryAutoFetch();
     flushPendingWorkspaceWrites();
     reviewGuideManager.shutdown();
     await Promise.race([

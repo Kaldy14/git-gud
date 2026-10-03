@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   chokidarClose: vi.fn<() => Promise<void>>(),
   chokidarWatch: vi.fn(),
   nativeCallbacks: new Map<string, NativeWatchCallback>(),
+  nativePaths: [] as string[],
   nativeErrorCallbacks: new Map<string, () => void>(),
   nativeClose: vi.fn<() => void>()
 }));
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('node:fs', () => ({
   existsSync: () => true,
   watch: (path: string, _options: unknown, listener: NativeWatchCallback) => {
+    mocks.nativePaths.push(path);
     mocks.nativeCallbacks.set(path, listener);
     return {
       close: mocks.nativeClose,
@@ -52,6 +54,7 @@ describe('RepoWatcherRegistry mutation suppression', () => {
     mocks.chokidarClose.mockResolvedValue();
     mocks.chokidarWatch.mockClear();
     mocks.nativeCallbacks.clear();
+    mocks.nativePaths.length = 0;
     mocks.nativeErrorCallbacks.clear();
     mocks.nativeClose.mockReset();
   });
@@ -90,6 +93,89 @@ describe('RepoWatcherRegistry mutation suppression', () => {
 
     expect(mocks.nativeCallbacks.size).toBe(4);
     expect(mocks.chokidarWatch).not.toHaveBeenCalled();
+    await registry.closeAll();
+  });
+
+  it('does not reload repository data for Git lock-file churn', async () => {
+    const { events, registry } = createRegistry();
+
+    for (let index = 0; index < 100; index += 1) {
+      mocks.nativeCallbacks.get('/repo/.git')?.('rename', 'index.lock');
+      mocks.nativeCallbacks.get('/repo/.git/refs')?.('rename', 'remotes/origin/main.lock');
+    }
+    await vi.advanceTimersByTimeAsync(350);
+
+    expect(events).toEqual([]);
+    await registry.closeAll();
+  });
+
+  it('shares physical watches across tabs and linked worktrees', async () => {
+    const registry = new RepoWatcherRegistry(() => {});
+    const repositories = [repository, ...['second', 'third'].map((name) => ({
+      ...repository, path: `/repo-${name}`, gitDir: `/repo/.git/worktrees/${name}`
+    }))];
+    registry.sync(repositories);
+    for (const tab of repositories) {
+      registry.syncWorktrees(tab.path, repositories.map((linked) => linked.path));
+    }
+
+    expect(mocks.nativePaths.length).toBe(new Set(mocks.nativePaths).size);
+    await registry.closeAll();
+  });
+
+  it('keeps external changes visible during a continuous stream of filesystem events', async () => {
+    const { emitWorktreeChange, events, registry } = createRegistry();
+
+    for (let index = 0; index < 20; index += 1) {
+      emitWorktreeChange(`src/file-${index}.ts`);
+      await vi.advanceTimersByTimeAsync(100);
+    }
+
+    expect(events.length).toBeGreaterThan(0);
+    await registry.closeAll();
+  });
+
+  it('keeps working-file edits visible during a background ref mutation', async () => {
+    const { emitWorktreeChange, events, registry } = createRegistry();
+    await registry.runDuringRefMutation(repository.commonDir, async () => {
+      mocks.nativeCallbacks.get('/repo/.git/refs')?.('change', 'remotes/origin/main');
+      emitWorktreeChange('src/external.ts');
+      await vi.advanceTimersByTimeAsync(350);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.reasons).toEqual(['worktree']);
+    });
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events).toHaveLength(1);
+    await registry.closeAll();
+  });
+
+  it('keeps a shared watch alive when one subscribing tab closes', async () => {
+    const events: RepoChangedEvent[] = [];
+    const registry = new RepoWatcherRegistry((event) => events.push(event));
+    const linked = { ...repository, path: '/linked', gitDir: '/repo/.git/worktrees/linked' };
+    registry.sync([repository, linked]);
+    registry.syncWorktrees(linked.path, [repository.path, linked.path]);
+    registry.close(repository.path);
+    mocks.nativeCallbacks.get(repository.path)?.('change', 'src/after-close.ts');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.repoPath).toBe(linked.path);
+    await registry.closeAll();
+  });
+
+  it('marks overflowing or unnamed event batches as unknown instead of losing a worktree change', async () => {
+    const { emitWorktreeChange, events, registry } = createRegistry();
+    registry.syncWorktrees(repository.path, ['/linked']);
+    for (let index = 0; index < 40; index += 1) {
+      mocks.nativeCallbacks.get('/linked')?.('change', `file-${index}.ts`);
+    }
+    emitWorktreeChange('src/current.ts');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events[0]?.paths).toEqual([]);
+    mocks.nativeCallbacks.get(repository.path)?.('change', null);
+    emitWorktreeChange('src/known.ts');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events[1]?.paths).toEqual([]);
     await registry.closeAll();
   });
 

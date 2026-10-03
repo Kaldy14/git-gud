@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.2] - 2026-10-03
+
+### Changed
+
+- Fetch open repositories in the background, including while Git Gud is minimized, and let user Git actions interrupt automatic fetches.
+- Share filesystem watchers across tabs and linked worktrees to reduce overhead in large repositories.
+- Skip status and history reloads when an automatic fetch leaves repository references unchanged.
+
+### Fixed
+
+- Keep repository reads and staging responsive during slow automatic fetches.
+- Keep remote history current when a fetch finishes during an existing history load.
+- Preserve working-file notifications during automatic fetches and continuous or overflowing filesystem event batches.
+- Back off after failed automatic fetches and avoid reloads caused by transient Git lock files.
+
 ## [2026.9.12] - 2026-09-18
 
 ### Added

@@ -15,15 +15,20 @@ type WatchTarget = {
 
 type ActiveRepoWatch = {
   repoPath: string;
+  commonDir: string;
   watchers: CloseableWatcher[];
   worktreeWatchers: Map<string, CloseableWatcher>;
   pendingTimer?: NodeJS.Timeout;
+  pendingSince?: number;
   pendingReasons: Set<WatchReason>;
   pendingPaths: Set<string>;
+  pendingUnknownPaths: boolean;
   mutationDepth: number;
+  refMutationDepth: number;
   mutationFailed: boolean;
   suppressedReasons: Set<WatchReason>;
   suppressedPaths: Set<string>;
+  suppressedUnknownPaths: boolean;
 };
 
 type CloseableWatcher = {
@@ -32,6 +37,10 @@ type CloseableWatcher = {
 
 export class RepoWatcherRegistry {
   private readonly watches = new Map<string, ActiveRepoWatch>();
+  private readonly sharedWatches = new Map<string, {
+    watcher: CloseableWatcher;
+    listeners: Set<(changedPath: string | undefined) => void>;
+  }>();
 
   constructor(private readonly onChange: (event: RepoChangedEvent) => void) {}
 
@@ -74,7 +83,7 @@ export class RepoWatcherRegistry {
         continue;
       }
 
-      const watcher = createWatcher({ path: worktreePath, reason: 'worktree' }, (changedPath) => {
+      const watcher = this.subscribe({ path: worktreePath, reason: 'worktree' }, (changedPath) => {
         this.enqueueChange(activeWatch, 'worktree', changedPath);
       });
 
@@ -120,8 +129,25 @@ export class RepoWatcherRegistry {
       activeWatch.mutationDepth = Math.max(0, activeWatch.mutationDepth - 1);
       activeWatch.mutationFailed ||= !succeeded;
 
-      if (activeWatch.mutationDepth === 0) {
+      if (activeWatch.mutationDepth === 0 && activeWatch.refMutationDepth === 0) {
         this.finishMutation(activeWatch);
+      }
+    }
+  }
+
+  async runDuringRefMutation<T>(commonDir: string, operation: () => Promise<T>): Promise<T> {
+    const watches = [...this.watches.values()].filter((watch) => watch.commonDir === commonDir);
+    for (const watch of watches) watch.refMutationDepth += 1;
+    let succeeded = false;
+    try {
+      const result = await operation();
+      succeeded = true;
+      return result;
+    } finally {
+      for (const watch of watches) {
+        watch.refMutationDepth = Math.max(0, watch.refMutationDepth - 1);
+        watch.mutationFailed ||= !succeeded;
+        if (watch.mutationDepth === 0 && watch.refMutationDepth === 0) this.finishMutation(watch);
       }
     }
   }
@@ -149,18 +175,22 @@ export class RepoWatcherRegistry {
     ]);
     const activeWatch: ActiveRepoWatch = {
       repoPath: repository.path,
+      commonDir: repository.commonDir,
       watchers: [],
       worktreeWatchers: new Map(),
       pendingReasons: new Set(),
       pendingPaths: new Set(),
+      pendingUnknownPaths: false,
       mutationDepth: 0,
+      refMutationDepth: 0,
       mutationFailed: false,
       suppressedReasons: new Set(),
-      suppressedPaths: new Set()
+      suppressedPaths: new Set(),
+      suppressedUnknownPaths: false
     };
 
     for (const target of targets) {
-      const watcher = createWatcher(target, (changedPath) => {
+      const watcher = this.subscribe(target, (changedPath) => {
         this.enqueueChange(activeWatch, target.reason, changedPath);
       });
 
@@ -177,7 +207,7 @@ export class RepoWatcherRegistry {
   }
 
   private syncInitialWorktree(activeWatch: ActiveRepoWatch, repoPath: string): void {
-    const watcher = createWatcher({ path: repoPath, reason: 'worktree' }, (changedPath) => {
+    const watcher = this.subscribe({ path: repoPath, reason: 'worktree' }, (changedPath) => {
       this.enqueueChange(activeWatch, 'worktree', changedPath);
     });
 
@@ -187,12 +217,15 @@ export class RepoWatcherRegistry {
   }
 
   private enqueueChange(activeWatch: ActiveRepoWatch, reason: WatchReason, changedPath: string | undefined): void {
-    if (activeWatch.mutationDepth > 0) {
-      recordChange(activeWatch.suppressedReasons, activeWatch.suppressedPaths, reason, changedPath);
+    if (this.watches.get(activeWatch.repoPath) !== activeWatch) {
+      return;
+    }
+    if (activeWatch.mutationDepth > 0 || (activeWatch.refMutationDepth > 0 && reason !== 'worktree')) {
+      activeWatch.suppressedUnknownPaths = recordChange(activeWatch.suppressedReasons, activeWatch.suppressedPaths, reason, changedPath) || activeWatch.suppressedUnknownPaths;
       return;
     }
 
-    recordChange(activeWatch.pendingReasons, activeWatch.pendingPaths, reason, changedPath);
+    activeWatch.pendingUnknownPaths = recordChange(activeWatch.pendingReasons, activeWatch.pendingPaths, reason, changedPath) || activeWatch.pendingUnknownPaths;
     this.schedulePendingChange(activeWatch);
   }
 
@@ -202,16 +235,15 @@ export class RepoWatcherRegistry {
     }
 
     if (activeWatch.mutationFailed) {
+      activeWatch.pendingUnknownPaths ||= activeWatch.suppressedUnknownPaths;
       for (const reason of activeWatch.suppressedReasons) {
         activeWatch.pendingReasons.add(reason);
       }
 
       for (const path of activeWatch.suppressedPaths) {
-        if (activeWatch.pendingPaths.size >= maxPendingPaths) {
-          break;
-        }
-
-        activeWatch.pendingPaths.add(path);
+        if (activeWatch.pendingPaths.size >= maxPendingPaths && !activeWatch.pendingPaths.has(path)) {
+          activeWatch.pendingUnknownPaths = true;
+        } else activeWatch.pendingPaths.add(path);
       }
 
       if (activeWatch.suppressedReasons.size > 0) {
@@ -222,6 +254,7 @@ export class RepoWatcherRegistry {
     activeWatch.mutationFailed = false;
     activeWatch.suppressedReasons.clear();
     activeWatch.suppressedPaths.clear();
+    activeWatch.suppressedUnknownPaths = false;
   }
 
   private schedulePendingChange(activeWatch: ActiveRepoWatch): void {
@@ -229,12 +262,16 @@ export class RepoWatcherRegistry {
       clearTimeout(activeWatch.pendingTimer);
     }
 
+    activeWatch.pendingSince ??= Date.now();
+    const delay = Math.min(repoChangeDebounceMs, Math.max(0, maxRepoChangeDelayMs - (Date.now() - activeWatch.pendingSince)));
     activeWatch.pendingTimer = setTimeout(() => {
       const reasons = [...activeWatch.pendingReasons];
-      const paths = [...activeWatch.pendingPaths];
+      const paths = activeWatch.pendingUnknownPaths ? [] : [...activeWatch.pendingPaths];
       activeWatch.pendingReasons.clear();
       activeWatch.pendingPaths.clear();
+      activeWatch.pendingUnknownPaths = false;
       activeWatch.pendingTimer = undefined;
+      activeWatch.pendingSince = undefined;
 
       if (reasons.length > 0) {
         this.onChange({
@@ -246,11 +283,37 @@ export class RepoWatcherRegistry {
           happenedAt: new Date().toISOString()
         });
       }
-    }, repoChangeDebounceMs);
+    }, delay);
+  }
+
+  private subscribe(target: WatchTarget, listener: (changedPath: string | undefined) => void): CloseableWatcher | undefined {
+    const key = `${target.reason === 'worktree' ? 'worktree' : 'git'}:${target.depth ?? 'recursive'}:${target.path}`;
+    let shared = this.sharedWatches.get(key);
+    if (!shared) {
+      const listeners = new Set<(changedPath: string | undefined) => void>();
+      const watcher = createWatcher(target, (changedPath) => {
+        for (const callback of listeners) callback(changedPath);
+      });
+      if (!watcher) return undefined;
+      shared = { watcher, listeners };
+      this.sharedWatches.set(key, shared);
+    }
+    shared.listeners.add(listener);
+    const subscription = shared;
+    return {
+      close: () => {
+        subscription.listeners.delete(listener);
+        if (subscription.listeners.size === 0 && this.sharedWatches.get(key) === subscription) {
+          this.sharedWatches.delete(key);
+          return subscription.watcher.close();
+        }
+      }
+    };
   }
 }
 
 const repoChangeDebounceMs = 350;
+const maxRepoChangeDelayMs = 1000;
 const maxPendingPaths = 32;
 
 function recordChange(
@@ -258,12 +321,14 @@ function recordChange(
   paths: Set<string>,
   reason: WatchReason,
   changedPath: string | undefined
-): void {
+): boolean {
   reasons.add(reason);
 
-  if (changedPath && paths.size < maxPendingPaths) {
+  if (!changedPath || (paths.size >= maxPendingPaths && !paths.has(changedPath))) return true;
+  if (paths.size < maxPendingPaths) {
     paths.add(changedPath);
   }
+  return false;
 }
 
 function createWatcher(
@@ -404,6 +469,9 @@ function shouldIgnoreWatchPath(target: WatchTarget, candidatePath: string): bool
   if (target.reason === 'worktree') {
     return shouldIgnoreWorktreePath(candidatePath);
   }
+
+  // Lock files are transient; the final index/ref/config rename supplies the change.
+  if (candidatePath.endsWith('.lock')) return true;
 
   return candidatePath
     .split(/[\\/]/)

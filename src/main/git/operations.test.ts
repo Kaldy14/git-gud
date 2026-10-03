@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
+import type { RepoTab } from '@shared/types';
 
 import { GitCommandError, gitExecutor } from './exec';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './commands/rebase';
@@ -15,6 +16,7 @@ import {
   deleteBranch,
   deleteTag,
   fetchRemote,
+  fetchRepository,
   mergeRef,
   pullRepository,
   publishBranchWithTag,
@@ -31,8 +33,73 @@ import {
   undoOperation,
   updateRemote
 } from './operations';
+import { loadStatus } from './repositoryOverview';
+import { RepositoryAutoFetch } from './autoFetch';
 
 describe('git operations', () => {
+  it.runIf(process.platform !== 'win32')('keeps reads responsive during auto-fetch and releases Git before a foreground mutation', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-background-fetch-'));
+    let scheduler: RepositoryAutoFetch | undefined;
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const remotePath = join(rootPath, 'remote.git');
+      await git(rootPath, ['clone', '--bare', repoPath, remotePath]);
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      const startedPath = join(rootPath, 'started');
+      const releasePath = join(rootPath, 'release');
+      const uploadPackPath = join(rootPath, 'slow-upload-pack');
+      await writeFile(uploadPackPath, `#!/bin/sh\ntouch '${startedPath}'\nwhile [ ! -f '${releasePath}' ]; do sleep 0.01; done\nexec git-upload-pack "$@"\n`);
+      await chmod(uploadPackPath, 0o755);
+      await git(repoPath, ['config', 'remote.origin.uploadpack', uploadPackPath]);
+      const tab: Pick<RepoTab, 'path' | 'commonDir' | 'assignedProfileId'> = { path: repoPath, commonDir: join(repoPath, '.git'), assignedProfileId: undefined };
+      let fetchFinished = false;
+      const fetch = vi.fn(async (_tab: typeof tab, operationId: string) => {
+        try {
+          await gitExecutor.withProgressContext(operationId, () =>
+            gitExecutor.transaction(tab.commonDir, () => fetchRepository(tab, { background: true })));
+          return 'succeeded' as const;
+        } finally {
+          fetchFinished = true;
+        }
+      });
+      scheduler = new RepositoryAutoFetch({ fetch, lastFetchedAt: () => undefined, cancel: (id) => { gitExecutor.cancelOperation(id); } });
+      scheduler.sync([tab], 1);
+      await vi.waitFor(async () => { await access(startedPath); }, { timeout: 4000, interval: 10 });
+      await expect(loadStatus(repoPath)).resolves.toMatchObject({ isDirty: false });
+      expect(fetchFinished).toBe(false);
+      await scheduler.runForeground(tab.commonDir, () =>
+        gitExecutor.transaction(tab.commonDir, async () => {
+          expect(fetchFinished).toBe(true);
+          await git(repoPath, ['branch', 'foreground']);
+        }));
+      expect((await git(repoPath, ['branch', '--list', 'foreground'])).stdout).toContain('foreground');
+      expect(fetch).toHaveBeenCalledOnce();
+    } finally {
+      scheduler?.stop();
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['remotes/origin', 'sync/origin'])('detects changed refs/%s, skips unchanged fetches, and preserves FETCH_HEAD', async (namespace) => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-background-fetch-'));
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const remotePath = join(rootPath, 'remote.git');
+      await git(rootPath, ['clone', '--bare', repoPath, remotePath]);
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['config', 'remote.origin.fetch', `+refs/heads/*:refs/${namespace}/*`]);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const first = await fetchRepository(tab, { background: true });
+      expect(first.invalidates).toContain('graph');
+      await writeFile(join(repoPath, '.git', 'FETCH_HEAD'), 'manual fetch marker\n');
+      const second = await fetchRepository(tab, { background: true });
+      expect(second.invalidates).toEqual([]);
+      expect(await readFile(join(repoPath, '.git', 'FETCH_HEAD'), 'utf8')).toBe('manual fetch marker\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('adds, fetches, edits, renames, and removes a configured remote', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 

@@ -53,16 +53,36 @@ const MAX_PARTIAL_STASH_FILES = 1_000;
 const COMMIT_WRITE_PATH_BATCH_SIZE = 50;
 const NETWORK_GIT_TIMEOUT_MS = 10 * 60 * 1000;
 
-export async function fetchRepository(tab: OperationTab): Promise<GitOperationResult> {
-  const env = createProfileCommandEnv(tab.assignedProfileId);
-  await gitExecutor.run(['fetch', '--prune', '--all'], {
+export async function fetchRepository(tab: OperationTab, options: { background?: boolean } = {}): Promise<GitOperationResult> {
+  const background = options.background ?? false;
+  const env = {
+    ...createProfileCommandEnv(tab.assignedProfileId),
+    ...(background ? { GIT_TERMINAL_PROMPT: '0' } : {})
+  };
+  const refsBefore = background ? await fetchRefSnapshot(tab.path, env) : undefined;
+  await gitExecutor.run([
+    'fetch', '--prune', '--all',
+    ...(background ? ['--no-auto-gc', '--no-write-fetch-head', '--no-write-commit-graph', '--no-recurse-submodules'] : [])
+  ], {
     cwd: tab.path,
-    kind: 'mutation',
+    kind: background ? 'fetch' : 'mutation',
     env,
     cancellable: true,
-    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+    timeoutMs: background ? 60_000 : NETWORK_GIT_TIMEOUT_MS
   });
-  return createOperationResult(tab, env, 'fetch', gitCommandLabel('fetch'));
+  const result = await createOperationResult(tab, env, 'fetch', gitCommandLabel('fetch'));
+  if (background && refsBefore === await fetchRefSnapshot(tab.path, env)) {
+    result.invalidates = [];
+  }
+  return result;
+}
+
+async function fetchRefSnapshot(repoPath: string, env: NodeJS.ProcessEnv): Promise<string> {
+  const result = await gitExecutor.run(
+    ['for-each-ref', '--format=%(refname)%00%(objectname)'],
+    { cwd: repoPath, env }
+  );
+  return result.stdout;
 }
 
 export async function fetchRemote(tab: OperationTab, remoteInput: string): Promise<GitOperationResult> {

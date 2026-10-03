@@ -34,7 +34,8 @@ export function applyOperationProgress(
     .map((entry, index) => ({ entry, index }))
     .filter(
       ({ entry }) =>
-        !entry.operationId && entry.status === 'pending' && entry.repoPath === event.repoPath
+        !entry.operationId && entry.status === 'pending' && entry.repoPath === event.repoPath &&
+        Boolean(entry.background) === Boolean(event.background)
     );
   const entryIndex =
     correlatedIndex >= 0
@@ -48,7 +49,7 @@ export function applyOperationProgress(
       return entries;
     }
 
-    return [
+    return retainBackgroundHistory([
       {
         id: event.operationId,
         operationId: event.operationId,
@@ -59,10 +60,11 @@ export function applyOperationProgress(
         startedAt: event.happenedAt,
         happenedAt: event.happenedAt,
         elapsedMs: event.elapsedMs,
-        cancellable: event.cancellable
+        cancellable: event.cancellable,
+        background: event.background
       },
       ...entries
-    ];
+    ]);
   }
 
   const entry = entries[entryIndex];
@@ -98,7 +100,12 @@ export function applyOperationProgress(
       event.phase === 'failed' || event.phase === 'cancelled' ? false : entry.waitsForRefresh
   };
 
-  return entries.map((candidate, index) => (index === entryIndex ? nextEntry : candidate));
+  return retainBackgroundHistory(entries.map((candidate, index) => (index === entryIndex ? nextEntry : candidate)));
+}
+
+function retainBackgroundHistory(entries: OperationLogEntry[]): OperationLogEntry[] {
+  let completed = 0;
+  return entries.filter((entry) => !entry.background || entry.status === 'pending' || ++completed <= 25);
 }
 
 export function applyOperationFailure(

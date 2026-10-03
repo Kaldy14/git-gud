@@ -334,7 +334,13 @@ export function useRepositoryChangeInvalidation(): void {
 
   useEffect(() => {
     return window.api.onRepositoryChanged((event: RepoChangedEvent) => {
-      void invalidateRepositoryQueries(queryClient, event.repoPath, scopesForRepositoryChange(event));
+      if (event.lastFetchedAt) {
+        queryClient.setQueryData<GitRepositoryOverview>(repositoryOverviewQueryKey(event.repoPath),
+          (overview) => overview ? { ...overview, lastFetchedAt: event.lastFetchedAt } : undefined);
+      }
+      void invalidateRepositoryQueries(queryClient, event.repoPath, scopesForRepositoryChange(event), {
+        refetchAfterInFlight: Boolean(event.lastFetchedAt) || event.reasons.some((reason) => reason !== 'worktree')
+      });
     });
   }, [queryClient]);
 }
@@ -342,9 +348,21 @@ export function useRepositoryChangeInvalidation(): void {
 export async function invalidateRepositoryQueries(
   queryClient: QueryClient,
   repoPath: string,
-  scopes: readonly GitQueryInvalidation[] = allRepositoryInvalidations
+  scopes: readonly GitQueryInvalidation[] = allRepositoryInvalidations,
+  options: { refetchAfterInFlight?: boolean } = {}
 ): Promise<void> {
+  if (scopes.length === 0) return;
   const requested = new Set(scopes);
+  const pendingRefReads = options.refetchAfterInFlight
+    ? queryClient.getQueryCache().findAll({
+        type: 'active',
+        fetchStatus: 'fetching',
+        predicate: (query) => query.queryKey[1] === repoPath && (
+          (requested.has('overview') && query.queryKey[0] === 'repository-overview') ||
+          (requested.has('graph') && query.queryKey[0] === 'commit-graph')
+        )
+      })
+    : [];
   const invalidations: Array<Promise<unknown>> = [
     queryClient.invalidateQueries(
       { queryKey: agentNotesQueryKey(repoPath) },
@@ -394,6 +412,12 @@ export async function invalidateRepositoryQueries(
   }
 
   await Promise.all(invalidations);
+
+  // An overlapping read can have captured refs before the fetch finished.
+  // Let it finish, then load the new refs instead of retaining that old result.
+  await Promise.all(pendingRefReads.map((query) => queryClient.invalidateQueries(
+    { queryKey: query.queryKey, exact: true }, { cancelRefetch: false }
+  )));
 }
 
 export function clearRepositoryQueries(queryClient: QueryClient, repoPath: string): void {
@@ -422,6 +446,7 @@ const currentWorktreeInvalidations: readonly GitQueryInvalidation[] = [
 ];
 
 export function scopesForRepositoryChange(event: RepoChangedEvent): readonly GitQueryInvalidation[] {
+  if (event.invalidates) return event.invalidates;
   const normalizedPaths = event.paths.map((path) => path.replaceAll('\\', '/').toLowerCase());
   const hasWorktreeChange = event.reasons.includes('worktree');
   const hasRefChange = normalizedPaths.some(

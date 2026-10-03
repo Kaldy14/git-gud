@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRepositoryOperationQueue } from './repositoryOperationQueue';
 
 describe('repository operation queue', () => {
-  it('queues a tag action behind a slow automatic fetch instead of dropping it', async () => {
+  it('queues a tag action behind a slow manual fetch instead of dropping it', async () => {
     const queue = createRepositoryOperationQueue();
     let finishFetch: (() => void) | undefined;
     const fetchGate = new Promise<void>((resolve) => {

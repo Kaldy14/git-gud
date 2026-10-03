@@ -5,7 +5,7 @@ import { delimiter, dirname, join } from 'node:path';
 
 import { repositoryUnavailableErrorMessage } from '@shared/repositoryAvailability';
 
-export type GitCommandKind = 'read' | 'mutation';
+export type GitCommandKind = 'read' | 'mutation' | 'fetch';
 
 export type GitCommandOptions = {
   cwd: string;
@@ -197,6 +197,17 @@ export class GitExecutor {
 
     if (kind === 'mutation') {
       return this.transaction(options.cwd, () => this.spawnGit(args, effectiveOptions, kind));
+    }
+
+    if (kind === 'fetch') {
+      // The caller serializes ref mutations through the common-directory
+      // transaction. Fetch writes objects/refs, so worktree reads can continue.
+      this.advanceMutationGeneration(options.cwd);
+      try {
+        return await this.spawnGit(args, effectiveOptions, kind);
+      } finally {
+        this.advanceMutationGeneration(options.cwd);
+      }
     }
 
     const release = await this.acquire(options.cwd, 'read', {

@@ -782,6 +782,7 @@ export type GitOperationProgressEvent = {
   elapsedMs: number;
   cancellable: boolean;
   happenedAt: string;
+  background?: boolean;
 };
 
 export type GitOperationCancellationResult = {
@@ -1590,4 +1591,6 @@ export type RepoChangedEvent = {
   path?: string;
   paths: string[];
   happenedAt: string;
+  invalidates?: GitQueryInvalidation[];
+  lastFetchedAt?: string;
 };

@@ -20,6 +20,31 @@ const queuedEvent: GitOperationProgressEvent = {
 };
 
 describe('operation progress state', () => {
+  it('bounds automatic-fetch history while preserving pending and foreground operations', () => {
+    const history = Array.from({ length: 40 }, (_, index) => ({
+      ...createOptimisticOperationEntry({ id: `background-${index}`, repoPath: '/repo',
+        label: 'Auto-fetch', happenedAt: queuedEvent.happenedAt, retryable: false, background: true }),
+      status: 'success' as const
+    }));
+    const foreground = createOptimisticOperationEntry({ id: 'foreground', repoPath: '/repo',
+      label: 'Stage file', happenedAt: queuedEvent.happenedAt, retryable: false });
+    const entries = applyOperationProgress([...history, foreground], { ...queuedEvent, background: true });
+    expect(entries.filter((entry) => entry.background && entry.status !== 'pending')).toHaveLength(25);
+    expect(entries).toContain(foreground);
+    expect(entries[0]?.status).toBe('pending');
+  });
+
+  it('keeps main-process auto-fetch separate from an optimistic foreground action', () => {
+    const foreground = createOptimisticOperationEntry({
+      id: 'client-action', repoPath: '/repo', label: 'Stage file',
+      happenedAt: queuedEvent.happenedAt, retryable: false
+    });
+    const entries = applyOperationProgress([foreground], { ...queuedEvent, background: true });
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ operationId: queuedEvent.operationId, background: true });
+    expect(entries[1]).toBe(foreground);
+  });
+
   it('only offers retry when an operation explicitly opts in', () => {
     const destructive = createOptimisticOperationEntry({
       id: 'drop-stash',

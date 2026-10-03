@@ -28,6 +28,10 @@ function repoChange(overrides: Partial<RepoChangedEvent>): RepoChangedEvent {
 }
 
 describe('repository watcher invalidation', () => {
+  it('uses the precise main-process fetch scopes, including an unchanged fetch', () => {
+    expect(scopesForRepositoryChange(repoChange({ invalidates: [] }))).toEqual([]);
+    expect(scopesForRepositoryChange(repoChange({ invalidates: ['overview', 'graph'] }))).toEqual(['overview', 'graph']);
+  });
   it('refreshes current WIP data without rebuilding graph history', () => {
     expect(scopesForRepositoryChange(repoChange({}))).toEqual([
       'overview',
@@ -173,6 +177,32 @@ describe('graph cache pruning', () => {
 });
 
 describe('repository query invalidation', () => {
+  it.each([false, true])('loads fresh refs when a background fetch overlaps history (cached: %s)', async (cached) => {
+    const queryClient = new QueryClient();
+    const key = ['commit-graph', '/repo', 1500];
+    const oldGraph = { refs: ['origin/main:old'] };
+    const newGraph = { refs: ['origin/main:new'] };
+    if (cached) queryClient.setQueryData(key, oldGraph);
+    let finishOldRead: (value: typeof oldGraph) => void = () => {};
+    const pendingRead = new Promise<typeof oldGraph>((resolve) => { finishOldRead = resolve; });
+    const queryFn = vi.fn().mockReturnValueOnce(pendingRead).mockResolvedValue(newGraph);
+    const observer = new QueryObserver(queryClient, { queryKey: key, queryFn, staleTime: 0 });
+    const unsubscribe = observer.subscribe(() => {});
+    const refresh = invalidateRepositoryQueries(queryClient, '/repo', ['graph'], { refetchAfterInFlight: true });
+    finishOldRead(oldGraph);
+    await refresh;
+    expect(queryClient.getQueryData(key)).toEqual(newGraph);
+    unsubscribe();
+    queryClient.clear();
+  });
+
+  it('does not invalidate any caches for an unchanged fetch', async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await invalidateRepositoryQueries(queryClient, '/repo', []);
+    expect(invalidate).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
   it('does not retry a repository whose working directory disappeared', () => {
     expect(
       shouldRetryRepositoryQuery(

@@ -226,8 +226,9 @@ export function SettingsPanel({
                 }
               />
               <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
-                Fetch remote updates while a repository is active. Use 0 to turn off
-                auto-fetch. This never pulls or changes working files.
+                Fetch remote updates for open repositories, even while the app is in
+                the background. Auto-fetch yields to your Git actions. Use 0 to turn
+                off auto-fetch. This never pulls or changes working files.
               </span>
             </label>
           </section>

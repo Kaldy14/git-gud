@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:auto-fetch": "pnpm build && node scripts/validate-auto-fetch.mjs",
     "benchmark:review": "vitest run --config vitest.benchmark.config.ts"
   },
   "dependencies": {
