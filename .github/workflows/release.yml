@@ -186,7 +186,7 @@ jobs:
             exit 1
           fi
           xcrun stapler validate "dist/mac/Git Gud.app"
-          spctl --assess --type execute --verbose=4 "dist/mac/Git Gud.app"
+          syspolicy_check distribution "dist/mac/Git Gud.app"
 
       - name: Package release artifact
         shell: bash

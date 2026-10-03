@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.3] - 2026-10-03
+
+### Fixed
+
+- Validate macOS releases with the current distribution readiness check, preserving signature, signing identity, bundle identity, and notarization validation.
+
 ## [2026.10.2] - 2026-10-03
 
 ### Changed

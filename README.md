@@ -171,7 +171,7 @@ GIT_GUD_VERSION="$(git describe --tags --abbrev=0)" \
   pnpm dist
 ```
 
-Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-default keychain. Tag-driven builds import the certificate into an ephemeral CI keychain, sign with the hardened runtime enabled, notarize and staple the app, verify it with `codesign`, `stapler`, and Gatekeeper, then package and publish it.
+Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-default keychain. Tag-driven builds import the certificate into an ephemeral CI keychain, sign with the hardened runtime enabled, notarize and staple the app, verify it with `codesign`, `stapler`, and `syspolicy_check distribution`, then package and publish it. The distribution check covers Gatekeeper and other macOS launch policies and reports specific failures before publication.
 
 ## Development
 
