@@ -41,6 +41,7 @@ src/renderer/src/
     operations/ConflictBanner.tsx     merge/rebase/cherry-pick/revert conflict action banner
     operations/CommandDialog.tsx      app-native command confirmations and simple operation forms
     inspection/RepositoryInspectorDialog.tsx file history, blame, and ref comparison dialog
+    maintenance/RepositoryMaintenanceDialog.tsx branch cleanup scan, review, deletion outcomes, and recovery refs
     operations/QuickJumpDialog.tsx    command palette for commits, refs, repos, stashes, worktrees, and app actions
     operations/OperationLog.tsx       streamed pending/success/conflict/error/cancelled operation log
     rebase/InteractiveRebaseDialog.tsx interactive rebase todo modal
@@ -73,3 +74,6 @@ Each row draws its own SVG cell from declarative `RailSegment`s (`through`, `sto
 - `pnpm dev` — run the app (assumed already running during development)
 - `pnpm typecheck` / `pnpm lint` / `pnpm test` — must pass at every milestone
 - `pnpm build` — typecheck + production bundles
+- `pnpm test:maintenance` — actual Electron branch maintenance validation with agent-browser, isolated Git fixtures, and screenshots under `artifacts/maintenance`
+
+See [repository maintenance research](repository-maintenance-research.md) for native Git and cleanup-tool comparisons, evidence limits, and the implemented safety rules.

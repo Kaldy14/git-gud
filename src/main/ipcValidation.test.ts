@@ -1123,3 +1123,27 @@ describe('general PR comment validation', () => {
     }
   });
 });
+
+describe('branch maintenance IPC validation', () => {
+  const input = {
+    baseRef: 'refs/heads/main', expectedBaseSha: 'a'.repeat(40), olderThanDays: 30,
+    branches: [{ ref: 'refs/heads/feature/old', expectedSha: 'b'.repeat(40) }], allowUnverified: false
+  };
+  it('accepts bounded scans and exact cleanup revisions', () => {
+    expect(validateIpcArgs('repo:analyze-branch-cleanup', ['/repo', { olderThanDays: 0 }])).toEqual(['/repo', { olderThanDays: 0 }]);
+    expect(validateIpcArgs('repo:cleanup-branches', ['/repo', input])).toEqual(['/repo', input]);
+    expect(validateIpcArgs('repo:refresh-maintenance-refs', ['/repo'])).toEqual(['/repo']);
+  });
+  it('rejects malformed refs, revisions, ages, batches, and acknowledgement', () => {
+    for (const invalid of [
+      { ...input, baseRef: 'HEAD' }, { ...input, baseRef: 'refs/tags/v1' },
+      { ...input, baseRef: 'refs/heads/main\ncreate refs/heads/injected' },
+      { ...input, expectedBaseSha: 'abc' }, { ...input, olderThanDays: -1 },
+      { ...input, olderThanDays: 0.5 }, { ...input, olderThanDays: 36501 },
+      { ...input, branches: [] }, { ...input, branches: [input.branches[0], input.branches[0]] },
+      { ...input, branches: Array.from({ length: 101 }, (_, i) => ({ ref: `refs/heads/${i}`, expectedSha: 'b'.repeat(40) })) },
+      { ...input, branches: [{ ref: 'refs/heads/feature', expectedSha: '--all' }] },
+      { ...input, allowUnverified: 'yes' }
+    ]) expect(() => validateIpcArgs('repo:cleanup-branches', ['/repo', invalid])).toThrow();
+  });
+});

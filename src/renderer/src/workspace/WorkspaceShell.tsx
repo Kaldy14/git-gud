@@ -10,6 +10,7 @@ import {
   FolderOpen,
   FolderX,
   GitBranch,
+  GitBranchMinus,
   GitCompareArrows,
   Keyboard,
   PanelLeftClose,
@@ -52,6 +53,7 @@ import {
 } from '@renderer/components/operations/operationProgress';
 import { PushRejectedBanner } from '@renderer/components/operations/PushRejectedBanner';
 import { QuickJumpDialog, type PaletteAction } from '@renderer/components/operations/QuickJumpDialog';
+import { RepositoryMaintenanceDialog } from '@renderer/components/maintenance/RepositoryMaintenanceDialog';
 import { StashDialog } from '@renderer/components/operations/StashDialog';
 import { InteractiveRebaseDialog } from '@renderer/components/rebase/InteractiveRebaseDialog';
 import { SettingsPanel } from '@renderer/components/settings/SettingsPanel';
@@ -210,6 +212,11 @@ type RepositoryInspectorState = {
   path?: string;
 };
 
+type RepositoryMaintenanceState = {
+  repoPath: string;
+  repoName: string;
+};
+
 type StashDialogState = {
   repoPath: string;
   activeTabEpoch: number;
@@ -340,6 +347,7 @@ export function WorkspaceShell(): ReactElement {
   const [isCommitSearchOpen, setIsCommitSearchOpen] = useState(false);
   const [commitSearchFocusSignal, setCommitSearchFocusSignal] = useState(0);
   const [repositoryInspector, setRepositoryInspector] = useState<RepositoryInspectorState>();
+  const [repositoryMaintenance, setRepositoryMaintenance] = useState<RepositoryMaintenanceState>();
   const [sidebarWidthDraft, setSidebarWidthDraft] = useState<number>();
   const [detailPanelWidthDraft, setDetailPanelWidthDraft] = useState<number>();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -856,6 +864,7 @@ export function WorkspaceShell(): ReactElement {
           isSettingsOpen ||
           isQuickJumpOpen ||
           repositoryInspector ||
+          repositoryMaintenance ||
           isOperationBusy
       ),
       onFetch: handleFetch,
@@ -2427,6 +2436,12 @@ export function WorkspaceShell(): ReactElement {
     );
   }
 
+  function handleOpenRepositoryMaintenance(): void {
+    if (activeTab) {
+      setRepositoryMaintenance({ repoPath: activeTab.path, repoName: activeTab.name });
+    }
+  }
+
   function handleInspectWipFile(file: GitFileChangeDetail, mode: RepositoryInspectorMode): void {
     if (activeTab) {
       setRepositoryInspector({ repoPath: activeTab.path, mode, path: file.path });
@@ -3320,6 +3335,17 @@ export function WorkspaceShell(): ReactElement {
       onSelect: () => activeTab && setRepositoryInspector({ repoPath: activeTab.path, mode: 'compare' })
     },
     {
+      id: 'repository-maintenance',
+      label: 'Repository maintenance',
+      category: 'Git',
+      detail: 'Clean up merged and stale local or remote branches',
+      keywords: ['cleanup', 'clean up', 'prune', 'merged', 'stale', 'branches', 'delete branches', 'squash', 'rebase'],
+      icon: <GitBranchMinus size={14} />,
+      disabled: !activeTab,
+      disabledReason: activeTab ? undefined : 'Open a repository first',
+      onSelect: handleOpenRepositoryMaintenance
+    },
+    {
       id: 'toggle-sidebar',
       label: isSidebarCollapsed ? 'Expand repository sidebar' : 'Collapse repository sidebar',
       category: 'View',
@@ -3455,6 +3481,7 @@ export function WorkspaceShell(): ReactElement {
           onRebaseSelected={() => selectedRow && handleRebaseOntoCommit(selectedRow.sha)}
           onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
           onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
+          onOpenRepositoryMaintenance={handleOpenRepositoryMaintenance}
         />
       ) : null}
 
@@ -3962,6 +3989,21 @@ export function WorkspaceShell(): ReactElement {
             setRepositoryInspector(undefined);
           }}
           onClose={() => setRepositoryInspector(undefined)}
+        />
+      ) : null}
+      {repositoryMaintenance ? (
+        <RepositoryMaintenanceDialog
+          repoPath={repositoryMaintenance.repoPath}
+          repoName={repositoryMaintenance.repoName}
+          refs={repositoryQuery.data?.repoPath === repositoryMaintenance.repoPath ? repositoryQuery.data.refs : undefined}
+          isRepositoryBusy={Boolean(
+            activeRepositoryOperations[repositoryMaintenance.repoPath] &&
+              !activeRepositoryOperations[repositoryMaintenance.repoPath]?.background
+          )}
+          runOperation={(label, action) =>
+            runRepositoryOperation(label, action, { repoPath: repositoryMaintenance.repoPath })
+          }
+          onClose={() => setRepositoryMaintenance(undefined)}
         />
       ) : null}
       {isSettingsOpen ? (

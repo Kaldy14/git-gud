@@ -32,6 +32,7 @@ import { generateCommitMessage } from './commitMessage';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
+import { analyzeBranchCleanup, cleanupBranches, refreshMaintenanceRefs } from './git/maintenance';
 import { RepositoryAutoFetch } from './git/autoFetch';
 import { loadPullRequestConflictDetails } from './git/pullRequestConflicts';
 import { cloneRepository, initializeRepository } from './git/repositoryCreation';
@@ -199,6 +200,8 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:rename-branch': { label: 'Rename branch' },
   'repo:set-branch-upstream': { label: 'Set upstream' },
   'repo:delete-branch': { label: 'Delete branch' },
+  'repo:cleanup-branches': { label: 'Clean up branches' },
+  'repo:refresh-maintenance-refs': { label: 'Refresh branch references', cancellable: true },
   'repo:checkout': { label: 'Checkout' },
   'repo:merge': { label: 'Merge' },
   'repo:create-tag': { label: 'Create tag', cancellable: true },
@@ -688,6 +691,19 @@ export function registerIpcHandlers(
   );
   handle('repo:delete-branch', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => deleteBranch(tab, input))
+  );
+  handle('repo:analyze-branch-cleanup', (_event, repoPath, input) =>
+    analyzeBranchCleanup(getOpenRepositoryTab(repoPath), input)
+  );
+  handle('repo:cleanup-branches', (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => cleanupBranches(tab, input))
+  );
+  handle('repo:refresh-maintenance-refs', (_event, repoPath) =>
+    inRepositoryTransaction(repoPath, async (tab) => {
+      const result = await refreshMaintenanceRefs(tab);
+      recordRepositoryFetch(tab.commonDir, result.happenedAt);
+      return result;
+    })
   );
   handle('repo:checkout', async (_event, repoPath, target) =>
     inRepositoryTransaction(repoPath, (tab) => checkoutRef(tab, target))

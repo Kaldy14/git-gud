@@ -1,4 +1,5 @@
 import { parseCodeReference } from '@shared/codeReference';
+import type { BranchCleanupInput, BranchCleanupOptions } from '@shared/maintenance';
 import { parseBugRequest } from '@shared/bugFinder';
 import type {
   IpcChannelMap,
@@ -163,6 +164,9 @@ const validators = {
   'repo:set-branch-upstream': (args) =>
     readRepoPathWithObject(args, 'repo:set-branch-upstream', readSetBranchUpstreamInput),
   'repo:delete-branch': (args) => readRepoPathWithObject(args, 'repo:delete-branch', readDeleteBranchInput),
+  'repo:analyze-branch-cleanup': (args) => readRepoPathWithObject(args, 'repo:analyze-branch-cleanup', readBranchCleanupOptions),
+  'repo:cleanup-branches': (args) => readRepoPathWithObject(args, 'repo:cleanup-branches', readBranchCleanupInput),
+  'repo:refresh-maintenance-refs': (args) => readOnlyArg(args, 'repo:refresh-maintenance-refs', 'repoPath', readString),
   'repo:checkout': (args) => readRepoPathWithObject(args, 'repo:checkout', readCheckoutTarget),
   'repo:merge': (args) => readRepoPathWithObject(args, 'repo:merge', readMergeInput),
   'repo:create-tag': (args) => readRepoPathWithObject(args, 'repo:create-tag', readTagCreateInput),
@@ -1218,6 +1222,50 @@ function readDeleteBranchInput(value: unknown): GitDeleteBranchInput {
     ...(remote ? { remote } : {}),
     force: readBooleanProperty(record, 'force')
   };
+}
+
+function readBranchCleanupOptions(value: unknown): BranchCleanupOptions {
+  const record = readRecord(value, 'branch cleanup options');
+  const olderThanDays = readNonNegativeInteger(record.olderThanDays, 'olderThanDays');
+  if (olderThanDays > 36500) throw new Error('olderThanDays must be at most 36500.');
+  return {
+    olderThanDays,
+    ...(record.baseRef === undefined ? {} : { baseRef: readCleanupRef(record.baseRef) })
+  };
+}
+
+function readBranchCleanupInput(value: unknown): BranchCleanupInput {
+  const record = readRecord(value, 'branch cleanup input');
+  const options = readBranchCleanupOptions(record);
+  if (!Array.isArray(record.branches) || record.branches.length < 1 || record.branches.length > 100) {
+    throw new Error('Select between 1 and 100 branches.');
+  }
+  const branches = record.branches.map((entry) => {
+    const branch = readRecord(entry, 'branch');
+    return { ref: readCleanupRef(branch.ref), expectedSha: readCleanupOid(branch.expectedSha) };
+  });
+  if (new Set(branches.map((branch) => branch.ref)).size !== branches.length) throw new Error('Duplicate branch selections are not allowed.');
+  return {
+    olderThanDays: options.olderThanDays,
+    baseRef: readCleanupRef(record.baseRef),
+    expectedBaseSha: readCleanupOid(record.expectedBaseSha),
+    branches,
+    allowUnverified: readBooleanProperty(record, 'allowUnverified')
+  };
+}
+
+function readCleanupRef(value: unknown): string {
+  const ref = readNonEmptyLimitedString(value, 'branch ref', 4096);
+  if ((!ref.startsWith('refs/heads/') && !ref.startsWith('refs/remotes/')) || /[\s\0]/.test(ref)) {
+    throw new Error('A full local or remote branch ref is required.');
+  }
+  return ref;
+}
+
+function readCleanupOid(value: unknown): string {
+  const oid = readNonEmptyLimitedString(value, 'expected object ID', 64);
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(oid)) throw new Error('A full Git object ID is required.');
+  return oid;
 }
 
 function readOptionalDeleteBranchRemote(value: unknown): GitDeleteBranchInput['remote'] {

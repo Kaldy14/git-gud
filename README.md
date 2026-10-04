@@ -52,6 +52,7 @@ The final step publishes the selected decision and all local drafts together:
 - **Pull-request review.** Work from a GitHub inbox grouped by next action. Inspect status, checks, commits, threaded discussion, review history, merge conflicts, and image attachments beside the diff. Draft line or file comments and replies locally, then comment, approve, request changes, or merge with the methods enabled by the repository.
 - **Pull-request worktrees and links.** Open the exact pull-request head in an isolated managed worktree without switching the main checkout, then launch it in a detected editor or terminal. Copy a shareable Git Gud link to reopen the same review. Dirty managed worktrees are preserved instead of being removed.
 - **Branches, remotes, and releases.** Organize slash-delimited branch names as folders, create or rename branches, set upstreams, and push a selected branch without checking it out. Add, edit, fetch, rename, or remove remotes. Create annotated tags, use calendar-based tag suggestions, push a branch and its suggested tag together, and delete local or remote branches and tags with scoped confirmation.
+- **Repository maintenance.** Review old local or remote branches against a chosen mainline, with separate evidence for merged history, equivalent patches, and content that adds no changes. Protect active worktrees and mainlines, prune stale tracking refs without pruning tags, and confirm exact deletions with revision checks and retained recovery refs.
 - **Sync and stash workflows.** Choose fetch, merge-based pull, fast-forward-only pull, or rebase pull as the main sync action. Push the current branch, prune remote references, create selective stashes that include chosen tracked or untracked files, and apply, pop, or drop saved work.
 - **Rebase and conflict recovery.** Merge, cherry-pick ordered selections, revert, reset, and run standard or interactive rebases with reorder, reword, squash, fixup, and drop. The conflict resolver shows ours and theirs, supports per-marker choices and manual output editing, stages resolved files, and continues, skips, or aborts the active operation.
 - **GitHub Actions and Portainer dashboards.** Build profile-scoped dashboards from editable and reorderable tiles. GitHub Actions tiles can show recent runs for selected branches or tags, or group the latest workflow attempts for pull requests you authored. Open a run inside Git Gud to inspect its job graph, steps, and failed-step logs. Portainer tiles monitor Swarm and Compose stacks, replicas or containers, service health, and deployed images.
@@ -89,6 +90,18 @@ Inspect a commit without losing graph context. Switch between unified and split 
 Press <kbd>⌘</kbd> <kbd>P</kbd> to search actions, commits, branches, repositories, stashes, and worktrees from one keyboard-first surface.
 
 ![Git Gud command palette searching for rebase workflows](docs/images/git-gud-command-palette.png)
+
+## Branch cleanup
+
+Open **Actions → Repository maintenance…**, or search for **maintenance** in the command palette. Choose a comparison branch and a tip-commit age in days, then scan. Local and remote branches have separate lists; nothing is selected automatically. **Select merged** chooses only branches whose commits are reachable from the comparison branch. Select likely integrated branches individually, or enable **Include branches that are not merged** to review age-only cleanup.
+
+Equivalent patches can indicate rebase or cherry-pick, and an unchanged merge result can indicate a squash merge. These checks are evidence, not proof of a historical merge operation or preserved intent. Deleting such branches requires an extra acknowledgement. Old commit dates and missing upstream refs alone never establish integration.
+
+**Update remote branches** fetches heads and prunes local tracking refs that disappeared from the server. It preserves local tags and local branches. Remote deletion is a separate review step that identifies the shared server branches being deleted. A changed branch or comparison revision rejects the stale selection; each server deletion carries the exact reviewed revision as a lease.
+
+The comparison branch, main/master/trunk/develop/development/production/release branches, known remote default branches, and branches used by any worktree are protected. Set `branch.<name>.deleteMerged=false` in Git configuration to protect another branch. Remote cleanup requires a known default branch and one matching fetch/push destination.
+
+Cleanup results include a retained recovery ref and a **Copy restore command** action for each deletion. These refs keep the reviewed commits reachable in this repository. Local branch configuration is retained for recovery. Run copied restore commands from the same repository; remote restoration refuses to overwrite a recreated branch. Backups remain until explicitly removed. See the [research and alternatives](docs/repository-maintenance-research.md) for the tradeoffs and detection limits.
 
 ## Requirements
 
@@ -182,6 +195,7 @@ Set `MACOS_SIGNING_KEYCHAIN` as well when the identity is stored in a non-defaul
 | `pnpm lint` | Run ESLint across the repository |
 | `pnpm test` | Run the Vitest suite |
 | `pnpm benchmark:review` | Score review-chunk grouping against the benchmark datasets |
+| `pnpm test:maintenance` | Build and validate branch cleanup in the real Electron app using disposable repositories and agent-browser |
 | `pnpm build` | Typecheck and create production bundles |
 | `pnpm dist` | Build the local macOS application bundle |
 | `pnpm dist:windows` | Build the portable Windows x64 executable (on Windows) |

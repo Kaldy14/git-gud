@@ -10,6 +10,7 @@ import {
   ChevronRight,
   FolderGit2,
   GitBranch,
+  GitBranchMinus,
   GitMerge,
   GitPullRequestArrow,
   MoreHorizontal,
@@ -47,6 +48,7 @@ type ToolbarProps = {
   onRebaseSelected: () => void;
   onInteractiveRebaseSelected: () => void;
   onTagSelected: () => void;
+  onOpenRepositoryMaintenance: () => void;
   hasSelectedCommit: boolean;
 };
 
@@ -68,6 +70,7 @@ export function Toolbar({
   onRebaseSelected,
   onInteractiveRebaseSelected,
   onTagSelected,
+  onOpenRepositoryMaintenance,
   hasSelectedCommit
 }: ToolbarProps): ReactElement {
   const hasRepo = Boolean(activeTab);
@@ -170,6 +173,7 @@ export function Toolbar({
           onRebaseSelected={onRebaseSelected}
           onInteractiveRebaseSelected={onInteractiveRebaseSelected}
           onTagSelected={onTagSelected}
+          onOpenRepositoryMaintenance={onOpenRepositoryMaintenance}
         />
         <ToolbarAction
           label="Jump"
@@ -280,7 +284,8 @@ function ActionsMenu({
   onMergeSelected,
   onRebaseSelected,
   onInteractiveRebaseSelected,
-  onTagSelected
+  onTagSelected,
+  onOpenRepositoryMaintenance
 }: {
   disabled: boolean;
   hasSelectedCommit: boolean;
@@ -289,6 +294,7 @@ function ActionsMenu({
   onRebaseSelected: () => void;
   onInteractiveRebaseSelected: () => void;
   onTagSelected: () => void;
+  onOpenRepositoryMaintenance: () => void;
 }): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const pendingActionRef = useRef<(() => void) | undefined>(undefined);
@@ -304,7 +310,7 @@ function ActionsMenu({
           ref={triggerRef}
           className="tb-action"
           type="button"
-          title="Git actions for the selected commit"
+          title="Git actions and repository maintenance"
           disabled={disabled}
         >
           <span className="tb-action-label">Actions</span>
@@ -355,6 +361,12 @@ function ActionsMenu({
           label="Tag selected commit"
           disabled={!hasSelectedCommit}
           onClick={() => run(onTagSelected)}
+        />
+        <DropdownMenuSeparator className="mx-0 my-1" />
+        <ActionMenuItem
+          icon={<GitBranchMinus size={14} />}
+          label="Repository maintenance…"
+          onClick={() => run(onOpenRepositoryMaintenance)}
         />
         <DropdownMenuSeparator className="mx-0 my-1" />
         <ActionMenuItem
