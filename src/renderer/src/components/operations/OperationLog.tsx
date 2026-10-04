@@ -41,8 +41,11 @@ export function OperationLog({
   onRetry,
   onCopyDetails
 }: OperationLogProps): ReactElement | null {
-  const now = useOperationClock(entries.some((entry) => entry.status === 'pending'));
+  // Automatic operations are summarized in the status bar; only manual actions earn a card.
+  const cardEntries = entries.filter((entry) => !entry.background);
+  const now = useOperationClock(cardEntries.some((entry) => entry.status === 'pending'));
 
+  // Expire every completed entry, including background ones the status bar shows briefly.
   useEffect(() => {
     const timers = entries
       .filter((entry) => entry.status !== 'pending')
@@ -56,7 +59,7 @@ export function OperationLog({
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [entries, onDismiss]);
 
-  if (entries.length === 0) {
+  if (cardEntries.length === 0) {
     return null;
   }
 
@@ -65,9 +68,9 @@ export function OperationLog({
       className="pointer-events-none fixed bottom-8 left-4 z-40 flex w-[340px] max-w-[calc(100vw-32px)] flex-col gap-2"
     >
       <span className="sr-only" role="status" aria-live="polite">
-        {entries[0] ? operationAnnouncement(entries[0]) : ''}
+        {cardEntries[0] ? operationAnnouncement(cardEntries[0]) : ''}
       </span>
-      {entries.slice(0, 5).map((entry) => (
+      {cardEntries.slice(0, 5).map((entry) => (
         <div
           key={entry.id}
           className="pointer-events-auto relative overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] p-3 shadow-2xl shadow-black/40"

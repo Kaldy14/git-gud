@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import {
   AlertCircle,
+  Ban,
   CheckCircle2,
   Download,
   FolderGit2,
   GitBranch,
+  GitPullRequest,
   Loader2,
   RefreshCw,
   UserCircle
@@ -17,6 +19,8 @@ import type {
   RepoTab
 } from '@shared/types';
 
+import type { BackgroundOperationStatus } from './backgroundOperationStatus';
+
 type StatusBarProps = {
   activeTab?: RepoTab;
   repositoryOverview?: GitRepositoryOverview;
@@ -26,6 +30,7 @@ type StatusBarProps = {
     label: string;
     phase: 'running' | 'refreshing';
   };
+  backgroundOperation?: BackgroundOperationStatus;
 };
 
 export function StatusBar({
@@ -33,7 +38,8 @@ export function StatusBar({
   repositoryOverview,
   isRepositoryLoading,
   isRepositoryRefreshing,
-  activeOperation
+  activeOperation,
+  backgroundOperation
 }: StatusBarProps): ReactElement {
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : isRepositoryLoading ? 'Loading Git data' : undefined;
   const statusLabel = repositoryOverview
@@ -89,7 +95,7 @@ export function StatusBar({
           onUpdate={() => void handleApplyUpdate()}
         />
       </span>
-      {activeOperation || isRepositoryRefreshing ? (
+      {activeOperation || (isRepositoryRefreshing && !backgroundOperation) ? (
         <span
           className="mx-3 flex min-w-0 items-center gap-1.5 text-[var(--text-2)]"
           role={activeOperation ? undefined : 'status'}
@@ -105,6 +111,8 @@ export function StatusBar({
               : 'Refreshing repository…'}
           </span>
         </span>
+      ) : backgroundOperation ? (
+        <BackgroundOperationIndicator operation={backgroundOperation} />
       ) : null}
       <span className="flex shrink-0 items-center gap-3">
         {branchLabel ? (
@@ -133,6 +141,73 @@ export function StatusBar({
       </span>
     </footer>
   );
+}
+
+export function BackgroundOperationIndicator({
+  operation
+}: {
+  operation: BackgroundOperationStatus;
+}): ReactElement {
+  const presentation = backgroundOperationPresentation(operation);
+  const isAlert = operation.status === 'error' || operation.status === 'conflict';
+
+  return (
+    <span
+      className={`mx-3 flex min-w-0 items-center gap-1.5 ${presentation.textClass}`}
+      data-background-operation-status={operation.status}
+      role={isAlert ? 'status' : undefined}
+      aria-live={isAlert ? 'polite' : undefined}
+      aria-atomic={isAlert ? 'true' : undefined}
+      title={operation.detail ? `${presentation.label}\n${operation.detail}` : presentation.label}
+    >
+      {presentation.icon}
+      <span className="truncate">{presentation.label}</span>
+    </span>
+  );
+}
+
+function backgroundOperationPresentation(operation: BackgroundOperationStatus): {
+  icon: ReactElement;
+  label: string;
+  textClass: string;
+} {
+  if (operation.status === 'pending') {
+    return {
+      icon: <Loader2 size={12} className="shrink-0 animate-spin text-[var(--accent-2)]" />,
+      label: `${operation.label}…`,
+      textClass: 'text-[var(--text-3)]'
+    };
+  }
+
+  if (operation.status === 'success') {
+    return {
+      icon: <CheckCircle2 size={12} className="shrink-0 text-[var(--success-text)]" />,
+      label: `${operation.label} complete`,
+      textClass: 'text-[var(--text-3)]'
+    };
+  }
+
+  if (operation.status === 'cancelled') {
+    return {
+      icon: <Ban size={12} className="shrink-0" />,
+      label: `${operation.label} cancelled`,
+      textClass: 'text-[var(--text-3)]'
+    };
+  }
+
+  if (operation.status === 'conflict') {
+    return {
+      icon: <GitPullRequest size={12} className="shrink-0" />,
+      label: `${operation.label} conflict`,
+      textClass: 'text-[var(--warning-text)]'
+    };
+  }
+
+  return {
+    icon: <AlertCircle size={12} className="shrink-0" />,
+    label: `${operation.label} failed`,
+    textClass: 'text-[var(--danger-text)]'
+  };
 }
 
 type ApplicationUpdateButtonProps = {

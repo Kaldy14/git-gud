@@ -28,6 +28,28 @@ describe('OperationLog', () => {
     expect(markup).toContain('bg-[var(--danger-text)]');
     expect(markup).toContain('bg-[var(--text-3)]');
   });
+
+  it('renders no card or announcement for background-only entries', () => {
+    const backgroundEntries = (['pending', 'success', 'error', 'cancelled'] as const).map((status) => ({
+      ...createEntry(status),
+      label: `Auto-fetch ${status}`,
+      background: true
+    }));
+
+    expect(renderOperationLog(backgroundEntries)).toBe('');
+  });
+
+  it('keeps foreground cards and announcements when background entries are mixed in', () => {
+    const markup = renderOperationLog([
+      { ...createEntry('pending'), id: 'auto', label: 'Auto-fetch', background: true },
+      { ...createEntry('error'), id: 'auto-error', label: 'Auto-fetch failed', background: true },
+      { ...createEntry('success'), label: 'Push main' }
+    ]);
+
+    expect(markup).toContain('Push main');
+    expect(markup).toContain('Push main: success');
+    expect(markup).not.toContain('Auto-fetch');
+  });
 });
 
 function createEntry(status: OperationLogEntry['status']): OperationLogEntry {

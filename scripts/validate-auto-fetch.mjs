@@ -60,6 +60,20 @@ async function subscribe() {
   })()`);
 }
 
+async function assertQuietBackgroundStatus(expectedStatus) {
+  const state = await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('div')].find((element) =>
+      ['fixed', 'bottom-8', 'left-4'].every((name) => element.classList.contains(name)));
+    const status = document.querySelector('footer [data-background-operation-status]');
+    return { status: status?.getAttribute('data-background-operation-status'),
+      footer: status?.innerText ?? '', cards: cards?.innerText ?? '' };
+  })()`);
+  assert.equal(state.status, expectedStatus, `Missing footer status ${expectedStatus}: ${state.footer}`);
+  assert.ok(state.footer.includes('Auto-fetch'), `Missing automatic action label: ${state.footer}`);
+  assert.ok(!state.cards.includes('Auto-fetch'), `Automatic action rendered a notification card: ${state.cards}`);
+  return state;
+}
+
 async function setIntervalMinutes(value) {
   await agent('find', 'role', 'button', 'click', '--name', 'Settings', '--exact');
   await agent('fill', 'input[type="number"][max="60"]', String(value));
@@ -165,6 +179,7 @@ try {
     return Math.round(performance.now() - start);
   })()`);
   assert.ok(readMs < 2000, `Repository reads blocked for ${readMs}ms.`);
+  await assertQuietBackgroundStatus('pending');
   await screenshot('slow-fetch-responsive');
   const stageMs = await evaluate(`(async () => {
     const button = [...document.querySelectorAll('button')].find((item) => (item.getAttribute('aria-label') || item.title) === 'Stage File README.md');
@@ -193,6 +208,8 @@ try {
   assert.equal(after.counts['repo:graph'], before.counts['repo:graph'], 'Unchanged fetch rebuilt history.');
   assert.equal(after.counts['repo:overview'], before.counts['repo:overview'], 'Unchanged fetch rescanned the worktree.');
   await control('/restore');
+  await assertQuietBackgroundStatus('success');
+  await screenshot('background-fetch-success');
   report.checks.push({ name: 'Minimized background fetch without history or status reload', pass: true, before: before.counts, after: after.counts });
   await setIntervalMinutes(0);
 
@@ -212,6 +229,7 @@ try {
   await waitFor(() => evaluate('document.body.innerText.includes("Remote update fetched in background")'));
   assert.equal(git(updated, 'rev-parse', 'origin/main').trim(), remoteHead);
   assert.equal(git(updated, 'status', '--porcelain').trim(), '');
+  await assertQuietBackgroundStatus('success');
   await screenshot('background-ref-update');
   report.checks.push({ name: 'Changed remote refs appear in history without touching working files', pass: true });
   await setIntervalMinutes(0);
@@ -225,6 +243,7 @@ try {
   await subscribe();
   await setIntervalMinutes(1);
   await waitFor(() => evaluate('window.__autoFetchEvents.some((event) => event.background && event.phase === "failed")'));
+  await assertQuietBackgroundStatus('error');
   await screenshot('offline-fetch-error');
   const failureCount = (await control()).progress.filter((event) => event.repoPath === offline && event.phase === 'failed').length;
   await delay(1200);
@@ -233,7 +252,12 @@ try {
   assert.equal(offlineStatus, 1);
   report.checks.push({ name: 'Unreachable remote keeps local work accessible and does not retry immediately', pass: true });
   await setIntervalMinutes(0);
+  await agent('press', 'Meta+Shift+f');
+  await waitFor(() => evaluate('Boolean(document.querySelector(\'button[aria-label="Dismiss Fetch"]\'))'));
+  await screenshot('manual-fetch-error-card');
+  report.checks.push({ name: 'Automatic progress, success, and failure stay in footer; manual fetch still gets a card', pass: true });
   report.console = await agent('console');
+  report.networkErrors = await agent('network', 'requests', '--status', '400-599');
   const errors = JSON.parse(await agent('--json', 'errors'));
   report.pageErrors = errors.data?.errors ?? [];
   assert.ok(errors.success && report.pageErrors.length === 0, `Unexpected page errors: ${JSON.stringify(errors)}`);

@@ -58,6 +58,7 @@ import { SettingsPanel } from '@renderer/components/settings/SettingsPanel';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { StartPage } from '@renderer/components/start/StartPage';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
+import { selectBackgroundOperationStatus } from '@renderer/components/statusbar/backgroundOperationStatus';
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
@@ -651,6 +652,24 @@ export function WorkspaceShell(): ReactElement {
             background: pendingOperationForActiveRepo.background
           }
         : undefined;
+  const activeForegroundRepositoryOperation =
+    activeTab && !activeRepositoryOperations[activeTab.path]?.background
+      ? activeRepositoryOperations[activeTab.path]
+      : undefined;
+  // Foreground work owns the status bar; automatic operations only fill it when it is idle.
+  const statusBarForegroundOperation: ActiveRepositoryOperation | undefined =
+    activeForegroundRepositoryOperation ??
+    (pendingForegroundOperationForActiveRepo
+      ? {
+          id: pendingForegroundOperationForActiveRepo.id,
+          repoPath: pendingForegroundOperationForActiveRepo.repoPath,
+          label: pendingForegroundOperationForActiveRepo.label,
+          phase: pendingForegroundOperationForActiveRepo.phase === 'refreshing' ? 'refreshing' : 'running'
+        }
+      : undefined);
+  const statusBarBackgroundOperation = statusBarForegroundOperation
+    ? undefined
+    : selectBackgroundOperationStatus(operationLogEntries, activeTab?.path);
   const checkoutTransition: CheckoutTransition | undefined = visibleActiveOperation?.checkout
     ? { ...visibleActiveOperation.checkout, phase: visibleActiveOperation.phase }
     : undefined;
@@ -3795,7 +3814,12 @@ export function WorkspaceShell(): ReactElement {
         activeOperation={
           isStartTabActive || gitHubWorkspaceView || checkoutTransition
             ? undefined
-            : visibleActiveOperation
+            : statusBarForegroundOperation
+        }
+        backgroundOperation={
+          isStartTabActive || gitHubWorkspaceView || checkoutTransition
+            ? undefined
+            : statusBarBackgroundOperation
         }
       /> : null}
       {import.meta.env.DEV && !isReviewBenchmarkOpen ? (
