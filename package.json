@@ -17,6 +17,7 @@
     "test:auto-fetch": "pnpm build && node scripts/validate-auto-fetch.mjs",
     "test:history-loading": "pnpm build && node scripts/validate-history-loading.mjs",
     "test:maintenance": "pnpm build && node scripts/validate-maintenance.mjs",
+    "test:repository-performance": "pnpm build && node scripts/validate-repository-performance.mjs",
     "benchmark:review": "vitest run --config vitest.benchmark.config.ts"
   },
   "dependencies": {

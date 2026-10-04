@@ -136,6 +136,53 @@ describe('repository details integration', () => {
     }
   });
 
+  it('preserves both sides of staged rename diffs with path-scoped status', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await git(repoPath, ['mv', 'ordinary.txt', 'renamed.txt']);
+
+      const diff = await loadFileDiff({ path: repoPath }, { kind: 'wip', path: 'renamed.txt', staged: true });
+      expect(diff.originalPath).toBe('ordinary.txt');
+      expect(diff.patch).toContain('rename from ordinary.txt');
+      expect(diff.patch).toContain('rename to renamed.txt');
+      expect(diff.stageablePatch).toContain('rename from ordinary.txt');
+
+      const plan = await loadReviewPlan({ path: repoPath }, { kind: 'wip', scope: 'staged' });
+      expect(plan.fileContexts).toEqual([expect.objectContaining({
+        path: 'renamed.txt',
+        originalPath: 'ordinary.txt',
+        oldContents: 'ordinary base\n',
+        newContents: 'ordinary base\n'
+      })]);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('loads fresh untracked changes and omits binary working files', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await writeRepoFile(repoPath, 'new.txt', 'first version\n');
+      const first = await loadFileDiff({ path: repoPath }, { kind: 'wip', path: 'new.txt', staged: false });
+      expect(first.patch).toContain('+first version');
+
+      await writeRepoFile(repoPath, 'new.txt', 'updated version\n');
+      const updated = await loadFileDiff({ path: repoPath }, { kind: 'wip', path: 'new.txt', staged: false });
+      expect(updated.patch).toContain('+updated version');
+      expect(updated.patch).not.toContain('+first version');
+
+      await writeRepoFile(repoPath, 'binary.dat', Buffer.from([0, 1, 2, 255]));
+      const binary = await loadFileDiff({ path: repoPath }, { kind: 'wip', path: 'binary.dat', staged: false });
+      expect(binary).toMatchObject({ patch: '', isBinary: true, omittedReason: 'binary' });
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('treats pathspec-magic filenames literally across stage, diff, and discard', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
 

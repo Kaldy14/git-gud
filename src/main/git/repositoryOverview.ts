@@ -13,6 +13,11 @@ import { loadLatestUndoEntry } from './undo';
 
 const inFlightGitReads = new Map<string, Promise<unknown>>();
 
+type StatusReadOptions = {
+  untrackedFiles?: 'all' | 'no';
+  aheadBehind?: boolean;
+};
+
 export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assignedProfileId'>): Promise<GitRepositoryOverview> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const [status, refs, remotes, worktrees, stashes] = await Promise.all([
@@ -48,11 +53,17 @@ export async function loadRepositoryOverview(tab: Pick<RepoTab, 'path' | 'assign
 export async function loadStatus(
   repoPath: string,
   env?: NodeJS.ProcessEnv,
-  paths: readonly string[] = []
+  paths: readonly string[] = [],
+  options: StatusReadOptions = {}
 ): Promise<GitRepositoryOverview['status']> {
   const pathCacheKey = paths.join('\0');
-  return coalesceGitRead(repoPath, `status:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}:${pathCacheKey}`, async () => {
-    const args = ['status', '--porcelain=v2', '--branch', '--untracked-files=all', '-z'];
+  const untrackedFiles = options.untrackedFiles ?? 'all';
+  const aheadBehind = options.aheadBehind ?? paths.length === 0;
+  return coalesceGitRead(repoPath, `status:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}:${pathCacheKey}:${untrackedFiles}:${aheadBehind}`, async () => {
+    const args = ['status', '--porcelain=v2', '--branch', `--untracked-files=${untrackedFiles}`, '-z'];
+
+    // File-level and review callers do not need a branch history walk.
+    if (!aheadBehind) args.push('--no-ahead-behind');
 
     if (paths.length > 0) {
       args.unshift('--literal-pathspecs');
@@ -64,12 +75,18 @@ export async function loadStatus(
   });
 }
 
-export async function loadRefs(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['refs']> {
-  return coalesceGitRead(repoPath, `refs:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
+export async function loadRefs(
+  repoPath: string,
+  env?: NodeJS.ProcessEnv,
+  options: { includeTracking?: boolean } = {}
+): Promise<GitRepositoryOverview['refs']> {
+  const includeTracking = options.includeTracking ?? true;
+  const trackingFormat = includeTracking ? '%(upstream:short)%00%(upstream:track)' : '%00';
+  return coalesceGitRead(repoPath, `refs:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}:${includeTracking}`, async () => {
     const result = await gitExecutor.run(
       [
         'for-each-ref',
-        '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(upstream:short)%00%(upstream:track)%00%(HEAD)%00%(creatordate:iso-strict)%00%(objecttype)%00%(*objectname)%00%(*objecttype)',
+        `--format=%(refname)%00%(refname:short)%00%(objectname)%00${trackingFormat}%00%(HEAD)%00%(creatordate:iso-strict)%00%(objecttype)%00%(*objectname)%00%(*objecttype)`,
         'refs/heads',
         'refs/remotes',
         'refs/tags'
@@ -82,27 +99,31 @@ export async function loadRefs(repoPath: string, env?: NodeJS.ProcessEnv): Promi
 }
 
 export async function loadRemotes(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['remotes']> {
-  const result = await gitExecutor.run(
-    ['config', '--null', '--get-regexp', '^remote\\..*\\.(url|pushurl)$'],
-    { cwd: repoPath, env, allowedExitCodes: [0, 1] }
-  );
-  return parseRemoteConfig(result.stdout);
+  return coalesceGitRead(repoPath, `remotes:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
+    const result = await gitExecutor.run(
+      ['config', '--null', '--get-regexp', '^remote\\..*\\.(url|pushurl)$'],
+      { cwd: repoPath, env, allowedExitCodes: [0, 1] }
+    );
+    return parseRemoteConfig(result.stdout);
+  });
 }
 
 export async function loadWorktrees(repoPath: string, env?: NodeJS.ProcessEnv): Promise<GitRepositoryOverview['worktrees']> {
-  const currentWorktreePath = await canonicalPath(repoPath);
+  return coalesceGitRead(repoPath, `worktrees:${repoPath}:${gitExecutor.getMutationGeneration(repoPath)}:${envCacheKey(env)}`, async () => {
+    const currentWorktreePath = await canonicalPath(repoPath);
 
-  try {
-    const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath, env });
-    return parseWorktreeList(result.stdout, currentWorktreePath);
-  } catch (error) {
-    if (!(error instanceof GitCommandError) || error.exitCode !== 129) {
-      throw error;
+    try {
+      const result = await gitExecutor.run(['worktree', 'list', '--porcelain', '-z'], { cwd: repoPath, env });
+      return parseWorktreeList(result.stdout, currentWorktreePath);
+    } catch (error) {
+      if (!(error instanceof GitCommandError) || error.exitCode !== 129) {
+        throw error;
+      }
+
+      const result = await gitExecutor.run(['worktree', 'list', '--porcelain'], { cwd: repoPath, env });
+      return parseWorktreeList(result.stdout, currentWorktreePath);
     }
-
-    const result = await gitExecutor.run(['worktree', 'list', '--porcelain'], { cwd: repoPath, env });
-    return parseWorktreeList(result.stdout, currentWorktreePath);
-  }
+  });
 }
 
 async function canonicalPath(path: string): Promise<string> {

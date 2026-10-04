@@ -45,6 +45,8 @@ describe('loadWorktrees', () => {
 });
 
 describe('loadStatus', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('scopes single-file status reads with a literal pathspec', async () => {
     const repoPath = '/repos/path-scoped-status';
     const run = vi
@@ -61,11 +63,27 @@ describe('loadStatus', () => {
         '--branch',
         '--untracked-files=all',
         '-z',
+        '--no-ahead-behind',
         '--',
         ':(top)**'
       ],
       { cwd: repoPath, env: undefined }
     );
+  });
+
+  it('keeps branch divergence counts in full repository status reads', async () => {
+    const repoPath = '/repos/full-status';
+    const run = vi.spyOn(gitExecutor, 'run').mockResolvedValue(
+      createGitResult(repoPath, [], '# branch.head main\0# branch.ab +5 -2\0')
+    );
+
+    try {
+      const status = await loadStatus(repoPath);
+      expect(status.branch).toMatchObject({ ahead: 5, behind: 2 });
+      expect(run.mock.calls[0]?.[0]).not.toContain('--no-ahead-behind');
+    } finally {
+      run.mockRestore();
+    }
   });
 
   it('does not coalesce a transaction read with an external read queued behind it', async () => {

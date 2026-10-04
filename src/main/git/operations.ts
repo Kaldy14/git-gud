@@ -59,7 +59,7 @@ export async function fetchRepository(tab: OperationTab, options: { background?:
     ...createProfileCommandEnv(tab.assignedProfileId),
     ...(background ? { GIT_TERMINAL_PROMPT: '0' } : {})
   };
-  const refsBefore = background ? await fetchRefSnapshot(tab.path, env) : undefined;
+  const refsBefore = await fetchRefSnapshot(tab.path, env);
   await gitExecutor.run([
     'fetch', '--prune', '--all',
     ...(background ? ['--no-auto-gc', '--no-write-fetch-head', '--no-write-commit-graph', '--no-recurse-submodules'] : [])
@@ -71,7 +71,7 @@ export async function fetchRepository(tab: OperationTab, options: { background?:
     timeoutMs: background ? 60_000 : NETWORK_GIT_TIMEOUT_MS
   });
   const result = await createOperationResult(tab, env, 'fetch', gitCommandLabel('fetch'));
-  if (background && refsBefore === await fetchRefSnapshot(tab.path, env)) {
+  if (refsBefore === await fetchRefSnapshot(tab.path, env)) {
     result.invalidates = [];
   }
   return result;

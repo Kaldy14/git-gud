@@ -40,8 +40,10 @@ export async function loadCommitGraph(
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
   const [logCommits, refs, status, stashes, worktrees, remotes] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env),
-    loadRefs(tab.path, env),
-    loadStatus(tab.path, env),
+    // Graph chips and WIP nodes need ref tips and file state, not the sidebar's
+    // ahead/behind counts for every old branch and linked worktree.
+    loadRefs(tab.path, env, { includeTracking: false }),
+    loadStatus(tab.path, env, [], { aheadBehind: false }),
     loadStashes(tab.path, env),
     loadWorktrees(tab.path, env),
     loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([])
@@ -205,7 +207,7 @@ async function loadLinkedWorktreeStatus(
   env: NodeJS.ProcessEnv | undefined
 ): Promise<GitStatusSummary | undefined> {
   try {
-    return await loadStatus(worktreePath, env);
+    return await loadStatus(worktreePath, env, [], { aheadBehind: false });
   } catch {
     return undefined;
   }

@@ -109,6 +109,24 @@ describe('RepoWatcherRegistry mutation suppression', () => {
     await registry.closeAll();
   });
 
+  it('ignores fetch bookkeeping while preserving changes to real refs, including refs named FETCH_HEAD', async () => {
+    const { events, registry } = createRegistry();
+
+    mocks.nativeCallbacks.get('/repo/.git')?.('change', 'FETCH_HEAD');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events).toEqual([]);
+
+    mocks.nativeCallbacks.get('/repo/.git/refs')?.('change', 'heads/FETCH_HEAD');
+    mocks.nativeCallbacks.get('/repo/.git/refs')?.('change', 'remotes/origin/main');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.paths).toEqual([
+      '/repo/.git/refs/heads/FETCH_HEAD',
+      '/repo/.git/refs/remotes/origin/main'
+    ]);
+    await registry.closeAll();
+  });
+
   it('shares physical watches across tabs and linked worktrees', async () => {
     const registry = new RepoWatcherRegistry(() => {});
     const repositories = [repository, ...['second', 'third'].map((name) => ({

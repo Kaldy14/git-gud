@@ -473,6 +473,10 @@ function shouldIgnoreWatchPath(target: WatchTarget, candidatePath: string): bool
   // Lock files are transient; the final index/ref/config rename supplies the change.
   if (candidatePath.endsWith('.lock')) return true;
 
+  // Fetch rewrites this bookkeeping file even when no refs change. Actual ref
+  // updates are watched separately; Git Gud does not display FETCH_HEAD.
+  if (target.depth === 0 && candidatePath === join(target.path, 'FETCH_HEAD')) return true;
+
   return candidatePath
     .split(/[\\/]/)
     .some((part) => part === 'objects' || part === 'hooks' || part === 'modules');

@@ -237,7 +237,10 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
     };
   }
 
-  const status = await loadStatus(tab.path, env);
+  const status = await loadStatus(tab.path, env, [], {
+    untrackedFiles: target.scope === 'staged' ? 'no' : 'all',
+    aheadBehind: false
+  });
   const requests = status.files.flatMap((file) => {
     const sources: Array<{ staged: boolean; source: ReviewPatchInput['source'] }> = [];
 
@@ -255,7 +258,7 @@ export async function loadReviewPlan(tab: DetailTab, target: GitReviewTarget): P
     requests,
     6,
     async ({ file, staged, source }): Promise<ReviewPatchInput> => {
-      const diff = await loadFileDiff(tab, { kind: 'wip', path: file.path, staged });
+      const diff = await loadWipFileDiff(tab.path, { kind: 'wip', path: file.path, staged }, env, file);
       const fileContext = diff.omittedReason
         ? undefined
         : await loadWipReviewFileContext(tab.path, file, staged, env);
@@ -398,7 +401,7 @@ export async function stageFile(tab: DetailTab, path: string): Promise<GitOperat
 export async function unstageFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
   assertSafeRelativePath(path);
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const status = await loadMutationPathStatus(tab.path, path, env);
+  const status = await loadPathStatus(tab.path, path, env);
   const statusFile = status.files.find((file) => file.path === path);
   const pathspec = createDiffPathspec(path, statusFile?.originalPath);
 
@@ -422,7 +425,7 @@ export async function unstageFile(tab: DetailTab, path: string): Promise<GitOper
 export async function discardFile(tab: DetailTab, path: string): Promise<GitOperationResult> {
   assertSafeRelativePath(path);
   const env = createProfileCommandEnv(tab.assignedProfileId);
-  const status = await loadMutationPathStatus(tab.path, path, env);
+  const status = await loadPathStatus(tab.path, path, env);
   const statusFile = status.files.find((file) => file.path === path);
 
   if (!statusFile || statusFile.status === 'ignored') {
@@ -629,7 +632,9 @@ async function resolveCommitSelection(
   }
 
   const oldestParentSha = oldest.parentShas[0];
-  const revListArgs = ['rev-list', '--first-parent', newest.sha];
+  // One extra commit proves the selection is sparse; older history cannot
+  // change that verdict and can be very large in long-lived repositories.
+  const revListArgs = ['rev-list', '--first-parent', `--max-count=${canonicalShas.length + 1}`, newest.sha];
 
   if (oldestParentSha) {
     revListArgs.push(`^${oldestParentSha}`);
@@ -1069,11 +1074,13 @@ function findSelectionFile(
 async function loadWipFileDiff(
   repoPath: string,
   request: Extract<GitFileDiffRequest, { kind: 'wip' }>,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  knownStatusFile?: GitFileChange
 ): Promise<GitFileDiff> {
   assertSafeRelativePath(request.path);
-  const status = await loadStatus(repoPath, env);
-  const statusFile = status.files.find((file) => file.path === request.path);
+  // Review loading already has a fresh status snapshot for every selected file.
+  const statusFile = knownStatusFile ?? (await loadPathStatus(repoPath, request.path, env))
+    .files.find((file) => file.path === request.path);
   const originalPath = statusFile?.originalPath;
   assertDiffPathsAreSafe(request.path, originalPath);
   const mode = request.staged ? 'wip-staged' : 'wip-unstaged';
@@ -1468,7 +1475,7 @@ async function hasHead(repoPath: string): Promise<boolean> {
   }
 }
 
-async function loadMutationPathStatus(
+async function loadPathStatus(
   repoPath: string,
   path: string,
   env: NodeJS.ProcessEnv | undefined
@@ -1483,6 +1490,8 @@ async function loadMutationPathStatus(
     return scopedStatus;
   }
 
+  // A single path can hide the other side of a staged rename. Only additions
+  // and deletions need the repository-wide fallback to recover that pairing.
   const fullStatus = await loadStatus(repoPath, env);
   return fullStatus.files.some(
     (file) => file.path === path && file.originalPath

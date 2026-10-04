@@ -100,6 +100,26 @@ describe('git operations', () => {
     }
   });
 
+  it.each(['remotes/origin', 'sync/origin'])('skips a redundant manual refresh when refs/%s have not changed', async (namespace) => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-manual-fetch-'));
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const remotePath = join(rootPath, 'remote.git');
+      await git(rootPath, ['clone', '--bare', repoPath, remotePath]);
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['config', 'remote.origin.fetch', `+refs/heads/*:refs/${namespace}/*`]);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      expect((await fetchRepository(tab)).invalidates).toContain('graph');
+      const unchanged = await fetchRepository(tab);
+      expect(unchanged.operation?.status).toBe('completed');
+      expect(unchanged.invalidates).toEqual([]);
+      expect(await readFile(join(repoPath, '.git', 'FETCH_HEAD'), 'utf8')).toContain('branch');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('adds, fetches, edits, renames, and removes a configured remote', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 
