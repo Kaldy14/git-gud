@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import type {
+  CommitGraphAvatarCandidate,
   CommitGraphPage,
   GitAgentNote,
   GitCommitDetail,
@@ -19,6 +20,12 @@ import type {
   RepoChangedEvent
 } from '@shared/types';
 
+import {
+  commitGraphAvatarCandidates,
+  commitGraphAvatarSignature,
+  mergeCommitGraphAvatarUrls
+} from './commitGraphPaging';
+
 const immutableGitObjectStaleTime = Number.POSITIVE_INFINITY;
 
 export const repositoryOverviewQueryKey = (repoPath: string): readonly ['repository-overview', string] => [
@@ -31,6 +38,11 @@ const commitGraphQueryKey = (repoPath: string, limit: number): readonly ['commit
   repoPath,
   limit
 ];
+
+const commitGraphAvatarsQueryKey = (
+  repoPath: string,
+  signature: string
+): readonly ['commit-graph-avatars', string, string] => ['commit-graph-avatars', repoPath, signature];
 
 const commitDetailQueryKey = (repoPath: string, sha: string): readonly ['commit-detail', string, string] => [
   'commit-detail',
@@ -100,10 +112,19 @@ export function useRepositoryOverview(repoPath: string | undefined) {
 
 export function useCommitGraph(
   repoPath: string | undefined,
-  limit: number,
-  relatedRepoPaths: readonly string[] = []
+  requestedLimit: number,
+  relatedRepoPaths: readonly string[] = [],
+  { remoteAvatars = false }: { remoteAvatars?: boolean } = {}
 ) {
   const queryClient = useQueryClient();
+  // Reuse the largest page already cached for this repository, so switching back
+  // after a limit reset does not fall back to a cold first page.
+  const limit = repoPath ? resolveCommitGraphLimit(queryClient, repoPath, requestedLimit) : requestedLimit;
+  const avatarUrls = repoPath && remoteAvatars ? cachedCommitGraphAvatarUrls(queryClient, repoPath) : undefined;
+  const selectGraph = useCallback(
+    (page: CommitGraphPage) => mergeCommitGraphAvatarUrls(page, avatarUrls),
+    [avatarUrls]
+  );
   const query = useQuery({
     queryKey: repoPath ? commitGraphQueryKey(repoPath, limit) : ['commit-graph', 'none', limit],
     queryFn: async (): Promise<CommitGraphPage> => {
@@ -116,9 +137,19 @@ export function useCommitGraph(
     enabled: Boolean(repoPath),
     retry: shouldRetryRepositoryQuery,
     staleTime: 1500,
+    select: selectGraph,
     placeholderData: (previousData) =>
       repoPath ? placeholderGraphForRepository(previousData, repoPath, relatedRepoPaths) : undefined
   });
+  const avatarCandidates = useMemo(
+    () => (query.data && query.data.repoPath === repoPath ? commitGraphAvatarCandidates(query.data.rows) : []),
+    [query.data, repoPath]
+  );
+
+  useCommitGraphAvatarUrls(
+    repoPath && remoteAvatars && !repoPath.startsWith('github://') ? repoPath : undefined,
+    avatarCandidates
+  );
 
   useEffect(() => {
     const loadedLimit = query.data?.limit;
@@ -133,6 +164,80 @@ export function useCommitGraph(
   }, [limit, query.data?.limit, query.isPlaceholderData, queryClient, repoPath]);
 
   return query;
+}
+
+function useCommitGraphAvatarUrls(
+  repoPath: string | undefined,
+  candidates: readonly CommitGraphAvatarCandidate[]
+): void {
+  const queryClient = useQueryClient();
+  const signature = commitGraphAvatarSignature(candidates);
+
+  useQuery({
+    queryKey: repoPath ? commitGraphAvatarsQueryKey(repoPath, signature) : ['commit-graph-avatars', 'none', ''],
+    queryFn: async (): Promise<Record<string, string>> => {
+      if (!repoPath) {
+        throw new Error('Repository path is required.');
+      }
+
+      const avatarUrls = await window.api.getCommitGraphAvatarUrls(repoPath, [...candidates]);
+      // Keep authors resolved by earlier pages when a later request returns a subset.
+      return { ...cachedCommitGraphAvatarUrls(queryClient, repoPath), ...avatarUrls };
+    },
+    enabled: Boolean(repoPath) && candidates.length > 0,
+    retry: false,
+    staleTime: 60_000
+  });
+}
+
+/** Latest avatar map for a repository, independent of which author set requested it. */
+export function cachedCommitGraphAvatarUrls(
+  queryClient: QueryClient,
+  repoPath: string
+): Record<string, string> | undefined {
+  let latest: { data: Record<string, string>; updatedAt: number } | undefined;
+
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: ['commit-graph-avatars', repoPath] })) {
+    const data = query.state.data as Record<string, string> | undefined;
+
+    if (data && (!latest || query.state.dataUpdatedAt > latest.updatedAt)) {
+      latest = { data, updatedAt: query.state.dataUpdatedAt };
+    }
+  }
+
+  return latest?.data;
+}
+
+/** The requested limit, raised to the largest page already cached for the repository. */
+export function resolveCommitGraphLimit(queryClient: QueryClient, repoPath: string, requestedLimit: number): number {
+  let limit = requestedLimit;
+
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: ['commit-graph', repoPath] })) {
+    const cachedLimit = query.queryKey[2];
+
+    if (typeof cachedLimit === 'number' && cachedLimit > limit && query.state.data !== undefined) {
+      limit = cachedLimit;
+    }
+  }
+
+  return limit;
+}
+
+/**
+ * Loads the next page into the cache without switching the visible query, so the
+ * current rows, selection, and scroll position stay intact until it succeeds.
+ */
+export function fetchCommitGraphPage(
+  queryClient: QueryClient,
+  repoPath: string,
+  limit: number
+): Promise<CommitGraphPage> {
+  return queryClient.fetchQuery({
+    queryKey: commitGraphQueryKey(repoPath, limit),
+    queryFn: () => window.api.getCommitGraph(repoPath, limit),
+    retry: false,
+    staleTime: 1500
+  });
 }
 
 export function shouldRetryRepositoryQuery(failureCount: number, error: unknown): boolean {
@@ -197,8 +302,10 @@ export async function prepareLinkedWorktreeGraphTransition(
 export async function prepareRepositoryForProfileTransition(
   queryClient: QueryClient,
   repoPath: string,
-  graphLimit: number
+  requestedGraphLimit: number
 ): Promise<void> {
+  const graphLimit = resolveCommitGraphLimit(queryClient, repoPath, requestedGraphLimit);
+
   await Promise.all([
     queryClient.fetchQuery({
       queryKey: repositoryOverviewQueryKey(repoPath),

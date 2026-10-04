@@ -143,7 +143,7 @@ export function SettingsPanel({
           <section className="space-y-3 border-b border-[var(--border)] py-4">
             <SettingHeading icon={<GitGraph size={15} />} label="Graph" />
             <label className="block text-xs text-[var(--text-2)]">
-              <span className="mb-1.5 block font-semibold text-[var(--text-1)]">Initial commit rows</span>
+              <span className="mb-1.5 block font-semibold text-[var(--text-1)]">History page size</span>
               <input
                 className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
                 type="number"
@@ -159,7 +159,7 @@ export function SettingsPanel({
                 }
               />
               <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
-                Load more remains available after the initial page.
+                Show 50 commits first, then load older commits as you scroll.
               </span>
             </label>
             <label className="flex items-start gap-2 py-1 text-xs text-[var(--text-2)]">

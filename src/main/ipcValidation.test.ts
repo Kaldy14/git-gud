@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { validateIpcArgs } from './ipcValidation';
 
 describe('IPC argument validation', () => {
+  it('validates bounded commit avatar candidates', () => {
+    const candidate = { sha: 'a'.repeat(40), email: 'author@example.test', hasRemoteRef: false };
+    expect(validateIpcArgs('repo:graph-avatars', ['/repo', [candidate]])).toEqual(['/repo', [candidate]]);
+    expect(validateIpcArgs('repo:graph-avatars', ['/repo', []])).toEqual(['/repo', []]);
+    expect(() => validateIpcArgs('repo:graph-avatars', ['/repo', [{ ...candidate, sha: 'HEAD' }]])).toThrow('full Git object ID');
+    expect(() => validateIpcArgs('repo:graph-avatars', ['/repo', [{ ...candidate, hasRemoteRef: 'true' }]])).toThrow('boolean');
+    expect(() => validateIpcArgs('repo:graph-avatars', ['/repo', Array(12001).fill(candidate)])).toThrow('at most 12000');
+  });
+
   it('accepts valid typed command payloads', () => {
     expect(validateIpcArgs('app:pull-request-deep-links-ready', [])).toEqual([]);
     expect(validateIpcArgs('updates:get-state', [])).toEqual([]);

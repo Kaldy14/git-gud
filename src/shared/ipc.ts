@@ -4,6 +4,7 @@ import type {
   AppSettings,
   AppSettingsInput,
   CodexAgentNotesSkillState,
+  CommitGraphAvatarCandidate,
   CommitGraphPage,
   DashboardActionAlertState,
   DashboardInput,
@@ -197,6 +198,10 @@ export type IpcChannelMap = {
   'repo:graph': {
     args: [repoPath: string, limit?: number];
     result: CommitGraphPage;
+  };
+  'repo:graph-avatars': {
+    args: [repoPath: string, candidates: CommitGraphAvatarCandidate[]];
+    result: Record<string, string>;
   };
   'repo:commit-detail': {
     args: [repoPath: string, sha: string];
@@ -642,6 +647,7 @@ export type RendererApi = {
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
   getRepositoryIcon: (repoPath: string) => Promise<string | undefined>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
+  getCommitGraphAvatarUrls: (repoPath: string, candidates: CommitGraphAvatarCandidate[]) => Promise<Record<string, string>>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;
   getWipDetail: (repoPath: string) => Promise<GitWipDetail>;

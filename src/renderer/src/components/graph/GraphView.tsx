@@ -50,6 +50,7 @@ import {
   type GraphBranchCheckoutLocation
 } from '@renderer/components/graph/graphRowPresentation';
 import { WipStatusCounts } from '@renderer/components/graph/WipStatusCounts';
+import { isNearGraphBottom } from '@renderer/components/graph/graphLoadMore';
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
 import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
 import { CreateSuggestedTagMenuItem } from '@renderer/components/operations/CreateSuggestedTagMenuItem';
@@ -142,6 +143,8 @@ type GraphViewProps = {
   repairPrompt?: string;
   onRetry?: () => void;
   hasMore: boolean;
+  isLoadingMore?: boolean;
+  loadMoreErrorMessage?: string;
   onSelectRow: (sha: string) => void;
   onBulkSelectionChange: (shas: string[]) => void;
   onLoadMore: () => void;
@@ -248,6 +251,8 @@ export function GraphView({
   repairPrompt,
   onRetry,
   hasMore,
+  isLoadingMore = false,
+  loadMoreErrorMessage,
   onSelectRow,
   onBulkSelectionChange,
   onLoadMore,
@@ -361,6 +366,22 @@ export function GraphView({
     overscan: largeRepoMode ? 8 : 24
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
+  const canAutoLoadMore =
+    hasMore && !isLoadingMore && !loadMoreErrorMessage && !isLoading && !repairPrompt && rows.length > 0;
+  const loadMoreRef = useRef(onLoadMore);
+
+  useEffect(() => {
+    loadMoreRef.current = onLoadMore;
+  }, [onLoadMore]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+
+    // Scroll events cannot fire when a short first page does not fill the viewport.
+    if (element && canAutoLoadMore && element.scrollHeight <= element.clientHeight) {
+      loadMoreRef.current();
+    }
+  }, [canAutoLoadMore, rows.length]);
   const selectedRowIsMounted = virtualRows.some(
     (virtualRow) => rows[virtualRow.index]?.sha === selectedSha
   );
@@ -704,6 +725,14 @@ export function GraphView({
 
   function handleListScroll(event: ReactUIEvent<HTMLDivElement>): void {
     setFirstVisibleRowIndex(Math.min(rows.length - 1, Math.max(0, Math.floor(event.currentTarget.scrollTop / ROW_HEIGHT))));
+    loadMoreNearBottom(event.currentTarget);
+  }
+
+  function loadMoreNearBottom(element: HTMLElement): void {
+    // A failed page waits for the manual retry so scrolling cannot loop on the same error.
+    if (canAutoLoadMore && isNearGraphBottom(element, ROW_HEIGHT)) {
+      onLoadMore();
+    }
   }
 
   function handleColumnResizeStart(event: ReactPointerEvent<HTMLDivElement>, column: ResizableGraphColumn): void {
@@ -865,7 +894,7 @@ export function GraphView({
         role="listbox"
         aria-label="Commit history"
         aria-multiselectable="true"
-        aria-busy={isLoading || isFetching}
+        aria-busy={isLoading || isFetching || isLoadingMore}
         aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
         onScroll={handleListScroll}
@@ -933,9 +962,18 @@ export function GraphView({
             </div>
             {hasMore ? (
               <div className="flex items-center justify-center gap-3 border-t border-[var(--border)] px-3 py-3">
-                <button className="btn-primary h-8 text-xs" type="button" onClick={onLoadMore} disabled={isFetching}>
-                  <RefreshCw size={13} />
-                  <span>{isFetching ? 'Loading more…' : 'Load more'}</span>
+                {loadMoreErrorMessage ? (
+                  <span
+                    className="flex min-w-0 items-center gap-1 text-[11px] text-[var(--danger-text)]"
+                    title={loadMoreErrorMessage}
+                  >
+                    <AlertCircle size={12} className="shrink-0" />
+                    <span className="truncate">Couldn’t load older commits</span>
+                  </span>
+                ) : null}
+                <button className="btn-primary h-8 text-xs" type="button" onClick={onLoadMore} disabled={isLoadingMore}>
+                  <RefreshCw size={13} className={isLoadingMore ? 'animate-spin' : undefined} />
+                  <span>{isLoadingMore ? 'Loading more…' : loadMoreErrorMessage ? 'Retry' : 'Load more'}</span>
                 </button>
                 <span className="text-[11px] text-[var(--text-3)]">{rows.length.toLocaleString()} rows loaded</span>
               </div>

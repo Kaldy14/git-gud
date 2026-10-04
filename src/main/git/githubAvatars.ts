@@ -158,6 +158,24 @@ export async function loadGitHubCommitAuthorAvatars(
   return avatarUrls;
 }
 
+// History can use known avatars immediately without making network requests.
+export function getCachedGitHubCommitAuthorAvatars(
+  repository: GitHubRepositoryLocator,
+  emails: readonly (string | undefined)[],
+  env?: NodeJS.ProcessEnv
+): Map<string, string> {
+  const avatarUrls = new Map<string, string>();
+
+  for (const value of emails) {
+    const email = normalizeEmail(value);
+    if (!email || avatarUrls.has(email)) continue;
+    const cached = readAvatarCache(avatarCacheKey(repository, email, env));
+    if (cached?.url) avatarUrls.set(email, cached.url);
+  }
+
+  return avatarUrls;
+}
+
 function parseGitHubRemoteUrl(
   remoteUrl: string,
   allowedHosts: ReadonlySet<string>

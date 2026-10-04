@@ -2,15 +2,18 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 import { repositoryUnavailableErrorMessage } from '@shared/repositoryAvailability';
-import type { RepoChangedEvent } from '@shared/types';
+import type { CommitGraphPage, RepoChangedEvent } from '@shared/types';
 
 import {
+  cachedCommitGraphAvatarUrls,
   clearRepositoryQueries,
+  fetchCommitGraphPage,
   invalidateRepositoryQueries,
   placeholderGraphForRepository,
   prepareLinkedWorktreeGraphTransition,
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
+  resolveCommitGraphLimit,
   scopesForRepositoryChange,
   shouldRetryRepositoryQuery,
   shouldPruneLowerGraphQueries
@@ -176,6 +179,113 @@ describe('graph cache pruning', () => {
   });
 });
 
+describe('graph cache selection', () => {
+  it('reopens a repository from its largest cached page after the limit resets', () => {
+    const queryClient = new QueryClient();
+    const cached = graphPage('/repo', 1500);
+    const queryFn = vi.fn();
+    queryClient.setQueryData(['commit-graph', '/repo', 1500], cached);
+    queryClient.setQueryData(['commit-graph', '/other', 3000], graphPage('/other', 3000));
+    // A larger page that was requested but never resolved must not be selected.
+    queryClient.getQueryCache().build(queryClient, { queryKey: ['commit-graph', '/repo', 4500] });
+
+    const limit = resolveCommitGraphLimit(queryClient, '/repo', 50);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ['commit-graph', '/repo', limit],
+      queryFn,
+      staleTime: 1500
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    expect(limit).toBe(1500);
+    expect(observer.getCurrentResult().isLoading).toBe(false);
+    expect(observer.getCurrentResult().data).toBe(cached);
+    expect(queryFn).not.toHaveBeenCalled();
+    expect(resolveCommitGraphLimit(queryClient, '/repo', 6000)).toBe(6000);
+    expect(resolveCommitGraphLimit(queryClient, '/new', 50)).toBe(50);
+    unsubscribe();
+    queryClient.clear();
+  });
+
+  it('never shows an unrelated repository while a cold repository loads', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['commit-graph', '/other', 1500], graphPage('/other', 1500));
+    let finishLoad: (page: CommitGraphPage) => void = () => {};
+    const placeholderData = (previous: CommitGraphPage | undefined) =>
+      placeholderGraphForRepository(previous, '/repo', ['/repo']);
+    const observer = new QueryObserver<CommitGraphPage, Error, CommitGraphPage, CommitGraphPage, readonly unknown[]>(queryClient, {
+      queryKey: ['commit-graph', '/other', 1500],
+      queryFn: () => graphPage('/other', 1500),
+      staleTime: 1500,
+      placeholderData
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    observer.setOptions({
+      queryKey: ['commit-graph', '/repo', resolveCommitGraphLimit(queryClient, '/repo', 50)],
+      queryFn: () => new Promise<CommitGraphPage>((resolve) => { finishLoad = resolve; }),
+      staleTime: 1500,
+      placeholderData
+    });
+
+    expect(observer.getCurrentResult().data).toBeUndefined();
+    expect(observer.getCurrentResult().isLoading).toBe(true);
+    finishLoad(graphPage('/repo', 50));
+    await vi.waitFor(() => expect(observer.getCurrentResult().data?.repoPath).toBe('/repo'));
+    unsubscribe();
+    queryClient.clear();
+  });
+
+  it('caches a successful next page without replacing the visible page', async () => {
+    const queryClient = new QueryClient();
+    const visible = graphPage('/repo', 50);
+    const next = graphPage('/repo', 1500);
+    const getCommitGraph = vi.fn(async () => next);
+    vi.stubGlobal('window', { api: { getCommitGraph } });
+    queryClient.setQueryData(['commit-graph', '/repo', 50], visible);
+
+    await expect(fetchCommitGraphPage(queryClient, '/repo', 1500)).resolves.toBe(next);
+
+    expect(getCommitGraph).toHaveBeenCalledWith('/repo', 1500);
+    expect(queryClient.getQueryData(['commit-graph', '/repo', 50])).toBe(visible);
+    expect(resolveCommitGraphLimit(queryClient, '/repo', 50)).toBe(1500);
+    queryClient.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('reports a failed next page once and keeps the current limit selected', async () => {
+    const queryClient = new QueryClient();
+    const getCommitGraph = vi.fn(async () => {
+      throw new Error('git log failed');
+    });
+    vi.stubGlobal('window', { api: { getCommitGraph } });
+    queryClient.setQueryData(['commit-graph', '/repo', 50], graphPage('/repo', 50));
+
+    await expect(fetchCommitGraphPage(queryClient, '/repo', 1500)).rejects.toThrow('git log failed');
+
+    expect(getCommitGraph).toHaveBeenCalledTimes(1);
+    expect(resolveCommitGraphLimit(queryClient, '/repo', 50)).toBe(50);
+    queryClient.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('shares the newest avatar map per repository and clears it with the repository', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['commit-graph-avatars', '/repo', 'a@example.com'], { 'a@example.com': 'old' });
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(10);
+    const latest = { 'a@example.com': 'new', 'b@example.com': 'b' };
+    queryClient.setQueryData(['commit-graph-avatars', '/repo', 'a@example.com\nb@example.com'], latest);
+    vi.useRealTimers();
+    queryClient.setQueryData(['commit-graph-avatars', '/other', 'c@example.com'], { 'c@example.com': 'c' });
+
+    expect(cachedCommitGraphAvatarUrls(queryClient, '/repo')).toBe(latest);
+    clearRepositoryQueries(queryClient, '/repo');
+    expect(cachedCommitGraphAvatarUrls(queryClient, '/repo')).toBeUndefined();
+    expect(cachedCommitGraphAvatarUrls(queryClient, '/other')).toEqual({ 'c@example.com': 'c' });
+    queryClient.clear();
+  });
+});
+
 describe('repository query invalidation', () => {
   it.each([false, true])('loads fresh refs when a background fetch overlaps history (cached: %s)', async (cached) => {
     const queryClient = new QueryClient();
@@ -275,6 +385,21 @@ describe('repository query invalidation', () => {
     queryClient.clear();
   });
 
+  it('reuses a larger warm graph when a profile transition requests the first page', async () => {
+    const queryClient = new QueryClient();
+    const getCommitGraph = vi.fn();
+    vi.stubGlobal('window', {
+      api: { getRepositoryOverview: vi.fn(async () => ({ repoPath: '/repo' })), getCommitGraph }
+    });
+    queryClient.setQueryData(['commit-graph', '/repo', 3000], graphPage('/repo', 3000));
+
+    await prepareRepositoryForProfileTransition(queryClient, '/repo', 50);
+
+    expect(getCommitGraph).not.toHaveBeenCalled();
+    queryClient.clear();
+    vi.unstubAllGlobals();
+  });
+
   it('refreshes profile-sensitive overview data while reusing a warm graph', async () => {
     const queryClient = new QueryClient();
     const getRepositoryOverview = vi.fn(async () => ({ repoPath: '/repo' }));
@@ -321,5 +446,17 @@ function graphRow(sha: string, path: string, current: boolean) {
       current
     },
     files: []
+  };
+}
+
+function graphPage(repoPath: string, limit: number): CommitGraphPage {
+  return {
+    repoPath,
+    loadedAt: '2026-10-04T10:00:00.000Z',
+    limit,
+    loadedCommitCount: limit,
+    hasMore: true,
+    nextLimit: limit + 1500,
+    rows: []
   };
 }

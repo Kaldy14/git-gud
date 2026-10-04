@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { findGitHubRepository, loadGitHubCommitAuthorAvatars } from './githubAvatars';
+import { findGitHubRepository, getCachedGitHubCommitAuthorAvatars, loadGitHubCommitAuthorAvatars } from './githubAvatars';
 
 describe('findGitHubRepository', () => {
   it('prefers the origin GitHub remote and supports HTTPS and SCP-style URLs', () => {
@@ -38,6 +38,18 @@ describe('findGitHubRepository', () => {
 });
 
 describe('loadGitHubCommitAuthorAvatars', () => {
+  it('reads cached avatars without a request and isolates profile credentials', async () => {
+    const repository = { host: 'github.test-cache-read.example', owner: 'acme', name: 'widgets' };
+    const env = { GH_CONFIG_DIR: '/test/profile-one' };
+    const email = 'cached@example.test';
+    const url = 'https://avatars.githubusercontent.com/u/42';
+    expect(getCachedGitHubCommitAuthorAvatars(repository, [email], env).size).toBe(0);
+    await loadGitHubCommitAuthorAvatars(repository, [{ sha: 'a'.repeat(40), email, hasRemoteRef: false }], env,
+      async () => ({ data: { repository: { avatar0: { author: { user: { avatarUrl: url } } } } } }));
+    expect(getCachedGitHubCommitAuthorAvatars(repository, [' Cached@example.test ', undefined], env)).toEqual(new Map([[email, url]]));
+    expect(getCachedGitHubCommitAuthorAvatars(repository, [email], { GH_CONFIG_DIR: '/test/profile-two' }).size).toBe(0);
+  });
+
   it('resolves one representative commit per author and prioritizes remote branch tips', async () => {
     const runGraphql = vi.fn(async ({ query }: { query: string }) => {
       expect(query.indexOf('2222222222222222222222222222222222222222')).toBeLessThan(

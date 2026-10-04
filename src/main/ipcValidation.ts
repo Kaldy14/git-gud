@@ -13,6 +13,7 @@ import {
 } from '@shared/externalApplications';
 import type {
   AppSettingsInput,
+  CommitGraphAvatarCandidate,
   DashboardInput,
   GitCheckoutTarget,
   GitCommitInput,
@@ -104,6 +105,7 @@ const validators = {
   'repo:overview': (args) => readOnlyArg(args, 'repo:overview', 'repoPath', readString),
   'repo:icon': (args) => readOnlyArg(args, 'repo:icon', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
+  'repo:graph-avatars': (args) => readRepoPathWithAvatarCandidates(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
   'repo:commit-selection-detail': (args) =>
     readStringAndStringArray(args, 'repo:commit-selection-detail', 'repoPath', 'shas'),
@@ -499,6 +501,28 @@ function readStringTriple(
 function readRepoPathWithOptionalLimit(args: readonly unknown[]): [string, number | undefined] {
   assertArgCountRange('repo:graph', args, 1, 2);
   return [readString(args[0], 'repoPath'), readOptionalPositiveInteger(args[1], 'limit')];
+}
+
+function readRepoPathWithAvatarCandidates(args: readonly unknown[]): [string, CommitGraphAvatarCandidate[]] {
+  assertArgCount('repo:graph-avatars', args, 2);
+  const candidates = args[1];
+  if (!Array.isArray(candidates) || candidates.length > 12000) {
+    throw new Error('candidates must be an array with at most 12000 items.');
+  }
+
+  return [readString(args[0], 'repoPath'), candidates.map((value, index) => {
+    const label = `candidates[${index}]`;
+    const record = readRecord(value, label);
+    const sha = readString(record.sha, `${label}.sha`);
+    if (!/^[\da-f]{40}(?:[\da-f]{24})?$/i.test(sha)) {
+      throw new Error(`${label}.sha must be a full Git object ID.`);
+    }
+    return {
+      sha,
+      email: readOptionalString(record.email, `${label}.email`),
+      hasRemoteRef: readBoolean(record.hasRemoteRef, `${label}.hasRemoteRef`)
+    };
+  })];
 }
 
 function readRepoPathAndPathWithOptionalLimit(args: readonly unknown[]): [string, string, number | undefined] {

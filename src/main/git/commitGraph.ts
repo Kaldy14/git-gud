@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 
 import { buildCommitGraphRows, COMMIT_GRAPH_LIMIT_STEP, DEFAULT_COMMIT_GRAPH_LIMIT, type GraphCommitInput } from '@shared/graph';
 import type {
+  CommitGraphAvatarCandidate,
   CommitGraphPage,
   GitFileChange,
   GitRefsSummary,
@@ -19,6 +20,7 @@ import { createProfileCommandEnv, listProfiles } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import {
   findGitHubRepository,
+  getCachedGitHubCommitAuthorAvatars,
   loadGitHubCommitAuthorAvatars
 } from './githubAvatars';
 import { parseGitLog, type GitLogCommit } from './parsers/log';
@@ -54,13 +56,9 @@ export async function loadCommitGraph(
     ? findGitHubRepository(remotes, profile?.githubHost)
     : undefined;
   const githubAvatarUrls = githubRepository
-    ? await loadGitHubCommitAuthorAvatars(
+    ? getCachedGitHubCommitAuthorAvatars(
         githubRepository,
-        commits.map((commit) => ({
-          sha: commit.sha,
-          email: commit.authorEmail,
-          hasRemoteRef: refMap.get(commit.sha)?.some((ref) => ref.kind === 'remote') ?? false
-        })),
+        commits.map((commit) => commit.authorEmail),
         env
       )
     : new Map<string, string>();
@@ -104,6 +102,24 @@ export async function loadCommitGraph(
     hasMore,
     nextLimit: Math.min(limit + COMMIT_GRAPH_LIMIT_STEP, MAX_COMMIT_GRAPH_LIMIT)
   };
+}
+
+export async function loadCommitGraphAvatarUrls(
+  tab: Pick<RepoTab, 'path' | 'assignedProfileId'>,
+  candidates: readonly CommitGraphAvatarCandidate[]
+): Promise<Record<string, string>> {
+  if (candidates.length === 0) return {};
+
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const profile = tab.assignedProfileId
+    ? listProfiles().find((candidate) => candidate.id === tab.assignedProfileId)
+    : undefined;
+  const repository = findGitHubRepository(await loadRemotes(tab.path, env), profile?.githubHost);
+
+  if (!repository) return {};
+
+  const avatars = await loadGitHubCommitAuthorAvatars(repository, candidates.slice(0, MAX_COMMIT_GRAPH_LIMIT), env);
+  return Object.fromEntries(avatars);
 }
 
 async function loadWorktreeWipInputs(

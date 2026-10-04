@@ -42,6 +42,7 @@ const api: RendererApi = {
   getRepositoryOverview: (repoPath) => invoke('repo:overview', repoPath),
   getRepositoryIcon: (repoPath) => invoke('repo:icon', repoPath),
   getCommitGraph: (repoPath, limit) => invoke('repo:graph', repoPath, limit),
+  getCommitGraphAvatarUrls: (repoPath, candidates) => invoke('repo:graph-avatars', repoPath, candidates),
   getCommitDetail: (repoPath, sha) => invoke('repo:commit-detail', repoPath, sha),
   getCommitSelectionDetail: (repoPath, shas) => invoke('repo:commit-selection-detail', repoPath, shas),
   getWipDetail: (repoPath) => invoke('repo:wip-detail', repoPath),

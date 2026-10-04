@@ -879,6 +879,12 @@ export type CommitGraphRow = {
   files: GraphFile[];
 };
 
+export type CommitGraphAvatarCandidate = {
+  sha: string;
+  email?: string;
+  hasRemoteRef: boolean;
+};
+
 export type CommitGraphPage = {
   repoPath: string;
   loadedAt: string;

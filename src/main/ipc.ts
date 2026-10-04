@@ -27,7 +27,7 @@ import {
   installCodexAgentNotesSkill,
   removeCodexAgentNotesSkill
 } from './codexAgentNotes';
-import { loadCommitGraph } from './git/commitGraph';
+import { loadCommitGraph, loadCommitGraphAvatarUrls } from './git/commitGraph';
 import { generateCommitMessage } from './commitMessage';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
@@ -524,6 +524,10 @@ export function registerIpcHandlers(
     }
 
     return loadCommitGraph(tab, limit, getAppSettings().remoteAvatars);
+  });
+  handle('repo:graph-avatars', async (_event, repoPath, candidates) => {
+    const tab = getOpenRepositoryTab(repoPath);
+    return getAppSettings().remoteAvatars ? loadCommitGraphAvatarUrls(tab, candidates) : {};
   });
   handle('repo:commit-detail', async (_event, repoPath, sha) => loadCommitDetail(getOpenRepositoryTab(repoPath), sha));
   handle('repo:commit-selection-detail', async (_event, repoPath, shas) =>

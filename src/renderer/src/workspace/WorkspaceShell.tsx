@@ -62,7 +62,13 @@ import { selectBackgroundOperationStatus } from '@renderer/components/statusbar/
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
+  canLoadMoreCommitGraph,
+  initialCommitGraphLimit,
+  nextCommitGraphLimit
+} from '@renderer/queries/commitGraphPaging';
+import {
   clearRepositoryQueries,
+  fetchCommitGraphPage,
   invalidateRepositoryQueries,
   prepareLinkedWorktreeGraphTransition,
   prepareRepositoryForProfileTransition,
@@ -115,7 +121,6 @@ import {
   isNonFastForwardPushError,
   type PushRejectionPrompt
 } from '@renderer/workspace/pushRejection';
-import { COMMIT_GRAPH_LIMIT_STEP } from '@shared/graph';
 import { dashboardProfileId } from '@shared/dashboard';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type { PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
@@ -175,6 +180,10 @@ const ReviewBenchmarkExplorer = import.meta.env.DEV
       return { default: module.ReviewBenchmarkExplorer };
     })
   : undefined;
+
+type GraphPaginationState =
+  | { repoPath: string; status: 'loading' }
+  | { repoPath: string; status: 'error'; message: string };
 
 type InteractiveRebaseDialogState = {
   base: string;
@@ -293,6 +302,8 @@ export function WorkspaceShell(): ReactElement {
   } = useWorkspaceStore();
   const diffWorkerPool = useWorkerPool();
   const [graphLimitByTab, setGraphLimitByTab] = useState<Record<string, number>>({});
+  const [graphPaginationByTab, setGraphPaginationByTab] = useState<Record<string, GraphPaginationState>>({});
+  const graphPageLoadsRef = useRef(new Set<string>());
   const [graphScrollResetByTab, setGraphScrollResetByTab] = useState<Record<string, number>>({});
   const [branchVisibilityByRepository, setBranchVisibilityByRepository] = useState<
     Record<string, BranchVisibilityState>
@@ -392,7 +403,12 @@ export function WorkspaceShell(): ReactElement {
       ? stashDialog
       : undefined;
   const localMutationCount = useIsMutating({ mutationKey: ['repository-mutation', activeTab?.path] });
-  const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? settings.graphPageSize) : settings.graphPageSize;
+  const initialGraphLimit = initialCommitGraphLimit(settings.graphPageSize);
+  const graphLimit = activeTab ? (graphLimitByTab[activeTab.id] ?? initialGraphLimit) : initialGraphLimit;
+  const workspaceTabsRef = useRef(workspace.tabs);
+  useEffect(() => {
+    workspaceTabsRef.current = workspace.tabs;
+  }, [workspace.tabs]);
   const relatedRepoPaths = useMemo(
     () =>
       activeTab
@@ -406,8 +422,13 @@ export function WorkspaceShell(): ReactElement {
   const graphQuery = useCommitGraph(
     gitHubWorkspaceView ? undefined : activeTab?.path,
     graphLimit,
-    relatedRepoPaths
+    relatedRepoPaths,
+    { remoteAvatars: settings.remoteAvatars }
   );
+  const activeGraphPagination =
+    activeTab && graphPaginationByTab[activeTab.id]?.repoPath === activeTab.path
+      ? graphPaginationByTab[activeTab.id]
+      : undefined;
   const activeWorkspaceProfile = useMemo(
     () => profiles.find((profile) => profile.id === workspace.activeProfileId),
     [profiles, workspace.activeProfileId]
@@ -925,7 +946,7 @@ export function WorkspaceShell(): ReactElement {
         queryClient,
         graphQuery.data,
         worktreePath,
-        graphLimit
+        graphQuery.data?.limit ?? graphLimit
       );
     }
     const nextWorkspace = previousTab.path === worktreePath
@@ -940,6 +961,7 @@ export function WorkspaceShell(): ReactElement {
 
     if (previousTab.id !== worktreeTab.id) {
       setGraphLimitByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
+      setGraphPaginationByTab((value) => withoutRecordKey(withoutRecordKey(value, previousTab.id), worktreeTab.id));
       setBulkSelectionByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id, []));
       setDiffStyleByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
       setWipScopeByTab((value) => moveRecordKey(value, previousTab.id, worktreeTab.id));
@@ -1193,12 +1215,52 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleLoadMoreGraphRows(): void {
-    if (!activeTab) {
+    const page = graphQuery.data;
+
+    if (!activeTab || !page || page.repoPath !== activeTab.path || !canLoadMoreCommitGraph(page)) {
       return;
     }
 
-    const nextLimit = graphQuery.data?.nextLimit ?? graphLimit + COMMIT_GRAPH_LIMIT_STEP;
-    setGraphLimitByTab((value) => ({ ...value, [activeTab.id]: nextLimit }));
+    const { id: tabId, path: repoPath } = activeTab;
+    const loadKey = `${tabId}\0${repoPath}`;
+
+    if (graphPageLoadsRef.current.has(loadKey)) {
+      return;
+    }
+
+    const nextLimit = nextCommitGraphLimit(page.limit, settings.graphPageSize);
+    const isCurrentTabRepository = (): boolean =>
+      workspaceTabsRef.current.some((tab) => tab.id === tabId && tab.path === repoPath);
+    graphPageLoadsRef.current.add(loadKey);
+    setGraphPaginationByTab((value) => ({ ...value, [tabId]: { repoPath, status: 'loading' } }));
+
+    // Keep the visible page active until the larger page is cached, then switch to it in one render.
+    void fetchCommitGraphPage(queryClient, repoPath, nextLimit).then(
+      () => {
+        if (isCurrentTabRepository()) {
+          setGraphLimitByTab((value) => ({ ...value, [tabId]: Math.max(value[tabId] ?? 0, nextLimit) }));
+        }
+        setGraphPaginationByTab((value) =>
+          value[tabId]?.repoPath === repoPath ? withoutRecordKey(value, tabId) : value
+        );
+      },
+      (error: unknown) => {
+        setGraphPaginationByTab((value) =>
+          value[tabId]?.repoPath === repoPath
+            ? {
+                ...value,
+                [tabId]: {
+                  repoPath,
+                  status: 'error',
+                  message: error instanceof Error ? error.message : 'Unable to load older commits.'
+                }
+              }
+            : value
+        );
+      }
+    ).finally(() => {
+      graphPageLoadsRef.current.delete(loadKey);
+    });
   }
 
   const handleActivateProfile = useCallback(async (
@@ -1228,6 +1290,7 @@ export function WorkspaceShell(): ReactElement {
           : view
       );
       setGraphLimitByTab({});
+      setGraphPaginationByTab({});
       setDiffStyleByTab({});
       setWipScopeByTab({});
       setCommitComposerFocusByTab({});
@@ -1238,8 +1301,14 @@ export function WorkspaceShell(): ReactElement {
       const nextTab = nextWorkspace.tabs.find((tab) => tab.id === nextWorkspace.activeTabId);
 
       if (nextTab) {
-        await prepareRepositoryForProfileTransition(queryClient, nextTab.path, settings.graphPageSize).catch(() => undefined);
+        await prepareRepositoryForProfileTransition(
+          queryClient,
+          nextTab.path,
+          initialCommitGraphLimit(settings.graphPageSize)
+        ).catch(() => undefined);
       }
+      // GitHub avatar lookups use the active profile's credentials.
+      void queryClient.invalidateQueries({ queryKey: ['commit-graph-avatars'] });
     } finally {
       const remainingMs = PROFILE_TRANSITION_MIN_MS - (window.performance.now() - startedAt);
 
@@ -1391,6 +1460,7 @@ export function WorkspaceShell(): ReactElement {
 
     clearRepositoryQueries(queryClient, tab.path);
     setGraphLimitByTab((value) => withoutRecordKey(value, tabId));
+    setGraphPaginationByTab((value) => withoutRecordKey(value, tabId));
     setBulkSelectionByTab((value) => withoutRecordKey(value, tabId));
     setDiffStyleByTab((value) => withoutRecordKey(value, tabId));
     setWipScopeByTab((value) => withoutRecordKey(value, tabId));
@@ -1509,9 +1579,13 @@ export function WorkspaceShell(): ReactElement {
       const savedSettings = await window.api.updateSettings(nextSettings);
       setSettings(savedSettings);
       setGraphLimitByTab({});
+      setGraphPaginationByTab({});
 
       if (remoteAvatarsChanged) {
-        await queryClient.invalidateQueries({ queryKey: ['commit-graph'] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['commit-graph'] }),
+          queryClient.invalidateQueries({ queryKey: ['commit-graph-avatars'] })
+        ]);
       }
 
       setIsSettingsOpen(false);
@@ -3698,7 +3772,11 @@ export function WorkspaceShell(): ReactElement {
                     void repositoryQuery.refetch();
                     void graphQuery.refetch();
                   }}
-                  hasMore={graphQuery.data?.hasMore ?? false}
+                  hasMore={canLoadMoreCommitGraph(graphQuery.data)}
+                  isLoadingMore={activeGraphPagination?.status === 'loading'}
+                  loadMoreErrorMessage={
+                    activeGraphPagination?.status === 'error' ? activeGraphPagination.message : undefined
+                  }
                   onSelectRow={handleSelectRow}
                   onBulkSelectionChange={handleBulkSelectionChange}
                   onLoadMore={handleLoadMoreGraphRows}
