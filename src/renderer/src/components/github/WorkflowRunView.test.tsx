@@ -72,6 +72,43 @@ describe('WorkflowRunView', () => {
     expect(markup).toContain('CI');
   });
 
+  it('renders full job names in navigation and graph cards without truncation hints', () => {
+    const queryClient = new QueryClient();
+    const input = {
+      profileId: 'profile-1',
+      owner: 'acme',
+      repository: 'widgets',
+      runId: 101
+    };
+    const longName =
+      'Deploy Customer Access with Pulumi / deploy-production-eu-central-1-cluster';
+    queryClient.setQueryData(gitHubWorkflowRunDetailQueryKey(input), {
+      ...input,
+      workflowPath: '.github/workflows/ci.yml',
+      dependencyGraphAvailable: true,
+      totalJobCount: 2,
+      jobs: [workflowJob(1, 'detect-changes'), workflowJob(2, longName, [1])],
+      loadedAt: '2026-07-27T10:02:00Z'
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <WorkflowRunView
+          profileId={input.profileId}
+          owner={input.owner}
+          repository={input.repository}
+          run={workflowRun()}
+          onBack={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(markup.split(`<span class="workflow-run-job-name">${longName}</span>`)).toHaveLength(3);
+    expect(markup.match(/data-workflow-job-id="2"/g)).toHaveLength(2);
+    expect(markup).not.toContain('…');
+    expect(markup).not.toContain('Find jobs');
+  });
+
   it('places jobs into dependency levels instead of arbitrary columns', () => {
     const jobs = [
       workflowJob(1, 'detect'),
