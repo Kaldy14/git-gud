@@ -1071,6 +1071,7 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleOpenPullRequestInbox(): void {
+    setIsStartTabActive(false);
     setGitHubWorkspaceView({ kind: 'inbox' });
     setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
@@ -3434,9 +3435,7 @@ export function WorkspaceShell(): ReactElement {
       <TabStrip
         tabs={workspace.tabs}
         activeTabId={
-          isStartTabActive ||
-          gitHubWorkspaceView?.kind === 'dashboard' ||
-          gitHubWorkspaceView?.kind === 'workflow-run'
+          isStartTabActive || gitHubWorkspaceView
             ? undefined
             : workspace.activeTabId
         }
@@ -3456,6 +3455,11 @@ export function WorkspaceShell(): ReactElement {
         onActivateStartTab={handleActivateStartTab}
         onCloseStartTab={handleCloseStartTab}
         onActivateDashboardsTab={handleActivateDashboardsTab}
+        isPullRequestsTabActive={
+          gitHubWorkspaceView?.kind === 'inbox' || gitHubWorkspaceView?.kind === 'review'
+        }
+        pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+        onActivatePullRequestsTab={handleOpenPullRequestInbox}
         onOpenSettings={handleOpenSettings}
         onActivateProfile={handleActivateProfile}
         onSaveAndActivateProfile={handleSaveAndActivateProfile}

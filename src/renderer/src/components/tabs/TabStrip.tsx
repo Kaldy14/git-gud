@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
-import { FilePlus2, FolderGit2, LayoutDashboard, Plus, Settings, X } from 'lucide-react';
+import { FilePlus2, FolderGit2, GitPullRequest, LayoutDashboard, Plus, X } from 'lucide-react';
 
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
 import {
@@ -10,6 +10,7 @@ import type { GitProfile, RepoProfileState, RepoTab } from '@shared/types';
 
 const START_TAB_ID = 'new-repository-tab';
 const DASHBOARDS_TAB_ID = 'dashboards-tab';
+const PULL_REQUESTS_TAB_ID = 'pull-requests-tab';
 
 type TabDropTarget = {
   tabId: string;
@@ -30,6 +31,8 @@ type TabStripProps = {
   isStartTabActive: boolean;
   isDashboardsTabActive: boolean;
   dashboardUnreadCount?: number;
+  isPullRequestsTabActive?: boolean;
+  pullRequestCount?: number;
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
@@ -39,6 +42,7 @@ type TabStripProps = {
   onActivateStartTab: () => void;
   onCloseStartTab: () => void;
   onActivateDashboardsTab: () => void;
+  onActivatePullRequestsTab?: () => void;
   onOpenSettings: () => void;
   onActivateProfile: (profileId: string | undefined) => Promise<void>;
   onSaveAndActivateProfile: (profile: GitProfile) => Promise<void>;
@@ -51,6 +55,8 @@ export function TabStrip({
   isStartTabActive,
   isDashboardsTabActive,
   dashboardUnreadCount = 0,
+  isPullRequestsTabActive = false,
+  pullRequestCount = 0,
   profileState,
   activeRepoDirty = false,
   onActivateTab,
@@ -60,6 +66,7 @@ export function TabStrip({
   onActivateStartTab,
   onCloseStartTab,
   onActivateDashboardsTab,
+  onActivatePullRequestsTab,
   onOpenSettings,
   onActivateProfile,
   onSaveAndActivateProfile
@@ -72,7 +79,8 @@ export function TabStrip({
   const navigationTabIds = [
     ...tabs.map((tab) => tab.id),
     ...(isStartTabOpen ? [START_TAB_ID] : []),
-    DASHBOARDS_TAB_ID
+    DASHBOARDS_TAB_ID,
+    ...(onActivatePullRequestsTab ? [PULL_REQUESTS_TAB_ID] : [])
   ];
   const activateNavigationTab = (tabId: string): void => {
     if (tabId === START_TAB_ID) {
@@ -82,6 +90,11 @@ export function TabStrip({
 
     if (tabId === DASHBOARDS_TAB_ID) {
       onActivateDashboardsTab();
+      return;
+    }
+
+    if (tabId === PULL_REQUESTS_TAB_ID) {
+      onActivatePullRequestsTab?.();
       return;
     }
 
@@ -333,7 +346,7 @@ export function TabStrip({
             onKeyDown={(event) =>
               handleTabKeyDown(
                 event,
-                navigationTabIds.length - 1,
+                navigationTabIds.indexOf(DASHBOARDS_TAB_ID),
                 navigationTabIds,
                 activateNavigationTab
               )
@@ -348,14 +361,49 @@ export function TabStrip({
             ) : null}
           </button>
         </div>
+
+        {onActivatePullRequestsTab ? (
+          <div
+            className="no-drag repo-tab repo-tab--icon"
+            data-active={isPullRequestsTabActive}
+            title={`Pull requests · ${pullRequestCount}`}
+          >
+            <button
+              id={tabDomId(PULL_REQUESTS_TAB_ID)}
+              className="repo-tab-main"
+              type="button"
+              role="tab"
+              aria-label={`Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
+              aria-selected={isPullRequestsTabActive}
+              tabIndex={isPullRequestsTabActive ? 0 : -1}
+              onClick={onActivatePullRequestsTab}
+              onKeyDown={(event) =>
+                handleTabKeyDown(
+                  event,
+                  navigationTabIds.indexOf(PULL_REQUESTS_TAB_ID),
+                  navigationTabIds,
+                  activateNavigationTab
+                )
+              }
+            >
+              <GitPullRequest
+                size={15}
+                className={isPullRequestsTabActive ? 'text-[var(--accent-2)]' : undefined}
+              />
+              {pullRequestCount > 0 ? (
+                <span className="pull-request-tab-count" aria-hidden="true">
+                  {pullRequestCount > 99 ? '99+' : pullRequestCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="no-drag flex shrink-0 items-center gap-0.5 px-2">
-        <button className="icon-btn" type="button" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
-          <Settings size={15} />
-        </button>
         <ProfileMenu
           profileState={profileState}
+          onOpenSettings={onOpenSettings}
           onActivateProfile={onActivateProfile}
           onSaveAndActivateProfile={onSaveAndActivateProfile}
         />

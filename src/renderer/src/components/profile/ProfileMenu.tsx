@@ -1,6 +1,6 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { AlertTriangle, Check, ChevronDown, Cloud, GitBranch, Lightbulb, Plus, Settings2, UserRound } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Cloud, GitBranch, Lightbulb, Plus, Settings, Settings2, UserRound } from 'lucide-react';
 
 import type { GitHubCliAccount, GitProfile, RepoProfileState } from '@shared/types';
 
@@ -10,6 +10,7 @@ type ProfileMenuProps = {
   profileState?: RepoProfileState;
   onActivateProfile: (profileId: string | undefined) => Promise<void>;
   onSaveAndActivateProfile: (profile: GitProfile) => Promise<void>;
+  onOpenSettings: () => void;
 };
 
 const PROFILE_COLOR = 'var(--accent-2)';
@@ -17,7 +18,8 @@ const PROFILE_COLOR = 'var(--accent-2)';
 export function ProfileMenu({
   profileState,
   onActivateProfile,
-  onSaveAndActivateProfile
+  onSaveAndActivateProfile,
+  onOpenSettings
 }: ProfileMenuProps): ReactElement {
   const popoverId = useId();
   const [isOpen, setIsOpen] = useState(false);
@@ -301,6 +303,20 @@ export function ProfileMenu({
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-1 border-t border-[var(--border)] pt-1">
+            <button
+              className="menu-row"
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                onOpenSettings();
+              }}
+            >
+              <Settings size={14} />
+              <span className="min-w-0 flex-1 truncate">Settings</span>
+            </button>
           </div>
 
           <form className="mt-2 space-y-2 border-t border-[var(--border)] px-2 pt-2" onSubmit={(event) => void handleSubmit(event)}>

@@ -82,6 +82,41 @@ describe('TabStrip', () => {
     expect(markup).toContain('class="dashboard-unread-dot"');
   });
 
+  it('renders a pull requests tab with a count badge only when there are pull requests', () => {
+    const renderStrip = (pullRequestCount: number): string =>
+      renderToStaticMarkup(
+        <TabStrip
+          tabs={[repositoryTab]}
+          activeTabId={undefined}
+          isStartTabOpen={false}
+          isStartTabActive={false}
+          isDashboardsTabActive={false}
+          isPullRequestsTabActive
+          pullRequestCount={pullRequestCount}
+          onActivateTab={vi.fn()}
+          onReorderTab={vi.fn()}
+          onCloseTab={vi.fn()}
+          onOpenStartTab={vi.fn()}
+          onActivateStartTab={vi.fn()}
+          onCloseStartTab={vi.fn()}
+          onActivateDashboardsTab={vi.fn()}
+          onActivatePullRequestsTab={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onActivateProfile={vi.fn(async () => {})}
+          onSaveAndActivateProfile={vi.fn(async () => {})}
+        />
+      );
+
+    const withPullRequests = renderStrip(3);
+    expect(withPullRequests).toContain('aria-label="Pull requests, 3 items"');
+    expect(withPullRequests).toContain('class="pull-request-tab-count"');
+    expect(withPullRequests).not.toContain('aria-label="Settings"');
+
+    const withoutPullRequests = renderStrip(0);
+    expect(withoutPullRequests).toContain('aria-label="Pull requests, 0 items"');
+    expect(withoutPullRequests).not.toContain('pull-request-tab-count');
+  });
+
   it('marks repository tabs as reorderable when their order can change', () => {
     const markup = renderToStaticMarkup(
       <TabStrip
