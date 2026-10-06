@@ -251,6 +251,9 @@ try {
   await agent('check', 'input[type="checkbox"][aria-label="Select feature/merged-search"]');
   await button('Review cleanup…');
   await screenshot('local-delete-review');
+  // A normal background fetch can advance main while the review is open.
+  // This must revalidate and proceed, rather than reject unchanged merged work.
+  await commit('new-mainline.txt', 'An unrelated mainline update during review\n');
   await button('Delete 1 branch');
   await waitFor(() => textIncludes('Cleanup results'));
   assert.ok(await textIncludes('Deleted 1 item.'));
@@ -263,7 +266,7 @@ try {
   await exec('/bin/sh', ['-c', restoreCommand], { cwd: fixture });
   assert.equal(git(fixture, 'rev-parse', 'refs/heads/feature/merged-search'), git(fixture, 'rev-parse', recovery));
   await screenshot('local-cleanup-recovery');
-  pass('Reviewed local deletion retains a reachable backup; copied restore command works');
+  pass('Comparison advancement during review permits revalidated local cleanup and retained recovery');
 
   await button('Scan again');
   await waitBranches();
@@ -295,6 +298,50 @@ try {
   assert.ok(git(fixture, 'branch', '--list', 'feature/merged-search'));
   await screenshot('remote-cleanup-result');
   pass('Heads-only refresh preserves tags; confirmed remote deletion leaves the local branch intact');
+
+  await button('Scan again');
+  await waitBranches();
+  await agent('select', 'select', 'refs/remotes/origin/main');
+  await waitBranches();
+  await agent('click', '[aria-label="Branch location"] button:first-child');
+  await agent('check', 'input[aria-label="Select feature/merged-search"]');
+  await agent('check', 'input[aria-label="Select feature/squashed-ui"]');
+  await agent('click', '[aria-label="Category"] button:nth-child(2)');
+  await waitFor(() => evaluate('Boolean(document.querySelector(\'input[aria-label="Select all visible stashes"]:not(:disabled)\'))'));
+  await agent('check', 'input[aria-label="Select all visible stashes"]');
+  await agent('click', '[aria-label="Category"] button:nth-child(3)');
+  await waitFor(() => evaluate('Boolean(document.querySelector(\'input[aria-label="Select all visible worktrees"]:not(:disabled)\'))'));
+  await agent('check', 'input[aria-label="Select all visible worktrees"]');
+  await button('Review cleanup…');
+  await agent('check', '[role="dialog"] footer input[type="checkbox"]');
+  const reviewedBase = git(fixture, 'rev-parse', 'refs/remotes/origin/main');
+  const reviewedBranch = git(fixture, 'rev-parse', 'refs/heads/feature/merged-search');
+  git(fixture, 'update-ref', 'refs/remotes/origin/main', rootSha);
+  await button('Delete 2 branches, 3 stashes and 2 worktrees');
+  await waitFor(() => textIncludes('comparison branch changed'));
+  assert.equal(git(fixture, 'rev-parse', 'refs/heads/feature/merged-search'), reviewedBranch);
+  assert.equal(git(fixture, 'stash', 'list', '--format=%H').split('\n').length, 4);
+  assert.ok(git(fixture, 'worktree', 'list', '--porcelain').includes(join(root, 'old-clean-worktree')));
+  await screenshot('comparison-changed-error');
+  // A new candidate tip must never be silently substituted in a refreshed
+  // review, while independent stash/worktree selections survive the refresh.
+  git(fixture, 'update-ref', 'refs/remotes/origin/main', reviewedBase);
+  git(fixture, 'update-ref', 'refs/heads/feature/merged-search', changedSha);
+  await button('Rescan and review');
+  await waitFor(() => evaluate(`Boolean([...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Review cleanup…' && !b.disabled))`));
+  assert.ok(await textIncludes('Removed from the selection'));
+  assert.ok(await textIncludes('new commit since the review'));
+  await screenshot('refreshed-mixed-selection');
+  await button('Review cleanup…');
+  await waitFor(() => evaluate(`Boolean([...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Delete 1 branch, 3 stashes and 2 worktrees'))`));
+  assert.equal(await evaluate('document.querySelector(\'[role="dialog"] footer input[type="checkbox"]\').checked'), false);
+  assert.equal(await evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Delete 1 branch, 3 stashes and 2 worktrees').disabled`), true);
+  await screenshot('refreshed-mixed-review');
+  pass('Rewritten comparison blocks the batch; explicit refresh preserves artifacts, removes changed tips, and resets acknowledgement');
+  await button('Back');
+  await button('Clear selection');
+  git(fixture, 'update-ref', 'refs/heads/feature/merged-search', reviewedBranch);
+  await agent('click', '[aria-label="Branch location"] button:nth-child(2)');
 
   await button('Scan again');
   await waitBranches();
@@ -349,8 +396,56 @@ try {
   assert.ok(git(fixture, 'worktree', 'list', '--porcelain').includes(join(root, 'old-clean-worktree')));
   pass('Reviewed old clean worktree cleanup keeps its branches and protects dirty, locked, and main worktrees');
 
+  // Exercise all cleanup categories in one confirmed operation while the
+  // remote comparison advances, matching the user's mixed review flow.
   await button('Scan again');
+  await button('Custom');
+  await agent('fill', 'input[type="number"]', '0');
   await agent('click', '[aria-label="Category"] button:first-child');
+  await agent('click', '[aria-label="Branch location"] button:first-child');
+  await waitBranches();
+  await agent('check', 'input[aria-label="Select feature/merged-search"]');
+  await agent('click', '[aria-label="Category"] button:nth-child(2)');
+  await waitFor(() => evaluate('Boolean(document.querySelector(\'input[aria-label="Select all visible stashes"]:not(:disabled)\'))'));
+  await agent('check', 'input[aria-label="Select On main: old draft one"]');
+  await agent('click', '[aria-label="Category"] button:nth-child(3)');
+  await waitFor(() => evaluate('Boolean(document.querySelector(\'input[aria-label="Select all visible worktrees"]:not(:disabled)\'))'));
+  await agent('check', `input[aria-label="Select ${join(root, 'old-clean-worktree')}"]`);
+  await button('Review cleanup…');
+  await screenshot('mixed-cleanup-review');
+  git(fixture, 'update-ref', 'refs/remotes/origin/main', git(fixture, 'rev-parse', 'refs/heads/main'));
+  await button('Delete 1 branch, 1 stash and 1 worktree');
+  await waitFor(() => textIncludes('Cleanup results'));
+  assert.ok(await textIncludes('Deleted 3 items.'));
+  assert.equal(git(fixture, 'branch', '--list', 'feature/merged-search'), '');
+  assert.equal(git(fixture, 'stash', 'list', '--format=%H'), recentStash);
+  assert.ok(!git(fixture, 'worktree', 'list', '--porcelain').includes(join(root, 'old-clean-worktree')));
+  await screenshot('mixed-cleanup-after-advancement');
+  pass('Mixed branch, stash, and worktree cleanup succeeds after the remote comparison advances during review');
+
+  git(fixture, 'branch', 'feature/simple-reviewed', rootSha);
+  await button('Scan again');
+  await button('Simple');
+  await waitFor(async () => !(await textIncludes('Updating results')));
+  await button('Review cleanup…');
+  const simpleDeleteLabel = await evaluate(`[...document.querySelectorAll('[role="dialog"] footer button')].find((b) => b.textContent.trim().startsWith('Delete ')).textContent.trim()`);
+  const simpleBase = git(fixture, 'rev-parse', 'refs/remotes/origin/main');
+  git(fixture, 'branch', 'feature/new-match-after-review', rootSha);
+  git(fixture, 'update-ref', 'refs/remotes/origin/main', rootSha);
+  await button(simpleDeleteLabel);
+  await waitFor(() => textIncludes('comparison branch changed'));
+  git(fixture, 'update-ref', 'refs/remotes/origin/main', simpleBase);
+  await button('Rescan and review');
+  await waitFor(() => evaluate(`Boolean([...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === 'Review cleanup…' && !b.disabled))`));
+  assert.equal(await evaluate('document.querySelector(\'input[aria-label="Select feature/simple-reviewed"]\').checked'), true);
+  assert.equal(await evaluate('document.querySelector(\'input[aria-label="Select feature/new-match-after-review"]\').checked'), false);
+  await screenshot('simple-rescan-preserves-review');
+  pass('Refreshing a failed Simple review keeps its exact selection and never adds new rule matches');
+  await button('Clear selection');
+  // This new review was not confirmed; the fixture branches remain intact.
+
+  await agent('click', '[aria-label="Category"] button:first-child');
+  await agent('click', '[aria-label="Branch location"] button:nth-child(2)');
   await waitBranches();
   await agent('find', 'role', 'checkbox', 'click', '--name', 'Show protected and recent', '--exact');
   await agent('fill', 'input[type="number"]', '36500');

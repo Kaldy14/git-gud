@@ -157,6 +157,54 @@ const EVIDENCE_ORDER: Record<BranchCleanupEvidence, number> = {
   unmerged: 4
 };
 
+// --- Revalidating a reviewed selection -----------------------------------
+
+/** An item exactly as it was shown on the review step. */
+export type ReviewedItem = { id: string; name: string; sha: string; evidence?: BranchCleanupEvidence };
+
+/** The same item in a fresh scan. */
+export type RescannedItem = { sha: string; eligible: boolean; evidence?: BranchCleanupEvidence };
+
+export type ReviewRevalidation = {
+  /** Ids whose reviewed commit and evidence still hold, in reviewed order. */
+  kept: string[];
+  /** The tip moved since the review. */
+  changed: ReviewedItem[];
+  /** No longer present in the scan. */
+  missing: ReviewedItem[];
+  /** Same commit, but no longer eligible or backed by weaker merge evidence. */
+  ineligible: ReviewedItem[];
+};
+
+/**
+ * Compares a reviewed selection with a fresh scan. Only items with the exact
+ * reviewed commit that remain eligible, with evidence at least as strong as
+ * what was reviewed, are kept. Items new to the scan are never added.
+ */
+export function revalidateReviewed(reviewed: readonly ReviewedItem[], rescanned: ReadonlyMap<string, RescannedItem>): ReviewRevalidation {
+  const result: ReviewRevalidation = { kept: [], changed: [], missing: [], ineligible: [] };
+
+  for (const item of reviewed) {
+    const current = rescanned.get(item.id);
+
+    if (!current) {
+      result.missing.push(item);
+    } else if (current.sha !== item.sha) {
+      result.changed.push(item);
+    } else if (!current.eligible || isWeakerEvidence(current.evidence, item.evidence)) {
+      result.ineligible.push(item);
+    } else {
+      result.kept.push(item.id);
+    }
+  }
+
+  return result;
+}
+
+function isWeakerEvidence(current: BranchCleanupEvidence | undefined, reviewed: BranchCleanupEvidence | undefined): boolean {
+  return current !== undefined && reviewed !== undefined && EVIDENCE_ORDER[current] > EVIDENCE_ORDER[reviewed];
+}
+
 export function compareBranchCandidates(left: BranchCleanupCandidate, right: BranchCleanupCandidate): number {
   return (
     analysisRank(left) - analysisRank(right) ||

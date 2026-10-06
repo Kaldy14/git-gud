@@ -99,7 +99,7 @@ Switch to **Advanced** to inspect branches, stashes, and worktrees individually.
 
 Equivalent patches can indicate rebase or cherry-pick, and an unchanged merge result can indicate a squash merge. These checks are evidence, not proof of a historical merge operation or preserved intent. Deleting such branches requires an extra acknowledgement. Old commit dates and missing upstream refs alone never establish integration.
 
-**Update remote branches** fetches heads and prunes local tracking refs that disappeared from the server. It preserves local tags and local branches. Remote deletion is a separate review step that identifies the shared server branches being deleted. A changed branch or comparison revision rejects the stale selection; each server deletion carries the exact reviewed revision as a lease.
+**Update remote branches** fetches heads and prunes local tracking refs that disappeared from the server. It preserves local tags and local branches. Remote deletion is a separate review step that identifies the shared server branches being deleted. If the comparison branch advances while you review, cleanup checks the selection again against its newer history. Rewritten comparison history or changed selected branches stop cleanup; **Rescan and review** refreshes the selection for another review. Each server deletion carries the exact reviewed revision as a lease.
 
 The comparison branch, main/master/trunk/develop/development/production/release branches, known remote default branches, and branches used by any worktree are protected. Set `branch.<name>.deleteMerged=false` in Git configuration to protect another branch. Remote cleanup requires a known default branch and one matching fetch/push destination.
 

@@ -43,7 +43,7 @@ import {
   parseAgeDays,
   shortRefName
 } from './branchCleanupPresentation';
-import type { BranchCriteria, BranchRule, SelectionChange, SimpleRules } from './maintenanceSelection';
+import type { BranchCriteria, BranchRule, RescannedItem, ReviewedItem, ReviewRevalidation, SelectionChange, SimpleRules } from './maintenanceSelection';
 import {
   AGE_PRESETS,
   applyRowClick,
@@ -61,6 +61,7 @@ import {
   previewSimpleArtifacts,
   previewSimpleBranches,
   pruneSelection,
+  revalidateReviewed,
   toggleAllVisible
 } from './maintenanceSelection';
 import { countLabel, errorMessage, EVIDENCE_HINTS, formatList, formatTime, pluralize } from './maintenanceFormat';
@@ -105,7 +106,19 @@ type CleanupState =
       artifacts?: CleanupOutcome<ArtifactCleanupResult> & { candidates: Map<string, ArtifactCleanupCandidate> };
     };
 
+/** A reviewed selection waiting for fresh scans before it can be reviewed again. */
+type PendingRescan = {
+  branches: ReviewedItem[];
+  artifacts: ReviewedItem[];
+  /** Plans the review was based on. Fresh plans replace these objects. */
+  branchPlan?: BranchCleanupPlan;
+  artifactPlan?: ArtifactCleanupPlan;
+};
+
+type RescanNotice = { tone: 'info' | 'warning'; lines: string[] };
+
 const DEFAULT_AGE_DAYS = 30;
+const MAX_LISTED_NAMES = 5;
 const AUTOMATIC_BASE = '';
 const CATEGORY_KIND: Record<Exclude<Category, 'branches'>, ArtifactCleanupCandidate['kind']> = {
   stashes: 'stash',
@@ -149,6 +162,8 @@ export function RepositoryMaintenanceDialog({
   const [cleanup, setCleanup] = useState<CleanupState>({ status: 'idle' });
   const [isRefreshingRemotes, setIsRefreshingRemotes] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const [pendingRescan, setPendingRescan] = useState<PendingRescan>();
+  const [rescanNotice, setRescanNotice] = useState<RescanNotice>();
 
   const branchScan = useLatestScan<BranchCriteria, BranchCleanupPlan>(mountedRef);
   const artifactScan = useLatestScan<number, ArtifactCleanupPlan>(mountedRef);
@@ -182,6 +197,36 @@ export function RepositoryMaintenanceDialog({
   const branchUpdating = Boolean(branchCriteria) && !branchReady && !branchError;
   const artifactUpdating = ageDays !== undefined && !artifactReady && !artifactError;
   const isUpdating = branchUpdating || artifactUpdating;
+
+  // After a failed cleanup, fresh scans keep only the reviewed items whose
+  // exact commit is still eligible. Applied during render so the stale
+  // selection is never interactive against the new plans.
+  if (
+    pendingRescan &&
+    (pendingRescan.branches.length === 0 || (branchReady && branchPlan && branchPlan !== pendingRescan.branchPlan)) &&
+    (pendingRescan.artifacts.length === 0 || (artifactReady && artifactPlan && artifactPlan !== pendingRescan.artifactPlan))
+  ) {
+    const branchCheck = revalidateReviewed(
+      pendingRescan.branches,
+      new Map<string, RescannedItem>((branchPlan?.branches ?? []).map((candidate) => [
+        candidate.ref,
+        { sha: candidate.sha, eligible: isBranchSelectable(candidate, includeUnverified), evidence: candidate.evidence }
+      ]))
+    );
+    const artifactCheck = revalidateReviewed(
+      pendingRescan.artifacts,
+      new Map<string, RescannedItem>((artifactPlan?.candidates ?? []).map((candidate) => [
+        artifactKey(candidate),
+        { sha: candidate.sha, eligible: isArtifactSelectable(candidate) }
+      ]))
+    );
+
+    setPendingRescan(undefined);
+    setBranchSelection(new Set(branchCheck.kept));
+    setArtifactSelection(new Set(artifactCheck.kept));
+    setAcknowledged(false);
+    setRescanNotice(describeRescan(pendingRescan, branchCheck, artifactCheck));
+  }
 
   function scanBranches(criteria: BranchCriteria): void {
     branchScan.run(criteria, () =>
@@ -226,12 +271,14 @@ export function RepositoryMaintenanceDialog({
 
   // New criteria invalidate any manual selection made against older results.
   function changeBaseRef(next: string): void {
+    cancelRescan();
     setBaseRef(next);
     setBranchSelection(new Set());
     setAcknowledged(false);
   }
 
   function changeAge(choice: AgeChoice, customText = customAgeText): void {
+    cancelRescan();
     setAgeChoice(choice);
     setCustomAgeText(customText);
     setBranchSelection(new Set());
@@ -328,6 +375,7 @@ export function RepositoryMaintenanceDialog({
   const needsArtifactPlan = mode === 'simple' ? anyArtifactRule : artifactSelection.size > 0;
   const canReview =
     totalSelected > 0 &&
+    !pendingRescan &&
     (!needsBranchPlan || branchReady) &&
     (!needsArtifactPlan || artifactReady) &&
     selectedBranches.length <= MAX_CLEANUP_BRANCHES &&
@@ -340,7 +388,7 @@ export function RepositoryMaintenanceDialog({
 
   const artifactKind = category === 'branches' ? undefined : CATEGORY_KIND[category];
   const tableReady = category === 'branches' ? branchReady : artifactReady;
-  const tableEnabled = tableReady && !isMutating;
+  const tableEnabled = tableReady && !isMutating && !pendingRescan;
   const showsUnanalyzed = showIneligible && evidenceFilter === 'all';
 
   const visibleBranches = useMemo(
@@ -431,6 +479,7 @@ export function RepositoryMaintenanceDialog({
   }
 
   function handleClearSelection(): void {
+    cancelRescan();
     setBranchSelection(new Set());
     setArtifactSelection(new Set());
     setAcknowledged(false);
@@ -454,9 +503,15 @@ export function RepositoryMaintenanceDialog({
       }
     }
 
+    cancelRescan();
     setMode(next);
     setAcknowledged(false);
     setLimitNotice(undefined);
+  }
+
+  function cancelRescan(): void {
+    setPendingRescan(undefined);
+    setRescanNotice(undefined);
   }
 
   // --- Mutations ------------------------------------------------------------
@@ -587,6 +642,45 @@ export function RepositoryMaintenanceDialog({
     return result
       ? { result }
       : { error: failure ?? (completed ? 'Cleanup finished without a result.' : 'Another Git operation is running for this repository. Try again when it finishes.') };
+  }
+
+  /**
+   * Scans again after a cleanup was rejected and returns to the advanced
+   * selection with only the reviewed items that are unchanged and still
+   * eligible. Nothing new is added, and the user must review again.
+   */
+  function handleRescanAndReview(): void {
+    if (isMutating || !branchCriteria) {
+      return;
+    }
+
+    const reviewedBranches = selectedBranches.map((candidate) => ({ id: candidate.ref, name: candidate.name, sha: candidate.sha, evidence: candidate.evidence }));
+    const reviewedArtifacts = selectedArtifacts.map((candidate) => ({
+      id: artifactKey(candidate),
+      name: candidate.kind === 'worktree' ? candidate.id : `${candidate.id} (${candidate.name})`,
+      sha: candidate.sha
+    }));
+
+    setPendingRescan({ branches: reviewedBranches, artifacts: reviewedArtifacts, branchPlan, artifactPlan });
+    setRescanNotice(undefined);
+    setBranchSelection(new Set(reviewedBranches.map((item) => item.id)));
+    setArtifactSelection(new Set(reviewedArtifacts.map((item) => item.id)));
+
+    if (selectedUnverified.length > 0) {
+      setIncludeUnverified(true);
+    }
+
+    setMode('advanced');
+    setCategory(selectedBranches.length > 0 ? 'branches' : selectedStashes.length > 0 ? 'stashes' : 'worktrees');
+    setScope(selectedLocal.length === 0 && selectedRemote.length > 0 ? 'remote' : 'local');
+    setEvidenceFilter('all');
+    setSearch('');
+    setLimitNotice(undefined);
+    setAnchor(undefined);
+    setStep('scan');
+    setCleanup({ status: 'idle' });
+    setAcknowledged(false);
+    scanAll();
   }
 
   function handleBackToScan(rescan: boolean): void {
@@ -763,6 +857,17 @@ export function RepositoryMaintenanceDialog({
             onRetry={scanAll}
           />
           {notice ? <InlineMessage tone="error">{notice}</InlineMessage> : null}
+          {pendingRescan ? (
+            isUpdating ? (
+              <InlineMessage tone="info">Scanning again to check the reviewed items. Nothing was deleted, and nothing new will be selected.</InlineMessage>
+            ) : null
+          ) : rescanNotice ? (
+            <InlineMessage tone={rescanNotice.tone}>
+              <ul className="grid gap-0.5">
+                {rescanNotice.lines.map((line) => <li key={line}>{line}</li>)}
+              </ul>
+            </InlineMessage>
+          ) : null}
           {warnings.length > 0 ? (
             <InlineMessage tone="warning">
               <ul className="grid gap-0.5">
@@ -973,7 +1078,7 @@ export function RepositoryMaintenanceDialog({
                 mode,
                 total: totalSelected,
                 summary: selectionSummary,
-                isUpdating: (needsBranchPlan && branchUpdating) || (needsArtifactPlan && artifactUpdating),
+                isUpdating: (needsBranchPlan && branchUpdating) || (needsArtifactPlan && artifactUpdating) || Boolean(pendingRescan && isUpdating),
                 scanFailed: (needsBranchPlan && Boolean(branchError)) || (needsArtifactPlan && Boolean(artifactError)),
                 isRepositoryBusy,
                 branchAtLimit: mode === 'advanced' && branchSelection.size >= MAX_CLEANUP_BRANCHES,
@@ -991,6 +1096,7 @@ export function RepositoryMaintenanceDialog({
               onClick={() => {
                 setAcknowledged(false);
                 setCleanup({ status: 'idle' });
+                setRescanNotice(undefined);
                 setStep('review');
               }}
             >
@@ -1071,12 +1177,19 @@ export function RepositoryMaintenanceDialog({
             }))} />
 
             {cleanup.status === 'error' ? (
-              <div className="mt-3"><Warning tone="danger">{cleanup.message}</Warning></div>
+              <div className="mt-3">
+                <Warning tone="danger">
+                  {cleanup.message} Choose Rescan and review to check the selected items again. Only items that are unchanged and still eligible stay
+                  selected, and you review them again before anything is deleted.
+                </Warning>
+              </div>
             ) : null}
           </div>
 
           <footer className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-4 py-2.5">
-            {requiresAcknowledgement ? (
+            {cleanup.status === 'error' ? (
+              <p className="min-w-0 flex-1 text-[11.5px] text-[var(--text-2)]">This review is out of date. Scan again before deleting.</p>
+            ) : requiresAcknowledgement ? (
               <label className="flex min-w-0 flex-1 items-start gap-2 text-[11.5px] leading-4 text-[var(--text-1)]" htmlFor={acknowledgeId}>
                 <input
                   id={acknowledgeId}
@@ -1103,15 +1216,22 @@ export function RepositoryMaintenanceDialog({
               <ArrowLeft size={13} />
               Back
             </button>
-            <button
-              className="btn-subtle btn-regular border-[var(--danger-border)] text-[var(--danger-text)]"
-              type="button"
-              disabled={isMutating || !canReview || cleanup.status === 'error' || (requiresAcknowledgement && !acknowledged)}
-              onClick={() => void handleConfirmCleanup()}
-            >
-              {cleanup.status === 'running' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-              {cleanup.status === 'running' ? 'Deleting…' : `Delete ${selectionSummary}`}
-            </button>
+            {cleanup.status === 'error' ? (
+              <button className="btn-primary btn-regular" type="button" disabled={isMutating || !branchCriteria} onClick={handleRescanAndReview}>
+                <RefreshCw size={13} />
+                Rescan and review
+              </button>
+            ) : (
+              <button
+                className="btn-subtle btn-regular border-[var(--danger-border)] text-[var(--danger-text)]"
+                type="button"
+                disabled={isMutating || !canReview || (requiresAcknowledgement && !acknowledged)}
+                onClick={() => void handleConfirmCleanup()}
+              >
+                {cleanup.status === 'running' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {cleanup.status === 'running' ? 'Deleting…' : `Delete ${selectionSummary}`}
+              </button>
+            )}
           </footer>
         </>
       ) : step === 'result' && cleanup.status === 'done' ? (
@@ -1731,6 +1851,43 @@ function sortOutcomes<T extends { status: 'deleted' | 'failed' }>(outcomes: T[])
 }
 
 // --- Helpers -----------------------------------------------------------------
+
+function describeRescan(reviewed: PendingRescan, branches: ReviewRevalidation, artifacts: ReviewRevalidation): RescanNotice {
+  const keptStashes = artifacts.kept.filter((id) => id.startsWith('stash:')).length;
+  const keptWorktrees = artifacts.kept.length - keptStashes;
+  const keptTotal = branches.kept.length + artifacts.kept.length;
+  const reviewedTotal = reviewed.branches.length + reviewed.artifacts.length;
+  const removed = [
+    describeRemoved(branches.changed, 'branch has', 'branches have', 'a new commit since the review'),
+    describeRemoved(branches.missing, 'branch no longer exists', 'branches no longer exist', ''),
+    describeRemoved(branches.ineligible, 'branch is', 'branches are', 'no longer eligible or has weaker merge evidence'),
+    describeRemoved(artifacts.changed, 'stash or worktree changed', 'stashes or worktrees changed', 'since the review'),
+    describeRemoved(artifacts.missing, 'stash or worktree is', 'stashes or worktrees are', 'no longer in the scan'),
+    describeRemoved(artifacts.ineligible, 'stash or worktree is', 'stashes or worktrees are', 'no longer eligible')
+  ].filter((line): line is string => Boolean(line));
+
+  const lines = [
+    keptTotal === reviewedTotal
+      ? `Scanned again. Nothing was deleted. Every reviewed item (${summarizeSelection(branches.kept.length, keptStashes, keptWorktrees)}) is unchanged and still selected.`
+      : keptTotal === 0
+        ? 'Scanned again. Nothing was deleted. None of the reviewed items are unchanged and eligible, so nothing is selected.'
+        : `Scanned again. Nothing was deleted. ${summarizeSelection(branches.kept.length, keptStashes, keptWorktrees)} of ${reviewedTotal} reviewed items are unchanged and still selected.`,
+    ...removed.map((line) => `Removed from the selection: ${line}`),
+    keptTotal > 0 ? 'New matches were not added. Choose Review cleanup to confirm again.' : 'New matches were not added. Select items again to continue.'
+  ];
+
+  return { tone: removed.length > 0 ? 'warning' : 'info', lines };
+}
+
+function describeRemoved(items: ReviewedItem[], singular: string, plural: string, reason: string): string | undefined {
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  const names = items.slice(0, MAX_LISTED_NAMES).map((item) => item.name);
+  const more = items.length - names.length;
+  return `${countLabel(items.length, singular, plural)}${reason ? ` ${reason}` : ''} (${names.join(', ')}${more > 0 ? `, and ${more} more` : ''}).`;
+}
 
 function footerMessage({
   mode,

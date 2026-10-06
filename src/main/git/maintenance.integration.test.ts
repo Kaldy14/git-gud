@@ -29,7 +29,7 @@ async function repository(): Promise<{ root: string; path: string }> {
   return { root, path };
 }
 
-async function commit(path: string, file: string, contents: string, message = file, env = oldEnv): Promise<string> {
+async function commit(path: string, file: string, contents: string, message = file, env: NodeJS.ProcessEnv = oldEnv): Promise<string> {
   await writeFile(join(path, file), contents);
   await git(path, ['add', file]);
   await git(path, ['commit', '-m', message], env);
@@ -50,6 +50,35 @@ async function exists(path: string, ref: string): Promise<boolean> {
 }
 
 describe('repository branch maintenance with real Git', () => {
+  it.each(['refs/heads/main', 'refs/remotes/origin/main'])('revalidates cleanup when the comparison branch advances after review (%s)', async (baseRef) => {
+    const { path } = await repository();
+    await git(path, ['remote', 'add', 'origin', path]);
+    await git(path, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    await git(path, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main']);
+    await git(path, ['branch', 'feature/old-merged']);
+    const plan = await analyzeBranchCleanup({ path }, { baseRef, olderThanDays: 30 });
+    const input = selection(plan, ['refs/heads/feature/old-merged']);
+    const newer = await commit(path, 'new-main.txt', 'A newer mainline commit\n', 'advance comparison', {});
+    if (baseRef.startsWith('refs/remotes/')) await git(path, ['update-ref', baseRef, newer]);
+    const result = await cleanupBranches({ path }, input);
+    expect(result.outcomes[0]?.status, result.outcomes[0]?.message).toBe('deleted');
+    expect(await exists(path, 'refs/heads/feature/old-merged')).toBe(false);
+    expect((await git(path, ['rev-parse', result.outcomes[0]!.recoveryRef!])).stdout.trim()).toBe(input.branches[0]!.expectedSha);
+  });
+
+  it.each(['tip', 'protection'])('still rejects a changed selection after comparison advancement (%s)', async (change) => {
+    const { path } = await repository();
+    await git(path, ['branch', 'feature/changed']);
+    const plan = await analyze(path);
+    const newer = await commit(path, 'new-main.txt', 'new main\n');
+    if (change === 'tip') await git(path, ['update-ref', 'refs/heads/feature/changed', newer]);
+    else await git(path, ['config', 'branch.feature/changed.deleteMerged', 'false']);
+    await expect(cleanupBranches({ path }, selection(plan, ['refs/heads/feature/changed'])))
+      .rejects.toThrow(change === 'tip' ? 'selected branch changed' : 'protected');
+    expect(await exists(path, 'refs/heads/feature/changed')).toBe(true);
+    expect((await git(path, ['for-each-ref', 'refs/git-gud/cleanup'])).stdout.trim()).toBe('');
+  });
+
   it('distinguishes merged, rebased, squash-content, unmerged, and recent branches without changing checkout or index', async () => {
     const { path } = await repository();
     const rootSha = (await git(path, ['rev-parse', 'HEAD'])).stdout.trim();
@@ -115,7 +144,8 @@ describe('repository branch maintenance with real Git', () => {
     expect((await git(path, ['rev-parse', result.outcomes[0]!.recoveryRef!])).stdout.trim()).toBe(plan.baseSha);
     await git(path, ['branch', 'feature/changed']);
     plan = await analyze(path);
-    await commit(path, 'base.txt', 'new base\n');
+    const rewritten = (await git(path, ['commit-tree', 'HEAD^{tree}', '-m', 'Rewritten comparison history'], oldEnv)).stdout.trim();
+    await git(path, ['update-ref', 'refs/heads/main', rewritten, plan.baseSha]);
     await expect(cleanupBranches({ path }, selection(plan, ['refs/heads/feature/changed']))).rejects.toThrow('comparison branch changed');
     plan = await analyze(path);
     await git(path, ['update-ref', 'refs/heads/feature/changed', plan.baseSha]);
@@ -151,6 +181,27 @@ describe('repository branch maintenance with real Git', () => {
     expect(result.outcomes[0]?.status).toBe('failed');
     expect(result.outcomes[0]?.recoveryRef).toBeUndefined();
     expect((await realRun(['rev-parse', 'refs/heads/feature/race'], { cwd: path })).stdout.trim()).toBe(later);
+  });
+
+  it('verifies the freshly analyzed comparison revision atomically after a fast-forward', async () => {
+    const { path } = await repository();
+    await git(path, ['branch', 'feature/race']);
+    const plan = await analyze(path);
+    const analyzedBase = await commit(path, 'first.txt', 'first\n');
+    const tree = (await git(path, ['rev-parse', 'HEAD^{tree}'])).stdout.trim();
+    const racedBase = (await git(path, ['commit-tree', tree, '-p', analyzedBase, '-m', 'Concurrent advancement'], oldEnv)).stdout.trim();
+    const realRun = gitExecutor.run.bind(gitExecutor);
+    vi.spyOn(gitExecutor, 'run').mockImplementation(async (args, options) => {
+      if (args[0] === 'update-ref' && args[1] === '--stdin') {
+        expect(options?.input).toContain(`verify refs/heads/main ${analyzedBase}`);
+        await realRun(['update-ref', 'refs/heads/main', racedBase, analyzedBase], { cwd: path, kind: 'mutation' });
+      }
+      return realRun(args, options);
+    });
+    const result = await cleanupBranches({ path }, selection(plan, ['refs/heads/feature/race']));
+    expect(result.outcomes[0]?.status).toBe('failed');
+    expect(result.outcomes[0]?.recoveryRef).toBeUndefined();
+    expect(await exists(path, 'refs/heads/feature/race')).toBe(true);
   });
 
   it('refreshes only tracking branches while preserving local tags, then deletes real remote branches with leases', async () => {

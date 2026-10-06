@@ -14,6 +14,7 @@ import {
   previewSimpleArtifacts,
   previewSimpleBranches,
   pruneSelection,
+  revalidateReviewed,
   toggleAllVisible
 } from './maintenanceSelection';
 
@@ -200,5 +201,37 @@ describe('restore commands', () => {
       `git worktree add -- '/w/old dir' 'feature/x'`
     );
     expect(buildWorktreeRestoreCommand({ id: '/w/d' }, 'refs/r')).toBe(`git worktree add --detach -- '/w/d' 'refs/r'`);
+  });
+});
+
+describe('revalidateReviewed', () => {
+  const reviewed = [
+    { id: 'a', name: 'a', sha: '1', evidence: 'merged' as const },
+    { id: 'b', name: 'b', sha: '2', evidence: 'merged' as const },
+    { id: 'c', name: 'c', sha: '3', evidence: 'merged' as const },
+    { id: 'd', name: 'd', sha: '4', evidence: 'patch-equivalent' as const },
+    { id: 'e', name: 'e', sha: '5', evidence: 'content-integrated' as const },
+    { id: 'f', name: 'f', sha: '6' }
+  ];
+
+  it('keeps only exact reviewed commits that remain eligible with evidence at least as strong', () => {
+    const result = revalidateReviewed(reviewed, new Map([
+      ['a', { sha: '1', eligible: true, evidence: 'merged' as const }],
+      ['b', { sha: '9', eligible: true, evidence: 'merged' as const }],
+      ['d', { sha: '4', eligible: true, evidence: 'merged' as const }],
+      ['e', { sha: '5', eligible: true, evidence: 'unmerged' as const }],
+      ['f', { sha: '6', eligible: false }],
+      ['new', { sha: '7', eligible: true, evidence: 'merged' as const }]
+    ]));
+
+    expect(result.kept).toEqual(['a', 'd']);
+    expect(result.changed.map((item) => item.id)).toEqual(['b']);
+    expect(result.missing.map((item) => item.id)).toEqual(['c']);
+    expect(result.ineligible.map((item) => item.id)).toEqual(['e', 'f']);
+  });
+
+  it('keeps artifacts without evidence when the commit is unchanged', () => {
+    const result = revalidateReviewed([{ id: 'stash:stash@{0}', name: 'wip', sha: 'x' }], new Map([['stash:stash@{0}', { sha: 'x', eligible: true }]]));
+    expect(result.kept).toEqual(['stash:stash@{0}']);
   });
 });

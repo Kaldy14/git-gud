@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.8] - 2026-10-06
+
+### Fixed
+
+- Allow repository cleanup after the comparison branch advances, rechecking selected branches against its newer history while preserving protections and revision checks.
+- Refresh a failed cleanup review directly while retaining unchanged selected branches, stashes, and worktrees.
+
 ## [2026.10.7] - 2026-10-06
 
 ### Changed

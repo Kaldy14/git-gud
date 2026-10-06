@@ -133,7 +133,15 @@ export async function cleanupBranches(tab: MaintenanceTab, input: BranchCleanupI
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const refs = new Set(input.branches.map((entry) => entry.ref));
   const plan = await analyzeBranchCleanup(tab, input, refs);
-  if (plan.baseSha !== input.expectedBaseSha) throw new Error('The comparison branch changed. Scan again before deleting branches.');
+  if (plan.baseSha !== input.expectedBaseSha) {
+    // Background fetches can advance the comparison branch during review.
+    // Accept only preserved history; all selected tips and eligibility are
+    // revalidated below against this newer base. Rewrites still need review.
+    const advancement = await gitExecutor.run(['merge-base', '--is-ancestor', input.expectedBaseSha, plan.baseSha], {
+      cwd: tab.path, env, allowedExitCodes: [0, 1, 128]
+    });
+    if (advancement.exitCode !== 0) throw new Error('The comparison branch changed and its reviewed history is no longer preserved. Scan again before deleting branches.');
+  }
   const selected = input.branches.map((entry) => {
     const branch = plan.branches.find((candidate) => candidate.ref === entry.ref);
     if (!branch || branch.sha !== entry.expectedSha) throw new Error('A selected branch changed or disappeared. Scan again before deleting branches.');
@@ -156,7 +164,7 @@ export async function cleanupBranches(tab: MaintenanceTab, input: BranchCleanupI
         await assertRemoteDeletionTarget(tab, branch, env);
       }
       const commands = [
-        'start', `verify ${input.baseRef} ${input.expectedBaseSha}`,
+        'start', `verify ${plan.baseRef} ${plan.baseSha}`,
         ...(branch.scope === 'remote' ? [`verify ${branch.ref} ${branch.sha}`] : []),
         `create ${recoveryRef} ${branch.sha}`,
         ...(branch.scope === 'local' ? [`delete ${branch.ref} ${branch.sha}`] : []),
