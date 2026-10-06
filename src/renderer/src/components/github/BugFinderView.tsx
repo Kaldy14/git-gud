@@ -58,7 +58,12 @@ export function BugFinderView({
   const reviewChanged = review?.some((item) => !findings.some((finding) => finding.id === item.id && finding.version === item.version && finding.status === 'open' && !finding.publication && finding.headSha === detail.headSha)) ?? false;
   const pending = mutation.isPending;
   const scanning = state?.status === 'running' || (pending && mutation.variables?.action === 'start');
-  const error = mutation.error?.message ?? query.error?.message ?? state?.error;
+  const failed = !scanning && state?.status === 'failed';
+  const error = mutation.error?.message ?? query.error?.message ?? (failed ? `Scan failed: ${state.error ?? 'unknown error'}` : undefined);
+  function start() {
+    setNotice('');
+    mutation.mutate({ action: 'start' });
+  }
   async function openEvidence(reference: CodeReference) {
     try {
       if (!repoPath) throw new Error('Open this pull request repository locally first, then choose an editor under “Open PR in…”.');
@@ -101,17 +106,14 @@ export function BugFinderView({
           <Bug size={14} /> Bug finder
         </strong>
         <span className="text-muted">
-          {scanning ? 'Scanning current PR' : state?.headSha
+          {scanning ? 'Scanning current PR' : failed ? 'Scan failed' : state?.headSha
             ? `Scanned ${state.headSha.slice(0, 8)}`
             : 'No scan yet'}
         </span>
         <button
           className="btn-subtle btn-regular"
           disabled={pending || state?.status === 'running'}
-          onClick={() => {
-            setNotice('');
-            mutation.mutate({ action: 'start' });
-          }}
+          onClick={start}
         >
           {scanning ? 'Scanning…' : state?.status === 'idle' || !state
             ? 'Run bug finder'
@@ -643,7 +645,7 @@ export function BugFinderView({
               </h2>
               <p>
                 {scanning ? 'Inspecting the changed code. Findings will appear here when the scan finishes.' :
-                  state?.status === 'failed' ? 'Retry the scan to generate the report.' :
+                  failed ? 'See the error above, fix its cause, then retry the scan.' :
                   state?.status === 'ready' && !filtered.length ? 'Check the other filters or scan coverage for what was inspected.' :
                   'Inspect changed code, review supported findings, or discuss them with your own agent.'}
               </p>

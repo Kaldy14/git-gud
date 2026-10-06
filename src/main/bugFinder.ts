@@ -63,21 +63,27 @@ async function execute(
   if (r.action === 'get') return { state };
   if (r.action === 'start') {
     if (state.status === 'running') return { state };
-    const detail = await loadGitHubPullRequestDetail(r.locator);
-    if (state.url && new URL(state.url).host !== new URL(detail.url).host) throw new Error('This profile now targets a different GitHub host. Use a separate profile to keep its findings distinct.');
-    state = {
-      ...state,
-      status: 'running',
-      error: undefined,
-      headSha: detail.headSha,
-      title: detail.title,
-      url: detail.url,
-      baseRef: detail.baseRefName,
-      headRef: detail.headRefName
-    };
+    // Respond immediately; loading PR detail takes several GitHub requests and its failures surface as a failed scan.
+    state = { ...state, status: 'running', error: undefined };
     db.save(r.locator, state);
-    void scanPullRequestBugs(r.locator, detail)
-      .then((scan) =>
+    void loadGitHubPullRequestDetail(r.locator)
+      .then((detail) =>
+        enqueue(r, async () => {
+          const current = db.get(r.locator);
+          if (current.url && new URL(current.url).host !== new URL(detail.url).host) throw new Error('This profile now targets a different GitHub host. Use a separate profile to keep its findings distinct.');
+          db.save(r.locator, {
+            ...current,
+            headSha: detail.headSha,
+            title: detail.title,
+            url: detail.url,
+            baseRef: detail.baseRefName,
+            headRef: detail.headRefName
+          });
+          return detail;
+        })
+      )
+      .then((detail) => scanPullRequestBugs(r.locator, detail).then((scan) => ({ detail, scan })))
+      .then(({ detail, scan }) =>
         enqueue(r, async () => {
           // Scan completion reads the latest records so agent edits made during generation survive.
           const current = db.get(r.locator);

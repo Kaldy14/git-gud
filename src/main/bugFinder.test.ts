@@ -240,6 +240,7 @@ describe('PR finding records', () => {
         })
     );
     await handle({ locator, action: 'start' });
+    await vi.waitFor(() => expect(mocks.scan).toHaveBeenCalledTimes(2));
     const update = handle(
       {
         locator,

@@ -19,8 +19,9 @@ export function BugFinderButton({
 }) {
   const { state, query, mutation } = useBugFinder(pullRequest);
   const activation = useMutation({
+    // Resolves to true when the view should open: a finished report or a failure to explain.
+    // Starting a scan stays in the background; the view only opens once there is something to show.
     mutationFn: async () => {
-      // Recover status and finish the requested action in the same click.
       // Recheck before starting so a transient read failure does not rerun a completed scan.
       let current = state;
       if (query.isError) {
@@ -28,11 +29,12 @@ export function BugFinderButton({
         if (result.isError) throw result.error;
         current = result.data?.state;
       }
-      if (current?.status === 'running') return inReview;
+      if (current?.status === 'running') return false;
+      if (current?.status === 'failed') return true;
       if (current?.status === 'ready' &&
         !(current.headSha && pullRequest.headSha && current.headSha !== pullRequest.headSha)) return true;
       await mutation.mutateAsync({ action: 'start' });
-      return inReview;
+      return false;
     }
   });
   const status =
@@ -56,13 +58,13 @@ export function BugFinderButton({
     status === 'ready'
       ? `Bug finder ready. ${count} findings. Open bug finder`
       : status === 'running'
-        ? 'Bug finder scanning in the background'
+        ? 'Bug finder scanning in the background. The report opens from here when ready'
         : status === 'loading'
           ? 'Checking bug finder status'
           : status === 'stale'
             ? 'Bug finder is outdated. Run an update'
             : status === 'failed'
-              ? `${activation.error?.message ?? query.error?.message ?? state?.error ?? 'Bug scan failed'}. Click to retry`
+              ? state?.status === 'failed' ? 'Bug scan failed. Open bug finder to see why and retry' : `${activation.error?.message ?? query.error?.message ?? 'Bug scan failed'}. Click to retry`
               : 'No bug scan yet. Run in the background';
   return (
     <Tooltip.Provider delayDuration={350}>
@@ -77,7 +79,7 @@ export function BugFinderButton({
             aria-busy={status === 'running'}
             onClick={(event) => {
               event.stopPropagation();
-              if (activation.isPending || status === 'loading') return;
+              if (activation.isPending || status === 'loading' || status === 'running') return;
               activation.mutate(undefined, { onSuccess: (open) => { if (open) onOpen(); } });
             }}
           >
