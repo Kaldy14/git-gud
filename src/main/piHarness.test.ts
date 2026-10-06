@@ -81,7 +81,7 @@ process.stdin.on('end', async () => {
     try {
       const result = await runPiPrompt({ cwd: directory, prompt: 'hello', timeoutMs: 5000, errorLabel: 'Test' });
       const args: unknown = JSON.parse(result);
-      expect(args).toEqual(expect.arrayContaining(['--model', 'openai-codex/gpt-6-astra', '--thinking', 'medium', '--no-tools']));
+      expect(args).toEqual(expect.arrayContaining(['--model', 'openai/gpt-6-astra', '--thinking', 'medium', '--no-tools']));
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
