@@ -149,11 +149,12 @@ The app reads Git identity, authentication, and signing settings from the same p
 Every pushed version tag matching `v*` runs the [release workflow](.github/workflows/release.yml). The workflow derives the packaged application version from the tag, runs the full verification suite, and then publishes a [GitHub Release](https://github.com/Kaldy14/git-gud/releases) containing:
 
 - An Apple Silicon (`arm64`) macOS application archive
-- An Intel (`x64`) macOS application archive
 - An unsigned, portable Windows (`x64`) executable
 - A SHA-256 checksum for each release artifact
 
-The macOS release archives are signed with a Developer ID Application certificate, notarized by Apple, and stapled before they are published. This allows Gatekeeper to verify the application when users install it, including when they are offline.
+Intel macOS builds are disabled in GitHub Actions.
+
+The macOS release archive is signed with a Developer ID Application certificate, notarized by Apple, and stapled before it is published. This allows Gatekeeper to verify the application when users install it, including when they are offline.
 
 The release workflow requires these GitHub Actions secrets:
 

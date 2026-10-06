@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.7] - 2026-10-06
+
+### Changed
+
+- Disable Intel macOS builds in GitHub Actions. Releases continue to include Apple Silicon macOS and Windows x64 artifacts.
+
 ## [2026.10.6] - 2026-10-06
 
 ### Added

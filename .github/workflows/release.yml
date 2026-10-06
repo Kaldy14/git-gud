@@ -54,8 +54,6 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
-          - runner: macos-15-intel
-            arch: x64
 
     steps:
       - name: Check out repository
