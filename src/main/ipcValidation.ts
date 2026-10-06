@@ -1,5 +1,5 @@
 import { parseCodeReference } from '@shared/codeReference';
-import type { BranchCleanupInput, BranchCleanupOptions } from '@shared/maintenance';
+import type { ArtifactCleanupInput, BranchCleanupInput, BranchCleanupOptions } from '@shared/maintenance';
 import { parseBugRequest } from '@shared/bugFinder';
 import type {
   IpcChannelMap,
@@ -166,6 +166,8 @@ const validators = {
   'repo:delete-branch': (args) => readRepoPathWithObject(args, 'repo:delete-branch', readDeleteBranchInput),
   'repo:analyze-branch-cleanup': (args) => readRepoPathWithObject(args, 'repo:analyze-branch-cleanup', readBranchCleanupOptions),
   'repo:cleanup-branches': (args) => readRepoPathWithObject(args, 'repo:cleanup-branches', readBranchCleanupInput),
+  'repo:analyze-artifact-cleanup': (args) => readRepoPathWithObject(args, 'repo:analyze-artifact-cleanup', readArtifactCleanupOptions),
+  'repo:cleanup-artifacts': (args) => readRepoPathWithObject(args, 'repo:cleanup-artifacts', readArtifactCleanupInput),
   'repo:refresh-maintenance-refs': (args) => readOnlyArg(args, 'repo:refresh-maintenance-refs', 'repoPath', readString),
   'repo:checkout': (args) => readRepoPathWithObject(args, 'repo:checkout', readCheckoutTarget),
   'repo:merge': (args) => readRepoPathWithObject(args, 'repo:merge', readMergeInput),
@@ -1232,6 +1234,30 @@ function readBranchCleanupOptions(value: unknown): BranchCleanupOptions {
     olderThanDays,
     ...(record.baseRef === undefined ? {} : { baseRef: readCleanupRef(record.baseRef) })
   };
+}
+
+function readArtifactCleanupOptions(value: unknown): { olderThanDays: number } {
+  const record = readRecord(value, 'artifact cleanup options');
+  const olderThanDays = readNonNegativeInteger(record.olderThanDays, 'olderThanDays');
+  if (olderThanDays > 36500) throw new Error('olderThanDays must be at most 36500.');
+  return { olderThanDays };
+}
+
+function readArtifactCleanupInput(value: unknown): ArtifactCleanupInput {
+  const record = readRecord(value, 'artifact cleanup input');
+  const options = readArtifactCleanupOptions(record);
+  if (!Array.isArray(record.items) || record.items.length < 1 || record.items.length > 100) {
+    throw new Error('Select between 1 and 100 items.');
+  }
+  const items = record.items.map((entry) => {
+    const item = readRecord(entry, 'cleanup item');
+    const kind = readEnumProperty(item, 'kind', ['stash', 'worktree']);
+    const id = readNonEmptyLimitedString(item.id, 'cleanup item ID', 4096);
+    if (id.includes('\0') || (kind === 'stash' && !/^stash@\{\d+\}$/.test(id))) throw new Error('Invalid cleanup item ID.');
+    return { kind, id, expectedSha: readCleanupOid(item.expectedSha) };
+  });
+  if (new Set(items.map((item) => `${item.kind}:${item.id}`)).size !== items.length) throw new Error('Duplicate cleanup selections are not allowed.');
+  return { ...options, items };
 }
 
 function readBranchCleanupInput(value: unknown): BranchCleanupInput {

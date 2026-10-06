@@ -1,5 +1,5 @@
 import type { BugFinderRequest, BugFinderResult } from './bugFinder';
-import type { BranchCleanupInput, BranchCleanupOptions, BranchCleanupPlan, BranchCleanupResult } from './maintenance';
+import type { ArtifactCleanupInput, ArtifactCleanupPlan, ArtifactCleanupResult, BranchCleanupInput, BranchCleanupOptions, BranchCleanupPlan, BranchCleanupResult } from './maintenance';
 import type {
   ApplicationUpdateState,
   AppSettings,
@@ -376,6 +376,14 @@ export type IpcChannelMap = {
     args: [repoPath: string, input: BranchCleanupInput];
     result: BranchCleanupResult;
   };
+  'repo:analyze-artifact-cleanup': {
+    args: [repoPath: string, input: { olderThanDays: number }];
+    result: ArtifactCleanupPlan;
+  };
+  'repo:cleanup-artifacts': {
+    args: [repoPath: string, input: ArtifactCleanupInput];
+    result: ArtifactCleanupResult;
+  };
   'repo:refresh-maintenance-refs': {
     args: [repoPath: string];
     result: GitOperationResult;
@@ -715,6 +723,8 @@ export type RendererApi = {
   deleteBranch: (repoPath: string, input: GitDeleteBranchInput) => Promise<GitOperationResult>;
   analyzeBranchCleanup: (repoPath: string, input: BranchCleanupOptions) => Promise<BranchCleanupPlan>;
   cleanupBranches: (repoPath: string, input: BranchCleanupInput) => Promise<BranchCleanupResult>;
+  analyzeArtifactCleanup: (repoPath: string, input: { olderThanDays: number }) => Promise<ArtifactCleanupPlan>;
+  cleanupArtifacts: (repoPath: string, input: ArtifactCleanupInput) => Promise<ArtifactCleanupResult>;
   refreshMaintenanceRefs: (repoPath: string) => Promise<GitOperationResult>;
   checkoutRef: (repoPath: string, target: GitCheckoutTarget) => Promise<GitOperationResult>;
   mergeRef: (repoPath: string, input: GitMergeInput) => Promise<GitOperationResult>;

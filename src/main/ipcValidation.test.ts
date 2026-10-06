@@ -1147,3 +1147,22 @@ describe('branch maintenance IPC validation', () => {
     ]) expect(() => validateIpcArgs('repo:cleanup-branches', ['/repo', invalid])).toThrow();
   });
 });
+
+describe('artifact maintenance IPC validation', () => {
+  const item = { kind: 'stash', id: 'stash@{0}', expectedSha: 'a'.repeat(40) };
+  const input = { olderThanDays: 30, items: [item] };
+  it('accepts bounded scans and pinned stash and worktree cleanup', () => {
+    expect(validateIpcArgs('repo:analyze-artifact-cleanup', ['/repo', { olderThanDays: 0 }])).toEqual(['/repo', { olderThanDays: 0 }]);
+    expect(validateIpcArgs('repo:cleanup-artifacts', ['/repo', input])).toEqual(['/repo', input]);
+    const worktreeInput = { ...input, items: [{ ...item, kind: 'worktree', id: '/repo/linked' }] };
+    expect(validateIpcArgs('repo:cleanup-artifacts', ['/repo', worktreeInput])).toEqual(['/repo', worktreeInput]);
+  });
+  it('rejects malformed identities, revisions, ages and batches', () => {
+    for (const invalid of [
+      { ...input, olderThanDays: -1 }, { ...input, olderThanDays: 0.5 }, { ...input, olderThanDays: 36501 },
+      { ...input, items: [] }, { ...input, items: [item, item] }, { ...input, items: Array(101).fill(item) },
+      { ...input, items: [{ ...item, kind: 'branch' }] }, { ...input, items: [{ ...item, id: '--all' }] },
+      { ...input, items: [{ ...item, expectedSha: 'abc' }] }, { ...input, items: [{ ...item, kind: 'worktree', id: '/tmp/\0broken' }] }
+    ]) expect(() => validateIpcArgs('repo:cleanup-artifacts', ['/repo', invalid])).toThrow();
+  });
+});

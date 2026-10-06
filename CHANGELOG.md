@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.6] - 2026-10-06
+
+### Added
+
+- Clean up old branches, stashes, and worktrees with a Simple view for age-based rules and an Advanced view for individual review, search, and filtering.
+- Select all eligible visible table rows or use Shift-click to select a range.
+- Retain recovery refs and provide restore commands for deleted stashes and removed worktrees. Protect current, open, locked, and dirty worktrees.
+
+### Fixed
+
+- Refresh maintenance results automatically after valid age or comparison-branch changes so selection becomes available without a manual rescan.
+
 ## [2026.10.3] - 2026-10-03
 
 ### Fixed

@@ -33,6 +33,7 @@ import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from '
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
 import { gitExecutor } from './git/exec';
 import { analyzeBranchCleanup, cleanupBranches, refreshMaintenanceRefs } from './git/maintenance';
+import { analyzeArtifactCleanup, cleanupArtifacts } from './git/artifactMaintenance';
 import { RepositoryAutoFetch } from './git/autoFetch';
 import { loadPullRequestConflictDetails } from './git/pullRequestConflicts';
 import { cloneRepository, initializeRepository } from './git/repositoryCreation';
@@ -201,6 +202,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:set-branch-upstream': { label: 'Set upstream' },
   'repo:delete-branch': { label: 'Delete branch' },
   'repo:cleanup-branches': { label: 'Clean up branches' },
+  'repo:cleanup-artifacts': { label: 'Clean up stashes and worktrees' },
   'repo:refresh-maintenance-refs': { label: 'Refresh branch references', cancellable: true },
   'repo:checkout': { label: 'Checkout' },
   'repo:merge': { label: 'Merge' },
@@ -697,6 +699,12 @@ export function registerIpcHandlers(
   );
   handle('repo:cleanup-branches', (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => cleanupBranches(tab, input))
+  );
+  handle('repo:analyze-artifact-cleanup', (_event, repoPath, input) =>
+    analyzeArtifactCleanup(getOpenRepositoryTab(repoPath), input, getWorkspace().tabs.map((tab) => tab.path))
+  );
+  handle('repo:cleanup-artifacts', (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => cleanupArtifacts(tab, input, () => getWorkspace().tabs.map((openTab) => openTab.path)))
   );
   handle('repo:refresh-maintenance-refs', (_event, repoPath) =>
     inRepositoryTransaction(repoPath, async (tab) => {

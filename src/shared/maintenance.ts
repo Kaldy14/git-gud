@@ -51,3 +51,42 @@ export type BranchCleanupResult = GitOperationResult & {
     recoveryRef?: string;
   }>;
 };
+
+export type ArtifactCleanupCandidate = {
+  kind: 'stash' | 'worktree';
+  /** Stash selector or absolute worktree path. */
+  id: string;
+  name: string;
+  sha: string;
+  date?: string;
+  ageDays?: number;
+  oldEnough: boolean;
+  protectedReason?: string;
+  /** Worktree branch, if attached. Removing a worktree retains this branch. */
+  branch?: string;
+  /** Worktree age is the last HEAD reflog activity, falling back to its tip commit. */
+  ageSource?: 'head-activity' | 'tip-commit';
+};
+
+export type ArtifactCleanupPlan = {
+  repoPath: string;
+  scannedAt: string;
+  olderThanDays: number;
+  candidates: ArtifactCleanupCandidate[];
+  warnings: string[];
+};
+
+export type ArtifactCleanupInput = {
+  olderThanDays: number;
+  items: Array<{ kind: ArtifactCleanupCandidate['kind']; id: string; expectedSha: string }>;
+};
+
+export type ArtifactCleanupResult = GitOperationResult & {
+  outcomes: Array<{
+    kind: ArtifactCleanupCandidate['kind'];
+    id: string;
+    status: 'deleted' | 'failed';
+    message: string;
+    recoveryRef?: string;
+  }>;
+};
