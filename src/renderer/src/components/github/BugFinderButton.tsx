@@ -85,7 +85,7 @@ export function BugFinderButton({
           >
             <Bug size={14} aria-hidden="true" />
             {inReview && !iconOnly ? <span>Bug finder</span> : null}
-            <span className="pr-row-guide-dot" aria-hidden="true" />
+            <span className={iconOnly ? 'review-sidebar-tool-dot' : 'pr-row-guide-dot'} aria-hidden="true" />
           </button>
         </Tooltip.Trigger>
         <Tooltip.Portal>

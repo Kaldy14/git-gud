@@ -21,10 +21,49 @@ describe('Pi harness', () => {
     expect(piFinalResponse(events.map((event) => JSON.stringify(event)).join('\n'))).toBe('{"findings":[]}');
     expect(() => piFinalResponse(JSON.stringify({ type: 'message_end', message: { role: 'assistant', stopReason: 'error', errorMessage: 'rate limited' } }))).toThrow('rate limited');
     expect(() => piFinalResponse(JSON.stringify(events[0]))).toThrow('no final response');
+    const failure = { type: 'message_end', message: { role: 'assistant', stopReason: 'error', errorMessage: 'stream interrupted' } };
+    expect(piFinalResponse([failure, ...events].map((event) => JSON.stringify(event)).join('\n'))).toBe('{"findings":[]}');
+    expect(() => piFinalResponse([...events, failure].map((event) => JSON.stringify(event)).join('\n'))).toThrow('stream interrupted');
   });
   afterEach(() => {
     vi.unstubAllEnvs();
   });
+
+  it.runIf(process.platform !== 'win32').each([false, true])(
+    'explains rejected OpenAI refresh tokens in JSON mode=%s and succeeds after reauthentication',
+    async (finalResponseOnly) => {
+      const directory = await mkdtemp(join(tmpdir(), 'git-gud-pi-auth-'));
+      const executable = join(directory, 'pi');
+      await writeFile(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+process.stdin.resume();
+process.stdin.on('end', () => {
+  const recovered = fs.existsSync('signed-in');
+  const errorMessage = 'OAuth refresh failed for openai: OpenAI OAuth token request failed (400): {"error":"invalid_grant"}';
+  if (process.argv.includes('json')) {
+    console.log(JSON.stringify({ type: 'message_end', message: { role: 'assistant', stopReason: recovered ? 'stop' : 'error', errorMessage, content: [{ type: 'text', text: 'ready' }] } }));
+  } else if (recovered) {
+    console.log('ready');
+  } else {
+    console.error(errorMessage);
+    process.exitCode = 1;
+  }
+});
+`);
+      await chmod(executable, 0o755);
+      vi.stubEnv('PI_EXECUTABLE_PATH', executable);
+      const options = { cwd: directory, prompt: 'review', timeoutMs: 5000, errorLabel: 'Test', finalResponseOnly };
+      try {
+        await expect(runPiPrompt(options)).rejects.toThrow(
+          'OpenAI sign-in expired. Open Pi in a terminal, run /login, choose OpenAI, then retry.'
+        );
+        await writeFile(join(directory, 'signed-in'), '');
+        expect((await runPiPrompt(options)).trim()).toBe('ready');
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
 
   it.runIf(process.platform !== 'win32').each([
     { name: 'long investigation with fragmented events and an unterminated final line', mode: 'long', expected: '{"findings":[]}' },
@@ -32,6 +71,7 @@ describe('Pi harness', () => {
     { name: 'oversized event', mode: 'event', error: 'event exceeded the safe size limit' },
     { name: 'plain text output limit', mode: 'text', error: 'output exceeded the safe size limit' },
     { name: 'provider failure after tool output', mode: 'provider', error: 'rate limited' },
+    { name: 'successful Pi retry after an interrupted stream', mode: 'retry', expected: '{"findings":[]}' },
     { name: 'malformed event', mode: 'malformed', error: 'JSON' },
     { name: 'missing final answer', mode: 'missing', error: 'no final response' }
   ])('handles $name', async ({ mode, expected, error }) => {
@@ -43,6 +83,11 @@ const write = (text) => new Promise(resolve => process.stdout.write(text, resolv
 const event = (message) => JSON.stringify({ type: 'message_end', message });
 process.stdin.resume();
 process.stdin.on('end', async () => {
+  if (mode === 'retry') {
+    await write(event({ role: 'assistant', stopReason: 'error', errorMessage: 'OpenAI Responses stream ended before a terminal response event' }) + '\\n');
+    await write(JSON.stringify({ type: 'auto_retry_start', attempt: 1 }) + '\\n');
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
   if (mode === 'event') { await write('x'.repeat(16_000_001)); return; }
   if (mode === 'text') { await write('x'.repeat(2_000_001)); return; }
   if (mode === 'malformed') { await write('invalid JSON\\n'); return; }

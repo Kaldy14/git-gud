@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.10] - 2026-10-08
+
+### Fixed
+
+- Explain how to renew an expired OpenAI login when AI guide or Bug finder fails.
+- Allow Pi to recover from interrupted responses before reporting a failed investigation.
+- Align the AI guide and Bug finder status dots in the review sidebar and use consistent status colors.
+
 ## [2026.10.8] - 2026-10-06
 
 ### Fixed

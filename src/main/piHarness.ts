@@ -59,28 +59,36 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
       options.errorLabel,
       options.finalResponseOnly ?? false
     );
+  } catch (error) {
+    // A rejected refresh token needs a new login; retrying the prompt cannot repair it.
+    if (error instanceof Error && /OAuth refresh failed for openai\b/i.test(error.message) &&
+      /invalid_grant|invalid_state|refresh_token_reused|refresh_token_expired|refresh_token_invalid/i.test(error.message)) {
+      throw new Error('OpenAI sign-in expired. Open Pi in a terminal, run /login, choose OpenAI, then retry.', { cause: error });
+    }
+    throw error;
   } finally {
     activeProcesses.delete(child);
   }
 }
 
 export function piFinalResponse(output: string): string {
-  let final = '';
+  let final: string | Error = '';
   for (const line of output.split('\n')) {
     if (!line.trim()) continue;
     final = piEventResponse(line) ?? final;
   }
+  if (final instanceof Error) throw final;
   if (!final.trim()) throw new Error('Pi investigation returned no final response.');
   return final;
 }
 
-function piEventResponse(line: string): string | undefined {
+function piEventResponse(line: string): string | Error | undefined {
   const event: unknown = JSON.parse(line);
   if (!event || typeof event !== 'object' || !('type' in event) || event.type !== 'message_end' || !('message' in event)) return undefined;
   const message = event.message;
   if (!message || typeof message !== 'object' || !('role' in message) || message.role !== 'assistant' || !('stopReason' in message)) return undefined;
   if (message.stopReason === 'error' || message.stopReason === 'aborted') {
-    throw new Error('errorMessage' in message && typeof message.errorMessage === 'string' ? message.errorMessage : 'Pi investigation failed.');
+    return new Error('errorMessage' in message && typeof message.errorMessage === 'string' ? message.errorMessage : 'Pi investigation failed.');
   }
   if (message.stopReason === 'toolUse') return undefined;
   if (!('content' in message) || !Array.isArray(message.content)) return undefined;
@@ -300,15 +308,24 @@ function collectProcessOutput(
     let stdout = '';
     let stderr = '';
     let pendingEvent = '';
+    let responseError: Error | undefined;
 
     function consumeEvent(line: string): void {
       if (!line.trim()) return;
       const response = piEventResponse(line);
+      if (response instanceof Error) {
+        // Pi may retry a failed assistant turn. Wait for process completion so
+        // a recovered answer can replace this error without restarting tools.
+        responseError = response;
+        stdout = '';
+        return;
+      }
       if (response !== undefined) {
         if (response.length > maxOutputCharacters) {
           throw new Error(`${errorLabel} output exceeded the safe size limit.`);
         }
         stdout = response;
+        responseError = undefined;
       }
     }
     let settled = false;
@@ -374,16 +391,17 @@ function collectProcessOutput(
     child.on('error', (error) => finish(error));
     child.on('close', (code) => {
       if (settled) return;
-      if (code === 0) {
-        try {
-          if (finalResponseOnly) {
-            consumeEvent(pendingEvent);
-            if (!stdout.trim()) throw new Error('Pi investigation returned no final response.');
-          }
-        } catch (error) {
-          finish(error instanceof Error ? error : new Error(String(error)));
-          return;
+      try {
+        if (finalResponseOnly) {
+          consumeEvent(pendingEvent);
+          if (responseError) throw responseError;
+          if (code === 0 && !stdout.trim()) throw new Error('Pi investigation returned no final response.');
         }
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+      if (code === 0) {
         finish(undefined, stdout);
         return;
       }
