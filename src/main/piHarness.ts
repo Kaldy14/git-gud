@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { access, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join, resolve, win32 } from 'node:path';
+import { delimiter, dirname, join, posix, win32 } from 'node:path';
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -111,8 +111,8 @@ export async function resolvePiEnvironment(
   const agentDirectory = result.PI_CODING_AGENT_DIR?.trim();
   if (agentDirectory && platform !== 'win32') {
     result.PI_CODING_AGENT_DIR = agentDirectory === '~' ? home
-      : agentDirectory.startsWith('~/') ? join(home, agentDirectory.slice(2))
-        : resolve(home, agentDirectory);
+      : agentDirectory.startsWith('~/') ? posix.join(home, agentDirectory.slice(2))
+        : posix.resolve(home, agentDirectory);
   }
   return result;
 }

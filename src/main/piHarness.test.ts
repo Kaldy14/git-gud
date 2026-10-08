@@ -74,6 +74,13 @@ process.stdout.write('shell startup noise\\n\\0__GIT_GUD_PI_ENV__\\0'+settings.p
     expect(await resolvePiEnvironment('linux', environment, '/home/test')).toEqual(environment);
   });
 
+  it.each(['~/.pi/work', '.pi/work'])('normalizes POSIX agent directory %s independently of the host OS', async (agentDirectory) => {
+    const result = await resolvePiEnvironment('linux', {
+      PI_EXECUTABLE_PATH: '/custom/pi', PI_CODING_AGENT_DIR: agentDirectory
+    }, '/home/test');
+    expect(result.PI_CODING_AGENT_DIR).toBe('/home/test/.pi/work');
+  });
+
   it.runIf(process.platform !== 'win32')('reads an actual login shell without exposing unrelated environment values', async () => {
     const environment = { SHELL: '/bin/sh', PATH: '/usr/bin:/bin', PI_CODING_AGENT_DIR: '/explicit/agent', PRIVATE_TEST_VALUE: 'not-a-credential' };
     const result = await resolvePiEnvironment('linux', environment, tmpdir());
