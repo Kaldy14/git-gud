@@ -1,12 +1,14 @@
 import { constants } from 'node:fs';
 import { access, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join, win32 } from 'node:path';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { delimiter, dirname, join, resolve, win32 } from 'node:path';
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const DEFAULT_MAX_OUTPUT_CHARACTERS = 2_000_000;
 const MAX_EVENT_CHARACTERS = 16_000_000;
 const activeProcesses = new Set<ChildProcessWithoutNullStreams>();
+const execFileAsync = promisify(execFile);
 
 export type PiPromptOptions = {
   cwd: string;
@@ -19,7 +21,8 @@ export type PiPromptOptions = {
 };
 
 export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
-  const executable = await resolvePiExecutable();
+  const environment = await resolvePiEnvironment();
+  const executable = await resolvePiExecutable(process.platform, environment);
   const args = [
     '--model',
     'openai/gpt-6-astra',
@@ -36,13 +39,13 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
     '--no-context-files',
     '--no-approve'
   ];
-  const launch = piLaunchCommand(executable, args);
+  const launch = piLaunchCommand(executable, args, process.platform, environment);
   const child = spawn(
     launch.command,
     launch.args,
     {
       cwd: options.cwd,
-      env: await buildPiEnvironment(executable),
+      env: await buildPiEnvironment(executable, process.platform, environment),
       stdio: 'pipe',
       windowsHide: true,
       windowsVerbatimArguments: launch.windowsVerbatimArguments
@@ -63,12 +66,55 @@ export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
     // A rejected refresh token needs a new login; retrying the prompt cannot repair it.
     if (error instanceof Error && /OAuth refresh failed for openai\b/i.test(error.message) &&
       /invalid_grant|invalid_state|refresh_token_reused|refresh_token_expired|refresh_token_invalid/i.test(error.message)) {
-      throw new Error('OpenAI sign-in expired. Open Pi in a terminal, run /login, choose OpenAI, then retry.', { cause: error });
+      const agentDirectory = environment.PI_CODING_AGENT_DIR || join(homedir(), '.pi', 'agent');
+      throw new Error(
+        `Pi could not refresh its OpenAI sign-in. Pi executable: ${executable}. Agent directory: ${agentDirectory}. ` +
+        'If Pi works in your terminal, check that it uses this same installation and directory, then retry. ' +
+        'Otherwise run /login in that Pi installation and choose OpenAI.',
+        { cause: error }
+      );
     }
     throw error;
   } finally {
     activeProcesses.delete(child);
   }
+}
+
+// Desktop launches do not inherit interactive shell configuration. Read only the
+// Pi-related settings, never credentials, and resolve afresh on each retry.
+export async function resolvePiEnvironment(
+  platform: NodeJS.Platform = process.platform,
+  environment: NodeJS.ProcessEnv = process.env,
+  home: string = homedir()
+): Promise<NodeJS.ProcessEnv> {
+  const result = { ...environment };
+  if (platform !== 'win32' && !environment.PI_EXECUTABLE_PATH?.trim()) {
+    const shell = environment.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
+    try {
+      const { stdout } = await execFileAsync(shell, ['-ilc',
+        `printf '\\0__GIT_GUD_PI_ENV__\\0%s\\0%s\\0%s\\0__GIT_GUD_PI_ENV_END__\\0' "$PATH" "$PI_CODING_AGENT_DIR" "$PI_EXECUTABLE_PATH"`
+      ], { cwd: home, env: environment, timeout: 5000, maxBuffer: 64 * 1024, encoding: 'utf8' });
+      const fields = stdout.split('\0');
+      const start = fields.indexOf('__GIT_GUD_PI_ENV__');
+      if (start >= 0 && fields[start + 4] === '__GIT_GUD_PI_ENV_END__') {
+        const [path, agentDirectory, executable] = fields.slice(start + 1, start + 4);
+        if (path) result.PATH = [path, environment.PATH].filter(Boolean).join(delimiter);
+        if (agentDirectory && !environment.PI_CODING_AGENT_DIR?.trim()) result.PI_CODING_AGENT_DIR = agentDirectory;
+        if (executable) result.PI_EXECUTABLE_PATH = executable;
+      }
+    } catch {
+      // Broken or non-interactive-only shell startup must not prevent fallback discovery.
+    }
+  }
+  // Pi jobs run in different repositories (and temporary bug-finder checkouts).
+  // A relative configured agent directory must not change with the job's cwd.
+  const agentDirectory = result.PI_CODING_AGENT_DIR?.trim();
+  if (agentDirectory && platform !== 'win32') {
+    result.PI_CODING_AGENT_DIR = agentDirectory === '~' ? home
+      : agentDirectory.startsWith('~/') ? join(home, agentDirectory.slice(2))
+        : resolve(home, agentDirectory);
+  }
+  return result;
 }
 
 export function piFinalResponse(output: string): string {

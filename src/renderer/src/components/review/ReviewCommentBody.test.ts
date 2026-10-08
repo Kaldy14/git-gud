@@ -5,6 +5,24 @@ import { describe, expect, it } from 'vitest';
 import { ReviewCommentBody } from './ReviewCommentBody';
 
 describe('review comment Markdown', () => {
+  it('keeps HTML screenshots inside their GitHub table cells', () => {
+    const body = [
+      '| View | Before | After |',
+      '| --- | --- | --- |',
+      '| Desktop | <img alt="Before [desktop] | original" src="https://example.com/before.png" /> | <img alt="After" src="https://example.com/after.png" /> |',
+      '| Mobile | ![Before mobile](https://example.com/mobile.png) | <img alt="After mobile" src="https://example.com/mobile-after.png" /> |'
+    ].join('\n');
+    const markup = renderToStaticMarkup(createElement(ReviewCommentBody, { body, onOpenImage: () => undefined }));
+    const rows = markup.match(/<tr>[\s\S]*?<\/tr>/gu)!;
+    expect(rows).toHaveLength(3);
+    for (const row of rows.slice(1)) {
+      expect(row.match(/<td>/gu)).toHaveLength(3);
+      expect(row.match(/<td><img /gu)).toHaveLength(2);
+    }
+    expect(markup).toContain('alt="Before [desktop] | original"');
+    expect(markup.match(/<img /gu)).toHaveLength(4);
+  });
+
   it('renders a single usable text action for CodeRabbit theme buttons', () => {
     const body = ['light', 'dark'].map(theme => `<a href="https://app.coderabbit.ai/change-stack/org/repo/pull/1#gh-${theme}-mode-only"><img src="https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui${theme === 'dark' ? '-dark' : ''}.svg" alt="Review Change Stack"></a>`).join('');
     const markup = renderToStaticMarkup(createElement(ReviewCommentBody, { body }));

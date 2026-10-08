@@ -64,6 +64,7 @@ export function ReviewImageGalleryDialog({
       className="review-image-gallery"
       backdropClassName="review-image-gallery-backdrop"
       onClose={onClose}
+      closeOnBackdropClick
     >
       <header>
         <span className="review-image-gallery-icon" aria-hidden="true">

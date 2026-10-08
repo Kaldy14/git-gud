@@ -46,7 +46,8 @@ function convertHtmlImagesToMarkdown(body: string): string {
     }
 
     const alt = readHtmlAttribute(tag, 'alt') ?? '';
-    return `\n\n![${escapeMarkdownAlt(alt)}](<${src.replaceAll('>', '%3E')}>)\n\n`;
+    // Images are inline Markdown: added blank lines would split GFM table rows.
+    return `![${escapeMarkdownAlt(alt)}](<${src.replaceAll('>', '%3E')}>)`;
   });
 }
 
@@ -91,7 +92,7 @@ function readHtmlAttribute(tag: string, name: string): string | undefined {
 }
 
 function escapeMarkdownAlt(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll(']', '\\]');
+  return value.replaceAll('\\', '\\\\').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('|', '\\|').replace(/\r?\n/gu, ' ');
 }
 
 export function resolveReviewImageMarkdown(body: string, imageUrls: Record<string, string>): string {

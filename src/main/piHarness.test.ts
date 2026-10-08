@@ -1,17 +1,21 @@
 import { access, chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   buildPiEnvironment,
   piLaunchCommand,
   piFinalResponse,
   resolvePiExecutable,
+  resolvePiEnvironment,
   runPiPrompt
 } from './piHarness';
 
 describe('Pi harness', () => {
+  beforeEach(() => {
+    vi.stubEnv('SHELL', '/nonexistent/git-gud-test-shell');
+  });
   it('extracts the final answer after repository tools and rejects provider errors', () => {
     const events = [
       { type: 'message_end', message: { role: 'assistant', stopReason: 'toolUse', content: [{ type: 'text', text: 'Investigating' }] } },
@@ -27,6 +31,56 @@ describe('Pi harness', () => {
   });
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it.runIf(process.platform !== 'win32')('uses the terminal Pi and agent directory instead of a stale desktop installation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-pi-shell-'));
+    const desktopBin = join(directory, 'desktop');
+    const terminalBin = join(directory, 'terminal');
+    const shell = join(directory, 'shell');
+    const config = join(directory, 'shell-config.json');
+    await Promise.all([mkdir(desktopBin), mkdir(terminalBin)]);
+    await writeFile(join(desktopBin, 'pi'), `#!${process.execPath}\nprocess.stderr.write('wrong Pi installation');process.exit(1);`);
+    await writeFile(join(terminalBin, 'pi'), `#!${process.execPath}\nprocess.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({agentDirectory:process.env.PI_CODING_AGENT_DIR,cwd:process.cwd()})));`);
+    await writeFile(shell, `#!${process.execPath}
+const settings=JSON.parse(require('fs').readFileSync(${JSON.stringify(config)},'utf8'));
+process.stdout.write('shell startup noise\\n\\0__GIT_GUD_PI_ENV__\\0'+settings.path+'\\0'+settings.agentDirectory+'\\0\\0__GIT_GUD_PI_ENV_END__\\0');
+`);
+    await Promise.all([shell, join(desktopBin, 'pi'), join(terminalBin, 'pi')].map(path => chmod(path, 0o755)));
+    vi.stubEnv('SHELL', shell);
+    vi.stubEnv('PATH', desktopBin);
+    vi.stubEnv('PI_EXECUTABLE_PATH', '');
+    vi.stubEnv('PI_CODING_AGENT_DIR', '');
+    try {
+      for (const profile of ['first', 'reconfigured']) {
+        const agentDirectory = join(directory, profile);
+        await writeFile(config, JSON.stringify({ path: terminalBin, agentDirectory }));
+        const output = await runPiPrompt({ cwd: directory, prompt: 'review', timeoutMs: 5000, errorLabel: 'Test' });
+        expect(JSON.parse(output)).toEqual({ agentDirectory, cwd: directory });
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves explicit Pi overrides without invoking the login shell', async () => {
+    const environment = { SHELL: '/missing/shell', PATH: '/desktop/bin', PI_EXECUTABLE_PATH: '/custom/pi', PI_CODING_AGENT_DIR: '/custom/agent' };
+    expect(await resolvePiEnvironment('linux', environment, '/home/test')).toEqual(environment);
+    expect(await resolvePiEnvironment('win32', environment, '/home/test')).toEqual(environment);
+  });
+
+  it('falls back to the desktop environment when shell startup fails', async () => {
+    const environment = { SHELL: '/missing/shell', PATH: '/desktop/bin' };
+    expect(await resolvePiEnvironment('linux', environment, '/home/test')).toEqual(environment);
+  });
+
+  it.runIf(process.platform !== 'win32')('reads an actual login shell without exposing unrelated environment values', async () => {
+    const environment = { SHELL: '/bin/sh', PATH: '/usr/bin:/bin', PI_CODING_AGENT_DIR: '/explicit/agent', PRIVATE_TEST_VALUE: 'not-a-credential' };
+    const result = await resolvePiEnvironment('linux', environment, tmpdir());
+    expect(result.PI_CODING_AGENT_DIR).toBe('/explicit/agent');
+    expect(result.PRIVATE_TEST_VALUE).toBe(environment.PRIVATE_TEST_VALUE);
+    expect(result.PATH).toContain('/usr/bin');
+    expect(environment.PATH).toBe('/usr/bin:/bin');
   });
 
   it.runIf(process.platform !== 'win32').each([false, true])(
@@ -55,7 +109,7 @@ process.stdin.on('end', () => {
       const options = { cwd: directory, prompt: 'review', timeoutMs: 5000, errorLabel: 'Test', finalResponseOnly };
       try {
         await expect(runPiPrompt(options)).rejects.toThrow(
-          'OpenAI sign-in expired. Open Pi in a terminal, run /login, choose OpenAI, then retry.'
+          `Pi could not refresh its OpenAI sign-in. Pi executable: ${executable}. Agent directory:`
         );
         await writeFile(join(directory, 'signed-in'), '');
         expect((await runPiPrompt(options)).trim()).toBe('ready');

@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.11] - 2026-10-08
+
+### Fixed
+
+- Keep HTML screenshots inside GitHub-style pull request table cells.
+- Close image previews when clicking the backdrop while keeping image and gallery navigation clicks inside the preview.
+- Resolve Pi through the login shell on macOS and Linux so AI brief and Bug finder can use the terminal's installation and agent directory. Preserve explicit overrides and reread configuration on retry.
+- Identify the Pi executable and agent directory when OpenAI token refresh fails instead of assuming the login has expired.
+
 ## [2026.10.10] - 2026-10-08
 
 ### Fixed

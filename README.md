@@ -122,6 +122,8 @@ Cleanup results include a retained recovery ref and a **Copy restore command** a
 
 Run Bug finder beside AI brief in the PR dashboard, inspect findings with their code, and post only selected comments. Copy a self-contained prompt to discuss findings with another agent; the bundled local CLI lets that agent update the records in Git Gud. See [Bug finder usage and CLI](docs/bug-finder.md) for setup, evidence limits, and revision checks.
 
+AI brief and Bug finder use Pi's `openai` login. On macOS and Linux, Git Gud reads the login shell's Pi search path and `PI_CODING_AGENT_DIR` so desktop launches can find the same installation and login as the terminal. An explicit `PI_EXECUTABLE_PATH` in Git Gud's environment bypasses shell discovery; set `PI_CODING_AGENT_DIR` there too if that installation uses a custom agent directory. Authentication errors identify the executable and agent directory used. Compare these with your working terminal before signing in again; retrying an AI action rereads the shell configuration.
+
 ## Codex Agent Notes
 
 Agent Notes let Codex attach short implementation context directly to changed lines in Git Gud. Most tasks should produce no notes. A note is useful only when the diff cannot explain a constraint, behavior contract, or concrete risk that matters during review.

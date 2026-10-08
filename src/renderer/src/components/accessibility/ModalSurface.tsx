@@ -8,6 +8,7 @@ type ModalSurfaceProps = {
   className: string;
   backdropClassName?: string;
   onClose: () => void;
+  closeOnBackdropClick?: boolean;
   panelRef?: RefObject<HTMLElement | null>;
 };
 
@@ -27,6 +28,7 @@ export function ModalSurface({
   className,
   backdropClassName = 'fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8',
   onClose,
+  closeOnBackdropClick = false,
   panelRef
 }: ModalSurfaceProps): ReactElement {
   const internalPanelRef = useRef<HTMLElement>(null);
@@ -103,7 +105,14 @@ export function ModalSurface({
   }
 
   return (
-    <div ref={backdropRef} className={backdropClassName} role="presentation">
+    <div
+      ref={backdropRef}
+      className={backdropClassName}
+      role="presentation"
+      onClick={(event) => {
+        if (closeOnBackdropClick && event.target === event.currentTarget) onClose();
+      }}
+    >
       <section
         ref={activePanelRef}
         className={className}
