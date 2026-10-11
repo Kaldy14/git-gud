@@ -31,6 +31,44 @@ function repoChange(overrides: Partial<RepoChangedEvent>): RepoChangedEvent {
 }
 
 describe('repository watcher invalidation', () => {
+  it('does not hold mutation completion behind an in-flight linked-worktree status read', async () => {
+    const client = new QueryClient();
+    let finish = () => {};
+    const pending = new Promise<{ repoPath: string; inputs: [] }>((resolve) => {
+      finish = () => resolve({ repoPath: '/repo', inputs: [] });
+    });
+    const read = vi.fn(() => pending);
+    const observer = new QueryObserver(client, { queryKey: ['commit-graph-worktrees', '/repo'], queryFn: read });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+      let invalidated = false;
+      const invalidation = invalidateRepositoryQueries(client, '/repo', ['graph'], { refetchAfterInFlight: true })
+        .then(() => { invalidated = true; });
+      await vi.waitFor(() => expect(invalidated).toBe(true));
+      finish();
+      await invalidation;
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    } finally {
+      finish();
+      unsubscribe();
+      client.clear();
+    }
+  });
+
+  it('refreshes linked-worktree enrichment with graph changes and clears it with the repository', async () => {
+    const client = new QueryClient();
+    const key = ['commit-graph-worktrees', '/repo'];
+    client.setQueryData(key, { repoPath: '/repo', inputs: [] });
+    client.setQueryData(['commit-graph-worktrees', '/other'], { repoPath: '/other', inputs: [] });
+    await invalidateRepositoryQueries(client, '/repo', ['graph']);
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['commit-graph-worktrees', '/other'])?.isInvalidated).toBe(false);
+    clearRepositoryQueries(client, '/repo');
+    expect(client.getQueryState(key)).toBeUndefined();
+    client.clear();
+  });
+
   it('uses the precise main-process fetch scopes, including an unchanged fetch', () => {
     expect(scopesForRepositoryChange(repoChange({ invalidates: [] }))).toEqual([]);
     expect(scopesForRepositoryChange(repoChange({ invalidates: ['overview', 'graph'] }))).toEqual(['overview', 'graph']);

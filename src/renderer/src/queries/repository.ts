@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
+import { mergeCommitGraphWorktrees } from '@shared/graph';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import type {
   CommitGraphAvatarCandidate,
@@ -121,9 +122,19 @@ export function useCommitGraph(
   // after a limit reset does not fall back to a cold first page.
   const limit = repoPath ? resolveCommitGraphLimit(queryClient, repoPath, requestedLimit) : requestedLimit;
   const avatarUrls = repoPath && remoteAvatars ? cachedCommitGraphAvatarUrls(queryClient, repoPath) : undefined;
+  const worktrees = useQuery({
+    queryKey: ['commit-graph-worktrees', repoPath ?? 'none'],
+    queryFn: () => {
+      if (!repoPath) throw new Error('Repository path is required.');
+      return window.api.getCommitGraphWorktrees(repoPath);
+    },
+    enabled: Boolean(repoPath && !repoPath.startsWith('github://')),
+    retry: false,
+    staleTime: 1500
+  });
   const selectGraph = useCallback(
-    (page: CommitGraphPage) => mergeCommitGraphAvatarUrls(page, avatarUrls),
-    [avatarUrls]
+    (page: CommitGraphPage) => mergeCommitGraphAvatarUrls(mergeCommitGraphWorktrees(page, worktrees.data), avatarUrls),
+    [avatarUrls, worktrees.data]
   );
   const query = useQuery({
     queryKey: repoPath ? commitGraphQueryKey(repoPath, limit) : ['commit-graph', 'none', limit],
@@ -484,6 +495,14 @@ export async function invalidateRepositoryQueries(
   }
 
   if (requested.has('graph')) {
+    const worktreeKey = ['commit-graph-worktrees', repoPath];
+    const worktreesPending = queryClient.getQueryState(worktreeKey)?.fetchStatus === 'fetching';
+    // Mutations and pagination must not wait for optional worktree enrichment either.
+    void queryClient.invalidateQueries({ queryKey: worktreeKey }, { cancelRefetch: false }).then(() => {
+      if (options.refetchAfterInFlight && worktreesPending) {
+        void queryClient.invalidateQueries({ queryKey: worktreeKey }, { cancelRefetch: false });
+      }
+    });
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] }, { cancelRefetch: false })
     );

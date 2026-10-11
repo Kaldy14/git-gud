@@ -5,7 +5,7 @@ import console from 'node:console';
 import { cp, mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -71,6 +71,10 @@ async function seedHistory(name, count) {
 const alpha = await seedHistory('alpha-history', 2000);
 const beta = await seedHistory('beta-history', 120);
 const empty = await seedHistory('empty-history', 0);
+const linked = join(root, 'linked-history');
+git(alpha, 'worktree', 'add', '-b', 'linked-history', linked);
+await writeFile(join(linked, 'linked-change.txt'), 'linked change\n');
+const realRepo = process.env.GIT_GUD_HISTORY_REPO;
 const userData = join(root, 'user-data');
 await mkdir(userData);
 await cp(join(project, 'skills'), join(root, 'skills'), { recursive: true });
@@ -88,11 +92,23 @@ let window;
 let failPagination = false;
 let avatarDelay = 3000;
 let pendingAvatars = 0;
+let pendingWorktrees = 0;
+let releaseWorktrees;
+const worktreesReady = new Promise((resolve) => { releaseWorktrees = resolve; });
 const reads = [];
 const handle = ipcMain.handle.bind(ipcMain);
 ipcMain.handle = (channel, callback) => handle(channel, async (event, ...args) => {
   const entry = { channel, repoPath: args[0], limit: args[1], startedAt: Date.now() };
-  if (channel === 'repo:graph') reads.push(entry);
+  if (channel === 'repo:graph' || channel === 'repo:graph-worktrees') reads.push(entry);
+  if (channel === 'repo:graph-worktrees') {
+    pendingWorktrees++;
+    try {
+      if (args[0] === ${JSON.stringify(alpha)}) await worktreesReady;
+      const result = await callback(event, ...args);
+      entry.durationMs = Date.now() - entry.startedAt;
+      return result;
+    } finally { pendingWorktrees--; }
+  }
   if (channel === 'repo:graph-avatars') {
     pendingAvatars++;
     try {
@@ -113,12 +129,13 @@ ipcMain.handle = (channel, callback) => handle(channel, async (event, ...args) =
 });
 app.on('browser-window-created', (_event, created) => { window = created; });
 http.createServer((request, response) => {
+  if (request.url === '/release-worktrees') releaseWorktrees();
   if (request.url === '/fail-pagination') failPagination = true;
   if (request.url === '/resume-pagination') failPagination = false;
   if (request.url === '/fast-avatars') avatarDelay = 0;
   if (request.url === '/quit') window?.close();
   response.setHeader('Content-Type', 'application/json');
-  response.end(JSON.stringify({ ready: Boolean(window), reads, pendingAvatars }));
+  response.end(JSON.stringify({ ready: Boolean(window), reads, pendingAvatars, pendingWorktrees }));
 }).listen(${controlPort}, '127.0.0.1');
 require(${JSON.stringify(join(project, 'out/main/index.js'))});
 `);
@@ -154,6 +171,7 @@ try {
   await screenshot('empty-repository');
   report.checks.push({ name: 'Empty repository', pass: true });
 
+  await agent('record', 'start', join(artifacts, 'history-flow.webm'));
   await activate('alpha-history');
   await waitFor(async () => (await historyText()).includes('alpha-history commit 2000'));
   const cold = await control();
@@ -164,6 +182,12 @@ try {
   assert.ok(cold.pendingAvatars > 0, 'Slow avatars finished before history could render.');
   await screenshot('first-50-commits');
   report.checks.push({ name: '50 commits visible while avatar request is pending', pass: true, historyMs: first.durationMs, avatarDelayMs: 3000 });
+  assert.ok(cold.pendingWorktrees > 0, 'Linked worktrees finished before history could render.');
+  report.checks.push({ name: 'Commits visible while linked-worktree enrichment is pending', pass: true });
+  await control('/release-worktrees');
+  await waitFor(() => evaluate(`Boolean(document.querySelector('[aria-label*="linked worktree linked-history"]'))`));
+  await screenshot('linked-worktree-loaded');
+  report.checks.push({ name: 'Delayed linked WIP appears with its files and branch', pass: true });
   await control('/fast-avatars');
 
   await control('/fail-pagination');
@@ -183,12 +207,14 @@ try {
   report.checks.push({ name: 'Manual retry extends history to configured 250-commit page', pass: true });
 
   await agent('snapshot', '-i');
+  await agent('find', 'role', 'button', 'click', '--name', 'Git profile menu', '--exact');
+  await agent('snapshot', '-i');
   await agent('find', 'role', 'button', 'click', '--name', 'Settings', '--exact');
   await waitFor(() => evaluate('document.body.innerText.includes("History page size")'));
   await screenshot('history-page-settings');
   await agent('snapshot', '-i');
   await agent('find', 'role', 'button', 'click', '--name', 'Save Settings', '--exact');
-  await waitFor(() => evaluate('!document.querySelector(\'[aria-label="Close settings"]\') && document.body.innerText.includes("250 rows loaded")'));
+  await waitFor(() => evaluate('!document.querySelector(\'[aria-label="Close settings"]\') && document.body.innerText.includes("251 rows loaded")'));
   report.checks.push({ name: 'Settings limit reset preserves larger cached history', pass: true });
 
   await activate('beta-history');
@@ -217,12 +243,29 @@ try {
   await screenshot('cached-repository-switch');
   report.checks.push({ name: 'Cached repository switch without loading screen or wrong rows', pass: true, transition });
 
+  await agent('record', 'stop');
+
   for (const count of [50, 1500]) {
     const samples = [];
     for (let repeat = 0; repeat < 3; repeat++) {
       samples.push(await evaluate(`(async () => { const start = performance.now(); const page = await window.api.getCommitGraph(${JSON.stringify(alpha)}, ${count}); return { ms: performance.now() - start, count: page.loadedCommitCount }; })()`));
     }
     report.checks.push({ name: `Local graph IPC benchmark (${count} commits)`, pass: true, samples });
+  }
+  if (realRepo) {
+    await agent('record', 'start', join(artifacts, 't3code-history.webm'));
+    await evaluate(`window.api.openRepositoryAtPath(${JSON.stringify(realRepo)}).then(() => true)`);
+    await evaluate('location.reload(); true');
+    await waitFor(() => evaluate(`document.querySelectorAll('[aria-label="Commit history"] [role="option"]').length > 0`), 15_000);
+    const sample = (await control()).reads.find((read) => read.channel === 'repo:graph' && read.repoPath === realRepo && read.count !== undefined);
+    assert.equal(sample?.count, 50);
+    await screenshot(`${basename(realRepo)}-first-page`);
+    report.checks.push({ name: 'Real repository first page', pass: true, ...sample });
+    await evaluate(`(() => { const list = document.querySelector('[aria-label="Commit history"]'); list.scrollTop = list.scrollHeight; list.dispatchEvent(new Event("scroll", { bubbles: true })); return true; })()`);
+    await waitFor(async () => (await control()).reads.some((read) => read.repoPath === realRepo && read.count === 250));
+    await screenshot(`${basename(realRepo)}-older-commits`);
+    report.checks.push({ name: 'Real repository pagination', pass: true });
+    await agent('record', 'stop');
   }
   report.console = await agent('console');
   report.errors = await agent('errors');
@@ -237,6 +280,7 @@ try {
   console.error(error);
   process.exitCode = 1;
 } finally {
+  try { await agent('record', 'stop'); } catch { /* No active recording. */ }
   await writeFile(join(artifacts, 'report.json'), JSON.stringify(report, null, 2));
   await writeFile(join(artifacts, 'application.log'), applicationLog);
   try { await control('/quit'); } catch { /* Already closed. */ }

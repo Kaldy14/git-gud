@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { gitExecutor, type GitCommandOptions } from './exec';
-import { loadCommitGraph } from './commitGraph';
+import { loadCommitGraph, loadCommitGraphWorktrees } from './commitGraph';
 import { loadCommitSelectionDetail, loadFileDiff, loadReviewPlan } from './repositoryDetails';
 import { loadRepositoryOverview, loadStatus } from './repositoryOverview';
 
@@ -147,10 +147,11 @@ describe('large repository working changes', () => {
       const reads = recordStatusReads();
       const run = vi.mocked(gitExecutor.run);
       const start = performance.now();
-      const graph = await loadCommitGraph({ path: repoPath }, 50, false);
+      const [graph, worktrees] = await Promise.all([loadCommitGraph({ path: repoPath }, 50, false), loadCommitGraphWorktrees({ path: repoPath })]);
 
       console.info(JSON.stringify({ operation: 'linked worktree history refresh', ms: performance.now() - start, statusReads: reads.length }));
-      expect(graph.rows.some((row) => row.worktree?.path === linkedPaths[1] && row.files.some((file) => file.path === 'linked-change.txt'))).toBe(true);
+      expect(graph.loadedCommitCount).toBe(50);
+      expect(worktrees.inputs.some((row) => row.worktree?.path === linkedPaths[1] && row.files?.some((file) => file.path === 'linked-change.txt'))).toBe(true);
       expect(reads).toHaveLength(3);
       expect(reads.every((read) => read.args.includes('--no-ahead-behind'))).toBe(true);
       expect(run.mock.calls.filter(([args]) => args[0] === 'for-each-ref')

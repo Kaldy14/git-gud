@@ -1,4 +1,5 @@
 import type {
+  CommitGraphPage,
   CommitGraphRow,
   GraphFile,
   GraphFileStatus,
@@ -54,6 +55,55 @@ export type GraphCommitInput = {
   colorOverride?: string;
   files?: GraphFile[];
 };
+
+export type CommitGraphWorktrees = {
+  repoPath: string;
+  inputs: GraphCommitInput[];
+};
+
+export function mergeCommitGraphWorktrees(page: CommitGraphPage, worktrees: CommitGraphWorktrees | undefined): CommitGraphPage {
+  if (!worktrees || worktrees.repoPath !== page.repoPath) return page;
+  const rows = page.rows.filter((row) => row.node.kind !== 'wip' || !row.worktree || row.worktree.current);
+  if (worktrees.inputs.length === 0 && rows.length === page.rows.length) return page;
+
+  const byBase = new Map<string, GraphCommitInput[]>();
+  for (const input of worktrees.inputs) {
+    const base = input.parentShas[0] ?? '';
+    const inputs = byBase.get(base) ?? [];
+    inputs.push(input);
+    byBase.set(base, inputs);
+  }
+  const inputs: GraphCommitInput[] = [];
+  for (const row of rows) {
+    // Keep WIP tips ahead of stashes attached to the same commit.
+    const base = row.node.kind === 'stash' ? row.parentShas[0] ?? '' : row.sha;
+    inputs.push(...byBase.get(base) ?? [], commitGraphRowToInput(row));
+    byBase.delete(base);
+  }
+  for (const remaining of byBase.values()) inputs.push(...remaining);
+  return { ...page, rows: buildCommitGraphRows(inputs) };
+}
+
+export function commitGraphRowToInput(row: CommitGraphRow): GraphCommitInput {
+  return {
+    sha: row.sha,
+    parentShas: row.parentShas,
+    subject: row.subject,
+    body: row.body,
+    authorName: row.author.name,
+    authorEmail: row.author.email,
+    authorAvatarUrl: row.author.avatarUrl,
+    authorAvatarFallbackUrl: row.author.fallbackAvatarUrl,
+    authoredAt: row.authoredAt,
+    committedAt: row.committedAt,
+    dateLabel: row.dateLabel,
+    kind: row.node.kind,
+    refs: row.refs,
+    worktree: row.worktree,
+    colorOverride: row.colorOverride,
+    files: row.files
+  };
+}
 
 export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRow[] {
   const expectedByLane: Array<string | undefined> = [];

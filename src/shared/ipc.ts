@@ -1,3 +1,4 @@
+import type { CommitGraphWorktrees } from './graph';
 import type { BugFinderRequest, BugFinderResult } from './bugFinder';
 import type { ArtifactCleanupInput, ArtifactCleanupPlan, ArtifactCleanupResult, BranchCleanupInput, BranchCleanupOptions, BranchCleanupPlan, BranchCleanupResult } from './maintenance';
 import type {
@@ -199,6 +200,10 @@ export type IpcChannelMap = {
   'repo:graph': {
     args: [repoPath: string, limit?: number];
     result: CommitGraphPage;
+  };
+  'repo:graph-worktrees': {
+    args: [repoPath: string];
+    result: CommitGraphWorktrees;
   };
   'repo:graph-avatars': {
     args: [repoPath: string, candidates: CommitGraphAvatarCandidate[]];
@@ -668,6 +673,7 @@ export type RendererApi = {
   getRepositoryOverview: (repoPath: string) => Promise<GitRepositoryOverview>;
   getRepositoryIcon: (repoPath: string) => Promise<string | undefined>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
+  getCommitGraphWorktrees: (repoPath: string) => Promise<CommitGraphWorktrees>;
   getCommitGraphAvatarUrls: (repoPath: string, candidates: CommitGraphAvatarCandidate[]) => Promise<Record<string, string>>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;

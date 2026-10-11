@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildCommitGraphRows,
+  mergeCommitGraphWorktrees,
   laneBandColor,
   laneColor,
   laneRefColor,
@@ -9,7 +10,7 @@ import {
   uniqueRelativeDateMarkerLabels
 } from './graph';
 import type { GraphCommitInput } from './graph';
-import type { CommitGraphRow, GraphRailSegment } from './types';
+import type { CommitGraphPage, CommitGraphRow, GraphRailSegment } from './types';
 
 const AUTHOR = {
   authorName: 'Graph Tester',
@@ -312,3 +313,37 @@ function railLanes(rails: GraphRailSegment[]): number[] {
     return [rail.from, rail.to];
   });
 }
+
+describe('linked-worktree graph enrichment', () => {
+  const current: GraphCommitInput = {
+    ...commit('wip', ['head']), kind: 'wip', dateLabel: 'now',
+    worktree: { path: '/repo', current: true }, files: [{ path: 'local.txt', status: 'added' }]
+  };
+  const linked: GraphCommitInput = {
+    ...commit('wip:/linked', ['base']), kind: 'wip', dateLabel: 'now',
+    worktree: { path: '/linked', current: false }, files: [{ path: 'linked.txt', status: 'added' }]
+  };
+  const page: CommitGraphPage = {
+    repoPath: '/repo', loadedAt: 'now', limit: 50, loadedCommitCount: 2, hasMore: true, nextLimit: 1500,
+    rows: buildCommitGraphRows([current, commit('head', ['base']), { ...commit('stash', ['base']), kind: 'stash' }, commit('base')])
+  };
+
+  it('inserts late WIP above its stash and base with connected rails, preserving local changes and paging', () => {
+    const enriched = mergeCommitGraphWorktrees(page, { repoPath: '/repo', inputs: [linked] });
+    expect(enriched.rows).toEqual(buildCommitGraphRows([
+      current, commit('head', ['base']), linked, { ...commit('stash', ['base']), kind: 'stash' }, commit('base')
+    ]));
+    expect({ ...enriched, rows: [] }).toEqual({ ...page, rows: [] });
+    expect(mergeCommitGraphWorktrees(enriched, { repoPath: '/repo', inputs: [] }).rows).toEqual(page.rows);
+  });
+
+  it('appends WIP with unloaded parents once and keeps results scoped to their repository', () => {
+    const old = { ...linked, parentShas: ['unloaded'] };
+    const worktrees = { repoPath: '/repo', inputs: [old] };
+    const enriched = mergeCommitGraphWorktrees(page, worktrees);
+    expect(enriched.rows.at(-1)?.sha).toBe(linked.sha);
+    expect(mergeCommitGraphWorktrees(enriched, worktrees)).toEqual(enriched);
+    expect(mergeCommitGraphWorktrees(page, { ...worktrees, repoPath: '/other' })).toBe(page);
+    expect(mergeCommitGraphWorktrees(page, undefined)).toBe(page);
+  });
+});

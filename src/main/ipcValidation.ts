@@ -106,6 +106,7 @@ const validators = {
   'repo:overview': (args) => readOnlyArg(args, 'repo:overview', 'repoPath', readString),
   'repo:icon': (args) => readOnlyArg(args, 'repo:icon', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
+  'repo:graph-worktrees': (args) => readOnlyArg(args, 'repo:graph-worktrees', 'repoPath', readString),
   'repo:graph-avatars': (args) => readRepoPathWithAvatarCandidates(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
   'repo:commit-selection-detail': (args) =>

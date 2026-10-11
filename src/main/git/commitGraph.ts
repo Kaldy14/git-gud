@@ -1,6 +1,4 @@
-import { existsSync } from 'node:fs';
-
-import { buildCommitGraphRows, COMMIT_GRAPH_LIMIT_STEP, DEFAULT_COMMIT_GRAPH_LIMIT, type GraphCommitInput } from '@shared/graph';
+import { buildCommitGraphRows, COMMIT_GRAPH_LIMIT_STEP, DEFAULT_COMMIT_GRAPH_LIMIT, type GraphCommitInput, type CommitGraphWorktrees } from '@shared/graph';
 import type {
   CommitGraphAvatarCandidate,
   CommitGraphPage,
@@ -64,7 +62,12 @@ export async function loadCommitGraph(
         env
       )
     : new Map<string, string>();
-  const wipInputs = await loadWorktreeWipInputs(tab.path, worktrees, status, env);
+  const currentWorktree = worktrees.find((worktree) => worktree.current) ?? {
+    path: tab.path, head: status.branch.oid, branch: status.branch.head,
+    detached: status.branch.isDetached, bare: false, current: true
+  };
+  const currentWip = worktreeWipInput(currentWorktree, status);
+  const wipInputs = currentWip ? [currentWip] : [];
   const wipInputsByBase = createInputsByBase(wipInputs);
   const stashInputsByBase = createStashInputsByBase(stashes);
   const attachedStashBases = new Set<string>();
@@ -124,48 +127,45 @@ export async function loadCommitGraphAvatarUrls(
   return Object.fromEntries(avatars);
 }
 
-async function loadWorktreeWipInputs(
-  repoPath: string,
-  worktrees: GitWorktree[],
-  currentStatus: GitStatusSummary,
-  env: NodeJS.ProcessEnv | undefined
-): Promise<GraphCommitInput[]> {
-  const listedWorktrees = worktrees.some((worktree) => worktree.current)
-    ? worktrees
-    : [{ path: repoPath, head: currentStatus.branch.oid, branch: currentStatus.branch.head, detached: currentStatus.branch.isDetached, bare: false, current: true }];
+// Linked worktrees can live on slow or unavailable volumes. Their status is
+// optional enrichment and must never delay the local commit-history response.
+export async function loadCommitGraphWorktrees(
+  tab: Pick<RepoTab, 'path' | 'assignedProfileId'>
+): Promise<CommitGraphWorktrees> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const worktrees = await loadWorktrees(tab.path, env);
   const loaded = await mapWithConcurrency(
-    listedWorktrees.filter(
-      (worktree) => !worktree.bare && (worktree.current || existsSync(worktree.path))
-    ),
+    worktrees.filter((worktree) => !worktree.bare && !worktree.current),
     MAX_LINKED_WORKTREE_STATUS_CONCURRENCY,
-    async (worktree): Promise<GraphCommitInput | undefined> => {
-      const status = worktree.current ? currentStatus : await loadLinkedWorktreeStatus(worktree.path, env);
-
-      if (!status?.isDirty) {
-        return undefined;
-      }
-
-      return {
-        sha: worktree.current ? 'wip' : `wip:${worktree.path}`,
-        parentShas: status.branch.oid ? [status.branch.oid] : worktree.head ? [worktree.head] : [],
-        subject: '// WIP',
-        authorName: 'Worktree',
-        authoredAt: new Date().toISOString(),
-        dateLabel: 'now',
-        kind: 'wip',
-        colorOverride: '#bc271b',
-        refs: [{ label: 'WIP', kind: 'wip' }],
-        worktree: {
-          path: worktree.path,
-          branch: worktree.branch ?? status.branch.head,
-          current: worktree.current
-        },
-        files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
-      };
-    }
+    async (worktree) => worktreeWipInput(worktree, await loadLinkedWorktreeStatus(worktree.path, env))
   );
 
-  return loaded.filter((input): input is GraphCommitInput => Boolean(input));
+  return {
+    repoPath: tab.path,
+    inputs: loaded.filter((input): input is GraphCommitInput => Boolean(input))
+  };
+}
+
+function worktreeWipInput(worktree: GitWorktree, status: GitStatusSummary | undefined): GraphCommitInput | undefined {
+  if (!status?.isDirty) return undefined;
+
+  return {
+    sha: worktree.current ? 'wip' : `wip:${worktree.path}`,
+    parentShas: status.branch.oid ? [status.branch.oid] : worktree.head ? [worktree.head] : [],
+    subject: '// WIP',
+    authorName: 'Worktree',
+    authoredAt: new Date().toISOString(),
+    dateLabel: 'now',
+    kind: 'wip',
+    colorOverride: '#bc271b',
+    refs: [{ label: 'WIP', kind: 'wip' }],
+    worktree: {
+      path: worktree.path,
+      branch: worktree.branch ?? status.branch.head,
+      current: worktree.current
+    },
+    files: status.files.filter((file) => file.status !== 'ignored').map(statusFileToGraphFile)
+  };
 }
 
 async function mapWithConcurrency<Value, Result>(

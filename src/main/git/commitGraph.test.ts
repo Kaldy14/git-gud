@@ -5,7 +5,9 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { gitExecutor } from './exec';
-import { loadCommitGraph } from './commitGraph';
+import { mergeCommitGraphWorktrees } from '@shared/graph';
+
+import { loadCommitGraph, loadCommitGraphWorktrees } from './commitGraph';
 import { loadStatus, loadWorktrees } from './repositoryOverview';
 
 describe('loadCommitGraph', () => {
@@ -110,9 +112,9 @@ describe('loadCommitGraph', () => {
       ]));
       expect(await loadStatus(linkedPath)).toMatchObject({ isDirty: true, dirtyCount: 1 });
 
-      const page = await loadCommitGraph({ path: repoPath });
+      const page = await enrichedGraph({ path: repoPath });
       const wipRows = page.rows.filter((row) => row.node.kind === 'wip');
-      const linkedPage = await loadCommitGraph({ path: linkedPath });
+      const linkedPage = await enrichedGraph({ path: linkedPath });
       const linkedWipRows = linkedPage.rows.filter((row) => row.node.kind === 'wip');
 
       expect(wipRows).toHaveLength(2);
@@ -144,7 +146,7 @@ describe('loadCommitGraph', () => {
         linkedBase
       ]);
 
-      const limitedPage = await loadCommitGraph({ path: repoPath }, 1);
+      const limitedPage = await enrichedGraph({ path: repoPath }, 1);
 
       expect(limitedPage.hasMore).toBe(true);
       expect(limitedPage.rows.map((row) => row.sha)).toEqual([
@@ -301,4 +303,9 @@ async function fastImportHistory(repoPath: string, commitCount: number): Promise
     kind: 'mutation',
     input: chunks.join('')
   });
+}
+
+async function enrichedGraph(tab: { path: string }, limit?: number) {
+  const [page, worktrees] = await Promise.all([loadCommitGraph(tab, limit), loadCommitGraphWorktrees(tab)]);
+  return mergeCommitGraphWorktrees(page, worktrees);
 }

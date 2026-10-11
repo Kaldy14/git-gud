@@ -27,7 +27,7 @@ import {
   installCodexAgentNotesSkill,
   removeCodexAgentNotesSkill
 } from './codexAgentNotes';
-import { loadCommitGraph, loadCommitGraphAvatarUrls } from './git/commitGraph';
+import { loadCommitGraph, loadCommitGraphAvatarUrls, loadCommitGraphWorktrees } from './git/commitGraph';
 import { generateCommitMessage } from './commitMessage';
 import { prepareInteractiveRebasePlan, rebaseOnto, runInteractiveRebase } from './git/commands/rebase';
 import { loadConflictFile, resolveConflictFile } from './git/conflicts';
@@ -530,6 +530,7 @@ export function registerIpcHandlers(
 
     return loadCommitGraph(tab, limit, getAppSettings().remoteAvatars);
   });
+  handle('repo:graph-worktrees', async (_event, repoPath) => loadCommitGraphWorktrees(getOpenRepositoryTab(repoPath)));
   handle('repo:graph-avatars', async (_event, repoPath, candidates) => {
     const tab = getOpenRepositoryTab(repoPath);
     return getAppSettings().remoteAvatars ? loadCommitGraphAvatarUrls(tab, candidates) : {};
