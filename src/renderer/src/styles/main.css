@@ -363,6 +363,33 @@ select {
   box-shadow: 0 0 0 1px rgb(244 99 99 / 0.2);
 }
 
+/* With the running count in the top-right corner, the unread dot moves to the
+   opposite corner so both indicators stay legible. */
+.dashboard-unread-dot[data-beside-count] {
+  right: auto;
+  left: 7px;
+  top: 6px;
+}
+
+.dashboard-running-count {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid var(--bg-titlebar);
+  border-radius: 999px;
+  background: var(--warning-text);
+  padding: 0 3px;
+  color: var(--bg-field);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
 .pull-request-tab-count {
   position: absolute;
   top: 4px;

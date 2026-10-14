@@ -82,6 +82,60 @@ describe('TabStrip', () => {
     expect(markup).toContain('class="dashboard-unread-dot"');
   });
 
+  it('shows a running workflow count beside the unread dot without hiding either', () => {
+    const renderStrip = (runningCount: number, unreadCount: number): string =>
+      renderToStaticMarkup(
+        <TabStrip
+          tabs={[repositoryTab]}
+          activeTabId={repositoryTab.id}
+          isStartTabOpen={false}
+          isStartTabActive={false}
+          isDashboardsTabActive={false}
+          dashboardRunningCount={runningCount}
+          dashboardUnreadCount={unreadCount}
+          onActivateTab={vi.fn()}
+          onReorderTab={vi.fn()}
+          onCloseTab={vi.fn()}
+          onOpenStartTab={vi.fn()}
+          onActivateStartTab={vi.fn()}
+          onCloseStartTab={vi.fn()}
+          onActivateDashboardsTab={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onActivateProfile={vi.fn(async () => {})}
+          onSaveAndActivateProfile={vi.fn(async () => {})}
+        />
+      );
+
+    const runningOnly = renderStrip(1, 0);
+    expect(runningOnly).toContain('aria-label="Dashboards, 1 running workflow run"');
+    expect(runningOnly).toContain('title="Dashboards · 1 running workflow run"');
+    expect(runningOnly).toContain(
+      '<span class="dashboard-running-count" aria-hidden="true">1</span>'
+    );
+    expect(runningOnly).not.toContain('dashboard-unread-dot');
+
+    const both = renderStrip(3, 2);
+    expect(both).toContain(
+      'aria-label="Dashboards, 3 running workflow runs, 2 unread workflow failures"'
+    );
+    expect(both).toContain(
+      'title="Dashboards · 3 running workflow runs · 2 unread workflow failures"'
+    );
+    expect(both).toContain('class="dashboard-running-count"');
+    expect(both).toContain(
+      '<span class="dashboard-unread-dot" data-beside-count="true" aria-hidden="true">'
+    );
+
+    const unreadOnly = renderStrip(0, 1);
+    expect(unreadOnly).toContain('aria-label="Dashboards, 1 unread workflow failure"');
+    expect(unreadOnly).not.toContain('dashboard-running-count');
+    expect(unreadOnly).not.toContain('data-beside-count');
+
+    expect(renderStrip(120, 0)).toContain(
+      '<span class="dashboard-running-count" aria-hidden="true">99+</span>'
+    );
+  });
+
   it('renders a pull requests tab with a count badge only when there are pull requests', () => {
     const renderStrip = (pullRequestCount: number): string =>
       renderToStaticMarkup(

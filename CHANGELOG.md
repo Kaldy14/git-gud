@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.13] - 2026-10-14
+
+### Added
+
+- Show an orange count of running GitHub Actions workflows on the Dashboards tab, counting shared runs once across dashboards and preserving unread failure alerts.
+
+### Fixed
+
+- Keep commit history responsive while linked worktrees load slowly.
+
 ## [2026.10.12] - 2026-10-08
 
 ### Fixed

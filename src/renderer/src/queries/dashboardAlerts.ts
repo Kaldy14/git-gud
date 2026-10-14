@@ -3,12 +3,15 @@ import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstac
 
 import {
   gitHubActionsRunsQueryKey,
-  gitHubActionsRunsQueryOptions
+  gitHubActionsRunsQueryOptions,
+  gitHubActionsRunsRefetchInterval
 } from '@renderer/queries/github';
 import type {
   Dashboard,
   DashboardActionAlertState,
-  GitHubActionsRunsInput
+  GitHubActionsRuns,
+  GitHubActionsRunsInput,
+  GitHubWorkflowRun
 } from '@shared/types';
 
 export const dashboardActionAlertsQueryKey = (
@@ -49,23 +52,69 @@ export function useDashboardActionAlerts(profileId: string | undefined) {
   return query;
 }
 
+/**
+ * Polls every saved GitHub Actions tile and returns how many distinct workflow
+ * runs are currently running across them.
+ */
 export function useDashboardActionsMonitor(
   profileId: string | undefined,
   dashboards: Dashboard[],
   isDashboardVisible: boolean
-): void {
+): number {
   const inputs = useMemo(
     () => dashboardActionMonitoringInputs(profileId, dashboards),
     [dashboards, profileId]
   );
-  useQueries({
-    queries: inputs.map((input) =>
-      gitHubActionsRunsQueryOptions(
+  return useQueries({
+    queries: inputs.map((input) => {
+      const options = gitHubActionsRunsQueryOptions(
         input,
         isDashboardVisible ? 'interactive' : 'background-monitor'
-      )
-    )
+      );
+      if (isDashboardVisible) {
+        return options;
+      }
+
+      // While a run is in progress, poll at the tile's interactive cadence so the
+      // running badge clears soon after the run finishes.
+      const activeRefetchInterval = gitHubActionsRunsRefetchInterval(input.filters);
+      return {
+        ...options,
+        refetchInterval: (query: { state: { data?: GitHubActionsRuns } }) =>
+          query.state.data?.runs.some(isWorkflowRunRunning)
+            ? activeRefetchInterval
+            : options.refetchInterval
+      };
+    }),
+    combine: (results) =>
+      countRunningDashboardWorkflowRuns(results.map((result) => result.data))
   });
+}
+
+export function isWorkflowRunRunning(run: Pick<GitHubWorkflowRun, 'status'>): boolean {
+  return run.status === 'in-progress';
+}
+
+export function countRunningDashboardWorkflowRuns(
+  results: ReadonlyArray<GitHubActionsRuns | undefined>
+): number {
+  const runningRunKeys = new Set<string>();
+
+  for (const result of results) {
+    if (!result) {
+      continue;
+    }
+
+    for (const run of result.runs) {
+      if (isWorkflowRunRunning(run)) {
+        runningRunKeys.add(
+          `${result.owner}/${result.repository}#${run.id}`.toLowerCase()
+        );
+      }
+    }
+  }
+
+  return runningRunKeys.size;
 }
 
 export async function markDashboardActionAlertsRead(

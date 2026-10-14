@@ -272,13 +272,24 @@ const PROFILE_TRANSITION_EXIT_MS = 180;
 function DashboardActionsMonitor({
   dashboards,
   isDashboardVisible,
-  profileId
+  profileId,
+  onRunningCountChange
 }: {
   dashboards: Dashboard[];
   isDashboardVisible: boolean;
   profileId: string | undefined;
+  onRunningCountChange: (count: number) => void;
 }): null {
-  useDashboardActionsMonitor(profileId, dashboards, isDashboardVisible);
+  const runningCount = useDashboardActionsMonitor(
+    profileId,
+    dashboards,
+    isDashboardVisible
+  );
+
+  useEffect(() => {
+    onRunningCountChange(runningCount);
+  }, [onRunningCountChange, runningCount]);
+
   return null;
 }
 
@@ -580,6 +591,7 @@ export function WorkspaceShell(): ReactElement {
   const dashboardActionAlertsQuery = useDashboardActionAlerts(
     activeDashboardProfileId
   );
+  const [dashboardRunningCount, setDashboardRunningCount] = useState(0);
   const repositoryError =
     repositoryQuery.error instanceof Error ? repositoryQuery.error.message : undefined;
   const graphError = graphQuery.error instanceof Error ? graphQuery.error.message : undefined;
@@ -3431,6 +3443,7 @@ export function WorkspaceShell(): ReactElement {
         dashboards={dashboardsQuery.data?.dashboards ?? []}
         isDashboardVisible={gitHubWorkspaceView?.kind === 'dashboard'}
         profileId={connectedGitHubProfileId}
+        onRunningCountChange={setDashboardRunningCount}
       />
       <TabStrip
         tabs={workspace.tabs}
@@ -3446,6 +3459,7 @@ export function WorkspaceShell(): ReactElement {
           gitHubWorkspaceView?.kind === 'workflow-run'
         }
         dashboardUnreadCount={dashboardActionAlertsQuery.data?.unreadCount ?? 0}
+        dashboardRunningCount={dashboardRunningCount}
         profileState={workspaceProfileState}
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}

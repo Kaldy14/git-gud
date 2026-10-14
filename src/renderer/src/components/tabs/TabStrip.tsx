@@ -31,6 +31,7 @@ type TabStripProps = {
   isStartTabActive: boolean;
   isDashboardsTabActive: boolean;
   dashboardUnreadCount?: number;
+  dashboardRunningCount?: number;
   isPullRequestsTabActive?: boolean;
   pullRequestCount?: number;
   profileState?: RepoProfileState;
@@ -55,6 +56,7 @@ export function TabStrip({
   isStartTabActive,
   isDashboardsTabActive,
   dashboardUnreadCount = 0,
+  dashboardRunningCount = 0,
   isPullRequestsTabActive = false,
   pullRequestCount = 0,
   profileState,
@@ -320,26 +322,22 @@ export function TabStrip({
         <div
           className="no-drag repo-tab repo-tab--icon"
           data-active={isDashboardsTabActive}
-          title={
-            dashboardUnreadCount > 0
-              ? `Dashboards · ${dashboardUnreadCount} unread workflow ${
-                  dashboardUnreadCount === 1 ? 'failure' : 'failures'
-                }`
-              : 'Dashboards'
-          }
+          title={dashboardsTabLabel(
+            dashboardRunningCount,
+            dashboardUnreadCount,
+            ' · '
+          )}
         >
           <button
             id={tabDomId(DASHBOARDS_TAB_ID)}
             className="repo-tab-main"
             type="button"
             role="tab"
-            aria-label={
-              dashboardUnreadCount > 0
-                ? `Dashboards, ${dashboardUnreadCount} unread workflow ${
-                    dashboardUnreadCount === 1 ? 'failure' : 'failures'
-                  }`
-                : 'Dashboards'
-            }
+            aria-label={dashboardsTabLabel(
+              dashboardRunningCount,
+              dashboardUnreadCount,
+              ', '
+            )}
             aria-selected={isDashboardsTabActive}
             tabIndex={isDashboardsTabActive ? 0 : -1}
             onClick={onActivateDashboardsTab}
@@ -356,8 +354,17 @@ export function TabStrip({
               size={15}
               className={isDashboardsTabActive ? 'text-[var(--accent-2)]' : undefined}
             />
+            {dashboardRunningCount > 0 ? (
+              <span className="dashboard-running-count" aria-hidden="true">
+                {dashboardRunningCount > 99 ? '99+' : dashboardRunningCount}
+              </span>
+            ) : null}
             {dashboardUnreadCount > 0 ? (
-              <span className="dashboard-unread-dot" aria-hidden="true" />
+              <span
+                className="dashboard-unread-dot"
+                data-beside-count={dashboardRunningCount > 0 || undefined}
+                aria-hidden="true"
+              />
             ) : null}
           </button>
         </div>
@@ -410,6 +417,25 @@ export function TabStrip({
       </div>
     </div>
   );
+}
+
+function dashboardsTabLabel(
+  runningCount: number,
+  unreadCount: number,
+  separator: string
+): string {
+  const parts = ['Dashboards'];
+  if (runningCount > 0) {
+    parts.push(
+      `${runningCount} running workflow ${runningCount === 1 ? 'run' : 'runs'}`
+    );
+  }
+  if (unreadCount > 0) {
+    parts.push(
+      `${unreadCount} unread workflow ${unreadCount === 1 ? 'failure' : 'failures'}`
+    );
+  }
+  return parts.join(separator);
 }
 
 function RepositoryTabIcon({ repoPath }: { repoPath: string }): ReactElement {
