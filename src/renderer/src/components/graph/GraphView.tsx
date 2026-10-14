@@ -10,19 +10,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Archive,
-  BookOpenCheck,
   Cherry,
   Check,
   Cloud,
   Copy,
-  Download,
   GitBranch,
   GitBranchPlus,
   GitCommit,
   GitMerge,
-  GitPullRequest,
   LaptopMinimal,
-  Link,
   Loader2,
   Pencil,
   RefreshCw,
@@ -52,7 +48,7 @@ import {
 import { WipStatusCounts } from '@renderer/components/graph/WipStatusCounts';
 import { isNearGraphBottom } from '@renderer/components/graph/graphLoadMore';
 import { describeWipWorktree } from '@renderer/components/graph/worktreePresentation';
-import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
+import { BranchContextMenuItems } from '@renderer/components/operations/BranchContextMenuItems';
 import { CreateSuggestedTagMenuItem } from '@renderer/components/operations/CreateSuggestedTagMenuItem';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
@@ -2562,180 +2558,33 @@ function GraphBranchContextMenu({
       onKeyDown={(event) => handleMenuKeyDown(event, onClose)}
       onClick={(event) => event.stopPropagation()}
     >
-      <BranchContextMenuPrimaryActions
+      <BranchContextMenuItems
         branchName={state.branchName}
-        suggestedTagName={suggestedTagName}
+        targetSha={state.targetSha}
+        currentBranchName={state.currentBranchName}
         isCurrentBranch={isCurrentBranch}
+        hasUpstream={Boolean(state.upstream)}
+        canSetBranchUpstream={canSetBranchUpstream}
+        suggestedTagName={suggestedTagName}
+        pullRequest={pullRequest}
         isOperationBusy={isOperationBusy}
         onCheckoutBranch={onCheckoutBranch}
         onPushBranch={onPushBranch}
         onPushBranchWithTag={onPushBranchWithTag}
+        onPullBranch={onPullBranch}
+        onSetBranchUpstream={onSetBranchUpstream}
+        onReviewBranch={onReviewBranch}
+        onViewPullRequest={onViewPullRequest}
+        onCreateTagAtCommit={onCreateTagAtCommit}
+        onCreateSuggestedTagAtCommit={onCreateSuggestedTagAtCommit}
+        onMergeBranch={onMergeBranch}
+        onRebaseOntoBranch={onRebaseOntoBranch}
+        onInteractiveRebaseOntoBranch={onInteractiveRebaseOntoBranch}
+        onRenameBranch={onRenameBranch}
+        onCopyBranchName={onCopyBranchName}
+        onDeleteBranch={onDeleteBranch}
         onClose={onClose}
       />
-      {isCurrentBranch && state.upstream ? (
-        <button
-          className="menu-row"
-          type="button"
-          role="menuitem"
-          disabled={!onPullBranch || isOperationBusy}
-          onClick={() => {
-            void onPullBranch?.(state.branchName);
-            onClose();
-          }}
-        >
-          <Download size={14} />
-          <span>Pull</span>
-        </button>
-      ) : null}
-      {!state.upstream && canSetBranchUpstream ? (
-        <button
-          className="menu-row"
-          type="button"
-          role="menuitem"
-          disabled={!onSetBranchUpstream || isOperationBusy}
-          onClick={() => {
-            void onSetBranchUpstream?.(state.branchName);
-            onClose();
-          }}
-        >
-          <Link size={14} />
-          <span>Set upstream…</span>
-        </button>
-      ) : null}
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onReviewBranch || isOperationBusy}
-        onClick={() => {
-          void onReviewBranch?.(state.branchName, state.targetSha);
-          onClose();
-        }}
-      >
-        <BookOpenCheck size={14} />
-        <span>Review entire branch</span>
-      </button>
-      {pullRequest ? (
-        <>
-          <ContextMenuSeparator />
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={!onViewPullRequest}
-            onClick={() => {
-              void onViewPullRequest?.(pullRequest);
-              onClose();
-            }}
-          >
-            <GitPullRequest size={14} />
-            <span>View pull request #{pullRequest.number}</span>
-          </button>
-        </>
-      ) : null}
-      <ContextMenuSeparator />
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onRenameBranch || isOperationBusy}
-        onClick={() => {
-          void onRenameBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <Pencil size={14} />
-        <span>Rename branch…</span>
-      </button>
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onCreateTagAtCommit || isOperationBusy}
-        onClick={() => {
-          void onCreateTagAtCommit?.(state.targetSha);
-          onClose();
-        }}
-      >
-        <Tag size={14} />
-        <span>Create tag here and push</span>
-      </button>
-      <CreateSuggestedTagMenuItem
-        suggestedTagName={suggestedTagName}
-        isOperationBusy={isOperationBusy}
-        onCreate={
-          onCreateSuggestedTagAtCommit
-            ? (name) => onCreateSuggestedTagAtCommit(state.targetSha, name)
-            : undefined
-        }
-        onClose={onClose}
-      />
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onMergeBranch || isCurrentBranch || isOperationBusy}
-        onClick={() => {
-          void onMergeBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <GitMerge size={14} />
-        <span>Merge {state.branchName} into {state.currentBranchName}</span>
-      </button>
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onRebaseOntoBranch || isCurrentBranch || isOperationBusy}
-        onClick={() => {
-          void onRebaseOntoBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <RefreshCw size={14} />
-        <span>Rebase {state.currentBranchName} onto {state.branchName}</span>
-      </button>
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onInteractiveRebaseOntoBranch || isCurrentBranch || isOperationBusy}
-        onClick={() => {
-          void onInteractiveRebaseOntoBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <Workflow size={14} />
-        <span>Interactive rebase {state.currentBranchName} onto {state.branchName}</span>
-      </button>
-      <ContextMenuSeparator />
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onCopyBranchName}
-        onClick={() => {
-          void onCopyBranchName?.(state.branchName);
-          onClose();
-        }}
-      >
-        <Copy size={14} />
-        <span>Copy branch name</span>
-      </button>
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
-        disabled={!onDeleteBranch || isCurrentBranch || isOperationBusy}
-        onClick={() => {
-          void onDeleteBranch?.(state.branchName);
-          onClose();
-        }}
-      >
-        <Trash2 size={14} />
-        <span>Delete local or remote branch…</span>
-      </button>
     </ContextMenuSurface>
   );
 }
@@ -2946,6 +2795,7 @@ function GraphContextMenu({
             <GitBranch size={14} />
             <span>Checkout commit</span>
           </button>
+          <ContextMenuSeparator />
           <button
             className="menu-row"
             type="button"

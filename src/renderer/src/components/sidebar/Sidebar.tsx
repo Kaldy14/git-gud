@@ -2,7 +2,6 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent as R
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Archive,
-  BookOpenCheck,
   Check,
   ChevronDown,
   ChevronRight,
@@ -17,7 +16,6 @@ import {
   GitMerge,
   GitPullRequest,
   Laptop,
-  Link,
   Loader2,
   MoreVertical,
   PanelLeftClose,
@@ -33,7 +31,7 @@ import {
 } from 'lucide-react';
 
 import { handleMenuKeyDown } from '@renderer/components/accessibility/menuKeyboard';
-import { BranchContextMenuPrimaryActions } from '@renderer/components/operations/BranchContextMenuPrimaryActions';
+import { BranchContextMenuItems } from '@renderer/components/operations/BranchContextMenuItems';
 import { CreateSuggestedTagMenuItem } from '@renderer/components/operations/CreateSuggestedTagMenuItem';
 import { TagMenuItems } from '@renderer/components/operations/TagMenuItems';
 import { ContextMenuSeparator, ContextMenuSurface } from '@renderer/components/ui/context-menu';
@@ -1487,47 +1485,47 @@ function SidebarContextMenu({
           </button>
         </>
       ) : state.kind === 'local' ? (
+        <BranchContextMenuItems
+          branchName={state.branch.name}
+          targetSha={state.branch.sha}
+          currentBranchName={currentBranchName}
+          isCurrentBranch={state.branch.current}
+          hasUpstream={Boolean(state.branch.upstream)}
+          canSetBranchUpstream={canSetBranchUpstream}
+          suggestedTagName={suggestedTagName}
+          pullRequest={pullRequest}
+          isOperationBusy={isOperationBusy}
+          onCheckoutBranch={onCheckoutBranch}
+          onPushBranch={onPushBranch}
+          onPushBranchWithTag={onPushBranchWithTag}
+          onPullBranch={onPullBranch}
+          onSetBranchUpstream={onSetBranchUpstream}
+          onReviewBranch={onReviewBranch}
+          onViewPullRequest={onViewPullRequest}
+          onCreateTagAtCommit={onCreateTagAtCommit}
+          onCreateSuggestedTagAtCommit={onCreateSuggestedTagAtCommit}
+          onMergeBranch={onMergeBranch}
+          onRebaseOntoBranch={onRebaseOntoBranch}
+          onRenameBranch={onRenameBranch}
+          onCopyBranchName={onCopyBranchName}
+          onDeleteBranch={onDeleteBranch}
+          onClose={onClose}
+        />
+      ) : state.kind === 'remote' ? (
         <>
-          <BranchContextMenuPrimaryActions
-            branchName={state.branch.name}
-            suggestedTagName={suggestedTagName}
-            isCurrentBranch={state.branch.current}
-            isOperationBusy={isOperationBusy}
-            onCheckoutBranch={onCheckoutBranch}
-            onPushBranch={onPushBranch}
-            onPushBranchWithTag={onPushBranchWithTag}
-            onClose={onClose}
-          />
-          {state.branch.current && state.branch.upstream ? (
-            <button
-              className="menu-row"
-              type="button"
-              role="menuitem"
-              disabled={isOperationBusy}
-              onClick={() => {
-                onPullBranch(state.branch.name);
-                onClose();
-              }}
-            >
-              <Download size={14} />
-              <span>Pull</span>
-            </button>
-          ) : null}
-          {!state.branch.upstream && canSetBranchUpstream ? (
-            <button
-              className="menu-row"
-              type="button"
-              role="menuitem"
-              disabled={isOperationBusy}
-              onClick={() => {
-                onSetBranchUpstream(state.branch.name);
-                onClose();
-              }}
-            >
-              <Link size={14} />
-              <span>Set upstream…</span>
-            </button>
-          ) : null}
+          <button
+            className="menu-row"
+            type="button"
+            role="menuitem"
+            disabled={isOperationBusy}
+            onClick={() => {
+              onCheckoutRemoteBranch(state.branch.name);
+              onClose();
+            }}
+          >
+            <GitBranch size={14} />
+            <span>Checkout tracking branch</span>
+          </button>
           {pullRequest ? (
             <>
               <ContextMenuSeparator />
@@ -1545,19 +1543,6 @@ function SidebarContextMenu({
               </button>
             </>
           ) : null}
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onReviewBranch(state.branch.name, state.branch.sha);
-              onClose();
-            }}
-          >
-            <BookOpenCheck size={14} />
-            <span>Review entire branch</span>
-          </button>
           <ContextMenuSeparator />
           <button
             className="menu-row"
@@ -1578,155 +1563,33 @@ function SidebarContextMenu({
             onCreate={(name) => onCreateSuggestedTagAtCommit(state.branch.sha, name)}
             onClose={onClose}
           />
-          {canIntegrateBranch ? (
-            <>
-              <button
-                className="menu-row"
-                type="button"
-                role="menuitem"
-                disabled={isOperationBusy}
-                onClick={() => {
-                  onMergeBranch(state.branch.name);
-                  onClose();
-                }}
-              >
-                <GitMerge size={14} />
-                <span>Merge {state.branch.name} into {currentBranchName}</span>
-              </button>
-              <button
-                className="menu-row"
-                type="button"
-                role="menuitem"
-                disabled={isOperationBusy}
-                onClick={() => {
-                  onRebaseOntoBranch(state.branch.name);
-                  onClose();
-                }}
-              >
-                <RefreshCw size={14} />
-                <span>Rebase {currentBranchName} onto {state.branch.name}</span>
-              </button>
-            </>
-          ) : null}
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onRenameBranch(state.branch.name);
-              onClose();
-            }}
-          >
-            <Pencil size={14} />
-            <span>Rename branch</span>
-          </button>
           <ContextMenuSeparator />
           <button
             className="menu-row"
             type="button"
             role="menuitem"
+            disabled={!canIntegrateBranch || isOperationBusy}
             onClick={() => {
-              onCopyBranchName(state.branch.name);
+              onMergeBranch(state.branch.name);
               onClose();
             }}
           >
-            <Copy size={14} />
-            <span>Copy branch name</span>
+            <GitMerge size={14} />
+            <span>Merge {state.branch.name} into {currentBranchName ?? 'current'}</span>
           </button>
           <button
             className="menu-row"
             type="button"
             role="menuitem"
-            disabled={state.branch.current || isOperationBusy}
+            disabled={!canIntegrateBranch || isOperationBusy}
             onClick={() => {
-              onDeleteBranch(state.branch.name);
+              onRebaseOntoBranch(state.branch.name);
               onClose();
             }}
           >
-            <Trash2 size={14} />
-            <span>Delete branch</span>
+            <RefreshCw size={14} />
+            <span>Rebase {currentBranchName ?? 'current'} onto {state.branch.name}</span>
           </button>
-        </>
-      ) : state.kind === 'remote' ? (
-        <>
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onCheckoutRemoteBranch(state.branch.name);
-              onClose();
-            }}
-          >
-            <GitBranch size={14} />
-            <span>Checkout tracking branch</span>
-          </button>
-          {pullRequest ? (
-            <button
-              className="menu-row"
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onViewPullRequest(pullRequest);
-                onClose();
-              }}
-            >
-              <GitPullRequest size={14} />
-              <span>View pull request #{pullRequest.number}</span>
-            </button>
-          ) : null}
-          <ContextMenuSeparator />
-          <button
-            className="menu-row"
-            type="button"
-            role="menuitem"
-            disabled={isOperationBusy}
-            onClick={() => {
-              onCreateTagAtCommit(state.branch.sha);
-              onClose();
-            }}
-          >
-            <Tag size={14} />
-            <span>Create tag here and push</span>
-          </button>
-          <CreateSuggestedTagMenuItem
-            suggestedTagName={suggestedTagName}
-            isOperationBusy={isOperationBusy}
-            onCreate={(name) => onCreateSuggestedTagAtCommit(state.branch.sha, name)}
-            onClose={onClose}
-          />
-          {canIntegrateBranch ? (
-            <>
-              <button
-                className="menu-row"
-                type="button"
-                role="menuitem"
-                disabled={isOperationBusy}
-                onClick={() => {
-                  onMergeBranch(state.branch.name);
-                  onClose();
-                }}
-              >
-                <GitMerge size={14} />
-                <span>Merge {state.branch.name} into {currentBranchName}</span>
-              </button>
-              <button
-                className="menu-row"
-                type="button"
-                role="menuitem"
-                disabled={isOperationBusy}
-                onClick={() => {
-                  onRebaseOntoBranch(state.branch.name);
-                  onClose();
-                }}
-              >
-                <RefreshCw size={14} />
-                <span>Rebase {currentBranchName} onto {state.branch.name}</span>
-              </button>
-            </>
-          ) : null}
           <ContextMenuSeparator />
           <button
             className="menu-row"
@@ -1751,7 +1614,7 @@ function SidebarContextMenu({
             }}
           >
             <Trash2 size={14} />
-            <span>Delete remote branch</span>
+            <span>Delete remote branch…</span>
           </button>
         </>
       ) : state.kind === 'tag' ? (

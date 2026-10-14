@@ -41,15 +41,6 @@ export function TagMenuItems({
         className="menu-row"
         type="button"
         role="menuitem"
-        onClick={() => void copyTagName()}
-      >
-        <Copy size={14} />
-        <span>Copy tag name</span>
-      </button>
-      <button
-        className="menu-row"
-        type="button"
-        role="menuitem"
         disabled={isOperationBusy || !remoteName || !onPushTag}
         title={remoteName ? undefined : 'Configure a remote before pushing this tag'}
         onClick={() => {
@@ -65,6 +56,15 @@ export function TagMenuItems({
         <span>{remoteName ? `Push ${tagName} to ${remoteName}` : `Push ${tagName}`}</span>
       </button>
       <ContextMenuSeparator />
+      <button
+        className="menu-row"
+        type="button"
+        role="menuitem"
+        onClick={() => void copyTagName()}
+      >
+        <Copy size={14} />
+        <span>Copy tag name</span>
+      </button>
       <button
         className="menu-row"
         type="button"
