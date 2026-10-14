@@ -18,7 +18,8 @@ await mkdir(artifacts, { recursive: true });
 const report = { url: `file://${project}/out/renderer/index.html`, checks: [], screenshots: [], root };
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const session = `git-gud-autofetch-${process.pid}`;
-const agent = async (...args) => (await exec('pnpm', ['dlx', 'agent-browser', '--session', session, ...args], {
+const agentBinary = process.env.GIT_GUD_AGENT_BROWSER;
+const agent = async (...args) => (await exec(agentBinary || 'pnpm', [...(agentBinary ? [] : ['dlx', 'agent-browser']), '--session', session, ...args], {
   cwd: project, timeout: 35_000, maxBuffer: 1024 * 1024
 })).stdout.trim();
 const evaluate = async (expression) => JSON.parse(await agent('eval', expression));
@@ -49,7 +50,7 @@ async function screenshot(name) {
 async function openRepository(path) {
   await evaluate(`window.api.openRepositoryAtPath(${JSON.stringify(path)}).then(() => true)`);
   await evaluate('location.reload(); true');
-  await waitFor(() => evaluate(`Boolean(window.api && document.body.innerText.includes(${JSON.stringify(basename(path))}) && document.querySelector('[role="listbox"] [role="option"]'))`));
+  await waitFor(() => evaluate(`Boolean(window.api && document.body?.innerText.includes(${JSON.stringify(basename(path))}) && document.querySelector('[role="listbox"] [role="option"]'))`));
 }
 
 async function subscribe() {
@@ -75,6 +76,7 @@ async function assertQuietBackgroundStatus(expectedStatus) {
 }
 
 async function setIntervalMinutes(value) {
+  await agent('find', 'role', 'button', 'click', '--name', 'Git profile menu', '--exact');
   await agent('find', 'role', 'button', 'click', '--name', 'Settings', '--exact');
   await agent('fill', 'input[type="number"][max="60"]', String(value));
   await agent('find', 'role', 'button', 'click', '--name', 'Save Settings', '--exact');
@@ -138,10 +140,11 @@ app.on('browser-window-created', (_event, created) => {
 });
 http.createServer((request, response) => {
   if (request.url === '/minimize') window?.minimize();
+  if (request.url === '/blur') window?.blur();
   if (request.url === '/restore') { window?.restore(); window?.show(); }
   if (request.url === '/quit') window?.close();
   response.setHeader('Content-Type', 'application/json');
-  response.end(JSON.stringify({ready: Boolean(window), minimized: window?.isMinimized(), counts, progress}));
+  response.end(JSON.stringify({ready: Boolean(window), minimized: window?.isMinimized(), focused: window?.isFocused(), counts, progress}));
 }).listen(${controlPort}, '127.0.0.1');
 require(${JSON.stringify(join(project, 'out/main/index.js'))});
 `);
@@ -215,6 +218,11 @@ try {
 
   await openRepository(updated);
   await subscribe();
+  await setIntervalMinutes(1);
+  await waitFor(() => evaluate(`window.__autoFetchEvents.some((event) => event.repoPath === ${JSON.stringify(updated)} && event.background && event.phase === "completed")`));
+  const unfocused = await control('/blur');
+  assert.equal(unfocused.focused, false);
+  assert.equal(unfocused.minimized, false);
   const publisher = join(root, 'publisher');
   git(root, 'clone', remote, publisher);
   git(publisher, 'config', 'user.name', 'Git Gud Validation');
@@ -225,13 +233,17 @@ try {
   git(publisher, 'commit', '-m', 'Remote update fetched in background');
   git(publisher, 'push', 'origin', 'main');
   const remoteHead = git(publisher, 'rev-parse', 'HEAD').trim();
-  await setIntervalMinutes(1);
+  // Observe refs from outside Electron: IPC/CDP polling or refocusing the app
+  // could wake its event loop and conceal a stalled background timer.
+  await waitFor(() => git(updated, 'rev-parse', 'origin/main').trim() === remoteHead, 90_000);
+  assert.equal((await control()).focused, false, 'App regained focus before fetching remote commits.');
+  await control('/restore');
   await waitFor(() => evaluate('document.body.innerText.includes("Remote update fetched in background")'));
   assert.equal(git(updated, 'rev-parse', 'origin/main').trim(), remoteHead);
   assert.equal(git(updated, 'status', '--porcelain').trim(), '');
   await assertQuietBackgroundStatus('success');
   await screenshot('background-ref-update');
-  report.checks.push({ name: 'Changed remote refs appear in history without touching working files', pass: true });
+  report.checks.push({ name: 'Remote commits fetched while unfocused, without IPC polling or touching working files', pass: true });
   await setIntervalMinutes(0);
 
   await openRepository(offline);
@@ -256,6 +268,40 @@ try {
   await waitFor(() => evaluate('Boolean(document.querySelector(\'button[aria-label="Dismiss Fetch"]\'))'));
   await screenshot('manual-fetch-error-card');
   report.checks.push({ name: 'Automatic progress, success, and failure stay in footer; manual fetch still gets a card', pass: true });
+
+  // A round longer than the fetch interval must not starve later tabs. Keep
+  // every remote below the real 60-second background-fetch command timeout.
+  const slowUploadPack = join(root, 'slow-upload-pack');
+  await writeFile(slowUploadPack, '#!/bin/sh\nsleep 30\nexec git upload-pack "$@"\n', { mode: 0o755 });
+  const repositories = Array.from({ length: 4 }, (_, index) => join(root, `background-repo-${index + 1}`));
+  for (const path of repositories) {
+    git(root, 'clone', remote, path);
+    git(path, 'config', 'remote.origin.uploadpack', slowUploadPack);
+    await evaluate(`window.api.openRepositoryAtPath(${JSON.stringify(path)}).then(() => true)`);
+  }
+  await evaluate(`window.api.getWorkspace().then(async (workspace) => {
+    for (const tab of workspace.tabs) if (!${JSON.stringify(repositories)}.includes(tab.path)) await window.api.closeTab(tab.id);
+    return true;
+  })`);
+  await openRepository(repositories.at(-1));
+  await writeFile(join(publisher, 'every-repository.txt'), 'Every open repository receives this update.\n');
+  git(publisher, 'add', '.');
+  git(publisher, 'commit', '-m', 'Remote update reaches every open repository');
+  git(publisher, 'push', 'origin', 'main');
+  const latestHead = git(publisher, 'rev-parse', 'HEAD').trim();
+  await setIntervalMinutes(1);
+  assert.equal((await control('/blur')).focused, false);
+  const startedAt = Date.now();
+  process.stdout.write('Testing four slow remotes while unfocused (one complete fetch round)…\n');
+  await waitFor(() => repositories.every((path) => git(path, 'rev-parse', 'origin/main').trim() === latestHead), 150_000);
+  const backgroundState = await control();
+  assert.equal(backgroundState.focused, false);
+  assert.equal(backgroundState.minimized, false);
+  await control('/restore');
+  await waitFor(() => evaluate('document.body.innerText.includes("Remote update reaches every open repository")'));
+  await screenshot('all-open-repositories-updated');
+  report.checks.push({ name: 'All four slow repositories fetch while unfocused without starving the last tab', pass: true, elapsedMs: Date.now() - startedAt });
+  await setIntervalMinutes(0);
   report.console = await agent('console');
   report.networkErrors = await agent('network', 'requests', '--status', '400-599');
   const errors = JSON.parse(await agent('--json', 'errors'));

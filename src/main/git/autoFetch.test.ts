@@ -122,6 +122,26 @@ describe('main-process automatic fetching', () => {
     scheduler.stop();
   });
 
+  it('fetches every overdue repository before repeating earlier tabs when remote fetches are slow', async () => {
+    const repositories = Array.from({ length: 4 }, (_, index) => ({
+      ...repository, path: `/repo-${index}`, commonDir: `/repo-${index}/.git`
+    }));
+    const { scheduler, fetch } = create(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
+      return 'succeeded';
+    });
+    scheduler.sync(repositories, 1);
+    try {
+      await vi.advanceTimersByTimeAsync(94_000);
+      expect(fetch.mock.calls.map(([tab]) => tab.path)).toEqual(repositories.map((tab) => tab.path));
+      await vi.advanceTimersByTimeAsync(124_000);
+      expect(fetch.mock.calls.map(([tab]) => tab.path)).toEqual([...repositories, ...repositories].map((tab) => tab.path));
+    } finally {
+      scheduler.stop();
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+  });
+
   it('handles a far-future stored timestamp without overflowing or spinning its timer', async () => {
     const { scheduler, fetch, lastFetchedAt } = create();
     lastFetchedAt.mockReturnValue(new Date(Date.now() + 365 * 24 * 60 * 60_000).toISOString());

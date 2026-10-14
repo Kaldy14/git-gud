@@ -121,9 +121,19 @@ export class RepositoryAutoFetch {
   private tick(): void {
     this.timer = undefined;
     if (this.stopped || this.intervalMs === 0 || this.current) return;
-    const repository = [...this.repositories.values()].find(
-      (candidate) => !this.foreground.has(candidate.commonDir) && this.dueAt(candidate.commonDir) <= Date.now()
-    );
+    // Serve the most overdue repository, not the first due tab. Otherwise a
+    // slow round can make earlier tabs due again and starve the later ones.
+    let repository: FetchRepository | undefined;
+    let earliestDueAt = Number.POSITIVE_INFINITY;
+    const now = Date.now();
+    for (const candidate of this.repositories.values()) {
+      if (this.foreground.has(candidate.commonDir)) continue;
+      const dueAt = this.dueAt(candidate.commonDir);
+      if (dueAt <= now && dueAt < earliestDueAt) {
+        repository = candidate;
+        earliestDueAt = dueAt;
+      }
+    }
     if (!repository) {
       this.arm();
       return;
