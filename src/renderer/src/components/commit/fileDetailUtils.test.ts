@@ -8,7 +8,10 @@ import {
   expandFileTreePathAncestors,
   fileChangeIconKind,
   fileTreeAncestorPaths,
+  conflictedFolderPaths,
   findAdjacentFilePath,
+  folderStagingActions,
+  groupWipFiles,
   toggleFileTreePath
 } from './fileDetailUtils';
 import type { CommitGraphRow, GitFileChangeDetail } from '@shared/types';
@@ -113,6 +116,83 @@ describe('buildChangedFileTree', () => {
         conflicted: 0
       }
     });
+  });
+});
+
+describe('folderStagingActions', () => {
+  function folder(files: GitFileChangeDetail[]) {
+    const [node] = buildChangedFileTree(files);
+    if (node?.kind !== 'directory') {
+      throw new Error('Expected a directory node.');
+    }
+    return node;
+  }
+
+  it('prefers staging when any nested descendant has unstaged changes', () => {
+    expect(folderStagingActions(folder([
+      { ...file('src/staged.ts'), staged: true },
+      { ...file('src/nested/deep/unstaged.ts'), unstaged: true }
+    ]))).toEqual({ canStage: true, canUnstage: true, hasConflicts: false, primary: 'stage' });
+  });
+
+  it('falls back to unstaging when every descendant is fully staged', () => {
+    expect(folderStagingActions(folder([
+      { ...file('src/a.ts'), staged: true },
+      { ...file('src/nested/deleted.ts'), status: 'deleted', staged: true }
+    ]))).toEqual({ canStage: false, canUnstage: true, hasConflicts: false, primary: 'unstage' });
+  });
+
+  it('reports unresolved conflicts without treating them as stageable work', () => {
+    expect(folderStagingActions(folder([
+      { ...file('src/conflicted.ts'), status: 'conflicted', unstaged: true, conflicted: true }
+    ]))).toEqual({ canStage: false, canUnstage: false, hasConflicts: true, primary: undefined });
+    expect(folderStagingActions(folder([
+      { ...file('src/conflicted.ts'), status: 'conflicted', unstaged: true, conflicted: true },
+      { ...file('src/nested/unstaged.ts'), unstaged: true }
+    ]))).toEqual({ canStage: true, canUnstage: false, hasConflicts: true, primary: 'stage' });
+  });
+});
+
+describe('groupWipFiles', () => {
+  it('places partially staged files in both groups without copying their flags', () => {
+    const both = { ...file('src/both.ts'), staged: true, unstaged: true };
+    const conflicted = { ...file('src/conflict.ts'), status: 'conflicted' as const, unstaged: true, conflicted: true };
+    const groups = groupWipFiles([both, conflicted]);
+
+    expect(groups.conflict).toEqual([conflicted]);
+    expect(groups.unstaged[0]).toBe(both);
+    expect(groups.staged[0]).toBe(both);
+  });
+
+  it('records every ancestor folder of a conflicted file', () => {
+    expect([...conflictedFolderPaths([
+      { ...file('a/b/conflict.ts'), conflicted: true },
+      { ...file('c/clean.ts'), unstaged: true }
+    ])]).toEqual(['a', 'a/b']);
+  });
+});
+
+describe('placed folderStagingActions', () => {
+  function folder(files: GitFileChangeDetail[]) {
+    const [node] = buildChangedFileTree(files);
+    if (node?.kind !== 'directory') {
+      throw new Error('Expected a directory node.');
+    }
+    return node;
+  }
+
+  const both = { ...file('src/both.ts'), staged: true, unstaged: true };
+
+  it('limits a partially staged folder to its group action', () => {
+    expect(folderStagingActions(folder([both]), { placement: 'unstaged' }))
+      .toEqual({ canStage: true, canUnstage: false, hasConflicts: false, primary: 'stage' });
+    expect(folderStagingActions(folder([both]), { placement: 'staged' }))
+      .toEqual({ canStage: false, canUnstage: true, hasConflicts: false, primary: 'unstage' });
+  });
+
+  it('reports conflicts from the full folder even when they render elsewhere', () => {
+    expect(folderStagingActions(folder([both]), { placement: 'unstaged', conflictedFolders: new Set(['src']) }))
+      .toMatchObject({ canStage: true, hasConflicts: true });
   });
 });
 

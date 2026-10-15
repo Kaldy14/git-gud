@@ -403,7 +403,14 @@ export async function unstageFile(tab: DetailTab, path: string): Promise<GitOper
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const status = await loadPathStatus(tab.path, path, env);
   const statusFile = status.files.find((file) => file.path === path);
-  const pathspec = createDiffPathspec(path, statusFile?.originalPath);
+  const pathspec = statusFile
+    ? createDiffPathspec(path, statusFile.originalPath)
+    : [...new Set([
+        path,
+        ...status.files
+          .filter((file) => file.path.startsWith(`${path}/`) && file.originalPath)
+          .map((file) => file.originalPath!)
+      ])];
 
   if (status.branch.oid) {
     await gitExecutor.run(withLiteralPathspec('restore', '--staged', '--', ...pathspec), {
@@ -414,7 +421,7 @@ export async function unstageFile(tab: DetailTab, path: string): Promise<GitOper
     return createOperationResult(tab.path, undefined, WIP_QUERY_INVALIDATIONS);
   }
 
-  await gitExecutor.run(withLiteralPathspec('rm', '--cached', '--quiet', '--', ...pathspec), {
+  await gitExecutor.run(withLiteralPathspec('rm', '--cached', '-r', '--quiet', '--', ...pathspec), {
     cwd: tab.path,
     kind: 'mutation',
     env
@@ -1481,20 +1488,18 @@ async function loadPathStatus(
   env: NodeJS.ProcessEnv | undefined
 ): Promise<Awaited<ReturnType<typeof loadStatus>>> {
   const scopedStatus = await loadStatus(repoPath, env, [path]);
-  const scopedFile = scopedStatus.files.find((file) => file.path === path);
+  const matchesPath = (file: { path: string }): boolean => file.path === path || file.path.startsWith(`${path}/`);
 
-  if (
-    !scopedFile?.staged ||
-    (scopedFile.indexStatus !== 'added' && scopedFile.indexStatus !== 'deleted')
-  ) {
+  if (!scopedStatus.files.some((file) => matchesPath(file) && file.staged &&
+    (file.indexStatus === 'added' || file.indexStatus === 'deleted'))) {
     return scopedStatus;
   }
 
-  // A single path can hide the other side of a staged rename. Only additions
+  // A scoped path can hide the other side of a staged rename. Only additions
   // and deletions need the repository-wide fallback to recover that pairing.
   const fullStatus = await loadStatus(repoPath, env);
   return fullStatus.files.some(
-    (file) => file.path === path && file.originalPath
+    (file) => matchesPath(file) && file.originalPath
   )
     ? fullStatus
     : scopedStatus;

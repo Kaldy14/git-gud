@@ -184,6 +184,69 @@ export function buildChangedFileTree(files: GitFileChangeDetail[]): ChangedFileT
   return finalizeDirectoryChildren(root);
 }
 
+export type WipFilePlacement = 'conflict' | 'unstaged' | 'staged';
+
+export type WipFileGroups = Record<WipFilePlacement, GitFileChangeDetail[]>;
+
+// Partially staged files appear in both groups; entries keep their original objects so callbacks see true flags.
+export function groupWipFiles(files: GitFileChangeDetail[]): WipFileGroups {
+  return {
+    conflict: files.filter((file) => file.conflicted),
+    unstaged: files.filter((file) => file.unstaged && !file.conflicted),
+    staged: files.filter((file) => file.staged && !file.conflicted)
+  };
+}
+
+export function conflictedFolderPaths(files: GitFileChangeDetail[]): Set<string> {
+  return new Set(files.filter((file) => file.conflicted).flatMap((file) => fileTreeAncestorPaths(file.path)));
+}
+
+export type FolderStagingActions = {
+  canStage: boolean;
+  canUnstage: boolean;
+  hasConflicts: boolean;
+  primary?: 'stage' | 'unstage';
+};
+
+// Folder staging runs one pathspec over every descendant, so conflicted files only block it rather than count as work.
+// Grouped trees render only part of a folder, so callers pass conflicts from the full folder via `conflictedFolders`.
+export function folderStagingActions(
+  node: ChangedFileTreeNode & { kind: 'directory' },
+  { placement, conflictedFolders }: { placement?: WipFilePlacement; conflictedFolders?: ReadonlySet<string> } = {}
+): FolderStagingActions {
+  let canStage = false;
+  let canUnstage = false;
+  let hasConflicts = conflictedFolders?.has(node.path) ?? false;
+  const pending: ChangedFileTreeNode[] = [...node.children];
+
+  for (let child = pending.pop(); child; child = pending.pop()) {
+    if (child.kind === 'directory') {
+      pending.push(...child.children);
+      continue;
+    }
+
+    if (child.file.conflicted) {
+      hasConflicts = true;
+      continue;
+    }
+
+    canStage ||= child.file.unstaged;
+    canUnstage ||= child.file.staged;
+  }
+
+  if (placement) {
+    canStage &&= placement === 'unstaged';
+    canUnstage &&= placement === 'staged';
+  }
+
+  return {
+    canStage,
+    canUnstage,
+    hasConflicts,
+    primary: canStage ? 'stage' : canUnstage ? 'unstage' : undefined
+  };
+}
+
 export function fileTreeAncestorPaths(path: string): string[] {
   const segments = path.split('/').filter(Boolean);
   return segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join('/'));

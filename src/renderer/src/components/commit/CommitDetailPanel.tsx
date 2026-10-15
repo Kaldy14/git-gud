@@ -1,4 +1,4 @@
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, ReactElement } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
@@ -36,15 +36,21 @@ import {
 } from '@renderer/queries/repository';
 import {
   buildChangedFileTree,
+  conflictedFolderPaths,
   countByStatus,
   expandFileTreePathAncestors,
   fileTreeAncestorPaths,
   findFile,
+  folderStagingActions,
   graphFileStatus,
+  groupWipFiles,
   toggleFileTreePath,
   type ChangedFileTreeNode,
   type FileStatusCounts,
-  type FileViewMode
+  type FileViewMode,
+  type FolderStagingActions,
+  type WipFileGroups,
+  type WipFilePlacement
 } from '@renderer/components/commit/fileDetailUtils';
 import { AuthorAvatar } from '@renderer/components/avatar/AuthorAvatar';
 import { FILE_STATUS_COLORS } from '@shared/graph';
@@ -443,7 +449,7 @@ export function CommitDetailPanel({
             />
           ) : (
             <ChangedFilesTree
-              key={files.map((file) => `${file.status}:${file.path}`).join('\0')}
+              key={`${repoPath}:${isWip ? 'wip' : isCommitSelection ? selectedShas.join(',') : row?.sha}`}
               files={files}
               selectedPath={selectedFileDetail?.path}
               isWip={isWip}
@@ -451,6 +457,8 @@ export function CommitDetailPanel({
               onSelectPath={onSelectFile}
               onStageFile={(path) => stageFileMutation.mutate(path)}
               onUnstageFile={(path) => unstageFileMutation.mutate(path)}
+              onStageAll={() => stageAllMutation.mutate()}
+              onUnstageAll={() => unstageAllMutation.mutate()}
               onDiscardWipFile={onDiscardWipFile}
               onIgnoreWipFile={onIgnoreWipFile}
               onInspectWipFile={onInspectWipFile}
@@ -1635,24 +1643,10 @@ function PathFileRows({
   onRevealWipFile,
   onStashWipFile
 }: PathFileRowsProps): ReactElement {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<'conflicts' | 'unstaged' | 'staged'>>(() => new Set());
-
-  function toggleGroup(group: 'conflicts' | 'unstaged' | 'staged'): void {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(group)) {
-        next.delete(group);
-      } else {
-        next.add(group);
-      }
-      return next;
-    });
-  }
-
   function renderRow(
     file: GitFileChangeDetail,
     key: string,
-    placement?: 'conflict' | 'unstaged' | 'staged'
+    placement?: WipFilePlacement
   ): ReactElement {
     return (
       <FileRow
@@ -1680,9 +1674,46 @@ function PathFileRows({
     return <>{files.map((file) => renderRow(file, file.path))}</>;
   }
 
-  const conflictedFiles = files.filter((file) => file.conflicted);
-  const unstagedFiles = files.filter((file) => file.unstaged && !file.conflicted);
-  const stagedFiles = files.filter((file) => file.staged && !file.conflicted);
+  return (
+    <WipFileGroupSections
+      groups={groupWipFiles(files)}
+      isMutating={isMutating}
+      onStageAll={onStageAll}
+      onUnstageAll={onUnstageAll}
+      renderGroup={(placement, groupFiles) =>
+        groupFiles.map((file) => renderRow(file, `${placement}:${file.path}`, placement))}
+    />
+  );
+}
+
+// Shared by the Path and Tree views so WIP group order, counts, collapse state and bulk guards stay in step.
+function WipFileGroupSections({
+  groups,
+  isMutating,
+  onStageAll,
+  onUnstageAll,
+  renderGroup
+}: {
+  groups: WipFileGroups;
+  isMutating: boolean;
+  onStageAll: () => void;
+  onUnstageAll: () => void;
+  renderGroup: (placement: WipFilePlacement, files: GitFileChangeDetail[]) => ReactNode;
+}): ReactElement {
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<WipFilePlacement>>(() => new Set());
+  const { conflict: conflictedFiles, unstaged: unstagedFiles, staged: stagedFiles } = groups;
+
+  function toggleGroup(group: WipFilePlacement): void {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  }
 
   return (
     <>
@@ -1692,12 +1723,10 @@ function PathFileRows({
             label={`Conflicts (${conflictedFiles.length})`}
             tone="danger"
             detail="Select a file to compare both versions in the merge tool."
-            expanded={!collapsedGroups.has('conflicts')}
-            onToggle={() => toggleGroup('conflicts')}
+            expanded={!collapsedGroups.has('conflict')}
+            onToggle={() => toggleGroup('conflict')}
           />
-          {!collapsedGroups.has('conflicts')
-            ? conflictedFiles.map((file) => renderRow(file, `conflict:${file.path}`, 'conflict'))
-            : null}
+          {!collapsedGroups.has('conflict') ? renderGroup('conflict', conflictedFiles) : null}
         </>
       ) : null}
       <FileGroupHeader
@@ -1724,9 +1753,7 @@ function PathFileRows({
         }
       />
       {!collapsedGroups.has('unstaged')
-        ? (unstagedFiles.length > 0
-          ? unstagedFiles.map((file) => renderRow(file, `unstaged:${file.path}`, 'unstaged'))
-          : <UnstagedEmpty />)
+        ? (unstagedFiles.length > 0 ? renderGroup('unstaged', unstagedFiles) : <UnstagedEmpty />)
         : null}
       <FileGroupHeader
         label={`Staged Files (${stagedFiles.length})`}
@@ -1744,7 +1771,7 @@ function PathFileRows({
       />
       {!collapsedGroups.has('staged')
         ? (stagedFiles.length > 0
-          ? stagedFiles.map((file) => renderRow(file, `staged:${file.path}`, 'staged'))
+          ? renderGroup('staged', stagedFiles)
           : <StagedEmpty
               isMutating={isMutating || conflictedFiles.length > 0}
               onStageAll={unstagedFiles.length > 0 ? onStageAll : undefined}
@@ -1808,7 +1835,7 @@ type FileRowProps = {
   onOpen: () => void;
   onReveal: () => void;
   onStash: () => void;
-  placement?: 'conflict' | 'unstaged' | 'staged';
+  placement?: WipFilePlacement;
 };
 
 function FileRow({
@@ -1834,11 +1861,7 @@ function FileRow({
   const actionBackground = isSelected
     ? 'linear-gradient(90deg, transparent, var(--select-bg) 18px)'
     : 'linear-gradient(90deg, transparent, var(--bg-hover) 18px)';
-  const primaryAction = placement === 'conflict'
-    ? { label: 'Resolve', onClick: onSelect, disabled: isMutating, tone: 'conflict' as const }
-    : placement === 'staged'
-      ? { label: 'Unstage File', onClick: onUnstage, disabled: isMutating, tone: 'unstage' as const }
-      : { label: 'Stage File', onClick: onStage, disabled: !file.unstaged || isMutating, tone: 'stage' as const };
+  const primaryAction = wipFilePrimaryAction(file, placement, isMutating, { onResolve: onSelect, onStage, onUnstage });
 
   function handleSelectPointerDown(event: PointerEvent<HTMLButtonElement>): void {
     if (event.button !== 0) {
@@ -1916,6 +1939,24 @@ function FileRow({
         onStash={onStash}
       >{row}</WipFileContextMenu>
     : row;
+}
+
+// Grouped rows act on their placement; a partially staged file stages in Unstaged and unstages in Staged.
+function wipFilePrimaryAction(
+  file: GitFileChangeDetail,
+  placement: WipFilePlacement | undefined,
+  isMutating: boolean,
+  { onResolve, onStage, onUnstage }: { onResolve: () => void; onStage: () => void; onUnstage: () => void }
+): { label: string; tone: 'conflict' | 'stage' | 'unstage'; disabled: boolean; onClick: () => void } {
+  const resolvedPlacement = placement ?? (file.conflicted ? 'conflict' : file.unstaged ? 'unstaged' : 'staged');
+
+  if (resolvedPlacement === 'conflict') {
+    return { label: 'Resolve', tone: 'conflict', disabled: isMutating, onClick: onResolve };
+  }
+
+  return resolvedPlacement === 'staged'
+    ? { label: 'Unstage File', tone: 'unstage', disabled: isMutating, onClick: onUnstage }
+    : { label: 'Stage File', tone: 'stage', disabled: !file.unstaged || isMutating, onClick: onStage };
 }
 
 function WipFileContextMenu({
@@ -2054,6 +2095,8 @@ type ChangedFilesTreeProps = {
   onSelectPath: (path: string | undefined) => void;
   onStageFile: (path: string) => void;
   onUnstageFile: (path: string) => void;
+  onStageAll: () => void;
+  onUnstageAll: () => void;
   onDiscardWipFile: (file: GitFileChangeDetail) => void;
   onIgnoreWipFile: (file: GitFileChangeDetail, mode: GitIgnoreInput['mode']) => void;
   onInspectWipFile: (file: GitFileChangeDetail, mode: 'history' | 'blame') => void;
@@ -2063,7 +2106,15 @@ type ChangedFilesTreeProps = {
   onStashWipFile: (file: GitFileChangeDetail) => void;
 };
 
-function ChangedFilesTree({
+// Commit trees use the single `all` scope; WIP trees keep one independently expandable hierarchy per group.
+type FileTreeScope = 'all' | WipFilePlacement;
+type FileTreeScopeRecord<T> = Record<FileTreeScope, T>;
+
+function mapFileTreeScopes<T>(map: (scope: FileTreeScope) => T): FileTreeScopeRecord<T> {
+  return { all: map('all'), conflict: map('conflict'), unstaged: map('unstaged'), staged: map('staged') };
+}
+
+export function ChangedFilesTree({
   files,
   selectedPath,
   isWip,
@@ -2077,12 +2128,27 @@ function ChangedFilesTree({
   onCopyWipFilePath,
   onOpenWipFile,
   onRevealWipFile,
-  onStashWipFile
+  onStashWipFile,
+  onStageAll,
+  onUnstageAll
 }: ChangedFilesTreeProps): ReactElement {
-  const nodes = useMemo(() => buildChangedFileTree(files), [files]);
-  const allDirectoryPaths = useMemo(() => collectDirectoryPaths(nodes), [nodes]);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
-    () => new Set(selectedPath ? fileTreeAncestorPaths(selectedPath) : [])
+  const groups = useMemo(() => (isWip ? groupWipFiles(files) : undefined), [files, isWip]);
+  const filesByScope = useMemo(
+    () => mapFileTreeScopes((scope) => (scope === 'all' ? (groups ? [] : files) : (groups?.[scope] ?? []))),
+    [files, groups]
+  );
+  const nodesByScope = useMemo(
+    () => mapFileTreeScopes((scope) => buildChangedFileTree(filesByScope[scope])),
+    [filesByScope]
+  );
+  // Folder pathspecs reach every real descendant, including conflicts rendered in another group.
+  const conflictedFolders = useMemo(() => conflictedFolderPaths(files), [files]);
+  const selectedScopes = (Object.keys(filesByScope) as FileTreeScope[])
+    .filter((scope) => filesByScope[scope].some((file) => file.path === selectedPath))
+    .join(',');
+  const [expandedPaths, setExpandedPaths] = useState<FileTreeScopeRecord<ReadonlySet<string>>>(
+    () => mapFileTreeScopes((scope) =>
+      new Set(selectedPath && selectedScopes.split(',').includes(scope) ? fileTreeAncestorPaths(selectedPath) : []))
   );
 
   useEffect(() => {
@@ -2090,35 +2156,35 @@ function ChangedFilesTree({
       return;
     }
 
-    // Keep manual expansion/focus state while revealing files selected outside this tree.
+    // Keep manual expansion/focus state while revealing files selected outside this tree, including after a
+    // stage or unstage moves the selected file into another group.
+    const scopes = new Set(selectedScopes.split(','));
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setExpandedPaths((current) => expandFileTreePathAncestors(current, selectedPath));
-  }, [selectedPath]);
+    setExpandedPaths((current) => mapFileTreeScopes((scope) =>
+      scopes.has(scope) ? expandFileTreePathAncestors(current[scope], selectedPath) : current[scope]));
+  }, [selectedPath, selectedScopes]);
 
-  function toggleDirectory(path: string): void {
-    setExpandedPaths((current) => toggleFileTreePath(current, path));
+  function toggleDirectory(scope: FileTreeScope, path: string): void {
+    setExpandedPaths((current) => ({ ...current, [scope]: toggleFileTreePath(current[scope], path) }));
   }
 
-  return (
-    <div className="pb-2">
-      <button
-        className="mb-1 flex h-8 items-center rounded px-2 text-left text-[12px] text-[var(--text-2)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
-        type="button"
-        onClick={() => setExpandedPaths(new Set(allDirectoryPaths))}
-      >
-        Expand All
-      </button>
-      <ul aria-label="Changed files">
-        {nodes.map((node) => (
+  function renderTree(scope: FileTreeScope, label: string): ReactElement {
+    const placement = scope === 'all' ? undefined : scope;
+
+    return (
+      <ul aria-label={label}>
+        {nodesByScope[scope].map((node) => (
           <ChangedFileTreeRow
             key={`${node.kind}:${node.path}`}
             node={node}
             depth={0}
-            expandedPaths={expandedPaths}
+            expandedPaths={expandedPaths[scope]}
             selectedPath={selectedPath}
             isWip={isWip}
             isMutating={isMutating}
-            onToggleDirectory={toggleDirectory}
+            placement={placement}
+            conflictedFolders={conflictedFolders}
+            onToggleDirectory={(path) => toggleDirectory(scope, path)}
             onSelectPath={onSelectPath}
             onStageFile={onStageFile}
             onUnstageFile={onUnstageFile}
@@ -2132,9 +2198,36 @@ function ChangedFilesTree({
           />
         ))}
       </ul>
+    );
+  }
+
+  return (
+    <div className="pb-2">
+      <button
+        className="mb-1 flex h-8 items-center rounded px-2 text-left text-[12px] text-[var(--text-2)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+        type="button"
+        onClick={() => setExpandedPaths(mapFileTreeScopes((scope) => new Set(collectDirectoryPaths(nodesByScope[scope]))))}
+      >
+        Expand All
+      </button>
+      {groups ? (
+        <WipFileGroupSections
+          groups={groups}
+          isMutating={isMutating}
+          onStageAll={onStageAll}
+          onUnstageAll={onUnstageAll}
+          renderGroup={(placement) => renderTree(placement, WIP_TREE_LABELS[placement])}
+        />
+      ) : renderTree('all', 'Changed files')}
     </div>
   );
 }
+
+const WIP_TREE_LABELS: Record<WipFilePlacement, string> = {
+  conflict: 'Conflicted files',
+  unstaged: 'Unstaged files',
+  staged: 'Staged files'
+};
 
 function ChangedFileTreeRow({
   node,
@@ -2143,6 +2236,8 @@ function ChangedFileTreeRow({
   selectedPath,
   isWip,
   isMutating,
+  placement,
+  conflictedFolders,
   onToggleDirectory,
   onSelectPath,
   onStageFile,
@@ -2161,6 +2256,8 @@ function ChangedFileTreeRow({
   selectedPath?: string;
   isWip: boolean;
   isMutating: boolean;
+  placement?: WipFilePlacement;
+  conflictedFolders: ReadonlySet<string>;
   onToggleDirectory: (path: string) => void;
   onSelectPath: (path: string | undefined) => void;
   onStageFile: (path: string) => void;
@@ -2177,26 +2274,11 @@ function ChangedFileTreeRow({
 
   if (node.kind === 'file') {
     const isSelected = selectedPath === node.path;
-    const primaryAction = node.file.conflicted
-      ? {
-          label: 'Resolve',
-          tone: 'conflict' as const,
-          disabled: isMutating,
-          onClick: () => onSelectPath(node.path)
-        }
-      : node.file.unstaged
-        ? {
-            label: 'Stage File',
-            tone: 'stage' as const,
-            disabled: isMutating,
-            onClick: () => onStageFile(node.path)
-          }
-        : {
-            label: 'Unstage File',
-            tone: 'unstage' as const,
-            disabled: isMutating,
-            onClick: () => onUnstageFile(node.path)
-          };
+    const primaryAction = wipFilePrimaryAction(node.file, placement, isMutating, {
+      onResolve: () => onSelectPath(node.path),
+      onStage: () => onStageFile(node.path),
+      onUnstage: () => onUnstageFile(node.path)
+    });
 
     const row = (
       <div className="wip-file-row group relative flex h-9 items-center overflow-hidden">
@@ -2259,11 +2341,17 @@ function ChangedFileTreeRow({
   }
 
   const isExpanded = expandedPaths.has(node.path);
-
-  return (
-    <li>
+  // Conflict groups only resolve files; a folder pathspec there would stage conflict markers.
+  const folderActions = isWip && placement !== 'conflict'
+    ? folderStagingActions(node, { placement, conflictedFolders })
+    : undefined;
+  const folderActionsDisabled = isMutating || Boolean(folderActions?.hasConflicts);
+  const folderActionTitle = folderActions?.hasConflicts ? 'Resolve conflicts in this folder first' : undefined;
+  const folderPrimaryLabel = folderActions?.primary === 'stage' ? 'Stage Folder' : 'Unstage Folder';
+  const folderRow = (
+    <div className="wip-file-row group relative flex h-8 items-center overflow-hidden rounded">
       <button
-        className="flex h-8 w-full min-w-0 items-center gap-1 rounded pr-2 text-left text-[12px] text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]"
+        className="flex h-full w-full min-w-0 items-center gap-1 rounded pr-2 text-left text-[12px] text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]"
         style={{ paddingLeft }}
         type="button"
         aria-expanded={isExpanded}
@@ -2274,6 +2362,41 @@ function ChangedFileTreeRow({
         <span className="min-w-0 truncate">{node.name}</span>
         {!isExpanded ? <DirectoryStatusCounts counts={node.counts} /> : null}
       </button>
+      {folderActions?.primary ? (
+        <div
+          className="wip-file-row-action"
+          style={{ background: 'linear-gradient(90deg, transparent, var(--bg-hover) 18px)' }}
+        >
+          <button
+            className="wip-file-primary-action"
+            data-tone={folderActions.primary}
+            type="button"
+            disabled={folderActionsDisabled}
+            onClick={() => (folderActions.primary === 'stage' ? onStageFile : onUnstageFile)(node.path)}
+            title={folderActionTitle}
+            aria-label={`${folderPrimaryLabel} ${node.path}`}
+          >
+            {folderPrimaryLabel}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <li>
+      {folderActions && (folderActions.canStage || folderActions.canUnstage || folderActions.hasConflicts) ? (
+        <WipFolderContextMenu
+          path={node.path}
+          actions={folderActions}
+          disabled={folderActionsDisabled}
+          disabledReason={folderActionTitle}
+          onStage={() => onStageFile(node.path)}
+          onUnstage={() => onUnstageFile(node.path)}
+        >
+          {folderRow}
+        </WipFolderContextMenu>
+      ) : folderRow}
       {isExpanded ? (
         <ul>
           {node.children.map((child) => (
@@ -2285,6 +2408,8 @@ function ChangedFileTreeRow({
               selectedPath={selectedPath}
               isWip={isWip}
               isMutating={isMutating}
+              placement={placement}
+              conflictedFolders={conflictedFolders}
               onToggleDirectory={onToggleDirectory}
               onSelectPath={onSelectPath}
               onStageFile={onStageFile}
@@ -2301,6 +2426,53 @@ function ChangedFileTreeRow({
         </ul>
       ) : null}
     </li>
+  );
+}
+
+function WipFolderContextMenu({
+  path,
+  actions,
+  disabled,
+  disabledReason,
+  onStage,
+  onUnstage,
+  children
+}: {
+  path: string;
+  actions: FolderStagingActions;
+  disabled: boolean;
+  disabledReason?: string;
+  onStage: () => void;
+  onUnstage: () => void;
+  children: ReactElement;
+}): ReactElement {
+  return (
+    <ContextMenuPrimitive.Root>
+      <ContextMenuPrimitive.Trigger asChild onKeyDown={openContextMenuFromKeyboard}>
+        {children}
+      </ContextMenuPrimitive.Trigger>
+      <ContextMenuPrimitive.Portal>
+        <ContextMenuPrimitive.Content
+          className="context-menu-surface w-64"
+          collisionPadding={8}
+          aria-label={`Folder actions for ${path}`}
+        >
+          {actions.canStage || !actions.canUnstage ? (
+            <ContextMenuPrimitive.Item className="menu-row" disabled={disabled} onSelect={onStage}>
+              <span>Stage Folder</span>
+            </ContextMenuPrimitive.Item>
+          ) : null}
+          {actions.canUnstage ? (
+            <ContextMenuPrimitive.Item className="menu-row" disabled={disabled} onSelect={onUnstage}>
+              <span>Unstage Folder</span>
+            </ContextMenuPrimitive.Item>
+          ) : null}
+          {disabledReason ? (
+            <div className="px-2 py-1 text-[11px] text-[var(--context-menu-text-muted)]">{disabledReason}</div>
+          ) : null}
+        </ContextMenuPrimitive.Content>
+      </ContextMenuPrimitive.Portal>
+    </ContextMenuPrimitive.Root>
   );
 }
 

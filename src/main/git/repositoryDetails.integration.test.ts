@@ -18,6 +18,35 @@ import {
 } from './repositoryDetails';
 
 describe('repository details integration', () => {
+  it.each([false, true])('stages and unstages only a folder recursively (unborn: %s)', async (unborn) => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-folder-staging-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      if (unborn) {
+        await git(repoPath, ['checkout', '--orphan', 'unborn']);
+        await git(repoPath, ['rm', '--cached', '-r', '.']);
+      } else {
+        await commitFile(repoPath, 'src/deleted.txt', 'delete me\n', 'nested base');
+        await rm(join(repoPath, 'src/deleted.txt'));
+      }
+      await writeRepoFile(repoPath, 'src/nested/new.txt', 'nested change\n');
+      await writeRepoFile(repoPath, 'src-other/keep.txt', 'sibling change\n');
+      await stageFile({ path: repoPath }, 'src');
+      expect(await changedPaths(repoPath, ['diff', '--cached', '--name-only'])).toEqual(
+        unborn ? ['src/nested/new.txt'] : ['src/deleted.txt', 'src/nested/new.txt']
+      );
+
+      await unstageFile({ path: repoPath }, 'src');
+
+      expect(await changedPaths(repoPath, ['diff', '--cached', '--name-only'])).toEqual([]);
+      expect(await readFile(join(repoPath, 'src/nested/new.txt'), 'utf8')).toBe('nested change\n');
+      expect(await readFile(join(repoPath, 'src-other/keep.txt'), 'utf8')).toBe('sibling change\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('updates only the HEAD commit message while preserving staged changes', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-details-'));
 
@@ -131,6 +160,25 @@ describe('repository details integration', () => {
 
       expect((await git(repoPath, ['diff', '--cached', '--name-only'])).stdout).toBe('');
       expect(await readFile(join(repoPath, 'renamed.txt'), 'utf8')).toBe('ordinary base\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('unstages both sides of a rename into a folder while preserving sibling staging', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-folder-rename-'));
+
+    try {
+      const repoPath = await createRepository(rootPath);
+      await mkdir(join(repoPath, 'nested'));
+      await git(repoPath, ['mv', 'ordinary.txt', 'nested/renamed.txt']);
+      await writeRepoFile(repoPath, 'sibling.txt', 'keep staged\n');
+      await git(repoPath, ['add', 'sibling.txt']);
+
+      await unstageFile({ path: repoPath }, 'nested');
+
+      expect(await changedPaths(repoPath, ['diff', '--cached', '--name-only'])).toEqual(['sibling.txt']);
+      expect(await readFile(join(repoPath, 'nested/renamed.txt'), 'utf8')).toBe('ordinary base\n');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }
