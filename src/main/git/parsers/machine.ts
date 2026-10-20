@@ -5,7 +5,9 @@ import type { GitStatusSummary, RemoteMachineBranch } from '@shared/types';
 import { parseStatusPorcelainV2 } from './status';
 
 export const MACHINE_MISSING_MARKER = '__GG_MISSING__';
-export const MACHINE_REFS_MARKER = '\0__GG_REFS__\0';
+// Porcelain -z records (including rename paths) are nonempty. An extra NUL
+// therefore separates sections without reserving any valid filename.
+export const MACHINE_REFS_MARKER = '\0\0';
 
 export type MachineSnapshotOutput =
   | { kind: 'missing' }
@@ -48,7 +50,7 @@ export function machineSnapshotCommand(remotePath: string): string {
     `[ "$probe" = true ] || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
     'git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
-    "printf '\\0__GG_REFS__\\0'",
+    "printf '\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"
   ]);
 }
@@ -97,11 +99,11 @@ export function machineFileDiffCommand(
   assertMachineFilePath(request.path);
   const path = quoteRemoteShell(request.path);
   const diff = request.untracked
-    ? `git diff --no-color --no-index -- /dev/null ${path}`
+    ? `git diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
     // A combined merge diff has no renderable hunks in PatchDiff. Compare
     // unmerged working files with ours so conflict markers stay visible.
     // Shell quoting does not stop Git from interpreting a filename as a pattern.
-    : `git --literal-pathspecs diff --no-color${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
+    : `git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
 
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',

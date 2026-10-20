@@ -43,7 +43,7 @@ describe('machine snapshot parsing', () => {
       ['main', SHA_A, 'origin/main', 'ahead 1, behind 2'].join('\0')
     ].join('\n');
 
-    const snapshot = parseMachineSnapshot(`${status}\0${MACHINE_REFS_MARKER}${refs}\n`);
+    const snapshot = parseMachineSnapshot(`${status}${MACHINE_REFS_MARKER}${refs}\n`);
 
     expect(snapshot.kind).toBe('repository');
     if (snapshot.kind !== 'repository') return;
@@ -230,6 +230,56 @@ describe('machine shell commands', () => {
       expect(snapshot.kind).toBe('repository');
       if (snapshot.kind === 'repository') expect(snapshot.branches.find((branch) => branch.name === 'main'))
         .toMatchObject({ upstream: 'upstream', ahead: 1, behind: 0 });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a rename from a marker-like filename separate from branch data', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-snapshot-framing-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, '__GG_REFS__'), 'rename me\n');
+      await git('add', '.');
+      await git('commit', '-qm', 'initial');
+      await git('mv', '__GG_REFS__', 'renamed.txt');
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(directory)]);
+      const snapshot = parseMachineSnapshot(stdout);
+      expect(snapshot.kind).toBe('repository');
+      if (snapshot.kind !== 'repository') return;
+      expect(snapshot.status.files).toMatchObject([{ path: 'renamed.txt', originalPath: '__GG_REFS__', staged: true }]);
+      expect(snapshot.branches).toMatchObject([{ name: 'main', current: true }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['external', false], ['external', true], ['textconv', false], ['textconv', true]
+  ] as const)('never runs a configured %s helper for untracked=%s', async (helperKind, untracked) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-read-only-diff-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    const marker = join(directory, 'helper-ran');
+    const helper = join(directory, 'helper.sh');
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'original\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'initial');
+      await writeFile(helper, `printf invoked >> ${quoteRemoteShell(marker)}\nprintf 'helper output\\n'\n`);
+      await git('config', helperKind === 'external' ? 'diff.external' : 'diff.fixture.textconv', `sh ${quoteRemoteShell(helper)}`);
+      await writeFile(join(directory, '.gitattributes'), '*.txt diff=fixture\n');
+      const path = untracked ? 'new.txt' : 'file.txt';
+      await writeFile(join(directory, path), 'changed\n');
+      const { stdout } = await run('sh', ['-c', machineFileDiffCommand(directory, { path, staged: false, untracked })]);
+      expect(existsSync(marker)).toBe(false);
+      expect(stdout).toContain('+changed');
+      expect(parsePatchFiles(stdout).flatMap((patch) => patch.files)).toHaveLength(1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

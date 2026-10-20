@@ -30,7 +30,7 @@ import { deleteMachine, loadCommitGraphMachines, loadMachineFileDiff, remoteRepo
 const runGuard: RefMutationRunner = (_directory, operation) => operation();
 const tab = { path: '/repo', commonDir: '/repo/.git' };
 const sha = 'a'.repeat(40);
-const snapshotOutput = `# branch.oid ${sha}\0# branch.head main\0\0__GG_REFS__\0main\0${sha}\0\0\n`;
+const snapshotOutput = `# branch.oid ${sha}\0# branch.head main\0\0main\0${sha}\0\0\n`;
 
 function pendingSsh() {
   const child = Object.assign(new ChildProcess(), { stdout: new PassThrough(), stderr: new PassThrough() });
@@ -126,7 +126,7 @@ describe('machine poll lifecycle', () => {
     for (const refsChanged of [true, false]) {
       const child = pendingSsh();
       const pending = loadCommitGraphMachines(tab, runGuard);
-      child.stdout.end('# branch.oid (initial)\0# branch.head orphan\0\0__GG_REFS__\0');
+      child.stdout.end('# branch.oid (initial)\0# branch.head orphan\0\0');
       child.emit('close', 0);
       expect((await pending).refsChanged).toBe(refsChanged);
     }
@@ -138,7 +138,7 @@ describe('machine poll lifecycle', () => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const child = pendingSsh();
     const pending = loadCommitGraphMachines(tab, runGuard);
-    child.stdout.end(snapshotOutput.replace('\0\0__GG_REFS__', '\0? new.txt\0\0__GG_REFS__'));
+    child.stdout.end(snapshotOutput.replace('\0\0', '\0? new.txt\0\0'));
     child.emit('close', 0);
     await pending;
     const request = { machineId: machine!.id, staged: false, untracked: true };
