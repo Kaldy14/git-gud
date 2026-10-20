@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -143,6 +143,22 @@ describe('machine shell commands', () => {
       }
     })).rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('dubious ownership') });
   });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each(['checkout', 'git directory'])(
+    'does not clear machine refs when the %s is inaccessible', async (target) => {
+      const directory = await mkdtemp(join(tmpdir(), 'git-gud-inaccessible-'));
+      const inaccessible = target === 'checkout' ? directory : join(directory, '.git');
+      try {
+        await run('git', ['init', '-q', directory]);
+        await chmod(inaccessible, 0);
+        await expect(run('sh', ['-c', machineSnapshotCommand(directory)]))
+          .rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('fatal:') });
+      } finally {
+        await chmod(inaccessible, 0o700);
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
 
   it('reports an existing directory without a repository as missing', async () => {
     const emptyDirectory = await mkdtemp(join(tmpdir(), 'git-gud-no-repository-'));
