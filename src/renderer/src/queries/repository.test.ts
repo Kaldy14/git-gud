@@ -10,6 +10,7 @@ import {
   fetchCommitGraphPage,
   fetchCommitGraphContaining,
   fetchCommitGraphMachines,
+  invalidateMachineQueries,
   invalidateRepositoryQueries,
   placeholderGraphForRepository,
   prepareLinkedWorktreeGraphTransition,
@@ -58,6 +59,31 @@ describe('machine graph reads', () => {
       expect(read).toHaveBeenCalledTimes(2);
     } finally {
       finish(); unsubscribe(); client.clear(); vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([false, true])('refreshes graph visibility after a settings mutation overlaps history (cached: %s)', async (cached) => {
+    const client = new QueryClient();
+    const key = ['commit-graph', '/repo', 50];
+    const oldGraph = { refs: ['refs/machines/m1/heads/main'] };
+    const newGraph = { refs: [] as string[] };
+    if (cached) client.setQueryData(key, oldGraph);
+    // Inactive repositories must also lose their cached machine refs.
+    client.setQueryData(['commit-graph', '/other', 50], oldGraph);
+    let finish = () => {};
+    const pending = new Promise<typeof oldGraph>((resolve) => { finish = () => resolve(oldGraph); });
+    const read = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(newGraph);
+    const observer = new QueryObserver(client, { queryKey: key, queryFn: read, staleTime: 0 });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+      const refresh = invalidateMachineQueries(client);
+      finish();
+      await refresh;
+      expect(observer.getCurrentResult().data).toEqual(newGraph);
+      expect(client.getQueryState(['commit-graph', '/other', 50])?.isInvalidated).toBe(true);
+    } finally {
+      finish(); unsubscribe(); client.clear();
     }
   });
 

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, Monitor, Plus, Plug, RefreshCw, Trash2, TriangleAlert } from 'lucide-react';
 
-import { useMachines, useTailscaleStatus } from '@renderer/queries/repository';
+import { invalidateMachineQueries, useMachines, useTailscaleStatus } from '@renderer/queries/repository';
 import type { RemoteMachine, RemoteMachineInput, RemoteMachineTestResult, TailscalePeer } from '@shared/types';
 
 type TestState = RemoteMachineTestResult | 'pending';
@@ -19,13 +19,7 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const [errorMessage, setErrorMessage] = useState<string>();
 
-  async function refresh(): Promise<void> {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['machines'] }),
-      queryClient.invalidateQueries({ queryKey: ['commit-graph-machines'] }),
-      queryClient.invalidateQueries({ queryKey: ['commit-graph'] })
-    ]);
-  }
+  const refresh = () => invalidateMachineQueries(queryClient);
 
   const save = useMutation({
     mutationFn: (input: RemoteMachineInput) => window.api.saveMachine(input),

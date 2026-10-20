@@ -74,6 +74,7 @@ import {
   clearRepositoryQueries,
   fetchCommitGraphPage,
   fetchCommitGraphContaining,
+  invalidateMachineQueries,
   invalidateRepositoryQueries,
   prepareLinkedWorktreeGraphTransition,
   prepareRepositoryForProfileTransition,
@@ -966,12 +967,7 @@ export function WorkspaceShell(): ReactElement {
     } catch (error) {
       console.error('Unable to update the machine.', error);
     }
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['machines'] }),
-      queryClient.invalidateQueries({ queryKey: ['commit-graph-machines'] }),
-      // A first graph read may still contain the machine's previous visibility.
-      ...workspace.tabs.map((tab) => invalidateRepositoryQueries(queryClient, tab.path, ['graph'], { refetchAfterInFlight: true }))
-    ]);
+    await invalidateMachineQueries(queryClient);
   }
 
   function handleSelectRow(sha: string): void {

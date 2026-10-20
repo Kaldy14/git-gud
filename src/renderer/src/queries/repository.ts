@@ -221,6 +221,17 @@ export async function fetchCommitGraphMachines(queryClient: QueryClient, repoPat
   return machines;
 }
 
+/** Apply machine settings to every cached repository, including overlapping first reads. */
+export async function invalidateMachineQueries(queryClient: QueryClient): Promise<void> {
+  const repoPaths = new Set(queryClient.getQueryCache().findAll({ queryKey: ['commit-graph'] })
+    .flatMap(({ queryKey }) => typeof queryKey[1] === 'string' ? [queryKey[1]] : []));
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['machines'] }),
+    queryClient.invalidateQueries({ queryKey: ['commit-graph-machines'] }),
+    ...[...repoPaths].map((repoPath) => invalidateRepositoryQueries(queryClient, repoPath, ['graph'], { refetchAfterInFlight: true }))
+  ]);
+}
+
 export function useMachines() {
   return useQuery({
     queryKey: ['machines'],
