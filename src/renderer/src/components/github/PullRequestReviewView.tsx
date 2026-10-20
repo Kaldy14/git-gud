@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { PullRequestPanel } from './PullRequestPanel';
+import { PullRequestLineStats } from './PullRequestLineStats';
 import { PanelExpandButton } from '../ui/panelResize';
 import { usePanelResize } from '../ui/usePanelResize';
 import { getReviewImages } from '@renderer/components/review/reviewImages';
@@ -833,6 +834,7 @@ function PullRequestReviewContent({
             {detail.owner}/{detail.repository}#{detail.number}
           </span>
         </div>
+        <PullRequestLineStats additions={detail.additions} deletions={detail.deletions} />
         <div className="pr-review-header-status overflow-hidden">
           <ReviewStatus
             detail={detail}
@@ -989,9 +991,7 @@ function PullRequestReviewContent({
             <h3>{detail.title}</h3>
             <p className="pr-context-author">
               {detail.author} · {detail.commits} commits ·{' '}
-              <span>
-                +{detail.additions} −{detail.deletions}
-              </span>
+              <PullRequestLineStats additions={detail.additions} deletions={detail.deletions} />
             </p>
             <p className="pr-context-branches">
               {detail.headRefName} → {detail.baseRefName}
