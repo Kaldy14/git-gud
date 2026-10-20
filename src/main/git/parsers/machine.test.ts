@@ -12,6 +12,7 @@ import {
   MACHINE_REFS_MARKER,
   machineFileDiffCommand,
   machineSnapshotCommand,
+  machineUploadPackCommand,
   parseMachineSnapshot,
   quoteRemoteShell,
   remoteShellPath
@@ -116,6 +117,46 @@ describe('machine shell commands', () => {
   it('preserves the no-index access error when an untracked file disappeared', async () => {
     await expect(run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'vanished.txt', staged: false, untracked: true })]))
       .rejects.toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('vanished.txt') });
+  });
+
+  it('rejects upload-pack hooks before object transfer and mirrors normally once the hook is removed', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-upload-hook-'));
+    try {
+      const config = join(directory, 'global-config');
+      const marker = join(directory, 'invoked');
+      const hook = join(directory, 'hook.sh');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n"$@"\n`);
+      await run('git', ['config', '--file', config, 'uploadpack.packObjectsHook', `sh ${quoteRemoteShell(hook)}`]);
+      const env = { ...process.env, GIT_CONFIG_GLOBAL: config };
+      const ref = 'refs/machines/test/heads/main';
+      const remote = `file://${repoPath}`;
+      const ordinary = join(directory, 'ordinary');
+      const guarded = join(directory, 'guarded');
+      for (const path of [ordinary, guarded]) {
+        await mkdir(path);
+        await run('git', ['init', '-q', path]);
+      }
+      await run('git', ['-C', ordinary, 'fetch', remote, `refs/heads/main:${ref}`], { env });
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+
+      const args = ['-C', guarded, 'fetch', `--upload-pack=${machineUploadPackCommand()}`, remote, `refs/heads/main:${ref}`];
+      await expect(run('git', args, { env })).rejects.toMatchObject({
+        stderr: expect.stringContaining('Read-only mirroring is unavailable for upload-pack hooks.')
+      });
+      expect(existsSync(marker)).toBe(false);
+      expect((await run('git', ['-C', guarded, 'for-each-ref', ref])).stdout).toBe('');
+      expect((await run('git', ['config', '--file', config, '--get', 'uploadpack.packObjectsHook'])).stdout.trim())
+        .toBe(`sh ${quoteRemoteShell(hook)}`);
+
+      await run('git', ['config', '--file', config, '--unset', 'uploadpack.packObjectsHook']);
+      await run('git', args, { env });
+      expect((await run('git', ['-C', guarded, 'rev-parse', ref])).stdout)
+        .toBe((await run('git', ['-C', repoPath, 'rev-parse', 'main'])).stdout);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('reports unavailable Git as a command failure instead of a missing checkout', async () => {

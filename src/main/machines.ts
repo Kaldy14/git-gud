@@ -17,7 +17,7 @@ import type {
 } from '@shared/types';
 
 import { gitExecutor } from './git/exec';
-import { machineFileDiffCommand, machineSnapshotCommand, parseMachineSnapshot } from './git/parsers/machine';
+import { machineFileDiffCommand, machineSnapshotCommand, machineUploadPackCommand, parseMachineSnapshot } from './git/parsers/machine';
 import { createProfileCommandEnv } from './profiles';
 
 type MachineStoreShape = { machines: RemoteMachine[] };
@@ -272,6 +272,7 @@ async function syncMachineRefs(
       refsChanged = true;
       await gitExecutor.run([
         'fetch', '--no-tags', '--prune', '--no-write-fetch-head', '--no-auto-gc', '--no-write-commit-graph', '--no-recurse-submodules',
+        `--upload-pack=${machineUploadPackCommand()}`,
         fetchUrl,
         `+refs/heads/*:${prefix}heads/*`,
         ...(expected.has(`${prefix}HEAD`) ? [`+HEAD:${prefix}HEAD`] : [])

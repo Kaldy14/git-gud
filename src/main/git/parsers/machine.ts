@@ -64,6 +64,17 @@ function posixCommand(commands: string[]): string {
   return `sh -c ${quoteRemoteShell(commands.join('; '))}`;
 }
 
+/** Guard the actual upload-pack invocation, including conditional per-repository config. */
+export function machineUploadPackCommand(): string {
+  // An empty hook override breaks Git's pack-objects invocation; reject hooks instead.
+  return `${posixCommand([
+    'export GIT_OPTIONAL_LOCKS=0',
+    'git -C "$1" config --get uploadpack.packObjectsHook >/dev/null; code=$?',
+    `case "$code" in 0) printf 'Read-only mirroring is unavailable for upload-pack hooks.\\n' >&2; exit 2;; 1) ;; *) exit "$code";; esac`,
+    'exec git -c core.hooksPath=/dev/null upload-pack "$@"'
+  ])} sh`;
+}
+
 /** Inspect raw worktree bytes; clean/process conversion may execute arbitrary helpers. */
 function readOnlyGitFunction(): string {
   // Keep the SSH command on one line for login shells such as csh. Disable glob
