@@ -50,6 +50,7 @@ export function machineSnapshotCommand(remotePath: string): string {
     `[ "$probe" = true ] || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
     readOnlyGitFunction(),
+    assertUnfilteredCommand('read_only_git ls-files -z'),
     'read_only_git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
     "printf '\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"
@@ -77,6 +78,17 @@ function readOnlyGitFunction(): string {
     'IFS=$saved_ifs',
     'git -c core.fsmonitor=false "$@"'
   ].join('; ')}; }`;
+}
+
+function assertUnfilteredCommand(pathsCommand: string): string {
+  // --all omits absent attributes, avoiding ambiguity with a driver literally
+  // named "unspecified". Pass literal NUL-delimited paths through xargs; Git's
+  // text output quotes control characters, so each attribute occupies one line.
+  const check = '[ "$#" -eq 0 ] || git -c core.fsmonitor=false check-attr --all -- "$@"';
+  return [
+    `attributes=$(${pathsCommand} | xargs -0 sh -c ${quoteRemoteShell(check)} sh) || exit $?`,
+    `if printf '%s\\n' "$attributes" | LC_ALL=C grep -Eq ': filter: [^[:space:]]*$'; then printf 'Read-only inspection is unavailable for Git content filters.\\n' >&2; exit 2; fi`
+  ].join('; ');
 }
 
 export function parseMachineSnapshot(output: string): MachineSnapshotOutput {
@@ -128,6 +140,7 @@ export function machineFileDiffCommand(
     'export GIT_OPTIONAL_LOCKS=0',
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
     readOnlyGitFunction(),
+    assertUnfilteredCommand(`printf '%s\\0' ${path}`),
     // Preserve exit status and stderr; the SSH boundary distinguishes a normal
     // --no-index patch (exit 1) from file access errors using both output streams.
     diff

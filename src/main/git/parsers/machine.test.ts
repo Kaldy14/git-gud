@@ -293,7 +293,9 @@ describe('machine shell commands', () => {
     }
   });
 
-  it.each(['clean', 'process'])('does not invoke a required %s filter while reading remote worktree content', async (kind) => {
+  it.each([
+    ['clean', 'fixture.with-dots'], ['process', 'fixture.with-dots'], ['clean', 'unspecified']
+  ])('reports a required %s filter named %s without executing it or presenting raw changes', async (kind, driver) => {
     const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-filter-'));
     const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
     const marker = join(directory, 'filter-ran');
@@ -306,9 +308,9 @@ describe('machine shell commands', () => {
       await git('add', 'file.txt');
       await git('commit', '-qm', 'initial');
       await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n${kind === 'clean' ? 'cat' : 'exit 1'}\n`);
-      await git('config', `filter.fixture.with-dots.${kind}`, `sh ${quoteRemoteShell(hook)}`);
-      await git('config', 'filter.fixture.with-dots.required', 'true');
-      await writeFile(join(directory, '.gitattributes'), '*.txt filter=fixture.with-dots\n');
+      await git('config', `filter.${driver}.${kind}`, `sh ${quoteRemoteShell(hook)}`);
+      await git('config', `filter.${driver}.required`, 'true');
+      await writeFile(join(directory, '.gitattributes'), `*.txt filter=${driver}\n`);
       // Equal size forces status to compare content instead of trusting stat data.
       await writeFile(join(directory, 'file.txt'), 'changed!\n');
       await git('status', '--porcelain=v2').catch(() => undefined);
@@ -316,17 +318,37 @@ describe('machine shell commands', () => {
       await rm(marker);
 
       const indexBefore = await stat(join(directory, '.git', 'index'));
-      const snapshot = await run('sh', ['-c', machineSnapshotCommand(directory)]);
-      expect(parseMachineSnapshot(snapshot.stdout)).toMatchObject({ kind: 'repository', status: {
-        files: expect.arrayContaining([expect.objectContaining({ path: 'file.txt', status: 'modified' })])
-      } });
-      const diff = await run('sh', ['-c', machineFileDiffCommand(directory, {
+      await expect(run('sh', ['-c', machineSnapshotCommand(directory)]))
+        .rejects.toMatchObject({ code: 2, stderr: expect.stringContaining('unavailable for Git content filters') });
+      await expect(run('sh', ['-c', machineFileDiffCommand(directory, {
         path: 'file.txt', staged: false, untracked: false
-      })]);
-      expect(diff.stdout).toContain('+changed');
+      })])).rejects.toMatchObject({ stderr: expect.stringContaining('unavailable for Git content filters') });
       expect(existsSync(marker)).toBe(false);
       expect((await stat(join(directory, '.git', 'index'))).mtimeMs).toBe(indexBefore.mtimeMs);
-      expect((await git('config', 'filter.fixture.with-dots.required')).stdout.trim()).toBe('true');
+      expect((await git('config', `filter.${driver}.required`)).stdout.trim()).toBe('true');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not report an unchanged LFS-style file as modified after bypassing its filter', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-filter-representation-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'stored pointer\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'pointer');
+      await writeFile(join(directory, '.gitattributes'), '*.txt filter=fixture\n');
+      await git('config', 'filter.fixture.clean', "cat >/dev/null; printf 'stored pointer\\n'");
+      await writeFile(join(directory, 'file.txt'), 'expanded working-tree contents\n');
+      await git('add', 'file.txt');
+      // The file is clean according to Git's actual conversion contract.
+      expect((await git('status', '--porcelain=v2', '--', 'file.txt')).stdout).toBe('');
+      await expect(run('sh', ['-c', machineSnapshotCommand(directory)]))
+        .rejects.toMatchObject({ stderr: expect.stringContaining('unavailable for Git content filters') });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
