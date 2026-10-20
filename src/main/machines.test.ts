@@ -273,6 +273,25 @@ describe('machine poll lifecycle', () => {
     expect((await retry).machines[0]?.status).toBeUndefined();
   });
 
+  it('mirrors a home-relative checkout whose first path component starts with a dash', async () => {
+    saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const path = join(homedir(), '--projects', 'repo');
+    vi.mocked(gitExecutor.run).mockImplementation(async (args) => {
+      if (args[0] === 'fetch' && args.some((arg) => arg.startsWith('omarchy:-'))) {
+        throw new Error('strange pathname blocked');
+      }
+      return { args: [...args], cwd: path, stdout: '', stderr: '', exitCode: 0 };
+    });
+    const child = pendingSsh();
+    const pending = loadCommitGraphMachines({ path, commonDir: join(path, '.git') }, runGuard);
+    child.stdout.end(snapshotOutput);
+    child.emit('close', 0);
+    const result = await pending;
+    expect(result.refsChanged).toBe(true);
+    expect(result.machines[0]?.message).toBeUndefined();
+    expect(gitExecutor.run).toHaveBeenCalledWith(expect.arrayContaining(['omarchy:./--projects/repo']), expect.anything());
+  });
+
   it('uses platform-supported SSH options', async () => {
     saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     await loadCommitGraphMachines(tab, runGuard);

@@ -260,7 +260,8 @@ async function syncMachineRefs(
     if (headSha && /^[0-9a-f]{40,64}$/.test(headSha)) expected.set(`${prefix}HEAD`, headSha);
 
     const env = createProfileCommandEnv(tab.assignedProfileId);
-    const fetchUrl = `${machine.sshHost}:${remotePath.startsWith('~/') ? remotePath.slice(2) : remotePath === '~' ? '.' : remotePath}`;
+    // Git blocks dash-leading scp paths; ./ keeps home-relative paths literal.
+    const fetchUrl = `${machine.sshHost}:${remotePath.startsWith('~/') ? `./${remotePath.slice(2)}` : remotePath === '~' ? '.' : remotePath}`;
     await gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
       if (!isCurrentMachine(machine)) return;
       const readRefs = () => gitExecutor.run(['for-each-ref', '--format=%(refname)%00%(objectname)', prefix], { cwd: tab.path, env });
