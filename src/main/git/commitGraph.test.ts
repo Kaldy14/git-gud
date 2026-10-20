@@ -12,7 +12,7 @@ import { loadStatus, loadWorktrees } from './repositoryOverview';
 import * as machines from '../machines';
 
 describe('loadCommitGraph', () => {
-  it('does not label a detached local HEAD as existing only on a machine', async () => {
+  it('does not label detached HEADs in any local worktree as existing only on a machine', async () => {
     const repoPath = await mkdtemp(join(tmpdir(), 'git-gud-machine-detached-'));
     const enabledMachines = vi.spyOn(machines, 'listEnabledGraphMachines').mockReturnValue([
       { id: 'detached-test', name: 'Other machine' }
@@ -33,6 +33,18 @@ describe('loadCommitGraph', () => {
       await git(repoPath, ['checkout', 'main']);
       const machinePage = await loadCommitGraph({ path: repoPath }, 50, false);
       expect(machinePage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
+        { id: 'detached-test', name: 'Other machine' }
+      ]);
+
+      const linkedPath = join(repoPath, 'linked-worktree');
+      await git(repoPath, ['worktree', 'add', '--detach', linkedPath, sha]);
+      const linkedPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(linkedPage.rows.find((row) => row.sha === sha)?.unpushedOn).toBeUndefined();
+
+      // An unborn worktree contributes no valid revision to the exclusion set.
+      await git(linkedPath, ['checkout', '--orphan', 'empty-worktree']);
+      const unbornPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(unbornPage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
         { id: 'detached-test', name: 'Other machine' }
       ]);
     } finally {

@@ -40,6 +40,7 @@ export async function loadCommitGraph(
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
   const machines = listEnabledGraphMachines();
   const statusPromise = loadStatus(tab.path, env, [], { aheadBehind: false });
+  const worktreesPromise = loadWorktrees(tab.path, env);
   const [logCommits, refs, status, stashes, worktrees, remotes, machineRefs] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env, machines),
     // Graph chips and WIP nodes need ref tips and file state, not the sidebar's
@@ -47,9 +48,10 @@ export async function loadCommitGraph(
     loadRefs(tab.path, env, { includeTracking: false }),
     statusPromise,
     loadStashes(tab.path, env),
-    loadWorktrees(tab.path, env),
+    worktreesPromise,
     loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([]),
-    statusPromise.then((status) => loadMachineRefs(tab.path, env, machines, limit, status.branch.oid))
+    Promise.all([statusPromise, worktreesPromise]).then(([status, worktrees]) =>
+      loadMachineRefs(tab.path, env, machines, limit, [status.branch.oid, ...worktrees.map((worktree) => worktree.head)]))
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
@@ -255,17 +257,19 @@ async function loadMachineRefs(
   env: NodeJS.ProcessEnv | undefined,
   machines: readonly GraphMachine[],
   limit: number,
-  localHead: string | undefined
+  localHeads: readonly (string | undefined)[]
 ): Promise<MachineRefs> {
   const result: MachineRefs = { chips: [], unpushed: new Map() };
   if (machines.length === 0) return result;
+  // Unborn worktrees report an all-zero HEAD, which rev-list rejects.
+  const localRevisions = [...new Set(localHeads.flatMap((head) => head && !/^0+$/.test(head) ? [head] : []))];
 
   await Promise.all(machines.map(async (machine) => {
     const prefix = `refs/machines/${machine.id}`;
     const [refs, unpushed] = await Promise.all([
       gitExecutor.run(['for-each-ref', '--format=%(objectname)%00%(refname)', `${prefix}/heads/`], { cwd: repoPath, env }),
       gitExecutor.run(
-        ['rev-list', `--max-count=${limit}`, `--glob=${prefix}/heads`, '--not', '--branches', '--remotes', '--tags', ...(localHead ? [localHead] : [])],
+        ['rev-list', `--max-count=${limit}`, `--glob=${prefix}/heads`, '--not', '--branches', '--remotes', '--tags', ...localRevisions],
         { cwd: repoPath, env, allowedExitCodes: [128] }
       )
     ]);
