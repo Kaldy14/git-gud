@@ -354,6 +354,73 @@ describe('machine shell commands', () => {
     }
   });
 
+  it.each(['clean', 'process'])('does not enter submodule worktrees with a submodule-only %s filter', async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-submodule-filter-'));
+    const nested = join(directory, 'nested');
+    const git = (cwd: string, ...args: string[]) => run('git', ['-C', cwd, ...args]);
+    const marker = join(directory, '.git', 'nested-filter-ran');
+    const hook = join(directory, '.git', 'nested-filter.sh');
+    try {
+      await mkdir(nested);
+      for (const cwd of [directory, nested]) {
+        await git(cwd, 'init', '-q', '-b', 'main');
+        await git(cwd, 'config', 'user.email', 'machine@example.test');
+        await git(cwd, 'config', 'user.name', 'Machine Test');
+      }
+      await writeFile(join(nested, 'file.txt'), 'original\n');
+      await git(nested, 'add', 'file.txt');
+      await git(nested, 'commit', '-qm', 'nested initial');
+      await writeFile(join(directory, '.gitmodules'), '[submodule "nested"]\n path = nested\n url = ./nested\n');
+      await git(directory, 'add', 'nested', '.gitmodules');
+      await git(directory, 'commit', '-qm', 'superproject initial');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n${kind === 'clean' ? 'cat' : 'exit 1'}\n`);
+      await git(nested, 'config', `filter.nested.${kind}`, `sh ${quoteRemoteShell(hook)}`);
+      await writeFile(join(nested, '.gitattributes'), '*.txt filter=nested\n');
+      await writeFile(join(nested, 'file.txt'), 'changed!\n');
+      await git(directory, 'status', '--porcelain=v2', '--ignore-submodules=none').catch(() => undefined);
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+      const snapshot = parseMachineSnapshot((await run('sh', ['-c', machineSnapshotCommand(directory)])).stdout);
+      expect(snapshot).toMatchObject({ kind: 'repository', status: { isDirty: false } });
+      expect(existsSync(marker)).toBe(false);
+
+      await git(nested, '-c', `filter.nested.${kind}=`, 'commit', '-qam', 'nested new commit');
+      const changed = parseMachineSnapshot((await run('sh', ['-c', machineSnapshotCommand(directory)])).stdout);
+      expect(changed).toMatchObject({ kind: 'repository', status: { files: [expect.objectContaining({ path: 'nested' })] } });
+      const diff = await run('sh', ['-c', machineFileDiffCommand(directory, { path: 'nested', staged: false, untracked: false })]);
+      expect(diff.stdout).toContain('Subproject commit');
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['rename', 'copy'])('preserves a staged %s with literal source and destination paths', async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-machine-rename-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'old[1].txt'), 'original\n');
+      await git('add', '.');
+      await git('commit', '-qm', 'initial');
+      if (kind === 'rename') await git('mv', 'old[1].txt', 'new[1].txt');
+      else {
+        await writeFile(join(directory, 'new[1].txt'), 'original\n');
+        await git('add', 'new[1].txt');
+      }
+      const { stdout } = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'new[1].txt', originalPath: 'old[1].txt', staged: true, untracked: false
+      })]);
+      expect(stdout).toContain(`${kind} from old[1].txt`);
+      expect(stdout).toContain(`${kind} to new[1].txt`);
+      expect(parsePatchFiles(stdout).flatMap((patch) => patch.files)).toMatchObject([{ name: 'new[1].txt', prevName: 'old[1].txt' }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('does not invoke FSMonitor while reading a snapshot or tracked diff', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-fsmonitor-'));
     const git = (...args: string[]) => run('git', ['-C', directory, ...args]);

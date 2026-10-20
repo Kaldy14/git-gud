@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path';
 
-import type { GitStatusSummary, RemoteMachineBranch } from '@shared/types';
+import type { GitStatusSummary, RemoteMachineBranch, RemoteMachineFileDiffRequest } from '@shared/types';
 
 import { parseStatusPorcelainV2 } from './status';
 
@@ -51,7 +51,9 @@ export function machineSnapshotCommand(remotePath: string): string {
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
     readOnlyGitFunction(),
     assertUnfilteredCommand('read_only_git ls-files -z'),
-    'read_only_git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
+    // Submodule-local helpers are not covered by the superproject's config.
+    // Inspect gitlink commits only, without entering submodule worktrees.
+    'read_only_git status --ignore-submodules=dirty --porcelain=v2 --branch -z --untracked-files=all || exit $?',
     "printf '\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"
   ]);
@@ -125,22 +127,25 @@ function parseMachineBranches(output: string, currentBranch: string | undefined)
 /** Read-only diff of one remote working-tree file. */
 export function machineFileDiffCommand(
   remotePath: string,
-  request: { path: string; staged: boolean; untracked: boolean }
+  request: Omit<RemoteMachineFileDiffRequest, 'machineId'>
 ): string {
   assertMachineFilePath(request.path);
+  if (request.originalPath !== undefined) assertMachineFilePath(request.originalPath);
   const path = quoteRemoteShell(request.path);
+  const paths = !request.untracked && request.originalPath && request.originalPath !== request.path
+    ? `${quoteRemoteShell(request.originalPath)} ${path}` : path;
   const diff = request.untracked
     ? `read_only_git diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
     // A combined merge diff has no renderable hunks in PatchDiff. Compare
     // unmerged working files with ours so conflict markers stay visible.
     // Shell quoting does not stop Git from interpreting a filename as a pattern.
-    : `read_only_git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
+    : `read_only_git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv --submodule=short --ignore-submodules=dirty --find-renames --find-copies${request.originalPath ? ' --find-copies-harder' : ''}${request.staged ? ' --cached' : ' --ours'} -- ${paths}`;
 
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
     readOnlyGitFunction(),
-    assertUnfilteredCommand(`printf '%s\\0' ${path}`),
+    assertUnfilteredCommand(`printf '%s\\0' ${paths}`),
     // Preserve exit status and stderr; the SSH boundary distinguishes a normal
     // --no-index patch (exit 1) from file access errors using both output streams.
     diff

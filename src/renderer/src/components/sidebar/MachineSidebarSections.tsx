@@ -71,6 +71,11 @@ export function MachineSidebarSections({
             </div>
             {isExpanded ? (
               <div className="py-1" data-stale={snapshot && !snapshot.current ? 'true' : undefined}>
+                {snapshot?.current && snapshot.state === 'online' && snapshot.message ? (
+                  <p role="status" className="px-[34px] py-1.5 text-xs text-[var(--machine)]" title={snapshot.message}>
+                    Branch sync failed. Branches may be missing or outdated.
+                  </p>
+                ) : null}
                 {branches.map((branch) => (
                   <MachineBranchRow
                     key={branch.name}
@@ -147,5 +152,7 @@ function machineStateLabel(machine: RemoteMachine, snapshot: RemoteMachineReposi
     const time = new Date(snapshot.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return { label: snapshot.status ? `offline · as of ${time}` : 'offline', title: snapshot.message ?? 'unreachable' };
   }
-  return { label: 'online', title: `online, checked ${new Date(snapshot.checkedAt).toLocaleTimeString()}` };
+  return snapshot.message
+    ? { label: 'sync failed', title: snapshot.message }
+    : { label: 'online', title: `online, checked ${new Date(snapshot.checkedAt).toLocaleTimeString()}` };
 }

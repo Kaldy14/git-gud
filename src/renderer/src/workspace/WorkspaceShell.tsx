@@ -690,7 +690,7 @@ export function WorkspaceShell(): ReactElement {
     ? machineFile : undefined;
   const activeMachineFile = repositoryMachineFile && machineFileGroups(selectedMachineSnapshot?.status?.files ?? []).some((group) =>
     group.staged === repositoryMachineFile.staged && group.untracked === repositoryMachineFile.untracked &&
-    group.files.some((file) => file.path === repositoryMachineFile.path)) ? repositoryMachineFile : undefined;
+    group.files.some((file) => file.path === repositoryMachineFile.path && file.originalPath === repositoryMachineFile.originalPath)) ? repositoryMachineFile : undefined;
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
   const activeReviewTarget = activeTab ? reviewTargetByTab[activeTab.id] : undefined;

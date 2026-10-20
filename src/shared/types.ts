@@ -1214,6 +1214,7 @@ export type CommitGraphMachines = {
 export type RemoteMachineFileDiffRequest = {
   machineId: string;
   path: string;
+  originalPath?: string;
   staged: boolean;
   untracked: boolean;
 };

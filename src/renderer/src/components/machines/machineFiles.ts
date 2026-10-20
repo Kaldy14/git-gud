@@ -1,8 +1,14 @@
 import type { GitFileChange, RemoteMachineFileDiffRequest } from '@shared/types';
+import { parsePatchFiles } from '@pierre/diffs';
 
 export type MachineFileSelection = Omit<RemoteMachineFileDiffRequest, 'machineId'>;
 
 export type MachineFileGroup = { label: string; staged: boolean; untracked: boolean; files: GitFileChange[] };
+
+/** Including a rename/copy source can also return its own patch. Show only the selected destination. */
+export function selectMachineFileDiff(patch: string, path: string) {
+  return parsePatchFiles(patch).flatMap((entry) => entry.files).find((file) => file.name === path);
+}
 
 export function machineFileGroups(files: readonly GitFileChange[]): MachineFileGroup[] {
   const visible = files.filter((file) => file.status !== 'ignored');

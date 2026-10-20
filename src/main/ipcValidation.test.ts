@@ -33,8 +33,16 @@ describe('IPC argument validation', () => {
       expect(() => validateIpcArgs('repo:machine-file-diff', ['/repo', {
         machineId: 'm1', path, staged: false, untracked: true
       }])).toThrow('repository-relative');
+      expect(() => validateIpcArgs('repo:machine-file-diff', ['/repo', {
+        machineId: 'm1', path: 'renamed.txt', originalPath: path, staged: true, untracked: false
+      }])).toThrow('repository-relative');
     }
   );
+
+  it('preserves a validated rename source for remote diffs', () => {
+    const request = { machineId: 'm1', path: 'new[1].txt', originalPath: 'old[1].txt', staged: true, untracked: false };
+    expect(validateIpcArgs('repo:machine-file-diff', ['/repo', request])).toEqual(['/repo', request]);
+  });
 
   it('accepts valid typed command payloads', () => {
     expect(validateIpcArgs('app:pull-request-deep-links-ready', [])).toEqual([]);

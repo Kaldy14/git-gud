@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { PatchDiff } from '@pierre/diffs/react';
+import { FileDiff } from '@pierre/diffs/react';
 import { Eye, GitBranch, Loader2, Minus, Monitor, Pencil, Plus, Unplug, X } from 'lucide-react';
 
 import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
@@ -9,7 +9,7 @@ import { FILE_STATUS_COLORS } from '@shared/graph';
 import { normalizeDetailPanelWidth } from '@shared/workspace';
 import type { DiffSyntaxTheme, GitFileChange, RemoteMachineRepository } from '@shared/types';
 
-import { machineFileGroups, type MachineFileSelection } from './machineFiles';
+import { machineFileGroups, selectMachineFileDiff, type MachineFileSelection } from './machineFiles';
 
 export type { MachineFileSelection } from './machineFiles';
 
@@ -84,7 +84,7 @@ export function MachineWipPanel({
                   key={file.path}
                   file={file}
                   isSelected={isSelected}
-                  onSelect={() => onSelectFile(isSelected ? undefined : { path: file.path, staged: group.staged, untracked: group.untracked })}
+                  onSelect={() => onSelectFile(isSelected ? undefined : { path: file.path, originalPath: file.originalPath, staged: group.staged, untracked: group.untracked })}
                 />
               );
             })}
@@ -153,12 +153,13 @@ export function MachineFileDiffView({
   onClose: () => void;
 }): ReactElement {
   const diff = useQuery({
-    queryKey: ['machine-file-diff', repoPath, machineId, file.path, file.staged, file.untracked],
+    queryKey: ['machine-file-diff', repoPath, machineId, file.path, file.staged, file.untracked, file.originalPath],
     queryFn: () => window.api.getMachineFileDiff(repoPath, { machineId, ...file }),
     retry: false,
     staleTime: 10_000
   });
   const options = useMemo(() => ({ ...createDiffOptionsBase(diffSyntaxTheme), diffStyle }), [diffStyle, diffSyntaxTheme]);
+  const selectedDiff = useMemo(() => diff.data ? selectMachineFileDiff(diff.data, file.path) : undefined, [diff.data, file.path]);
   const scope = file.untracked ? 'untracked' : file.staged ? 'staged' : 'unstaged';
 
   return (
@@ -179,8 +180,10 @@ export function MachineFileDiffView({
           </p>
         ) : diff.error ? (
           <p className="py-10 text-center text-xs text-[var(--danger-text)]">{diff.error instanceof Error ? diff.error.message : 'Could not read the diff.'}</p>
+        ) : selectedDiff ? (
+          <FileDiff className="gg-diff" fileDiff={selectedDiff} options={options} />
         ) : diff.data?.trim() ? (
-          <PatchDiff className="gg-diff" patch={diff.data} options={options} />
+          <p className="py-10 text-center text-xs text-[var(--danger-text)]">The remote diff did not include the selected file.</p>
         ) : (
           <p className="py-10 text-center text-xs text-[var(--text-3)]">No textual changes (binary file or mode change).</p>
         )}

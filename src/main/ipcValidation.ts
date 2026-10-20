@@ -850,9 +850,12 @@ function readRemoteMachineFileDiffRequest(value: unknown): RemoteMachineFileDiff
   const record = readRecord(value, 'machine file diff request');
   const path = readNonEmptyLimitedString(record.path, 'path', 4_096);
   assertMachineFilePath(path);
+  const originalPath = record.originalPath === undefined ? undefined : readNonEmptyLimitedString(record.originalPath, 'originalPath', 4_096);
+  if (originalPath !== undefined) assertMachineFilePath(originalPath);
   return {
     machineId: readNonEmptyLimitedString(record.machineId, 'machineId', 128),
     path,
+    ...(originalPath !== undefined ? { originalPath } : {}),
     staged: readBooleanProperty(record, 'staged'),
     untracked: readBooleanProperty(record, 'untracked')
   };
