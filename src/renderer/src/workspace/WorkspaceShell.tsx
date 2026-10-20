@@ -969,7 +969,8 @@ export function WorkspaceShell(): ReactElement {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['machines'] }),
       queryClient.invalidateQueries({ queryKey: ['commit-graph-machines'] }),
-      queryClient.invalidateQueries({ queryKey: ['commit-graph'] })
+      // A first graph read may still contain the machine's previous visibility.
+      ...workspace.tabs.map((tab) => invalidateRepositoryQueries(queryClient, tab.path, ['graph'], { refetchAfterInFlight: true }))
     ]);
   }
 

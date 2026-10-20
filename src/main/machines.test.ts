@@ -175,34 +175,52 @@ describe('machine poll lifecycle', () => {
     expect(vi.mocked(gitExecutor.run).mock.calls.filter(([args]) => args[0] === 'fetch')).toHaveLength(1);
   });
 
-  it.each(['for-each-ref', 'fetch', 'update-ref'])('preserves ref-change state when synchronization fails during %s', async (failedCommand) => {
+  it.each([
+    { failedCommand: 'for-each-ref', partiallyFetched: false, refsChanged: false },
+    { failedCommand: 'fetch', partiallyFetched: false, refsChanged: false },
+    { failedCommand: 'fetch', partiallyFetched: true, refsChanged: true },
+    { failedCommand: 'update-ref', partiallyFetched: false, refsChanged: true }
+  ])('reports actual ref changes when synchronization fails: $failedCommand, partial=$partiallyFetched', async ({ failedCommand, partiallyFetched, refsChanged }) => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const prefix = `refs/machines/${machine!.id}/`;
     const branchSha = 'b'.repeat(40);
     let fetched = false;
     vi.mocked(gitExecutor.run).mockImplementation(async (args) => {
-      if (args[0] === 'fetch') fetched = true;
+      if (args[0] === 'fetch') fetched = args[0] !== failedCommand || partiallyFetched;
       if (args[0] === failedCommand) throw new Error('ref is locked');
       return {
         args: [...args], cwd: tab.path,
-        stdout: args[0] === 'for-each-ref' ? `${prefix}HEAD\0${sha}\n` : '', stderr: '', exitCode: 0
+        stdout: args[0] === 'for-each-ref' ? `${prefix}HEAD\0${sha}\n${fetched ? `${prefix}heads/new-branch\0${branchSha}\n` : ''}` : '', stderr: '', exitCode: 0
       };
     });
+    // An unchanged failure must also stay quiet on subsequent polls.
+    for (let poll = 0; poll < 2; poll++) {
+      const child = pendingSsh();
+      const pending = loadCommitGraphMachines(tab, runGuard);
+      child.stdout.end(`# branch.oid (initial)\0# branch.head orphan\0\0new-branch\0${branchSha}\0\0`);
+      child.emit('close', 0);
+      const result = await pending;
+      expect(result.refsChanged).toBe(poll === 0 && refsChanged);
+      expect(result.machines[0]).toMatchObject({
+        state: 'online', current: true, message: expect.stringContaining('ref is locked'),
+        branches: [{ name: 'new-branch', sha: branchSha }]
+      });
+    }
+  });
+
+  it('refreshes conservatively when refs cannot be inspected after a failed fetch', async () => {
+    saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    vi.mocked(gitExecutor.run)
+      .mockResolvedValueOnce({ args: [], cwd: tab.path, stdout: '', stderr: '', exitCode: 0 })
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockRejectedValueOnce(new Error('refs unreadable'));
     const child = pendingSsh();
     const pending = loadCommitGraphMachines(tab, runGuard);
-    child.stdout.end(`# branch.oid (initial)\0# branch.head orphan\0\0new-branch\0${branchSha}\0\0`);
+    child.stdout.end(snapshotOutput);
     child.emit('close', 0);
-
     const result = await pending;
-    expect(fetched).toBe(failedCommand !== 'for-each-ref');
-    expect(result.refsChanged).toBe(failedCommand !== 'for-each-ref');
-    expect(result.machines[0]).toMatchObject({
-      state: 'online', current: true, message: expect.stringContaining('ref is locked'),
-      branches: [{ name: 'new-branch', sha: branchSha }]
-    });
-    if (failedCommand === 'update-ref') {
-      expect(gitExecutor.run).toHaveBeenCalledWith(['update-ref', '-d', `${prefix}HEAD`], expect.objectContaining({ kind: 'mutation' }));
-    }
+    expect(result.refsChanged).toBe(true);
+    expect(result.machines[0]?.message).toContain('fetch failed');
   });
 
   it('only reads untracked files that Git listed in the snapshot', async () => {

@@ -260,33 +260,40 @@ async function syncMachineRefs(
     if (headSha && /^[0-9a-f]{40,64}$/.test(headSha)) expected.set(`${prefix}HEAD`, headSha);
 
     const env = createProfileCommandEnv(tab.assignedProfileId);
-    const local = await gitExecutor.run(['for-each-ref', '--format=%(refname)%00%(objectname)', prefix], { cwd: tab.path, env });
-    const actual = new Map(local.stdout.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string]));
-    if (actual.size === expected.size && [...expected].every(([ref, sha]) => actual.get(ref) === sha)) return { refsChanged: false };
-
     const fetchUrl = `${machine.sshHost}:${remotePath.startsWith('~/') ? remotePath.slice(2) : remotePath === '~' ? '.' : remotePath}`;
     await gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
       if (!isCurrentMachine(machine)) return;
-      // Fetch can update refs before failing, and obsolete-HEAD cleanup can fail
-      // after a successful fetch. Invalidate the graph in either case.
-      refsChanged = true;
-      await gitExecutor.run([
-        'fetch', '--no-tags', '--prune', '--no-write-fetch-head', '--no-auto-gc', '--no-write-commit-graph', '--no-recurse-submodules',
-        `--upload-pack=${machineUploadPackCommand()}`,
-        fetchUrl,
-        `+refs/heads/*:${prefix}heads/*`,
-        ...(expected.has(`${prefix}HEAD`) ? [`+HEAD:${prefix}HEAD`] : [])
-      ], {
-        cwd: tab.path,
-        kind: 'fetch',
-        env: { ...env, GIT_SSH_COMMAND: ['ssh', ...SSH_OPTIONS].join(' '), GIT_TERMINAL_PROMPT: '0' },
-        timeoutMs: FETCH_TIMEOUT_MS
-      });
-      // The heads wildcard cannot prune this separately fetched ref when the
-      // checkout switches to an orphan branch with no first commit yet.
-      const headRef = `${prefix}HEAD`;
-      if (!expected.has(headRef) && actual.has(headRef)) {
-        await gitExecutor.run(['update-ref', '-d', headRef], { cwd: tab.path, kind: 'mutation', env });
+      const readRefs = () => gitExecutor.run(['for-each-ref', '--format=%(refname)%00%(objectname)', prefix], { cwd: tab.path, env });
+      const local = await readRefs();
+      const actual = new Map(local.stdout.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string]));
+      if (actual.size === expected.size && [...expected].every(([ref, sha]) => actual.get(ref) === sha)) return;
+
+      try {
+        await gitExecutor.run([
+          'fetch', '--no-tags', '--prune', '--no-write-fetch-head', '--no-auto-gc', '--no-write-commit-graph', '--no-recurse-submodules',
+          `--upload-pack=${machineUploadPackCommand()}`,
+          fetchUrl,
+          `+refs/heads/*:${prefix}heads/*`,
+          ...(expected.has(`${prefix}HEAD`) ? [`+HEAD:${prefix}HEAD`] : [])
+        ], {
+          cwd: tab.path,
+          kind: 'fetch',
+          env: { ...env, GIT_SSH_COMMAND: ['ssh', ...SSH_OPTIONS].join(' '), GIT_TERMINAL_PROMPT: '0' },
+          timeoutMs: FETCH_TIMEOUT_MS
+        });
+        // The heads wildcard cannot prune this separately fetched ref when the
+        // checkout switches to an orphan branch with no first commit yet.
+        const headRef = `${prefix}HEAD`;
+        if (!expected.has(headRef) && actual.has(headRef)) {
+          await gitExecutor.run(['update-ref', '-d', headRef], { cwd: tab.path, kind: 'mutation', env });
+        }
+        refsChanged = true;
+      } catch (error) {
+        // Fetch can fail after updating some refs. Refresh only if they changed;
+        // otherwise a rejected fetch would reload history on every machine poll.
+        // If refs cannot be inspected, refresh conservatively to avoid stale data.
+        refsChanged = await readRefs().then((after) => after.stdout !== local.stdout, () => true);
+        throw error;
       }
     }));
     return { refsChanged };
