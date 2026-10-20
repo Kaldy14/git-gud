@@ -170,6 +170,51 @@ describe('machine shell commands', () => {
     }
   });
 
+  it.each([false, true])('reads only the selected literal filename when staged=%s', async (staged) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-literal-diff-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      for (const name of ['file[1].txt', 'file1.txt']) await writeFile(join(directory, name), 'original\n');
+      await git('add', '.');
+      await git('commit', '-qm', 'initial');
+      for (const name of ['file[1].txt', 'file1.txt']) await writeFile(join(directory, name), `changed ${name}\n`);
+      if (staged) await git('add', '.');
+      const { stdout } = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'file[1].txt', staged, untracked: false
+      })]);
+      expect(stdout).toContain('+changed file[1].txt');
+      expect(stdout).not.toContain('+changed file1.txt');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reads branch tracking counts with a non-English login locale', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-tracking-locale-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await git('commit', '--allow-empty', '-qm', 'base');
+      await git('branch', 'upstream');
+      await git('branch', '--set-upstream-to=upstream', 'main');
+      await git('commit', '--allow-empty', '-qm', 'ahead');
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(directory)], {
+        env: { ...process.env, LC_ALL: 'fr_FR.UTF-8', LANG: 'fr_FR.UTF-8', LANGUAGE: 'fr' }
+      });
+      const snapshot = parseMachineSnapshot(stdout);
+      expect(snapshot.kind).toBe('repository');
+      if (snapshot.kind === 'repository') expect(snapshot.branches.find((branch) => branch.name === 'main'))
+        .toMatchObject({ upstream: 'upstream', ahead: 1, behind: 0 });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(existsSync('/bin/csh'))('reads snapshots and diffs through a non-POSIX login shell', async () => {
     const snapshot = await run('/bin/csh', ['-f', '-c', machineSnapshotCommand(repoPath)]);
     expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');

@@ -37,11 +37,12 @@ export function assertMachineFilePath(path: string): void {
  */
 export function machineSnapshotCommand(remotePath: string): string {
   return posixCommand([
-    'export GIT_OPTIONAL_LOCKS=0',
+    // Tracking text is parsed below, so every Git process needs a stable locale.
+    'export GIT_OPTIONAL_LOCKS=0 LC_ALL=C',
     'command -v git >/dev/null 2>&1 || { printf "Git is not available on the remote PATH.\\n" >&2; exit 127; }',
     // Only an absent repository clears mirrored refs. Ownership and permission
     // errors must retain the last snapshot and reach the offline error message.
-    `probe=$(LC_ALL=C git -C ${remoteShellPath(remotePath)} rev-parse --is-inside-work-tree 2>&1); code=$?`,
+    `probe=$(git -C ${remoteShellPath(remotePath)} rev-parse --is-inside-work-tree 2>&1); code=$?`,
     `if [ "$code" -ne 0 ]; then case "$probe" in 'fatal: cannot change to '*': No such file or directory'|'fatal: cannot change to '*': Not a directory') printf ${MACHINE_MISSING_MARKER}; exit 0;; 'fatal: not a git repository'*) if [ ! -e ${remoteShellPath(`${remotePath}/.git`)} ] && [ ! -L ${remoteShellPath(`${remotePath}/.git`)} ]; then printf ${MACHINE_MISSING_MARKER}; exit 0; fi;; esac; printf '%s\\n' "$probe" >&2; exit "$code"; fi`,
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
     'git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
@@ -97,7 +98,8 @@ export function machineFileDiffCommand(
     ? `git diff --no-color --no-index -- /dev/null ${path}`
     // A combined merge diff has no renderable hunks in PatchDiff. Compare
     // unmerged working files with ours so conflict markers stay visible.
-    : `git diff --no-color${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
+    // Shell quoting does not stop Git from interpreting a filename as a pattern.
+    : `git --literal-pathspecs diff --no-color${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
 
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
