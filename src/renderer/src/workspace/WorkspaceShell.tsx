@@ -28,6 +28,8 @@ import { useWorkerPool } from '@pierre/diffs/react';
 import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
+import { MachineFileDiffView, MachineWipPanel, type MachineFileSelection } from '@renderer/components/machines/MachineWipPanel';
+import { machineFileGroups } from '@renderer/components/machines/machineFiles';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
 import type { ReviewViewState } from '@renderer/components/review/reviewViewState';
 import { DashboardView } from '@renderer/components/dashboard/DashboardView';
@@ -71,11 +73,15 @@ import {
 import {
   clearRepositoryQueries,
   fetchCommitGraphPage,
+  fetchCommitGraphContaining,
+  invalidateMachineQueries,
   invalidateRepositoryQueries,
   prepareLinkedWorktreeGraphTransition,
   prepareRepositoryForProfileTransition,
   repositoryOverviewQueryKey,
   useCommitGraph,
+  useCommitGraphMachines,
+  useMachines,
   useRepositoryChangeInvalidation,
   useRepositoryOverview
 } from '@renderer/queries/repository';
@@ -151,7 +157,9 @@ import type {
   GitStashRefInput,
   GitStashPushInput,
   GitTagDeleteInput,
-  PrimarySyncOperation
+  PrimarySyncOperation,
+  RemoteMachine,
+  RemoteMachineRepository
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
@@ -164,6 +172,8 @@ import {
 
 const emptyGraphRows: CommitGraphRow[] = [];
 const emptySelectedShas: string[] = [];
+const EMPTY_MACHINES: RemoteMachine[] = [];
+const EMPTY_MACHINE_SNAPSHOTS: RemoteMachineRepository[] = [];
 const FileFocusView = lazy(async () => {
   const module = await import('@renderer/components/diff/FileFocusView');
   return { default: module.FileFocusView };
@@ -184,7 +194,7 @@ const ReviewBenchmarkExplorer = import.meta.env.DEV
   : undefined;
 
 type GraphPaginationState =
-  | { repoPath: string; status: 'loading' }
+  | { repoPath: string; status: 'loading'; machineRevealSequence?: number }
   | { repoPath: string; status: 'error'; message: string };
 
 type InteractiveRebaseDialogState = {
@@ -444,6 +454,10 @@ export function WorkspaceShell(): ReactElement {
     relatedRepoPaths,
     { remoteAvatars: settings.remoteAvatars }
   );
+  const machinesQuery = useCommitGraphMachines(gitHubWorkspaceView ? undefined : activeTab?.path);
+  const machineListQuery = useMachines();
+  const [machineFile, setMachineFile] = useState<MachineFileSelection & { machineId: string; repoPath: string }>();
+  const machineRevealSequenceRef = useRef(0);
   const activeGraphPagination =
     activeTab && graphPaginationByTab[activeTab.id]?.repoPath === activeTab.path
       ? graphPaginationByTab[activeTab.id]
@@ -669,6 +683,15 @@ export function WorkspaceShell(): ReactElement {
       .map((row) => row.sha);
   }, [activeBulkSelectedShas, graphRows]);
   const parentSha = selectedRow?.parentShas[0];
+  const selectedMachineWip = selectedRow?.machineWip;
+  const selectedMachineSnapshot = selectedMachineWip
+    ? machinesQuery.data?.machines.find((snapshot) => snapshot.machine.id === selectedMachineWip.id)
+    : undefined;
+  const repositoryMachineFile = selectedMachineWip && machineFile?.machineId === selectedMachineWip.id && machineFile.repoPath === activeTab?.path
+    ? machineFile : undefined;
+  const activeMachineFile = repositoryMachineFile && machineFileGroups(selectedMachineSnapshot?.status?.files ?? []).some((group) =>
+    group.staged === repositoryMachineFile.staged && group.untracked === repositoryMachineFile.untracked &&
+    group.files.some((file) => file.path === repositoryMachineFile.path && file.originalPath === repositoryMachineFile.originalPath)) ? repositoryMachineFile : undefined;
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
   const activeReviewTarget = activeTab ? reviewTargetByTab[activeTab.id] : undefined;
@@ -938,6 +961,15 @@ export function WorkspaceShell(): ReactElement {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  async function handleSetMachineEnabled(machine: RemoteMachine, enabled: boolean): Promise<void> {
+    try {
+      await window.api.saveMachine({ id: machine.id, name: machine.name, sshHost: machine.sshHost, enabled });
+    } catch (error) {
+      console.error('Unable to update the machine.', error);
+    }
+    await invalidateMachineQueries(queryClient);
+  }
+
   function handleSelectRow(sha: string): void {
     if (!activeTab) {
       return;
@@ -954,6 +986,42 @@ export function WorkspaceShell(): ReactElement {
     }
 
     void activateLinkedWorktreeWip(linkedWorktreePath);
+  }
+
+  async function handleRevealMachineCommit(sha: string): Promise<void> {
+    if (!activeTab) return;
+    const tab = activeTab;
+    const sequence = ++machineRevealSequenceRef.current;
+    const isCurrentRequest = (): boolean => sequence === machineRevealSequenceRef.current &&
+      workspaceTabsRef.current.some((candidate) => candidate.id === tab.id && candidate.path === tab.path);
+    setGraphPaginationByTab((value) => ({ ...value, [tab.id]: { repoPath: tab.path, status: 'loading', machineRevealSequence: sequence } }));
+    try {
+      const page = await fetchCommitGraphContaining(queryClient, tab.path, sha, graphQuery.data, settings.graphPageSize, isCurrentRequest);
+      if (!isCurrentRequest()) return;
+      setGraphLimitByTab((value) => ({ ...value, [tab.id]: Math.max(value[tab.id] ?? 0, page.limit) }));
+      // Machine branches remain graph roots with no solo filter; keep the user's hidden branches.
+      setBranchVisibilityByRepository((value) => {
+        const visibility = value[tab.commonDir];
+        return visibility?.solo.length ? { ...value, [tab.commonDir]: { ...visibility, solo: [] } } : value;
+      });
+      setBulkSelectionByTab((value) => ({ ...value, [tab.id]: [] }));
+      setReviewTargetByTab((value) => withoutRecordKey(value, tab.id));
+      delete reviewViewStateByTabRef.current[tab.id];
+      await selectFile(tab.id, undefined);
+      if (isCurrentRequest()) await selectCommit(tab.id, sha);
+    } catch (error) {
+      if (isCurrentRequest()) {
+        setGraphPaginationByTab((value) => ({ ...value, [tab.id]: {
+          repoPath: tab.path, status: 'error', message: error instanceof Error ? error.message : 'Unable to reveal the machine branch.'
+        } }));
+      }
+    } finally {
+      setGraphPaginationByTab((value) => {
+        const state = value[tab.id];
+        return state?.repoPath === tab.path && state.status === 'loading' && state.machineRevealSequence === sequence
+          ? withoutRecordKey(value, tab.id) : value;
+      });
+    }
   }
 
   async function activateLinkedWorktreeWip(worktreePath: string): Promise<void> {
@@ -1681,7 +1749,7 @@ export function WorkspaceShell(): ReactElement {
     }
 
     if (open) {
-      if (!selectedRow || selectedRow.node.kind === 'stash') {
+      if (!selectedRow || selectedRow.node.kind === 'stash' || selectedRow.machineWip) {
         return;
       }
 
@@ -3737,6 +3805,10 @@ export function WorkspaceShell(): ReactElement {
                 onStashApply={handleStashApply}
                 onStashPop={handleStashPop}
                 onStashDrop={handleStashDrop}
+                machines={machineListQuery.data ?? EMPTY_MACHINES}
+                machineSnapshots={machinesQuery.data?.machines ?? EMPTY_MACHINE_SNAPSHOTS}
+                onSetMachineEnabled={(machine, enabled) => void handleSetMachineEnabled(machine, enabled)}
+                onRevealCommit={(sha) => void handleRevealMachineCommit(sha)}
               />
               {activeReviewTarget ? (
                 <Suspense
@@ -3760,7 +3832,18 @@ export function WorkspaceShell(): ReactElement {
                     onClose={() => handleSetReviewOpen(false)}
                   />
                 </Suspense>
-              ) : activeTab.selectedFile && isSelectedFileConflicted ? (
+              ) : selectedMachineWip && activeMachineFile ? (
+                <MachineFileDiffView
+                  key={`${activeMachineFile.machineId}:${activeMachineFile.path}`}
+                  repoPath={activeTab.path}
+                  machineId={activeMachineFile.machineId}
+                  machineName={selectedMachineWip.name}
+                  file={activeMachineFile}
+                  diffStyle={activeDiffStyle}
+                  diffSyntaxTheme={settings.diffSyntaxTheme}
+                  onClose={() => setMachineFile(undefined)}
+                />
+              ) : activeTab.selectedFile && !selectedMachineWip && isSelectedFileConflicted ? (
                 <Suspense
                   fallback={
                     <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] text-xs text-[var(--text-3)]">
@@ -3779,7 +3862,7 @@ export function WorkspaceShell(): ReactElement {
                     onClose={() => handleSelectFile(undefined)}
                   />
                 </Suspense>
-              ) : activeTab.selectedFile ? (
+              ) : activeTab.selectedFile && !selectedMachineWip ? (
                 <Suspense
                   fallback={
                     <section className="grid min-w-0 flex-1 place-items-center bg-[var(--bg-app)] text-xs text-[var(--text-3)]">
@@ -3874,7 +3957,14 @@ export function WorkspaceShell(): ReactElement {
                   onCloseSearch={() => setIsCommitSearchOpen(false)}
                 />
               )}
-              {!activeReviewTarget ? (
+              {!activeReviewTarget && selectedMachineWip && !isDetailPanelCollapsed ? (
+                <MachineWipPanel
+                  snapshot={selectedMachineSnapshot}
+                  width={effectiveDetailPanelWidth}
+                  selectedFile={activeMachineFile}
+                  onSelectFile={(file) => setMachineFile(file ? { ...file, machineId: selectedMachineWip.id, repoPath: activeTab.path } : undefined)}
+                />
+              ) : !activeReviewTarget ? (
                 <CommitDetailPanel
                   repoPath={activeTab.path}
                   row={selectedRow}

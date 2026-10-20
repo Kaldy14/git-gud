@@ -2,15 +2,76 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { gitExecutor } from './exec';
 import { mergeCommitGraphWorktrees } from '@shared/graph';
 
 import { loadCommitGraph, loadCommitGraphWorktrees } from './commitGraph';
 import { loadStatus, loadWorktrees } from './repositoryOverview';
+import * as machines from '../machines';
 
 describe('loadCommitGraph', () => {
+  it('excludes commits retained by local worktree HEADs and stashes from machine-only badges', async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), 'git-gud-machine-detached-'));
+    const enabledMachines = vi.spyOn(machines, 'listEnabledGraphMachines').mockReturnValue([
+      { id: 'detached-test', name: 'Other machine' }
+    ]);
+    try {
+      await git(repoPath, ['init', '-b', 'main']);
+      await git(repoPath, ['config', 'user.name', 'Graph Test']);
+      await git(repoPath, ['config', 'user.email', 'graph@example.test']);
+      await git(repoPath, ['commit', '--allow-empty', '-m', 'base']);
+      await git(repoPath, ['checkout', '--detach']);
+      await git(repoPath, ['commit', '--allow-empty', '-m', 'detached local commit']);
+      const sha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['update-ref', 'refs/machines/detached-test/heads/work', sha]);
+
+      const localPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(localPage.rows.find((row) => row.sha === sha)?.unpushedOn).toBeUndefined();
+
+      await git(repoPath, ['checkout', 'main']);
+      const machinePage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(machinePage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
+        { id: 'detached-test', name: 'Other machine' }
+      ]);
+
+      const linkedPath = join(repoPath, 'linked-worktree');
+      await git(repoPath, ['worktree', 'add', '--detach', linkedPath, sha]);
+      const linkedPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(linkedPage.rows.find((row) => row.sha === sha)?.unpushedOn).toBeUndefined();
+
+      // An unborn worktree contributes no valid revision to the exclusion set.
+      await git(linkedPath, ['checkout', '--orphan', 'empty-worktree']);
+      const unbornPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(unbornPage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
+        { id: 'detached-test', name: 'Other machine' }
+      ]);
+
+      // Older stashes retain commits even when refs/stash points at a newer base.
+      await git(repoPath, ['checkout', '--detach', sha]);
+      await writeRepoFile(repoPath, 'stash.txt', 'retained locally\n');
+      await git(repoPath, ['add', 'stash.txt']);
+      await git(repoPath, ['stash', 'push', '-m', 'retain detached commit']);
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'newer.txt', 'newer stash on main\n');
+      await git(repoPath, ['add', 'newer.txt']);
+      await git(repoPath, ['stash', 'push', '-m', 'newer stash']);
+      const stashedPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(stashedPage.rows.find((row) => row.sha === sha)?.unpushedOn).toBeUndefined();
+      expect(stashedPage.rows.filter((row) => row.node.kind === 'stash')).toHaveLength(2);
+
+      await git(repoPath, ['stash', 'drop', 'stash@{1}']);
+      const droppedPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(droppedPage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
+        { id: 'detached-test', name: 'Other machine' }
+      ]);
+    } finally {
+      enabledMachines.mockRestore();
+      await rm(repoPath, { recursive: true, force: true });
+    }
+  });
+
   it('loads real commits with refs, stash nodes, WIP row, and pagination metadata', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-'));
 

@@ -1,4 +1,5 @@
 import { parseCodeReference } from '@shared/codeReference';
+import { assertMachineFilePath } from './git/parsers/machine';
 import type { ArtifactCleanupInput, BranchCleanupInput, BranchCleanupOptions } from '@shared/maintenance';
 import { parseBugRequest } from '@shared/bugFinder';
 import type {
@@ -58,6 +59,8 @@ import type {
   GitTagDeleteInput,
   GitTagPushInput,
   PortainerConnectionInput,
+  RemoteMachineFileDiffRequest,
+  RemoteMachineInput,
   PortainerStackImagesInput,
   PortainerStackStatusInput
 } from '@shared/types';
@@ -107,6 +110,8 @@ const validators = {
   'repo:icon': (args) => readOnlyArg(args, 'repo:icon', 'repoPath', readString),
   'repo:graph': (args) => readRepoPathWithOptionalLimit(args),
   'repo:graph-worktrees': (args) => readOnlyArg(args, 'repo:graph-worktrees', 'repoPath', readString),
+  'repo:graph-machines': (args) => readOnlyArg(args, 'repo:graph-machines', 'repoPath', readString),
+  'repo:machine-file-diff': (args) => readRepoPathWithObject(args, 'repo:machine-file-diff', readRemoteMachineFileDiffRequest),
   'repo:graph-avatars': (args) => readRepoPathWithAvatarCandidates(args),
   'repo:commit-detail': (args) => readStringPair(args, 'repo:commit-detail', 'repoPath', 'sha'),
   'repo:commit-selection-detail': (args) =>
@@ -222,6 +227,11 @@ const validators = {
       'profileId',
       'alertIds'
     ),
+  'machines:list': (args) => noArgs('machines:list', args),
+  'machines:save': (args) => readOnlyArg(args, 'machines:save', 'machine', readRemoteMachineInput),
+  'machines:delete': (args) => readOnlyArg(args, 'machines:delete', 'machineId', readNonEmptyString),
+  'machines:test': (args) => readOnlyArg(args, 'machines:test', 'machine', readRemoteMachineInput),
+  'machines:tailscale-status': (args) => noArgs('machines:tailscale-status', args),
   'portainer:connections': (args) => noArgs('portainer:connections', args),
   'portainer:connection-save': (args) =>
     readOnlyArg(
@@ -823,6 +833,31 @@ function readDashboardInput(value: unknown): DashboardInput {
         )
       };
     })
+  };
+}
+
+function readRemoteMachineInput(value: unknown): RemoteMachineInput {
+  const record = readRecord(value, 'machine');
+  return {
+    id: record.id === undefined ? undefined : readNonEmptyLimitedString(record.id, 'id', 128),
+    name: readNonEmptyLimitedString(record.name, 'name', 80),
+    sshHost: readNonEmptyLimitedString(record.sshHost, 'sshHost', 253),
+    enabled: readOptionalBooleanProperty(record, 'enabled')
+  };
+}
+
+function readRemoteMachineFileDiffRequest(value: unknown): RemoteMachineFileDiffRequest {
+  const record = readRecord(value, 'machine file diff request');
+  const path = readNonEmptyLimitedString(record.path, 'path', 4_096);
+  assertMachineFilePath(path);
+  const originalPath = record.originalPath === undefined ? undefined : readNonEmptyLimitedString(record.originalPath, 'originalPath', 4_096);
+  if (originalPath !== undefined) assertMachineFilePath(originalPath);
+  return {
+    machineId: readNonEmptyLimitedString(record.machineId, 'machineId', 128),
+    path,
+    ...(originalPath !== undefined ? { originalPath } : {}),
+    staged: readBooleanProperty(record, 'staged'),
+    untracked: readBooleanProperty(record, 'untracked')
   };
 }
 

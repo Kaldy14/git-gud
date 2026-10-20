@@ -1,0 +1,595 @@
+import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parsePatchFiles } from '@pierre/diffs';
+
+import {
+  MACHINE_MISSING_MARKER,
+  MACHINE_REFS_MARKER,
+  machineFileDiffCommand,
+  machineSnapshotCommand,
+  machineTestCommand,
+  machineUploadPackCommand,
+  parseMachineSnapshot,
+  quoteRemoteShell,
+  remoteShellPath
+} from './machine';
+
+const run = promisify(execFile);
+const SHA_A = 'a'.repeat(40);
+const SHA_B = 'b'.repeat(40);
+
+describe('machine snapshot parsing', () => {
+  it('quotes remote paths so the home prefix still expands', () => {
+    expect(quoteRemoteShell("it's")).toBe(`'it'\\''s'`);
+    expect(remoteShellPath('~')).toBe('~');
+    expect(remoteShellPath('~/Data/My Repo')).toBe(`~/'Data/My Repo'`);
+    expect(remoteShellPath('/srv/repo')).toBe(`'/srv/repo'`);
+  });
+
+  it('parses status and branches, putting the checked-out branch first', () => {
+    const status = [
+      `# branch.oid ${SHA_A}`,
+      '# branch.head main',
+      '# branch.upstream origin/main',
+      '# branch.ab +1 -0',
+      `1 .M N... 100644 100644 100644 ${SHA_A} ${SHA_A} src/app.ts`,
+      '? notes.txt'
+    ].join('\0');
+    const refs = [
+      ['feature/x', SHA_B, '', ''].join('\0'),
+      ['main', SHA_A, 'origin/main', 'ahead 1, behind 2'].join('\0')
+    ].join('\n');
+
+    const snapshot = parseMachineSnapshot(`${status}${MACHINE_REFS_MARKER}${refs}\n`);
+
+    expect(snapshot.kind).toBe('repository');
+    if (snapshot.kind !== 'repository') return;
+    expect(snapshot.status.files.map((file) => [file.path, file.status])).toEqual([
+      ['src/app.ts', 'modified'],
+      ['notes.txt', 'untracked']
+    ]);
+    expect(snapshot.branches).toEqual([
+      { name: 'main', sha: SHA_A, upstream: 'origin/main', ahead: 1, behind: 2, current: true },
+      { name: 'feature/x', sha: SHA_B, ahead: 0, behind: 0, current: false }
+    ]);
+  });
+
+  it('reports a missing checkout and rejects unexpected output', () => {
+    expect(parseMachineSnapshot(MACHINE_MISSING_MARKER)).toEqual({ kind: 'missing' });
+    expect(() => parseMachineSnapshot('bash: git: command not found')).toThrow(/unexpected/);
+  });
+});
+
+describe('machine shell commands', () => {
+  let repoPath = '';
+
+  beforeAll(async () => {
+    repoPath = await mkdtemp(join(tmpdir(), "git-gud machine '"));
+    const git = (...args: string[]) => run('git', ['-C', repoPath, ...args]);
+    await git('init', '-q', '-b', 'main');
+    await git('config', 'user.email', 'machine@example.test');
+    await git('config', 'user.name', 'Machine Test');
+    await writeFile(join(repoPath, 'tracked.txt'), 'one\n');
+    await git('add', 'tracked.txt');
+    await git('commit', '-q', '-m', 'initial');
+    await writeFile(join(repoPath, 'tracked.txt'), 'two\n');
+    await writeFile(join(repoPath, 'new file.txt'), 'hello\n');
+  });
+
+  afterAll(async () => {
+    await rm(repoPath, { recursive: true, force: true });
+  });
+
+  it('reads a snapshot without touching the index', async () => {
+    const indexBefore = await stat(join(repoPath, '.git', 'index'));
+    const { stdout } = await run('sh', ['-c', machineSnapshotCommand(repoPath)], { encoding: 'utf8' });
+    const indexAfter = await stat(join(repoPath, '.git', 'index'));
+
+    const snapshot = parseMachineSnapshot(stdout);
+    expect(snapshot.kind).toBe('repository');
+    if (snapshot.kind !== 'repository') return;
+    expect(snapshot.status.files.map((file) => file.path).sort()).toEqual(['new file.txt', 'tracked.txt']);
+    expect(snapshot.branches.map((branch) => [branch.name, branch.current])).toEqual([['main', true]]);
+    expect(indexAfter.mtimeMs).toBe(indexBefore.mtimeMs);
+  });
+
+  it('reports missing checkouts and reads tracked and untracked diffs', async () => {
+    const missing = await run('sh', ['-c', machineSnapshotCommand(join(repoPath, 'nope'))], { encoding: 'utf8' });
+    expect(parseMachineSnapshot(missing.stdout)).toEqual({ kind: 'missing' });
+
+    const tracked = await run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'tracked.txt', staged: false, untracked: false })], {
+      encoding: 'utf8'
+    });
+    expect(tracked.stdout).toContain('+two');
+
+    await expect(run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'new file.txt', staged: false, untracked: true })]))
+      .rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('+hello'), stderr: '' });
+
+    await expect(
+      run('sh', ['-c', machineFileDiffCommand(join(repoPath, 'nope'), { path: 'tracked.txt', staged: false, untracked: false })])
+    ).rejects.toMatchObject({ code: 2 });
+  });
+
+  it('preserves the no-index access error when an untracked file disappeared', async () => {
+    await expect(run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'vanished.txt', staged: false, untracked: true })]))
+      .rejects.toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('vanished.txt') });
+  });
+
+  it('rejects upload-pack hooks before object transfer and mirrors normally once the hook is removed', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-upload-hook-'));
+    try {
+      const config = join(directory, 'global-config');
+      const marker = join(directory, 'invoked');
+      const hook = join(directory, 'hook.sh');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n"$@"\n`);
+      await run('git', ['config', '--file', config, 'uploadpack.packObjectsHook', `sh ${quoteRemoteShell(hook)}`]);
+      const env = { ...process.env, GIT_CONFIG_GLOBAL: config };
+      const ref = 'refs/machines/test/heads/main';
+      const remote = `file://${repoPath}`;
+      const ordinary = join(directory, 'ordinary');
+      const guarded = join(directory, 'guarded');
+      for (const path of [ordinary, guarded]) {
+        await mkdir(path);
+        await run('git', ['init', '-q', path]);
+      }
+      await run('git', ['-C', ordinary, 'fetch', remote, `refs/heads/main:${ref}`], { env });
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+
+      const args = ['-C', guarded, 'fetch', `--upload-pack=${machineUploadPackCommand()}`, remote, `refs/heads/main:${ref}`];
+      await expect(run('git', args, { env })).rejects.toMatchObject({
+        stderr: expect.stringContaining('Read-only mirroring is unavailable for upload-pack hooks.')
+      });
+      expect(existsSync(marker)).toBe(false);
+      expect((await run('git', ['-C', guarded, 'for-each-ref', ref])).stdout).toBe('');
+      expect((await run('git', ['config', '--file', config, '--get', 'uploadpack.packObjectsHook'])).stdout.trim())
+        .toBe(`sh ${quoteRemoteShell(hook)}`);
+
+      await run('git', ['config', '--file', config, '--unset', 'uploadpack.packObjectsHook']);
+      await run('git', args, { env });
+      expect((await run('git', ['-C', guarded, 'rev-parse', ref])).stdout)
+        .toBe((await run('git', ['-C', repoPath, 'rev-parse', 'main'])).stdout);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unsupported Git before testing, inspecting, or serving a repository', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-old-git-'));
+    try {
+      const calls = join(directory, 'calls');
+      const inspected = join(directory, 'inspected');
+      const realGit = (await run('sh', ['-c', 'command -v git'])).stdout.trim();
+      const wrapper = join(directory, 'git');
+      await writeFile(wrapper, `#!/bin/sh\nprintf '%s\n' "$*" >> ${quoteRemoteShell(calls)}\nif [ "$1" = --no-lazy-fetch ]; then exit 129; fi\nprintf inspected >> ${quoteRemoteShell(inspected)}\nexec ${quoteRemoteShell(realGit)} "$@"\n`);
+      await chmod(wrapper, 0o755);
+      const env = { ...process.env, PATH: `${directory}${delimiter}${process.env.PATH}` };
+      const commands = [
+        machineTestCommand(), machineSnapshotCommand(repoPath),
+        machineFileDiffCommand(repoPath, { path: 'tracked.txt', staged: false, untracked: false }),
+        `${machineUploadPackCommand()} ${quoteRemoteShell(repoPath)}`
+      ];
+      for (const command of commands) {
+        await expect(run('sh', ['-c', command], { env })).rejects.toMatchObject({
+          code: 2, stdout: '', stderr: expect.stringContaining('Update Git on this machine')
+        });
+      }
+      expect(existsSync(inspected)).toBe(false);
+      expect((await readFile(calls, 'utf8')).trim().split('\n')).toEqual(Array(4).fill('--no-lazy-fetch --version'));
+      const supported = await run('sh', ['-c', machineTestCommand()]);
+      expect(supported.stdout.trim().split('\n')).toEqual([expect.stringMatching(/^git version /), expect.any(String)]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('never fetches missing blobs while inspecting a partial clone', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-lazy-fetch-'));
+    try {
+      const source = join(directory, 'source');
+      const clone = join(directory, 'partial');
+      await run('git', ['init', '-q', '-b', 'main', source]);
+      const git = (...args: string[]) => run('git', ['-C', source, ...args]);
+      await git('config', 'user.name', 'Partial Test');
+      await git('config', 'user.email', 'partial@example.test');
+      await writeFile(join(source, 'partial.txt'), 'base\n');
+      await git('add', 'partial.txt');
+      await git('commit', '-q', '-m', 'base');
+      await git('config', 'uploadpack.allowFilter', 'true');
+      await run('git', ['clone', '--filter=blob:none', '--no-checkout', pathToFileURL(source).href, clone]);
+      await run('git', ['-C', clone, 'read-tree', 'HEAD']);
+      await writeFile(join(clone, 'partial.txt'), 'local change\n');
+      const blob = (await git('rev-parse', 'HEAD:partial.txt')).stdout.trim();
+      const missingBlob = () => run('git', ['-C', clone, 'cat-file', '-e', blob], {
+        env: { ...process.env, GIT_NO_LAZY_FETCH: '1' }
+      });
+      const packDirectory = join(clone, '.git', 'objects', 'pack');
+      const packsBefore = (await readdir(packDirectory)).sort();
+      await expect(missingBlob()).rejects.toMatchObject({ code: 1 });
+      const snapshot = parseMachineSnapshot((await run('sh', ['-c', machineSnapshotCommand(clone)])).stdout);
+      expect(snapshot).toMatchObject({ kind: 'repository', status: { files: [expect.objectContaining({ path: 'partial.txt', status: 'modified' })] } });
+      await expect(run('sh', ['-c', machineFileDiffCommand(clone, { path: 'partial.txt', staged: false, untracked: false })]))
+        .rejects.toMatchObject({ stderr: expect.stringContaining(blob) });
+      await expect(missingBlob()).rejects.toMatchObject({ code: 1 });
+      expect((await readdir(packDirectory)).sort()).toEqual(packsBefore);
+
+      // The checkout owner can fetch explicitly; already-present blobs still render.
+      await run('git', ['-C', clone, 'fetch', 'origin', blob]);
+      const patch = await run('sh', ['-c', machineFileDiffCommand(clone, { path: 'partial.txt', staged: false, untracked: false })]);
+      expect(patch.stdout).toContain('+local change');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reports unavailable Git as a command failure instead of a missing checkout', async () => {
+    const shellOnlyPath = await mkdtemp(join(tmpdir(), 'git-gud-shell-only-'));
+    try {
+      await symlink('/bin/sh', join(shellOnlyPath, 'sh'));
+      await expect(run('/bin/sh', ['-c', machineSnapshotCommand(repoPath)], {
+        env: { ...process.env, PATH: shellOnlyPath }
+      })).rejects.toMatchObject({ code: 127, stdout: '', stderr: expect.stringContaining('Git is not available') });
+    } finally {
+      await rm(shellOnlyPath, { recursive: true, force: true });
+    }
+  });
+
+  it('fails the snapshot when Git cannot read the index instead of returning clean status', async () => {
+    const corruptIndex = join(repoPath, 'corrupt-index');
+    await writeFile(corruptIndex, 'invalid index');
+    await expect(run('sh', ['-c', machineSnapshotCommand(repoPath)], {
+      env: { ...process.env, GIT_INDEX_FILE: corruptIndex }
+    })).rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('index') });
+  });
+
+  it('preserves a Git ownership error instead of reporting a missing checkout', async () => {
+    await expect(run('sh', ['-c', machineSnapshotCommand(repoPath)], {
+      env: {
+        ...process.env, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1',
+        GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: ''
+      }
+    })).rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('dubious ownership') });
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each(['checkout', 'git directory'])(
+    'does not clear machine refs when the %s is inaccessible', async (target) => {
+      const directory = await mkdtemp(join(tmpdir(), 'git-gud-inaccessible-'));
+      const inaccessible = target === 'checkout' ? directory : join(directory, '.git');
+      try {
+        await run('git', ['init', '-q', directory]);
+        await chmod(inaccessible, 0);
+        await expect(run('sh', ['-c', machineSnapshotCommand(directory)]))
+          .rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('fatal:') });
+      } finally {
+        await chmod(inaccessible, 0o700);
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('reports an existing directory without a repository as missing', async () => {
+    const emptyDirectory = await mkdtemp(join(tmpdir(), 'git-gud-no-repository-'));
+    try {
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(emptyDirectory)]);
+      expect(parseMachineSnapshot(stdout)).toEqual({ kind: 'missing' });
+    } finally {
+      await rm(emptyDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not read an enclosing repository as the mapped checkout', async () => {
+    const nested = join(repoPath, 'not-a-checkout');
+    await mkdir(nested);
+    const { stdout } = await run('sh', ['-c', machineSnapshotCommand(nested)]);
+    expect(parseMachineSnapshot(stdout)).toEqual({ kind: 'missing' });
+  });
+
+  it('still accepts a linked worktree as a checkout root', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-machine-worktree-'));
+    const worktree = join(directory, 'linked');
+    try {
+      await run('git', ['-C', repoPath, 'worktree', 'add', '--detach', worktree]);
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(worktree)]);
+      expect(parseMachineSnapshot(stdout).kind).toBe('repository');
+    } finally {
+      await run('git', ['-C', repoPath, 'worktree', 'remove', '--force', worktree]);
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])('reads only the selected literal filename when staged=%s', async (staged) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-literal-diff-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      for (const name of ['file[1].txt', 'file1.txt']) await writeFile(join(directory, name), 'original\n');
+      await git('add', '.');
+      await git('commit', '-qm', 'initial');
+      for (const name of ['file[1].txt', 'file1.txt']) await writeFile(join(directory, name), `changed ${name}\n`);
+      if (staged) await git('add', '.');
+      const { stdout } = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'file[1].txt', staged, untracked: false
+      })]);
+      expect(stdout).toContain('+changed file[1].txt');
+      expect(stdout).not.toContain('+changed file1.txt');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reads branch tracking counts with a non-English login locale', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-tracking-locale-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await git('commit', '--allow-empty', '-qm', 'base');
+      await git('branch', 'upstream');
+      await git('branch', '--set-upstream-to=upstream', 'main');
+      await git('commit', '--allow-empty', '-qm', 'ahead');
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(directory)], {
+        env: { ...process.env, LC_ALL: 'fr_FR.UTF-8', LANG: 'fr_FR.UTF-8', LANGUAGE: 'fr' }
+      });
+      const snapshot = parseMachineSnapshot(stdout);
+      expect(snapshot.kind).toBe('repository');
+      if (snapshot.kind === 'repository') expect(snapshot.branches.find((branch) => branch.name === 'main'))
+        .toMatchObject({ upstream: 'upstream', ahead: 1, behind: 0 });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a rename from a marker-like filename separate from branch data', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-snapshot-framing-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, '__GG_REFS__'), 'rename me\n');
+      await git('add', '.');
+      await git('commit', '-qm', 'initial');
+      await git('mv', '__GG_REFS__', 'renamed.txt');
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(directory)]);
+      const snapshot = parseMachineSnapshot(stdout);
+      expect(snapshot.kind).toBe('repository');
+      if (snapshot.kind !== 'repository') return;
+      expect(snapshot.status.files).toMatchObject([{ path: 'renamed.txt', originalPath: '__GG_REFS__', staged: true }]);
+      expect(snapshot.branches).toMatchObject([{ name: 'main', current: true }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['external', false], ['external', true], ['textconv', false], ['textconv', true]
+  ] as const)('never runs a configured %s helper for untracked=%s', async (helperKind, untracked) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-read-only-diff-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    const marker = join(directory, 'helper-ran');
+    const helper = join(directory, 'helper.sh');
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'original\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'initial');
+      await writeFile(helper, `printf invoked >> ${quoteRemoteShell(marker)}\nprintf 'helper output\\n'\n`);
+      await git('config', helperKind === 'external' ? 'diff.external' : 'diff.fixture.textconv', `sh ${quoteRemoteShell(helper)}`);
+      await writeFile(join(directory, '.gitattributes'), '*.txt diff=fixture\n');
+      const path = untracked ? 'new.txt' : 'file.txt';
+      await writeFile(join(directory, path), 'changed\n');
+      const execution = run('sh', ['-c', machineFileDiffCommand(directory, { path, staged: false, untracked })]);
+      if (untracked) {
+        await expect(execution).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('+changed'), stderr: '' });
+      } else {
+        const { stdout } = await execution;
+        expect(stdout).toContain('+changed');
+        expect(parsePatchFiles(stdout).flatMap((patch) => patch.files)).toHaveLength(1);
+      }
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['clean', 'fixture.with-dots'], ['process', 'fixture.with-dots'], ['clean', 'unspecified']
+  ])('reports a required %s filter named %s without executing it or presenting raw changes', async (kind, driver) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-filter-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    const marker = join(directory, 'filter-ran');
+    const hook = join(directory, 'filter.sh');
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'original\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'initial');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n${kind === 'clean' ? 'cat' : 'exit 1'}\n`);
+      await git('config', `filter.${driver}.${kind}`, `sh ${quoteRemoteShell(hook)}`);
+      await git('config', `filter.${driver}.required`, 'true');
+      await writeFile(join(directory, '.gitattributes'), `*.txt filter=${driver}\n`);
+      // Equal size forces status to compare content instead of trusting stat data.
+      await writeFile(join(directory, 'file.txt'), 'changed!\n');
+      await git('status', '--porcelain=v2').catch(() => undefined);
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+
+      const indexBefore = await stat(join(directory, '.git', 'index'));
+      await expect(run('sh', ['-c', machineSnapshotCommand(directory)]))
+        .rejects.toMatchObject({ code: 2, stderr: expect.stringContaining('unavailable for Git content filters') });
+      await expect(run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'file.txt', staged: false, untracked: false
+      })])).rejects.toMatchObject({ stderr: expect.stringContaining('unavailable for Git content filters') });
+      expect(existsSync(marker)).toBe(false);
+      expect((await stat(join(directory, '.git', 'index'))).mtimeMs).toBe(indexBefore.mtimeMs);
+      expect((await git('config', `filter.${driver}.required`)).stdout.trim()).toBe('true');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not report an unchanged LFS-style file as modified after bypassing its filter', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-filter-representation-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'stored pointer\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'pointer');
+      await writeFile(join(directory, '.gitattributes'), '*.txt filter=fixture\n');
+      await git('config', 'filter.fixture.clean', "cat >/dev/null; printf 'stored pointer\\n'");
+      await writeFile(join(directory, 'file.txt'), 'expanded working-tree contents\n');
+      await git('add', 'file.txt');
+      // The file is clean according to Git's actual conversion contract.
+      expect((await git('status', '--porcelain=v2', '--', 'file.txt')).stdout).toBe('');
+      await expect(run('sh', ['-c', machineSnapshotCommand(directory)]))
+        .rejects.toMatchObject({ stderr: expect.stringContaining('unavailable for Git content filters') });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['clean', 'process'])('does not enter submodule worktrees with a submodule-only %s filter', async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-submodule-filter-'));
+    const nested = join(directory, 'nested');
+    const git = (cwd: string, ...args: string[]) => run('git', ['-C', cwd, ...args]);
+    const marker = join(directory, '.git', 'nested-filter-ran');
+    const hook = join(directory, '.git', 'nested-filter.sh');
+    try {
+      await mkdir(nested);
+      for (const cwd of [directory, nested]) {
+        await git(cwd, 'init', '-q', '-b', 'main');
+        await git(cwd, 'config', 'user.email', 'machine@example.test');
+        await git(cwd, 'config', 'user.name', 'Machine Test');
+      }
+      await writeFile(join(nested, 'file.txt'), 'original\n');
+      await git(nested, 'add', 'file.txt');
+      await git(nested, 'commit', '-qm', 'nested initial');
+      await writeFile(join(directory, '.gitmodules'), '[submodule "nested"]\n path = nested\n url = ./nested\n');
+      await git(directory, 'add', 'nested', '.gitmodules');
+      await git(directory, 'commit', '-qm', 'superproject initial');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n${kind === 'clean' ? 'cat' : 'exit 1'}\n`);
+      await git(nested, 'config', `filter.nested.${kind}`, `sh ${quoteRemoteShell(hook)}`);
+      await writeFile(join(nested, '.gitattributes'), '*.txt filter=nested\n');
+      await writeFile(join(nested, 'file.txt'), 'changed!\n');
+      await git(directory, 'status', '--porcelain=v2', '--ignore-submodules=none').catch(() => undefined);
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+      const snapshot = parseMachineSnapshot((await run('sh', ['-c', machineSnapshotCommand(directory)])).stdout);
+      expect(snapshot).toMatchObject({ kind: 'repository', status: { isDirty: false } });
+      expect(existsSync(marker)).toBe(false);
+
+      await git(nested, '-c', `filter.nested.${kind}=`, 'commit', '-qam', 'nested new commit');
+      const changed = parseMachineSnapshot((await run('sh', ['-c', machineSnapshotCommand(directory)])).stdout);
+      expect(changed).toMatchObject({ kind: 'repository', status: { files: [expect.objectContaining({ path: 'nested' })] } });
+      const diff = await run('sh', ['-c', machineFileDiffCommand(directory, { path: 'nested', staged: false, untracked: false })]);
+      expect(diff.stdout).toContain('Subproject commit');
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['rename', 'copy'])('preserves a staged %s with literal source and destination paths', async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-machine-rename-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'old[1].txt'), 'original\n');
+      await git('add', '.');
+      await git('commit', '-qm', 'initial');
+      if (kind === 'rename') await git('mv', 'old[1].txt', 'new[1].txt');
+      else {
+        await writeFile(join(directory, 'new[1].txt'), 'original\n');
+        await git('add', 'new[1].txt');
+      }
+      const { stdout } = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'new[1].txt', originalPath: 'old[1].txt', staged: true, untracked: false
+      })]);
+      expect(stdout).toContain(`${kind} from old[1].txt`);
+      expect(stdout).toContain(`${kind} to new[1].txt`);
+      expect(parsePatchFiles(stdout).flatMap((patch) => patch.files)).toMatchObject([{ name: 'new[1].txt', prevName: 'old[1].txt' }]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not invoke FSMonitor while reading a snapshot or tracked diff', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-fsmonitor-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    const marker = join(directory, 'hook-ran');
+    const hook = join(directory, 'monitor.sh');
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'original\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'initial');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\nprintf 'token\\0/\\0'\n`);
+      await git('config', 'core.fsmonitor', `sh ${quoteRemoteShell(hook)}`);
+      await writeFile(join(directory, 'file.txt'), 'changed\n');
+      // Prove this configuration invokes a hook before checking our read boundary.
+      await git('status', '--porcelain=v2');
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+
+      const snapshot = await run('sh', ['-c', machineSnapshotCommand(directory)]);
+      expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');
+      expect(existsSync(marker)).toBe(false);
+      const diff = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'file.txt', staged: false, untracked: false
+      })]);
+      expect(diff.stdout).toContain('+changed');
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(existsSync('/bin/csh'))('reads snapshots and diffs through a non-POSIX login shell', async () => {
+    const snapshot = await run('/bin/csh', ['-f', '-c', machineSnapshotCommand(repoPath)]);
+    expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');
+    const diff = await run('/bin/csh', ['-f', '-c', machineFileDiffCommand(repoPath, {
+      path: 'tracked.txt', staged: false, untracked: false
+    })]);
+    expect(diff.stdout).toContain('+two');
+  });
+
+  it('returns a renderable diff with conflict markers for an unmerged file', async () => {
+    const git = (...args: string[]) => run('git', ['-C', repoPath, ...args]);
+    await git('checkout', '-qb', 'theirs');
+    await writeFile(join(repoPath, 'tracked.txt'), 'theirs\n');
+    await git('commit', '-qam', 'theirs');
+    await git('checkout', '-q', 'main');
+    await writeFile(join(repoPath, 'tracked.txt'), 'ours\n');
+    await git('commit', '-qam', 'ours');
+    await expect(git('merge', 'theirs')).rejects.toMatchObject({ code: 1 });
+
+    const { stdout } = await run('sh', ['-c', machineFileDiffCommand(repoPath, {
+      path: 'tracked.txt', staged: false, untracked: false
+    })]);
+    expect(stdout).toContain('+<<<<<<< HEAD');
+    const files = parsePatchFiles(stdout).flatMap((patch) => patch.files);
+    expect(files).toHaveLength(1);
+    expect(files.flatMap((file) => file.hunks)).not.toHaveLength(0);
+  });
+});

@@ -1,8 +1,11 @@
 import type {
+  CommitGraphMachines,
   CommitGraphPage,
   CommitGraphRow,
   GraphFile,
   GraphFileStatus,
+  GraphMachine,
+  GraphMachineWip,
   GraphNodeKind,
   GraphRefChip,
   GraphRailSegment,
@@ -11,6 +14,8 @@ import type {
 } from './types';
 
 export const DEFAULT_COMMIT_GRAPH_LIMIT = 1500;
+/** Identity color for other machines; distinct from every lane color. */
+export const MACHINE_COLOR = '#f0a13f';
 export const COMMIT_GRAPH_LIMIT_STEP = 1500;
 
 const LANE_COLORS = ['#4a9ebc', '#2d68ee', '#8218bb', '#b52eb1', '#c72a70', '#bc271b', '#eccc54'] as const;
@@ -52,6 +57,8 @@ export type GraphCommitInput = {
   kind?: GraphNodeKind;
   refs?: GraphRefChip[];
   worktree?: GraphWorktree;
+  machineWip?: GraphMachineWip;
+  unpushedOn?: GraphMachine[];
   colorOverride?: string;
   files?: GraphFile[];
 };
@@ -84,6 +91,60 @@ export function mergeCommitGraphWorktrees(page: CommitGraphPage, worktrees: Comm
   return { ...page, rows: buildCommitGraphRows(inputs) };
 }
 
+export function machineWipSha(machineId: string): string {
+  return `machine-wip:${machineId}`;
+}
+
+export function mergeCommitGraphMachines(page: CommitGraphPage, machines: CommitGraphMachines | undefined): CommitGraphPage {
+  if (!machines || machines.repoPath !== page.repoPath) return page;
+  // A linked-worktree transition can seed this page with an already enriched
+  // graph. Replace its machine WIP rows, including when the latest snapshot is clean.
+  const rows = page.rows.filter((row) => !row.machineWip);
+  const wipInputs: GraphCommitInput[] = [];
+  for (const snapshot of machines.machines) {
+    const status = snapshot.status;
+    if (!status?.isDirty) continue;
+    wipInputs.push({
+      sha: machineWipSha(snapshot.machine.id),
+      parentShas: status.branch.oid ? [status.branch.oid] : [],
+      subject: '// WIP',
+      authorName: snapshot.machine.name,
+      authoredAt: snapshot.checkedAt,
+      dateLabel: 'now',
+      kind: 'wip',
+      colorOverride: MACHINE_COLOR,
+      machineWip: {
+        id: snapshot.machine.id,
+        name: snapshot.machine.name,
+        branch: status.branch.isDetached ? undefined : status.branch.head,
+        checkedAt: snapshot.checkedAt,
+        stale: !snapshot.current
+      },
+      files: status.files.filter((file) => file.status !== 'ignored').map((file) => ({
+        path: file.path,
+        status: file.status === 'deleted' ? 'deleted' : file.status === 'added' || file.status === 'untracked' || file.status === 'copied' ? 'added' : 'modified'
+      }))
+    });
+  }
+  if (wipInputs.length === 0 && rows.length === page.rows.length) return page;
+
+  const byBase = new Map<string, GraphCommitInput[]>();
+  for (const input of wipInputs) {
+    const base = input.parentShas[0] ?? '';
+    byBase.set(base, [...byBase.get(base) ?? [], input]);
+  }
+  const inputs: GraphCommitInput[] = [];
+  for (const row of rows) {
+    if (row.node.kind !== 'stash' && row.node.kind !== 'wip') {
+      inputs.push(...byBase.get(row.sha) ?? []);
+      byBase.delete(row.sha);
+    }
+    inputs.push(commitGraphRowToInput(row));
+  }
+  for (const remaining of byBase.values()) inputs.push(...remaining);
+  return { ...page, rows: buildCommitGraphRows(inputs) };
+}
+
 export function commitGraphRowToInput(row: CommitGraphRow): GraphCommitInput {
   return {
     sha: row.sha,
@@ -100,6 +161,8 @@ export function commitGraphRowToInput(row: CommitGraphRow): GraphCommitInput {
     kind: row.node.kind,
     refs: row.refs,
     worktree: row.worktree,
+    machineWip: row.machineWip,
+    unpushedOn: row.unpushedOn,
     colorOverride: row.colorOverride,
     files: row.files
   };
@@ -179,6 +242,8 @@ export function buildCommitGraphRows(commits: GraphCommitInput[]): CommitGraphRo
       rails,
       refs: commit.refs,
       worktree: commit.worktree,
+      ...(commit.machineWip ? { machineWip: commit.machineWip } : {}),
+      ...(commit.unpushedOn?.length ? { unpushedOn: commit.unpushedOn } : {}),
       dateMarker,
       files: commit.files ?? []
     });

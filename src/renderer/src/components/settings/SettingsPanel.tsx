@@ -6,6 +6,7 @@ import {
   Download,
   Gauge,
   GitGraph,
+  Monitor,
   Palette,
   RefreshCw,
   Rows3,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
+import { MachineSettingsSection } from '@renderer/components/machines/MachineSettingsSection';
 import {
   MAX_AUTO_FETCH_INTERVAL_MINUTES,
   MAX_GRAPH_PAGE_SIZE,
@@ -232,6 +234,8 @@ export function SettingsPanel({
               </span>
             </label>
           </section>
+
+          <MachineSettingsSection heading={<SettingHeading icon={<Monitor size={15} />} label="Machines" />} />
 
           <section className="space-y-3 border-b border-[var(--border)] py-4">
             <SettingHeading icon={<Bot size={15} />} label="Codex" />

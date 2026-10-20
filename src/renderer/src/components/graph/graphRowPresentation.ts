@@ -38,9 +38,11 @@ export function graphBranchCheckoutLocation(
 
 export function graphRowAriaLabel(row: CommitGraphRow): string {
   if (row.node.kind === 'wip') {
-    const identity = row.worktree
-      ? describeWipWorktree(row.worktree).identity
-      : 'working directory';
+    const identity = row.machineWip
+      ? `${row.machineWip.name} working directory, read-only${row.machineWip.stale ? ', unreachable' : ''}`
+      : row.worktree
+        ? describeWipWorktree(row.worktree).identity
+        : 'working directory';
     const counts = countGraphFileStatuses(row.files);
     const statusSummary = GRAPH_FILE_STATUS_ORDER.flatMap((status) =>
       counts[status] > 0 ? graphFileStatusCountLabel(status, counts[status]) : []
@@ -49,8 +51,9 @@ export function graphRowAriaLabel(row: CommitGraphRow): string {
     return [identity, ...statusSummary].join(', ');
   }
 
-  const refs = row.refs?.map((ref) => ref.label).join(', ');
-  return [row.subject, row.author.name, row.dateLabel, row.sha.slice(0, 7), refs]
+  const refs = row.refs?.map((ref) => ref.machine ? `${ref.label} on ${ref.machine.name}` : ref.label).join(', ');
+  const unpushed = row.unpushedOn ? `only on ${row.unpushedOn.map((machine) => machine.name).join(', ')}` : undefined;
+  return [row.subject, row.author.name, row.dateLabel, row.sha.slice(0, 7), refs, unpushed]
     .filter(Boolean)
     .join(', ');
 }

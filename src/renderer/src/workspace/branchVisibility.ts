@@ -148,6 +148,11 @@ export function filterGraphRowsByBranchVisibility(
   }
 
   for (const row of rows) {
+    // Other machines' branches are not sidebar targets; keep them unless something is soloed.
+    if (state.solo.length === 0 && row.refs?.some((ref) => ref.kind === 'machine')) {
+      rootShas.add(row.sha);
+    }
+
     if (row.node.kind === 'stash' && state.solo.length === 0) {
       rootShas.add(row.sha);
       continue;
@@ -316,6 +321,8 @@ function rowToGraphInput(
         visibleBranchRefs.has(refKey(ref.kind === 'branch' ? 'local' : 'remote', ref.label))
     ),
     worktree: row.worktree,
+    machineWip: row.machineWip,
+    unpushedOn: row.unpushedOn,
     colorOverride: row.colorOverride,
     files: row.files
   };

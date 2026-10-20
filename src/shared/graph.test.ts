@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildCommitGraphRows,
+  MACHINE_COLOR,
+  machineWipSha,
+  mergeCommitGraphMachines,
   mergeCommitGraphWorktrees,
   laneBandColor,
   laneColor,
@@ -10,7 +13,7 @@ import {
   uniqueRelativeDateMarkerLabels
 } from './graph';
 import type { GraphCommitInput } from './graph';
-import type { CommitGraphPage, CommitGraphRow, GraphRailSegment } from './types';
+import type { CommitGraphMachines, CommitGraphPage, CommitGraphRow, GitStatusSummary, GraphRailSegment } from './types';
 
 const AUTHOR = {
   authorName: 'Graph Tester',
@@ -345,5 +348,72 @@ describe('linked-worktree graph enrichment', () => {
     expect(mergeCommitGraphWorktrees(enriched, worktrees)).toEqual(enriched);
     expect(mergeCommitGraphWorktrees(page, { ...worktrees, repoPath: '/other' })).toBe(page);
     expect(mergeCommitGraphWorktrees(page, undefined)).toBe(page);
+  });
+});
+
+describe('machine graph enrichment', () => {
+  const page: CommitGraphPage = {
+    repoPath: '/repo', loadedAt: 'now', limit: 50, loadedCommitCount: 3, hasMore: false, nextLimit: 50,
+    rows: buildCommitGraphRows([commit('head', ['base']), commit('base')])
+  };
+  const status = (oid: string, isDirty: boolean): GitStatusSummary => ({
+    branch: { head: 'feature', oid, ahead: 0, behind: 0, isDetached: false },
+    files: isDirty
+      ? [{ path: 'a.ts', status: 'modified', indexStatus: 'unmodified', worktreeStatus: 'modified', staged: false, unstaged: true, conflicted: false }]
+      : [],
+    stagedCount: 0, unstagedCount: isDirty ? 1 : 0, untrackedCount: 0, conflictedCount: 0,
+    dirtyCount: isDirty ? 1 : 0, isDirty
+  });
+  const machines = (snapshotStatus: GitStatusSummary, current = true): CommitGraphMachines => ({
+    repoPath: '/repo',
+    refsChanged: false,
+    machines: [{
+      machine: { id: 'omarchy', name: 'omarchy', sshHost: 'omarchy' }, remotePath: '~/repo', state: 'online',
+      checkedAt: '2026-10-20T10:00:00.000Z', current, status: snapshotStatus, branches: []
+    }]
+  });
+
+  it('inserts a read-only WIP row directly above its base commit', () => {
+    const enriched = mergeCommitGraphMachines(page, machines(status('base', true), false));
+    expect(enriched.rows.map((row) => row.sha)).toEqual(['head', machineWipSha('omarchy'), 'base']);
+    const wip = enriched.rows[1];
+    expect(wip?.node.kind).toBe('wip');
+    expect(wip?.colorOverride).toBe(MACHINE_COLOR);
+    expect(wip?.worktree).toBeUndefined();
+    expect(wip?.machineWip).toEqual({
+      id: 'omarchy', name: 'omarchy', branch: 'feature', checkedAt: '2026-10-20T10:00:00.000Z', stale: true
+    });
+  });
+
+  it('skips clean machines and snapshots for other repositories', () => {
+    expect(mergeCommitGraphMachines(page, machines(status('base', false)))).toBe(page);
+    expect(mergeCommitGraphMachines(page, { ...machines(status('base', true)), repoPath: '/other' })).toBe(page);
+    expect(mergeCommitGraphMachines(page, undefined)).toBe(page);
+  });
+
+  it('replaces premerged machine WIP once when a worktree transition seeds the graph cache', () => {
+    const first = mergeCommitGraphMachines(page, machines(status('base', true)));
+    expect(mergeCommitGraphMachines(first, machines(status('base', true)))).toEqual(first);
+    const latest = machines(status('head', true), false);
+    const refreshed = mergeCommitGraphMachines(first, latest);
+    expect(refreshed.rows.filter((row) => row.machineWip)).toHaveLength(1);
+    expect(refreshed).toEqual(mergeCommitGraphMachines(page, latest));
+  });
+
+  it('removes cached machine WIP when the new checkout is clean or its machine is removed', () => {
+    const enriched = mergeCommitGraphMachines(page, machines(status('base', true)));
+    expect(mergeCommitGraphMachines(enriched, machines(status('base', false)))).toEqual(page);
+    expect(mergeCommitGraphMachines(enriched, { repoPath: '/repo', refsChanged: false, machines: [] })).toEqual(page);
+  });
+
+  it('shows dirty machine checkouts before their first commit', () => {
+    const initial = status('base', true);
+    delete initial.branch.oid;
+    const enriched = mergeCommitGraphMachines({ ...page, rows: [] }, machines(initial));
+    expect(enriched.rows).toHaveLength(1);
+    expect(enriched.rows[0]).toMatchObject({
+      sha: machineWipSha('omarchy'), parentShas: [], machineWip: { id: 'omarchy' },
+      files: [{ path: 'a.ts', status: 'modified' }]
+    });
   });
 });

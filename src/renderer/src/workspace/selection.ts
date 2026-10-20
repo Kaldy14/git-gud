@@ -38,7 +38,8 @@ export function resolveSelectedGraphRow(
     return selectedRow;
   }
 
-  if (!selectedSha || selectedSha === 'wip') {
+  // A machine WIP row disappears when that machine commits, stashes, or is hidden.
+  if (!selectedSha || selectedSha === 'wip' || selectedSha.startsWith('machine-wip:')) {
     return rows.find((row) => row.node.kind !== 'wip' || row.worktree?.current || row.sha === 'wip');
   }
 
