@@ -95,14 +95,18 @@ export async function deleteMachine(
   clearSnapshots(machineId);
 
   const commonDirs = new Map(tabs.map((tab) => [tab.commonDir, tab]));
-  await Promise.allSettled([...commonDirs.values()].map((tab) =>
-    gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
-      const refs = await gitExecutor.run(['for-each-ref', '--format=%(refname)', `refs/machines/${machineId}/`], { cwd: tab.path });
-      const input = refs.stdout.split('\n').filter(Boolean).map((ref) => `delete ${ref}\n`).join('');
-      if (input) await gitExecutor.run(['update-ref', '--stdin'], { cwd: tab.path, kind: 'mutation', input });
-    }))
-  ));
+  await Promise.allSettled([...commonDirs.values()].map((tab) => deleteMachineRefs(tab, machineId, runDuringRefMutation)));
   return listMachines();
+}
+
+async function deleteMachineRefs(tab: MachineTab, machineId: string, runDuringRefMutation: RefMutationRunner): Promise<boolean> {
+  return gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
+    const refs = await gitExecutor.run(['for-each-ref', '--format=%(refname)', `refs/machines/${machineId}/`], { cwd: tab.path });
+    const input = refs.stdout.split('\n').filter(Boolean).map((ref) => `delete ${ref}\n`).join('');
+    if (!input) return false;
+    await gitExecutor.run(['update-ref', '--stdin'], { cwd: tab.path, kind: 'mutation', input });
+    return true;
+  }));
 }
 
 export async function testMachine(input: Pick<RemoteMachineInput, 'sshHost'>): Promise<RemoteMachineTestResult> {
@@ -182,9 +186,10 @@ async function loadMachineRepository(
 
   if (output.kind === 'missing') {
     snapshots.delete(key);
+    const refsChanged = await deleteMachineRefs(tab, machine.id, runDuringRefMutation);
     return {
       snapshot: { machine: identity, remotePath, state: 'missing', message: `No Git checkout at ${remotePath}.`, checkedAt, current: true, branches: [] },
-      refsChanged: false
+      refsChanged
     };
   }
 

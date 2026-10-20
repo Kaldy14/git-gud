@@ -100,10 +100,10 @@ export function mergeCommitGraphMachines(page: CommitGraphPage, machines: Commit
   const wipInputs: GraphCommitInput[] = [];
   for (const snapshot of machines.machines) {
     const status = snapshot.status;
-    if (!status?.isDirty || !status.branch.oid) continue;
+    if (!status?.isDirty) continue;
     wipInputs.push({
       sha: machineWipSha(snapshot.machine.id),
-      parentShas: [status.branch.oid],
+      parentShas: status.branch.oid ? [status.branch.oid] : [],
       subject: '// WIP',
       authorName: snapshot.machine.name,
       authoredAt: snapshot.checkedAt,

@@ -453,7 +453,7 @@ export function WorkspaceShell(): ReactElement {
   );
   const machinesQuery = useCommitGraphMachines(gitHubWorkspaceView ? undefined : activeTab?.path);
   const machineListQuery = useMachines();
-  const [machineFile, setMachineFile] = useState<MachineFileSelection & { machineId: string }>();
+  const [machineFile, setMachineFile] = useState<MachineFileSelection & { machineId: string; repoPath: string }>();
   const activeGraphPagination =
     activeTab && graphPaginationByTab[activeTab.id]?.repoPath === activeTab.path
       ? graphPaginationByTab[activeTab.id]
@@ -683,7 +683,8 @@ export function WorkspaceShell(): ReactElement {
   const selectedMachineSnapshot = selectedMachineWip
     ? machinesQuery.data?.machines.find((snapshot) => snapshot.machine.id === selectedMachineWip.id)
     : undefined;
-  const activeMachineFile = selectedMachineWip && machineFile?.machineId === selectedMachineWip.id ? machineFile : undefined;
+  const activeMachineFile = selectedMachineWip && machineFile?.machineId === selectedMachineWip.id && machineFile.repoPath === activeTab?.path
+    ? machineFile : undefined;
   const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
   const activeReviewTarget = activeTab ? reviewTargetByTab[activeTab.id] : undefined;
@@ -3926,7 +3927,7 @@ export function WorkspaceShell(): ReactElement {
                   snapshot={selectedMachineSnapshot}
                   width={effectiveDetailPanelWidth}
                   selectedFile={activeMachineFile}
-                  onSelectFile={(file) => setMachineFile(file ? { ...file, machineId: selectedMachineWip.id } : undefined)}
+                  onSelectFile={(file) => setMachineFile(file ? { ...file, machineId: selectedMachineWip.id, repoPath: activeTab.path } : undefined)}
                 />
               ) : !activeReviewTarget ? (
                 <CommitDetailPanel

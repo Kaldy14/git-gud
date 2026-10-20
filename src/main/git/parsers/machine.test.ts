@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -123,5 +124,14 @@ describe('machine shell commands', () => {
     } finally {
       await rm(shellOnlyPath, { recursive: true, force: true });
     }
+  });
+
+  it.runIf(existsSync('/bin/csh'))('reads snapshots and diffs through a non-POSIX login shell', async () => {
+    const snapshot = await run('/bin/csh', ['-f', '-c', machineSnapshotCommand(repoPath)]);
+    expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');
+    const diff = await run('/bin/csh', ['-f', '-c', machineFileDiffCommand(repoPath, {
+      path: 'tracked.txt', staged: false, untracked: false
+    })]);
+    expect(diff.stdout).toContain('+two');
   });
 });

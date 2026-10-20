@@ -390,4 +390,15 @@ describe('machine graph enrichment', () => {
     expect(mergeCommitGraphMachines(page, { ...machines(status('base', true)), repoPath: '/other' })).toBe(page);
     expect(mergeCommitGraphMachines(page, undefined)).toBe(page);
   });
+
+  it('shows dirty machine checkouts before their first commit', () => {
+    const initial = status('base', true);
+    delete initial.branch.oid;
+    const enriched = mergeCommitGraphMachines({ ...page, rows: [] }, machines(initial));
+    expect(enriched.rows).toHaveLength(1);
+    expect(enriched.rows[0]).toMatchObject({
+      sha: machineWipSha('omarchy'), parentShas: [], machineWip: { id: 'omarchy' },
+      files: [{ path: 'a.ts', status: 'modified' }]
+    });
+  });
 });
