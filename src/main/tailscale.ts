@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { win32 } from 'node:path';
 
 import type { TailscalePeer, TailscaleStatus } from '@shared/types';
 
@@ -13,7 +14,10 @@ const HIDDEN_OPERATING_SYSTEMS = new Set(['ios', 'android', 'tvos']);
 
 /** Reads the local Tailscale status. Only runs `tailscale status --json`, which changes nothing. */
 export async function readTailscaleStatus(): Promise<TailscaleStatus> {
-  for (const executable of [...(CANDIDATES[process.platform] ?? []), 'tailscale']) {
+  const candidates = process.platform === 'win32'
+    ? [win32.join(process.env.ProgramFiles || process.env.PROGRAMFILES || 'C:\\Program Files', 'Tailscale', 'tailscale.exe')]
+    : CANDIDATES[process.platform] ?? [];
+  for (const executable of [...candidates, 'tailscale']) {
     const result = await runStatus(executable);
     if (result === 'not-found') continue;
     if (result instanceof Error) return { state: 'stopped', message: 'Tailscale is installed but not running. Turn it on and try again.' };

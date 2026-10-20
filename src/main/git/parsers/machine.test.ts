@@ -293,6 +293,45 @@ describe('machine shell commands', () => {
     }
   });
 
+  it.each(['clean', 'process'])('does not invoke a required %s filter while reading remote worktree content', async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-filter-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    const marker = join(directory, 'filter-ran');
+    const hook = join(directory, 'filter.sh');
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'original\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'initial');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\n${kind === 'clean' ? 'cat' : 'exit 1'}\n`);
+      await git('config', `filter.fixture.with-dots.${kind}`, `sh ${quoteRemoteShell(hook)}`);
+      await git('config', 'filter.fixture.with-dots.required', 'true');
+      await writeFile(join(directory, '.gitattributes'), '*.txt filter=fixture.with-dots\n');
+      // Equal size forces status to compare content instead of trusting stat data.
+      await writeFile(join(directory, 'file.txt'), 'changed!\n');
+      await git('status', '--porcelain=v2').catch(() => undefined);
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+
+      const indexBefore = await stat(join(directory, '.git', 'index'));
+      const snapshot = await run('sh', ['-c', machineSnapshotCommand(directory)]);
+      expect(parseMachineSnapshot(snapshot.stdout)).toMatchObject({ kind: 'repository', status: {
+        files: expect.arrayContaining([expect.objectContaining({ path: 'file.txt', status: 'modified' })])
+      } });
+      const diff = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'file.txt', staged: false, untracked: false
+      })]);
+      expect(diff.stdout).toContain('+changed');
+      expect(existsSync(marker)).toBe(false);
+      expect((await stat(join(directory, '.git', 'index'))).mtimeMs).toBe(indexBefore.mtimeMs);
+      expect((await git('config', 'filter.fixture.with-dots.required')).stdout.trim()).toBe('true');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('does not invoke FSMonitor while reading a snapshot or tracked diff', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-fsmonitor-'));
     const git = (...args: string[]) => run('git', ['-C', directory, ...args]);

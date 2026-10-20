@@ -1,6 +1,40 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { parseTailscaleStatus } from './tailscale';
+const mocks = vi.hoisted(() => ({
+  execFile: vi.fn<(executable: string, args: string[], options: unknown, callback: (error: NodeJS.ErrnoException | null, stdout: string) => void) => void>()
+}));
+vi.mock('node:child_process', () => ({ execFile: mocks.execFile }));
+
+import { parseTailscaleStatus, readTailscaleStatus } from './tailscale';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.clearAllMocks();
+});
+
+describe('Windows Tailscale discovery', () => {
+  it('finds the MSI install without Tailscale on PATH', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.stubEnv('ProgramFiles', 'D:\\Applications');
+    mocks.execFile.mockImplementation((executable, _args, _options, callback) => {
+      callback(executable === 'D:\\Applications\\Tailscale\\tailscale.exe' ? null : Object.assign(new Error('missing'), { code: 'ENOENT' }),
+        executable === 'D:\\Applications\\Tailscale\\tailscale.exe' ? '{"BackendState":"Running"}' : '');
+    });
+    await expect(readTailscaleStatus()).resolves.toMatchObject({ state: 'running' });
+    expect(mocks.execFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to PATH when the standard install is absent', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mocks.execFile.mockImplementation((executable, _args, _options, callback) => {
+      callback(executable === 'tailscale' ? null : Object.assign(new Error('missing'), { code: 'ENOENT' }),
+        executable === 'tailscale' ? '{"BackendState":"Running"}' : '');
+    });
+    await expect(readTailscaleStatus()).resolves.toMatchObject({ state: 'running' });
+    expect(mocks.execFile).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('tailscale status parsing', () => {
   it('lists computers on the tailnet, online and Tailscale SSH first, without phones', () => {

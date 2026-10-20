@@ -49,8 +49,8 @@ export function machineSnapshotCommand(remotePath: string): string {
     // At a checkout root the prefix is empty; an enclosing repo adds a prefix.
     `[ "$probe" = true ] || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
-    // Optional locks do not prevent Git from invoking an FSMonitor hook/daemon.
-    'git -c core.fsmonitor=false status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
+    readOnlyGitFunction(),
+    'read_only_git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
     "printf '\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"
   ]);
@@ -59,6 +59,24 @@ export function machineSnapshotCommand(remotePath: string): string {
 /** SSH invokes the login shell, which may be fish or another non-POSIX shell. */
 function posixCommand(commands: string[]): string {
   return `sh -c ${quoteRemoteShell(commands.join('; '))}`;
+}
+
+/** Inspect raw worktree bytes; clean/process conversion may execute arbitrary helpers. */
+function readOnlyGitFunction(): string {
+  // Keep the SSH command on one line for login shells such as csh. Disable glob
+  // expansion and split only on newlines so spaces in config keys stay literal.
+  return `read_only_git() { ${[
+    "filter_keys=$(git config --name-only --get-regexp '^filter\\..*\\.(clean|process|required)$')",
+    'code=$?',
+    '[ "$code" -le 1 ] || return "$code"',
+    'saved_ifs=$IFS',
+    "IFS=$(printf '\\n_')",
+    'IFS=${IFS%_}',
+    'set -f',
+    'for key in $filter_keys; do case "$key" in *.required) set -- -c "$key=false" "$@";; *) set -- -c "$key=" "$@";; esac; done',
+    'IFS=$saved_ifs',
+    'git -c core.fsmonitor=false "$@"'
+  ].join('; ')}; }`;
 }
 
 export function parseMachineSnapshot(output: string): MachineSnapshotOutput {
@@ -100,15 +118,16 @@ export function machineFileDiffCommand(
   assertMachineFilePath(request.path);
   const path = quoteRemoteShell(request.path);
   const diff = request.untracked
-    ? `git -c core.fsmonitor=false diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
+    ? `read_only_git diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
     // A combined merge diff has no renderable hunks in PatchDiff. Compare
     // unmerged working files with ours so conflict markers stay visible.
     // Shell quoting does not stop Git from interpreting a filename as a pattern.
-    : `git -c core.fsmonitor=false --literal-pathspecs diff --no-color --no-ext-diff --no-textconv${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
+    : `read_only_git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
 
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
+    readOnlyGitFunction(),
     // Preserve exit status and stderr; the SSH boundary distinguishes a normal
     // --no-index patch (exit 1) from file access errors using both output streams.
     diff
