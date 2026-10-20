@@ -244,6 +244,7 @@ jobs:
           src/main/system.test.ts
           src/main/profiles.test.ts
           src/main/piHarness.test.ts
+          src/main/machines.test.ts
           src/main/updater.test.ts
           src/renderer/src/components/statusbar/StatusBar.test.tsx
 

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 
 import Store from 'electron-store';
 
@@ -31,7 +31,6 @@ const SNAPSHOT_TIMEOUT_MS = 15_000;
 const FETCH_TIMEOUT_MS = 60_000;
 const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
 const MAX_DIFF_BYTES = 4 * 1024 * 1024;
-// Short path: macOS limits unix socket paths to 104 bytes.
 const SSH_OPTIONS = [
   '-o', 'BatchMode=yes',
   '-o', 'ConnectTimeout=5',
@@ -39,9 +38,13 @@ const SSH_OPTIONS = [
   '-o', 'StrictHostKeyChecking=accept-new',
   '-o', 'ServerAliveInterval=5',
   '-o', 'ServerAliveCountMax=2',
-  '-o', 'ControlMaster=auto',
-  '-o', 'ControlPath=/tmp/gg-ssh-%C',
-  '-o', 'ControlPersist=120'
+  // Win32 OpenSSH does not support multiplexing. Keep POSIX sockets user-owned
+  // and short: macOS limits Unix socket paths to 104 bytes.
+  ...(process.platform === 'win32' ? [] : [
+    '-o', 'ControlMaster=auto',
+    '-o', 'ControlPath=~/.ssh/gg-%C',
+    '-o', 'ControlPersist=120'
+  ])
 ] as const;
 
 const store = new Store<MachineStoreShape>({
@@ -99,8 +102,11 @@ export async function deleteMachine(
   return listMachines();
 }
 
-async function deleteMachineRefs(tab: MachineTab, machineId: string, runDuringRefMutation: RefMutationRunner): Promise<boolean> {
+async function deleteMachineRefs(
+  tab: MachineTab, machineId: string, runDuringRefMutation: RefMutationRunner, expectedMachine?: RemoteMachine
+): Promise<boolean> {
   return gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
+    if (expectedMachine && !isCurrentMachine(expectedMachine)) return false;
     const refs = await gitExecutor.run(['for-each-ref', '--format=%(refname)', `refs/machines/${machineId}/`], { cwd: tab.path });
     const input = refs.stdout.split('\n').filter(Boolean).map((ref) => `delete ${ref}\n`).join('');
     if (!input) return false;
@@ -133,7 +139,8 @@ export function loadCommitGraphMachines(tab: MachineTab, runDuringRefMutation: R
       .map((machine) => loadMachineRepository(tab, machine, runDuringRefMutation)));
     return {
       repoPath: tab.path,
-      machines: results.map((result) => result.snapshot),
+      machines: results.map((result) => result.snapshot).filter((snapshot) =>
+        listMachines().some((machine) => machine.enabled && machine.id === snapshot.machine.id && machine.sshHost === snapshot.machine.sshHost)),
       refsChanged: results.some((result) => result.refsChanged)
     };
   })().finally(() => inflight.delete(tab.path));
@@ -155,8 +162,10 @@ export function remoteRepositoryPath(tab: Pick<MachineTab, 'path' | 'commonDir'>
   // Linked worktrees rarely exist on the other machine; their main checkout usually does.
   const mainPath = basename(tab.commonDir) === '.git' ? dirname(tab.commonDir) : tab.path;
   const home = homedir();
-  if (mainPath === home) return '~';
-  return mainPath.startsWith(`${home}/`) ? `~/${mainPath.slice(home.length + 1)}` : mainPath;
+  const homeRelativePath = relative(home, mainPath);
+  if (homeRelativePath === '') return '~';
+  return homeRelativePath !== '..' && !homeRelativePath.startsWith(`..${sep}`) && !isAbsolute(homeRelativePath)
+    ? `~/${homeRelativePath.split(sep).join('/')}` : mainPath;
 }
 
 async function loadMachineRepository(
@@ -186,7 +195,7 @@ async function loadMachineRepository(
 
   if (output.kind === 'missing') {
     snapshots.delete(key);
-    const refsChanged = await deleteMachineRefs(tab, machine.id, runDuringRefMutation);
+    const refsChanged = await deleteMachineRefs(tab, machine.id, runDuringRefMutation, machine);
     return {
       snapshot: { machine: identity, remotePath, state: 'missing', message: `No Git checkout at ${remotePath}.`, checkedAt, current: true, branches: [] },
       refsChanged
@@ -211,7 +220,7 @@ async function loadMachineRepository(
     status: output.status,
     branches: output.branches
   };
-  snapshots.set(key, snapshot);
+  if (isCurrentMachine(machine)) snapshots.set(key, snapshot);
   return { snapshot, refsChanged };
 }
 
@@ -233,8 +242,9 @@ async function syncMachineRefs(
   if (actual.size === expected.size && [...expected].every(([ref, sha]) => actual.get(ref) === sha)) return false;
 
   const fetchUrl = `${machine.sshHost}:${remotePath.startsWith('~/') ? remotePath.slice(2) : remotePath === '~' ? '.' : remotePath}`;
-  await gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, () =>
-    gitExecutor.run([
+  return gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
+    if (!isCurrentMachine(machine)) return false;
+    await gitExecutor.run([
       'fetch', '--no-tags', '--prune', '--no-write-fetch-head', '--no-auto-gc', '--no-write-commit-graph', '--no-recurse-submodules',
       fetchUrl,
       `+refs/heads/*:${prefix}heads/*`,
@@ -244,9 +254,13 @@ async function syncMachineRefs(
       kind: 'fetch',
       env: { ...env, GIT_SSH_COMMAND: ['ssh', ...SSH_OPTIONS].join(' '), GIT_TERMINAL_PROMPT: '0' },
       timeoutMs: FETCH_TIMEOUT_MS
-    })
-  ));
-  return true;
+    });
+    return true;
+  }));
+}
+
+function isCurrentMachine(machine: RemoteMachine): boolean {
+  return listMachines().some((candidate) => candidate.enabled && candidate.id === machine.id && candidate.sshHost === machine.sshHost);
 }
 
 function runSsh(host: string, command: string, options: { timeoutMs: number; maxBytes?: number }): Promise<string> {

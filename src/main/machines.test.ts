@@ -1,4 +1,6 @@
 import { ChildProcess, spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,11 +25,23 @@ vi.mock('./git/exec', () => ({
 }));
 
 import { gitExecutor } from './git/exec';
-import { loadCommitGraphMachines, saveMachine, type RefMutationRunner } from './machines';
+import { deleteMachine, loadCommitGraphMachines, remoteRepositoryPath, saveMachine, type RefMutationRunner } from './machines';
+
+const runGuard: RefMutationRunner = (_directory, operation) => operation();
+const tab = { path: '/repo', commonDir: '/repo/.git' };
+const sha = 'a'.repeat(40);
+const snapshotOutput = `# branch.oid ${sha}\0# branch.head main\0\0__GG_REFS__\0main\0${sha}\0\0\n`;
+
+function pendingSsh() {
+  const child = Object.assign(new ChildProcess(), { stdout: new PassThrough(), stderr: new PassThrough() });
+  vi.mocked(spawn).mockReturnValueOnce(child);
+  return child;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   data.machines = [];
+  vi.mocked(gitExecutor.run).mockResolvedValue({ args: [], cwd: '/repo', stdout: '', stderr: '', exitCode: 0 });
   vi.mocked(spawn).mockImplementation(() => {
     const child = Object.assign(new ChildProcess(), { stdout: new PassThrough(), stderr: new PassThrough() });
     queueMicrotask(() => {
@@ -48,8 +62,6 @@ describe('missing machine checkout', () => {
       guardCalls(directory);
       return operation();
     };
-    const tab = { path: '/repo', commonDir: '/repo/.git' };
-
     const result = await loadCommitGraphMachines(tab, guard);
 
     expect(result.refsChanged).toBe(hasRefs);
@@ -63,5 +75,58 @@ describe('missing machine checkout', () => {
     } else {
       expect(gitExecutor.run).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+describe('machine poll lifecycle', () => {
+  it('does not recreate refs when a machine is removed during its SSH read', async () => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const child = pendingSsh();
+    const pending = loadCommitGraphMachines(tab, runGuard);
+    await deleteMachine(machine!.id, [tab], runGuard);
+    child.stdout.end(snapshotOutput);
+    child.emit('close', 0);
+
+    expect((await pending).machines).toEqual([]);
+    expect(vi.mocked(gitExecutor.run).mock.calls.some(([args]) => args[0] === 'fetch')).toBe(false);
+  });
+
+  it('does not cache an old host snapshot after the host is changed', async () => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'old-host' });
+    const child = pendingSsh();
+    const pending = loadCommitGraphMachines(tab, runGuard);
+    saveMachine({ id: machine!.id, name: 'omarchy', sshHost: 'new-host' });
+    child.stdout.end(snapshotOutput);
+    child.emit('close', 0);
+    expect((await pending).machines).toEqual([]);
+
+    const failed = pendingSsh();
+    const retry = loadCommitGraphMachines(tab, runGuard);
+    failed.stderr.end('connection refused');
+    failed.emit('close', 1);
+    expect((await retry).machines[0]).toMatchObject({ state: 'offline', machine: { sshHost: 'new-host' } });
+    expect((await retry).machines[0]?.status).toBeUndefined();
+  });
+
+  it('uses platform-supported SSH options', async () => {
+    saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    await loadCommitGraphMachines(tab, runGuard);
+    const options = vi.mocked(spawn).mock.calls[0]?.[1];
+    if (process.platform === 'win32') {
+      expect(options).not.toContain('ControlMaster=auto');
+      expect(options).not.toContain('ControlPersist=120');
+    } else {
+      expect(options).toContain('ControlPath=~/.ssh/gg-%C');
+    }
+  });
+});
+
+describe('remote repository paths', () => {
+  it('maps native home-relative and linked worktree paths to remote POSIX paths', () => {
+    const mainPath = join(homedir(), 'Data', 'Repos', 'project');
+    expect(remoteRepositoryPath({ path: mainPath, commonDir: join(mainPath, '.git') })).toBe('~/Data/Repos/project');
+    expect(remoteRepositoryPath({ path: join(homedir(), 'worktrees', 'project'), commonDir: join(mainPath, '.git') })).toBe('~/Data/Repos/project');
+    expect(remoteRepositoryPath({ path: homedir(), commonDir: join(homedir(), '.git') })).toBe('~');
+    expect(remoteRepositoryPath({ path: `${homedir()}-other`, commonDir: join(`${homedir()}-other`, '.git') })).toBe(`${homedir()}-other`);
   });
 });
