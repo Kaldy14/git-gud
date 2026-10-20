@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { chmod, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -167,6 +167,26 @@ describe('machine shell commands', () => {
       expect(parseMachineSnapshot(stdout)).toEqual({ kind: 'missing' });
     } finally {
       await rm(emptyDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not read an enclosing repository as the mapped checkout', async () => {
+    const nested = join(repoPath, 'not-a-checkout');
+    await mkdir(nested);
+    const { stdout } = await run('sh', ['-c', machineSnapshotCommand(nested)]);
+    expect(parseMachineSnapshot(stdout)).toEqual({ kind: 'missing' });
+  });
+
+  it('still accepts a linked worktree as a checkout root', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-machine-worktree-'));
+    const worktree = join(directory, 'linked');
+    try {
+      await run('git', ['-C', repoPath, 'worktree', 'add', '--detach', worktree]);
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(worktree)]);
+      expect(parseMachineSnapshot(stdout).kind).toBe('repository');
+    } finally {
+      await run('git', ['-C', repoPath, 'worktree', 'remove', '--force', worktree]);
+      await rm(directory, { recursive: true, force: true });
     }
   });
 

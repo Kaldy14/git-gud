@@ -42,8 +42,10 @@ export function machineSnapshotCommand(remotePath: string): string {
     'command -v git >/dev/null 2>&1 || { printf "Git is not available on the remote PATH.\\n" >&2; exit 127; }',
     // Only an absent repository clears mirrored refs. Ownership and permission
     // errors must retain the last snapshot and reach the offline error message.
-    `probe=$(git -C ${remoteShellPath(remotePath)} rev-parse --is-inside-work-tree 2>&1); code=$?`,
+    `probe=$(git -C ${remoteShellPath(remotePath)} rev-parse --is-inside-work-tree --show-prefix 2>&1); code=$?`,
     `if [ "$code" -ne 0 ]; then case "$probe" in 'fatal: cannot change to '*': No such file or directory'|'fatal: cannot change to '*': Not a directory') printf ${MACHINE_MISSING_MARKER}; exit 0;; 'fatal: not a git repository'*) if [ ! -e ${remoteShellPath(`${remotePath}/.git`)} ] && [ ! -L ${remoteShellPath(`${remotePath}/.git`)} ]; then printf ${MACHINE_MISSING_MARKER}; exit 0; fi;; esac; printf '%s\\n' "$probe" >&2; exit "$code"; fi`,
+    // At a checkout root the prefix is empty; an enclosing repo adds a prefix.
+    `[ "$probe" = true ] || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
     'git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
     "printf '\\0__GG_REFS__\\0'",
