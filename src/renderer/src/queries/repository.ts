@@ -311,11 +311,13 @@ export function fetchCommitGraphPage(
 
 /** Reveal requests may point to an older machine branch outside the visible page. */
 export async function fetchCommitGraphContaining(
-  queryClient: QueryClient, repoPath: string, sha: string, initialPage: CommitGraphPage | undefined, pageSize: number
+  queryClient: QueryClient, repoPath: string, sha: string, initialPage: CommitGraphPage | undefined, pageSize: number,
+  isCurrent = () => true
 ): Promise<CommitGraphPage> {
   let page = initialPage?.repoPath === repoPath
     ? initialPage : await fetchCommitGraphPage(queryClient, repoPath, initialCommitGraphLimit(pageSize));
   while (!page.rows.some((row) => row.sha === sha) && canLoadMoreCommitGraph(page)) {
+    if (!isCurrent()) return page;
     page = await fetchCommitGraphPage(queryClient, repoPath, nextCommitGraphLimit(page.limit, pageSize));
   }
   if (!page.rows.some((row) => row.sha === sha)) {

@@ -2,15 +2,45 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { gitExecutor } from './exec';
 import { mergeCommitGraphWorktrees } from '@shared/graph';
 
 import { loadCommitGraph, loadCommitGraphWorktrees } from './commitGraph';
 import { loadStatus, loadWorktrees } from './repositoryOverview';
+import * as machines from '../machines';
 
 describe('loadCommitGraph', () => {
+  it('does not label a detached local HEAD as existing only on a machine', async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), 'git-gud-machine-detached-'));
+    const enabledMachines = vi.spyOn(machines, 'listEnabledGraphMachines').mockReturnValue([
+      { id: 'detached-test', name: 'Other machine' }
+    ]);
+    try {
+      await git(repoPath, ['init', '-b', 'main']);
+      await git(repoPath, ['config', 'user.name', 'Graph Test']);
+      await git(repoPath, ['config', 'user.email', 'graph@example.test']);
+      await git(repoPath, ['commit', '--allow-empty', '-m', 'base']);
+      await git(repoPath, ['checkout', '--detach']);
+      await git(repoPath, ['commit', '--allow-empty', '-m', 'detached local commit']);
+      const sha = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['update-ref', 'refs/machines/detached-test/heads/work', sha]);
+
+      const localPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(localPage.rows.find((row) => row.sha === sha)?.unpushedOn).toBeUndefined();
+
+      await git(repoPath, ['checkout', 'main']);
+      const machinePage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(machinePage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
+        { id: 'detached-test', name: 'Other machine' }
+      ]);
+    } finally {
+      enabledMachines.mockRestore();
+      await rm(repoPath, { recursive: true, force: true });
+    }
+  });
+
   it('loads real commits with refs, stash nodes, WIP row, and pagination metadata', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-graph-'));
 

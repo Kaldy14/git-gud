@@ -999,7 +999,7 @@ export function WorkspaceShell(): ReactElement {
       workspaceTabsRef.current.some((candidate) => candidate.id === tab.id && candidate.path === tab.path);
     setGraphPaginationByTab((value) => ({ ...value, [tab.id]: { repoPath: tab.path, status: 'loading', machineRevealSequence: sequence } }));
     try {
-      const page = await fetchCommitGraphContaining(queryClient, tab.path, sha, graphQuery.data, settings.graphPageSize);
+      const page = await fetchCommitGraphContaining(queryClient, tab.path, sha, graphQuery.data, settings.graphPageSize, isCurrentRequest);
       if (!isCurrentRequest()) return;
       setGraphLimitByTab((value) => ({ ...value, [tab.id]: Math.max(value[tab.id] ?? 0, page.limit) }));
       // Machine branches remain graph roots with no solo filter; keep the user's hidden branches.

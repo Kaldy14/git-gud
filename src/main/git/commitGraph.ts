@@ -39,16 +39,17 @@ export async function loadCommitGraph(
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
   const machines = listEnabledGraphMachines();
+  const statusPromise = loadStatus(tab.path, env, [], { aheadBehind: false });
   const [logCommits, refs, status, stashes, worktrees, remotes, machineRefs] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env, machines),
     // Graph chips and WIP nodes need ref tips and file state, not the sidebar's
     // ahead/behind counts for every old branch and linked worktree.
     loadRefs(tab.path, env, { includeTracking: false }),
-    loadStatus(tab.path, env, [], { aheadBehind: false }),
+    statusPromise,
     loadStashes(tab.path, env),
     loadWorktrees(tab.path, env),
     loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([]),
-    loadMachineRefs(tab.path, env, machines, limit)
+    statusPromise.then((status) => loadMachineRefs(tab.path, env, machines, limit, status.branch.oid))
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
@@ -253,7 +254,8 @@ async function loadMachineRefs(
   repoPath: string,
   env: NodeJS.ProcessEnv | undefined,
   machines: readonly GraphMachine[],
-  limit: number
+  limit: number,
+  localHead: string | undefined
 ): Promise<MachineRefs> {
   const result: MachineRefs = { chips: [], unpushed: new Map() };
   if (machines.length === 0) return result;
@@ -263,7 +265,7 @@ async function loadMachineRefs(
     const [refs, unpushed] = await Promise.all([
       gitExecutor.run(['for-each-ref', '--format=%(objectname)%00%(refname)', `${prefix}/heads/`], { cwd: repoPath, env }),
       gitExecutor.run(
-        ['rev-list', `--max-count=${limit}`, `--glob=${prefix}/heads`, '--not', '--branches', '--remotes', '--tags'],
+        ['rev-list', `--max-count=${limit}`, `--glob=${prefix}/heads`, '--not', '--branches', '--remotes', '--tags', ...(localHead ? [localHead] : [])],
         { cwd: repoPath, env, allowedExitCodes: [128] }
       )
     ]);

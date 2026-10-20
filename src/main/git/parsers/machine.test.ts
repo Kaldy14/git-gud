@@ -135,6 +135,25 @@ describe('machine shell commands', () => {
     })).rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('index') });
   });
 
+  it('preserves a Git ownership error instead of reporting a missing checkout', async () => {
+    await expect(run('sh', ['-c', machineSnapshotCommand(repoPath)], {
+      env: {
+        ...process.env, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1',
+        GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: ''
+      }
+    })).rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('dubious ownership') });
+  });
+
+  it('reports an existing directory without a repository as missing', async () => {
+    const emptyDirectory = await mkdtemp(join(tmpdir(), 'git-gud-no-repository-'));
+    try {
+      const { stdout } = await run('sh', ['-c', machineSnapshotCommand(emptyDirectory)]);
+      expect(parseMachineSnapshot(stdout)).toEqual({ kind: 'missing' });
+    } finally {
+      await rm(emptyDirectory, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(existsSync('/bin/csh'))('reads snapshots and diffs through a non-POSIX login shell', async () => {
     const snapshot = await run('/bin/csh', ['-f', '-c', machineSnapshotCommand(repoPath)]);
     expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');

@@ -39,7 +39,12 @@ export function machineSnapshotCommand(remotePath: string): string {
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
     'command -v git >/dev/null 2>&1 || { printf "Git is not available on the remote PATH.\\n" >&2; exit 127; }',
-    `cd -- ${remoteShellPath(remotePath)} 2>/dev/null && git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
+    `[ -e ${remoteShellPath(remotePath)} ] || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
+    `cd -- ${remoteShellPath(remotePath)} || exit $?`,
+    // Only an absent repository clears mirrored refs. Ownership and permission
+    // errors must retain the last snapshot and reach the offline error message.
+    'probe=$(LC_ALL=C git rev-parse --is-inside-work-tree 2>&1); code=$?',
+    `if [ "$code" -ne 0 ]; then case "$probe" in *'fatal: not a git repository'*) printf ${MACHINE_MISSING_MARKER}; exit 0;; *) printf '%s\\n' "$probe" >&2; exit "$code";; esac; fi`,
     'git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
     "printf '\\0__GG_REFS__\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"

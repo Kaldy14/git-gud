@@ -85,6 +85,19 @@ describe('machine graph reads', () => {
       expect(getCommitGraph).not.toHaveBeenCalled();
     } finally { client.clear(); vi.unstubAllGlobals(); }
   });
+
+  it('stops loading older pages when a machine reveal is superseded', async () => {
+    const client = new QueryClient();
+    let current = true;
+    const page = graphPage('/repo', 1500);
+    const getCommitGraph = vi.fn(async () => { current = false; return page; });
+    vi.stubGlobal('window', { api: { getCommitGraph } });
+    try {
+      await expect(fetchCommitGraphContaining(client, '/repo', 'missing', graphPage('/repo', 50), 1500, () => current))
+        .resolves.toBe(page);
+      expect(getCommitGraph).toHaveBeenCalledTimes(1);
+    } finally { client.clear(); vi.unstubAllGlobals(); }
+  });
 });
 
 describe('repository watcher invalidation', () => {
