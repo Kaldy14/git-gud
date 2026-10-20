@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { chmod, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parsePatchFiles } from '@pierre/diffs';
 
@@ -154,6 +155,45 @@ describe('machine shell commands', () => {
       expect((await run('git', ['-C', guarded, 'rev-parse', ref])).stdout)
         .toBe((await run('git', ['-C', repoPath, 'rev-parse', 'main'])).stdout);
       expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('never fetches missing blobs while inspecting a partial clone', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-lazy-fetch-'));
+    try {
+      const source = join(directory, 'source');
+      const clone = join(directory, 'partial');
+      await run('git', ['init', '-q', '-b', 'main', source]);
+      const git = (...args: string[]) => run('git', ['-C', source, ...args]);
+      await git('config', 'user.name', 'Partial Test');
+      await git('config', 'user.email', 'partial@example.test');
+      await writeFile(join(source, 'partial.txt'), 'base\n');
+      await git('add', 'partial.txt');
+      await git('commit', '-q', '-m', 'base');
+      await git('config', 'uploadpack.allowFilter', 'true');
+      await run('git', ['clone', '--filter=blob:none', '--no-checkout', pathToFileURL(source).href, clone]);
+      await run('git', ['-C', clone, 'read-tree', 'HEAD']);
+      await writeFile(join(clone, 'partial.txt'), 'local change\n');
+      const blob = (await git('rev-parse', 'HEAD:partial.txt')).stdout.trim();
+      const missingBlob = () => run('git', ['-C', clone, 'cat-file', '-e', blob], {
+        env: { ...process.env, GIT_NO_LAZY_FETCH: '1' }
+      });
+      const packDirectory = join(clone, '.git', 'objects', 'pack');
+      const packsBefore = (await readdir(packDirectory)).sort();
+      await expect(missingBlob()).rejects.toMatchObject({ code: 1 });
+      const snapshot = parseMachineSnapshot((await run('sh', ['-c', machineSnapshotCommand(clone)])).stdout);
+      expect(snapshot).toMatchObject({ kind: 'repository', status: { files: [expect.objectContaining({ path: 'partial.txt', status: 'modified' })] } });
+      await expect(run('sh', ['-c', machineFileDiffCommand(clone, { path: 'partial.txt', staged: false, untracked: false })]))
+        .rejects.toMatchObject({ stderr: expect.stringContaining(blob) });
+      await expect(missingBlob()).rejects.toMatchObject({ code: 1 });
+      expect((await readdir(packDirectory)).sort()).toEqual(packsBefore);
+
+      // The checkout owner can fetch explicitly; already-present blobs still render.
+      await run('git', ['-C', clone, 'fetch', 'origin', blob]);
+      const patch = await run('sh', ['-c', machineFileDiffCommand(clone, { path: 'partial.txt', staged: false, untracked: false })]);
+      expect(patch.stdout).toContain('+local change');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

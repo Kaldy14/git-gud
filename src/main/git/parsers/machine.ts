@@ -35,12 +35,12 @@ export function assertMachineFilePath(path: string): void {
 
 /**
  * One read-only round trip: porcelain status plus local branch tips. Optional
- * locks are disabled so the remote index is never refreshed or rewritten.
+ * locks and lazy fetching are disabled to preserve the remote index and objects.
  */
 export function machineSnapshotCommand(remotePath: string): string {
   return posixCommand([
     // Tracking text is parsed below, so every Git process needs a stable locale.
-    'export GIT_OPTIONAL_LOCKS=0 LC_ALL=C',
+    'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0 LC_ALL=C',
     'command -v git >/dev/null 2>&1 || { printf "Git is not available on the remote PATH.\\n" >&2; exit 127; }',
     // Only an absent repository clears mirrored refs. Ownership and permission
     // errors must retain the last snapshot and reach the offline error message.
@@ -68,7 +68,7 @@ function posixCommand(commands: string[]): string {
 export function machineUploadPackCommand(): string {
   // An empty hook override breaks Git's pack-objects invocation; reject hooks instead.
   return `${posixCommand([
-    'export GIT_OPTIONAL_LOCKS=0',
+    'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0',
     'git -C "$1" config --get uploadpack.packObjectsHook >/dev/null; code=$?',
     `case "$code" in 0) printf 'Read-only mirroring is unavailable for upload-pack hooks.\\n' >&2; exit 2;; 1) ;; *) exit "$code";; esac`,
     'exec git -c core.hooksPath=/dev/null upload-pack "$@"'
@@ -153,7 +153,7 @@ export function machineFileDiffCommand(
     : `read_only_git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv --submodule=short --ignore-submodules=dirty --find-renames --find-copies${request.originalPath ? ' --find-copies-harder' : ''}${request.staged ? ' --cached' : ' --ours'} -- ${paths}`;
 
   return posixCommand([
-    'export GIT_OPTIONAL_LOCKS=0',
+    'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0',
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
     readOnlyGitFunction(),
     assertUnfilteredCommand(`printf '%s\\0' ${paths}`),
