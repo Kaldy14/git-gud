@@ -98,6 +98,28 @@ describe('missing machine checkout', () => {
 });
 
 describe('machine poll lifecycle', () => {
+  it('prunes a mirrored HEAD for an unborn checkout and does not fetch again on the next poll', async () => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const headRef = `refs/machines/${machine!.id}/HEAD`;
+    let hasHead = true;
+    vi.mocked(gitExecutor.run).mockImplementation(async (args) => {
+      if (args[0] === 'update-ref' && args[1] === '-d' && args[2] === headRef) hasHead = false;
+      return {
+        args: [...args], cwd: tab.path, stdout: args[0] === 'for-each-ref' && hasHead ? `${headRef}\0${sha}\n` : '',
+        stderr: '', exitCode: 0
+      };
+    });
+    for (const refsChanged of [true, false]) {
+      const child = pendingSsh();
+      const pending = loadCommitGraphMachines(tab, runGuard);
+      child.stdout.end('# branch.oid (initial)\0# branch.head orphan\0\0__GG_REFS__\0');
+      child.emit('close', 0);
+      expect((await pending).refsChanged).toBe(refsChanged);
+    }
+    expect(gitExecutor.run).toHaveBeenCalledWith(['update-ref', '-d', headRef], expect.objectContaining({ kind: 'mutation' }));
+    expect(vi.mocked(gitExecutor.run).mock.calls.filter(([args]) => args[0] === 'fetch')).toHaveLength(1);
+  });
+
   it('only reads untracked files that Git listed in the snapshot', async () => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const child = pendingSsh();

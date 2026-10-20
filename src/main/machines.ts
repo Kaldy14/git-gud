@@ -267,6 +267,12 @@ async function syncMachineRefs(
       env: { ...env, GIT_SSH_COMMAND: ['ssh', ...SSH_OPTIONS].join(' '), GIT_TERMINAL_PROMPT: '0' },
       timeoutMs: FETCH_TIMEOUT_MS
     });
+    // The heads wildcard cannot prune this separately fetched ref when the
+    // checkout switches to an orphan branch with no first commit yet.
+    const headRef = `${prefix}HEAD`;
+    if (!expected.has(headRef) && actual.has(headRef)) {
+      await gitExecutor.run(['update-ref', '-d', headRef], { cwd: tab.path, kind: 'mutation', env });
+    }
     return true;
   }));
 }

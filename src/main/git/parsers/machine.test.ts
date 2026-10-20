@@ -127,6 +127,14 @@ describe('machine shell commands', () => {
     }
   });
 
+  it('fails the snapshot when Git cannot read the index instead of returning clean status', async () => {
+    const corruptIndex = join(repoPath, 'corrupt-index');
+    await writeFile(corruptIndex, 'invalid index');
+    await expect(run('sh', ['-c', machineSnapshotCommand(repoPath)], {
+      env: { ...process.env, GIT_INDEX_FILE: corruptIndex }
+    })).rejects.toMatchObject({ code: 128, stdout: '', stderr: expect.stringContaining('index') });
+  });
+
   it.runIf(existsSync('/bin/csh'))('reads snapshots and diffs through a non-POSIX login shell', async () => {
     const snapshot = await run('/bin/csh', ['-f', '-c', machineSnapshotCommand(repoPath)]);
     expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');
