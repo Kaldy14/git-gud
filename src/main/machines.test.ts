@@ -25,7 +25,7 @@ vi.mock('./git/exec', () => ({
 }));
 
 import { gitExecutor } from './git/exec';
-import { deleteMachine, loadCommitGraphMachines, loadMachineFileDiff, remoteRepositoryPath, saveMachine, type RefMutationRunner } from './machines';
+import { deleteMachine, loadCommitGraphMachines, loadMachineFileDiff, remoteRepositoryPath, saveMachine, testMachine, type RefMutationRunner } from './machines';
 
 const runGuard: RefMutationRunner = (_directory, operation) => operation();
 const tab = { path: '/repo', commonDir: '/repo/.git' };
@@ -98,6 +98,20 @@ describe('missing machine checkout', () => {
 });
 
 describe('machine poll lifecycle', () => {
+  it('fails the connection check when the POSIX shell needed by polling is unavailable', async () => {
+    vi.mocked(spawn).mockImplementationOnce((_executable, args) => {
+      const child = Object.assign(new ChildProcess(), { stdout: new PassThrough(), stderr: new PassThrough() });
+      queueMicrotask(() => {
+        const needsShell = args?.at(-1)?.startsWith('sh -c');
+        if (needsShell) child.stderr.end('sh is not recognized');
+        else child.stdout.end('git version 2.50.0\nwindows-host\n');
+        child.emit('close', needsShell ? 127 : 0);
+      });
+      return child;
+    });
+    await expect(testMachine({ sshHost: 'windows-host' })).resolves.toMatchObject({ ok: false, message: expect.stringContaining('sh is not recognized') });
+  });
+
   it('prunes a mirrored HEAD for an unborn checkout and does not fetch again on the next poll', async () => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const headRef = `refs/machines/${machine!.id}/HEAD`;

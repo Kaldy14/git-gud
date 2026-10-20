@@ -6,6 +6,7 @@ import { mergeCommitGraphMachines, mergeCommitGraphWorktrees } from '@shared/gra
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import type {
   CommitGraphAvatarCandidate,
+  CommitGraphMachines,
   CommitGraphPage,
   GitAgentNote,
   GitCommitDetail,
@@ -22,8 +23,11 @@ import type {
 } from '@shared/types';
 
 import {
+  canLoadMoreCommitGraph,
   commitGraphAvatarCandidates,
   commitGraphAvatarSignature,
+  initialCommitGraphLimit,
+  nextCommitGraphLimit,
   mergeCommitGraphAvatarUrls
 } from './commitGraphPaging';
 
@@ -193,16 +197,25 @@ export function useCommitGraphMachines(repoPath: string | undefined) {
     queryKey: ['commit-graph-machines', repoPath ?? 'none'],
     queryFn: async () => {
       if (!repoPath) throw new Error('Repository path is required.');
-      const machines = await window.api.getCommitGraphMachines(repoPath);
-      // New machine-only commits were fetched into refs/machines; reload the log.
-      if (machines.refsChanged) void queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] });
-      return machines;
+      return fetchCommitGraphMachines(queryClient, repoPath);
     },
     enabled: Boolean(repoPath && !repoPath.startsWith('github://')),
     retry: false,
     staleTime: MACHINE_REFRESH_INTERVAL_MS / 2,
     refetchInterval: MACHINE_REFRESH_INTERVAL_MS
   });
+}
+
+export async function fetchCommitGraphMachines(queryClient: QueryClient, repoPath: string): Promise<CommitGraphMachines> {
+  const machines = await window.api.getCommitGraphMachines(repoPath);
+  if (machines.refsChanged) void queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] });
+  // An open diff must follow successful polls, even if the branch tip did not move.
+  for (const snapshot of machines.machines) {
+    if (snapshot.current && snapshot.state === 'online') {
+      void queryClient.invalidateQueries({ queryKey: ['machine-file-diff', repoPath, snapshot.machine.id] });
+    }
+  }
+  return machines;
 }
 
 export function useMachines() {
@@ -294,6 +307,21 @@ export function fetchCommitGraphPage(
     retry: false,
     staleTime: 1500
   });
+}
+
+/** Reveal requests may point to an older machine branch outside the visible page. */
+export async function fetchCommitGraphContaining(
+  queryClient: QueryClient, repoPath: string, sha: string, initialPage: CommitGraphPage | undefined, pageSize: number
+): Promise<CommitGraphPage> {
+  let page = initialPage?.repoPath === repoPath
+    ? initialPage : await fetchCommitGraphPage(queryClient, repoPath, initialCommitGraphLimit(pageSize));
+  while (!page.rows.some((row) => row.sha === sha) && canLoadMoreCommitGraph(page)) {
+    page = await fetchCommitGraphPage(queryClient, repoPath, nextCommitGraphLimit(page.limit, pageSize));
+  }
+  if (!page.rows.some((row) => row.sha === sha)) {
+    throw new Error('The machine branch is not in the available history. Refresh the machine and try again.');
+  }
+  return page;
 }
 
 export function shouldRetryRepositoryQuery(failureCount: number, error: unknown): boolean {

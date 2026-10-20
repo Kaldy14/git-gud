@@ -2,12 +2,14 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 import { repositoryUnavailableErrorMessage } from '@shared/repositoryAvailability';
-import type { CommitGraphPage, RepoChangedEvent } from '@shared/types';
+import type { CommitGraphMachines, CommitGraphPage, RepoChangedEvent } from '@shared/types';
 
 import {
   cachedCommitGraphAvatarUrls,
   clearRepositoryQueries,
   fetchCommitGraphPage,
+  fetchCommitGraphContaining,
+  fetchCommitGraphMachines,
   invalidateRepositoryQueries,
   placeholderGraphForRepository,
   prepareLinkedWorktreeGraphTransition,
@@ -29,6 +31,61 @@ function repoChange(overrides: Partial<RepoChangedEvent>): RepoChangedEvent {
     ...overrides
   };
 }
+
+describe('machine graph reads', () => {
+  it('refreshes an observed diff after an online snapshot, but keeps its cached data when offline', async () => {
+    const client = new QueryClient();
+    const read = vi.fn().mockResolvedValueOnce('old patch').mockResolvedValue('new patch');
+    const observer = new QueryObserver(client, {
+      queryKey: ['machine-file-diff', '/repo', 'm1', 'file.txt', false, false], queryFn: read, staleTime: Infinity
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    const snapshot: CommitGraphMachines = {
+      repoPath: '/repo', refsChanged: false, machines: [{
+        machine: { id: 'm1', name: 'machine', sshHost: 'machine' }, remotePath: '~/repo',
+        checkedAt: '2026-10-20T10:00:00Z', state: 'online', current: true, branches: []
+      }]
+    };
+    vi.stubGlobal('window', { api: { getCommitGraphMachines: vi.fn(async () => snapshot) } });
+    try {
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe('old patch'));
+      await fetchCommitGraphMachines(client, '/repo');
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe('new patch'));
+      snapshot.machines[0]!.state = 'offline';
+      snapshot.machines[0]!.current = false;
+      await fetchCommitGraphMachines(client, '/repo');
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(observer.getCurrentResult().data).toBe('new patch');
+    } finally {
+      unsubscribe(); client.clear(); vi.unstubAllGlobals();
+    }
+  });
+
+  it('loads successive graph pages until an older machine branch tip is present', async () => {
+    const client = new QueryClient();
+    const tip = 'a'.repeat(40);
+    const last: CommitGraphPage = { ...graphPage('/repo', 3000), rows: [{
+      ...graphRow(tip, '/repo', false), node: { lane: 0, kind: 'commit' }
+    }] };
+    const getCommitGraph = vi.fn().mockResolvedValueOnce(graphPage('/repo', 1500)).mockResolvedValueOnce(last);
+    vi.stubGlobal('window', { api: { getCommitGraph } });
+    try {
+      await expect(fetchCommitGraphContaining(client, '/repo', tip, graphPage('/repo', 50), 1500)).resolves.toBe(last);
+      expect(getCommitGraph.mock.calls).toEqual([['/repo', 1500], ['/repo', 3000]]);
+    } finally { client.clear(); vi.unstubAllGlobals(); }
+  });
+
+  it('reports an unavailable tip after history is exhausted without repeatedly fetching', async () => {
+    const client = new QueryClient();
+    const getCommitGraph = vi.fn();
+    vi.stubGlobal('window', { api: { getCommitGraph } });
+    try {
+      await expect(fetchCommitGraphContaining(client, '/repo', 'missing', { ...graphPage('/repo', 50), hasMore: false }, 1500))
+        .rejects.toThrow('not in the available history');
+      expect(getCommitGraph).not.toHaveBeenCalled();
+    } finally { client.clear(); vi.unstubAllGlobals(); }
+  });
+});
 
 describe('repository watcher invalidation', () => {
   it('does not hold mutation completion behind an in-flight linked-worktree status read', async () => {

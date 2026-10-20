@@ -117,7 +117,7 @@ async function deleteMachineRefs(
 
 export async function testMachine(input: Pick<RemoteMachineInput, 'sshHost'>): Promise<RemoteMachineTestResult> {
   try {
-    const result = await runSsh(normalizeSshHost(input.sshHost), 'git --version && hostname', { timeoutMs: SNAPSHOT_TIMEOUT_MS });
+    const result = await runSsh(normalizeSshHost(input.sshHost), "sh -c 'git --version && hostname'", { timeoutMs: SNAPSHOT_TIMEOUT_MS });
     const [version, hostname] = result.trim().split('\n');
     return { ok: true, message: `Connected to ${hostname ?? 'machine'} (${version ?? 'git'}).` };
   } catch (error) {
