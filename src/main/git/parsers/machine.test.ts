@@ -285,6 +285,39 @@ describe('machine shell commands', () => {
     }
   });
 
+  it('does not invoke FSMonitor while reading a snapshot or tracked diff', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-no-fsmonitor-'));
+    const git = (...args: string[]) => run('git', ['-C', directory, ...args]);
+    const marker = join(directory, 'hook-ran');
+    const hook = join(directory, 'monitor.sh');
+    try {
+      await git('init', '-q', '-b', 'main');
+      await git('config', 'user.email', 'machine@example.test');
+      await git('config', 'user.name', 'Machine Test');
+      await writeFile(join(directory, 'file.txt'), 'original\n');
+      await git('add', 'file.txt');
+      await git('commit', '-qm', 'initial');
+      await writeFile(hook, `printf invoked >> ${quoteRemoteShell(marker)}\nprintf 'token\\0/\\0'\n`);
+      await git('config', 'core.fsmonitor', `sh ${quoteRemoteShell(hook)}`);
+      await writeFile(join(directory, 'file.txt'), 'changed\n');
+      // Prove this configuration invokes a hook before checking our read boundary.
+      await git('status', '--porcelain=v2');
+      expect(existsSync(marker)).toBe(true);
+      await rm(marker);
+
+      const snapshot = await run('sh', ['-c', machineSnapshotCommand(directory)]);
+      expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');
+      expect(existsSync(marker)).toBe(false);
+      const diff = await run('sh', ['-c', machineFileDiffCommand(directory, {
+        path: 'file.txt', staged: false, untracked: false
+      })]);
+      expect(diff.stdout).toContain('+changed');
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.runIf(existsSync('/bin/csh'))('reads snapshots and diffs through a non-POSIX login shell', async () => {
     const snapshot = await run('/bin/csh', ['-f', '-c', machineSnapshotCommand(repoPath)]);
     expect(parseMachineSnapshot(snapshot.stdout).kind).toBe('repository');

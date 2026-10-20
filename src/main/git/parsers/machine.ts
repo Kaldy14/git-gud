@@ -49,7 +49,8 @@ export function machineSnapshotCommand(remotePath: string): string {
     // At a checkout root the prefix is empty; an enclosing repo adds a prefix.
     `[ "$probe" = true ] || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
     `cd -- ${remoteShellPath(remotePath)} || exit $?`,
-    'git status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
+    // Optional locks do not prevent Git from invoking an FSMonitor hook/daemon.
+    'git -c core.fsmonitor=false status --porcelain=v2 --branch -z --untracked-files=all || exit $?',
     "printf '\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"
   ]);
@@ -99,11 +100,11 @@ export function machineFileDiffCommand(
   assertMachineFilePath(request.path);
   const path = quoteRemoteShell(request.path);
   const diff = request.untracked
-    ? `git diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
+    ? `git -c core.fsmonitor=false diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
     // A combined merge diff has no renderable hunks in PatchDiff. Compare
     // unmerged working files with ours so conflict markers stay visible.
     // Shell quoting does not stop Git from interpreting a filename as a pattern.
-    : `git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
+    : `git -c core.fsmonitor=false --literal-pathspecs diff --no-color --no-ext-diff --no-textconv${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
 
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
