@@ -33,6 +33,34 @@ function repoChange(overrides: Partial<RepoChangedEvent>): RepoChangedEvent {
 }
 
 describe('machine graph reads', () => {
+  it.each([false, true])('refreshes graph refs after a machine sync overlaps history (cached: %s)', async (cached) => {
+    const client = new QueryClient();
+    const key = ['commit-graph', '/repo', 50];
+    const oldGraph = { refs: [] as string[] };
+    const newGraph = { refs: ['refs/machines/m1/heads/main'] };
+    if (cached) client.setQueryData(key, oldGraph);
+    let finish = () => {};
+    const pending = new Promise<typeof oldGraph>((resolve) => { finish = () => resolve(oldGraph); });
+    const read = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(newGraph);
+    const observer = new QueryObserver(client, { queryKey: key, queryFn: read, staleTime: 0 });
+    const unsubscribe = observer.subscribe(() => {});
+    const snapshot: CommitGraphMachines = { repoPath: '/repo', refsChanged: true, machines: [] };
+    vi.stubGlobal('window', { api: { getCommitGraphMachines: vi.fn(async () => snapshot) } });
+    try {
+      await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+      // Machine snapshots remain available while the old graph read is pending.
+      expect(await fetchCommitGraphMachines(client, '/repo')).toBe(snapshot);
+      finish();
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toEqual(newGraph));
+      expect(read).toHaveBeenCalledTimes(2);
+      snapshot.refsChanged = false;
+      await fetchCommitGraphMachines(client, '/repo');
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      finish(); unsubscribe(); client.clear(); vi.unstubAllGlobals();
+    }
+  });
+
   it('refreshes an observed diff after an online snapshot, but keeps its cached data when offline', async () => {
     const client = new QueryClient();
     const read = vi.fn().mockResolvedValueOnce('old patch').mockResolvedValue('new patch');

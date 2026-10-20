@@ -208,7 +208,10 @@ export function useCommitGraphMachines(repoPath: string | undefined) {
 
 export async function fetchCommitGraphMachines(queryClient: QueryClient, repoPath: string): Promise<CommitGraphMachines> {
   const machines = await window.api.getCommitGraphMachines(repoPath);
-  if (machines.refsChanged) void queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] });
+  if (machines.refsChanged) {
+    // An initial graph read may have captured refs before this sync completed.
+    void invalidateRepositoryQueries(queryClient, repoPath, ['graph'], { refetchAfterInFlight: true });
+  }
   // An open diff must follow successful polls, even if the branch tip did not move.
   for (const snapshot of machines.machines) {
     if (snapshot.current && snapshot.state === 'online') {
