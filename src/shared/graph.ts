@@ -97,6 +97,9 @@ export function machineWipSha(machineId: string): string {
 
 export function mergeCommitGraphMachines(page: CommitGraphPage, machines: CommitGraphMachines | undefined): CommitGraphPage {
   if (!machines || machines.repoPath !== page.repoPath) return page;
+  // A linked-worktree transition can seed this page with an already enriched
+  // graph. Replace its machine WIP rows, including when the latest snapshot is clean.
+  const rows = page.rows.filter((row) => !row.machineWip);
   const wipInputs: GraphCommitInput[] = [];
   for (const snapshot of machines.machines) {
     const status = snapshot.status;
@@ -123,7 +126,7 @@ export function mergeCommitGraphMachines(page: CommitGraphPage, machines: Commit
       }))
     });
   }
-  if (wipInputs.length === 0) return page;
+  if (wipInputs.length === 0 && rows.length === page.rows.length) return page;
 
   const byBase = new Map<string, GraphCommitInput[]>();
   for (const input of wipInputs) {
@@ -131,7 +134,7 @@ export function mergeCommitGraphMachines(page: CommitGraphPage, machines: Commit
     byBase.set(base, [...byBase.get(base) ?? [], input]);
   }
   const inputs: GraphCommitInput[] = [];
-  for (const row of page.rows) {
+  for (const row of rows) {
     if (row.node.kind !== 'stash' && row.node.kind !== 'wip') {
       inputs.push(...byBase.get(row.sha) ?? []);
       byBase.delete(row.sha);

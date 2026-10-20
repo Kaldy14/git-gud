@@ -391,6 +391,21 @@ describe('machine graph enrichment', () => {
     expect(mergeCommitGraphMachines(page, undefined)).toBe(page);
   });
 
+  it('replaces premerged machine WIP once when a worktree transition seeds the graph cache', () => {
+    const first = mergeCommitGraphMachines(page, machines(status('base', true)));
+    expect(mergeCommitGraphMachines(first, machines(status('base', true)))).toEqual(first);
+    const latest = machines(status('head', true), false);
+    const refreshed = mergeCommitGraphMachines(first, latest);
+    expect(refreshed.rows.filter((row) => row.machineWip)).toHaveLength(1);
+    expect(refreshed).toEqual(mergeCommitGraphMachines(page, latest));
+  });
+
+  it('removes cached machine WIP when the new checkout is clean or its machine is removed', () => {
+    const enriched = mergeCommitGraphMachines(page, machines(status('base', true)));
+    expect(mergeCommitGraphMachines(enriched, machines(status('base', false)))).toEqual(page);
+    expect(mergeCommitGraphMachines(enriched, { repoPath: '/repo', refsChanged: false, machines: [] })).toEqual(page);
+  });
+
   it('shows dirty machine checkouts before their first commit', () => {
     const initial = status('base', true);
     delete initial.branch.oid;
