@@ -14,7 +14,7 @@ export type MachineSnapshotOutput =
   | { kind: 'repository'; status: GitStatusSummary; branches: RemoteMachineBranch[] };
 
 // Probe the option itself: older Git silently ignores GIT_NO_LAZY_FETCH.
-const REQUIRE_READ_ONLY_GIT = "git --no-lazy-fetch --version >/dev/null 2>&1 || { printf 'Update Git on this machine: read-only inspection requires --no-lazy-fetch support (Git 2.46 or newer).\\n' >&2; exit 2; }";
+const REQUIRE_READ_ONLY_GIT = "git --no-lazy-fetch --version >/dev/null 2>&1 || { printf 'Update Git on this machine: read-only inspection requires --no-lazy-fetch support (Git 2.45 or newer).\\n' >&2; exit 2; }";
 
 /** Connection tests enforce the same Git capability as every inspection command. */
 export function machineTestCommand(): string {
