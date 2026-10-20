@@ -53,6 +53,25 @@ beforeEach(() => {
 });
 
 describe('missing machine checkout', () => {
+  it('keeps healthy machine snapshots when a missing checkout cannot prune its local refs', async () => {
+    saveMachine({ name: 'missing', sshHost: 'missing' });
+    saveMachine({ name: 'online', sshHost: 'online' });
+    const missing = pendingSsh();
+    const online = pendingSsh();
+    vi.mocked(gitExecutor.run).mockRejectedValueOnce(new Error('permission denied'));
+
+    const pending = loadCommitGraphMachines(tab, runGuard);
+    missing.stdout.end('__GG_MISSING__');
+    missing.emit('close', 0);
+    online.stdout.end(snapshotOutput);
+    online.emit('close', 0);
+
+    const result = await pending;
+    expect(result.machines).toHaveLength(2);
+    expect(result.machines[0]).toMatchObject({ state: 'missing', message: expect.stringContaining('permission denied') });
+    expect(result.machines[1]).toMatchObject({ state: 'online', branches: [{ name: 'main', sha }] });
+  });
+
   it.each([true, false])('prunes only its mirrored refs and reports graph invalidation when refs exist=%s', async (hasRefs) => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const ref = `refs/machines/${machine!.id}/heads/main`;

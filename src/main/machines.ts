@@ -195,9 +195,15 @@ async function loadMachineRepository(
 
   if (output.kind === 'missing') {
     snapshots.delete(key);
-    const refsChanged = await deleteMachineRefs(tab, machine.id, runDuringRefMutation, machine);
+    let refsChanged = false;
+    let message = `No Git checkout at ${remotePath}.`;
+    try {
+      refsChanged = await deleteMachineRefs(tab, machine.id, runDuringRefMutation, machine);
+    } catch (error) {
+      message += ` Local mirrored refs could not be removed: ${error instanceof Error ? error.message : 'unknown error'}`;
+    }
     return {
-      snapshot: { machine: identity, remotePath, state: 'missing', message: `No Git checkout at ${remotePath}.`, checkedAt, current: true, branches: [] },
+      snapshot: { machine: identity, remotePath, state: 'missing', message, checkedAt, current: true, branches: [] },
       refsChanged
     };
   }
