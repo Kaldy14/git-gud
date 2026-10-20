@@ -105,14 +105,17 @@ describe('machine shell commands', () => {
     });
     expect(tracked.stdout).toContain('+two');
 
-    const untracked = await run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'new file.txt', staged: false, untracked: true })], {
-      encoding: 'utf8'
-    });
-    expect(untracked.stdout).toContain('+hello');
+    await expect(run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'new file.txt', staged: false, untracked: true })]))
+      .rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('+hello'), stderr: '' });
 
     await expect(
       run('sh', ['-c', machineFileDiffCommand(join(repoPath, 'nope'), { path: 'tracked.txt', staged: false, untracked: false })])
     ).rejects.toMatchObject({ code: 2 });
+  });
+
+  it('preserves the no-index access error when an untracked file disappeared', async () => {
+    await expect(run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'vanished.txt', staged: false, untracked: true })]))
+      .rejects.toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('vanished.txt') });
   });
 
   it('reports unavailable Git as a command failure instead of a missing checkout', async () => {
@@ -276,10 +279,15 @@ describe('machine shell commands', () => {
       await writeFile(join(directory, '.gitattributes'), '*.txt diff=fixture\n');
       const path = untracked ? 'new.txt' : 'file.txt';
       await writeFile(join(directory, path), 'changed\n');
-      const { stdout } = await run('sh', ['-c', machineFileDiffCommand(directory, { path, staged: false, untracked })]);
+      const execution = run('sh', ['-c', machineFileDiffCommand(directory, { path, staged: false, untracked })]);
+      if (untracked) {
+        await expect(execution).rejects.toMatchObject({ code: 1, stdout: expect.stringContaining('+changed'), stderr: '' });
+      } else {
+        const { stdout } = await execution;
+        expect(stdout).toContain('+changed');
+        expect(parsePatchFiles(stdout).flatMap((patch) => patch.files)).toHaveLength(1);
+      }
       expect(existsSync(marker)).toBe(false);
-      expect(stdout).toContain('+changed');
-      expect(parsePatchFiles(stdout).flatMap((patch) => patch.files)).toHaveLength(1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -25,7 +25,7 @@ vi.mock('./git/exec', () => ({
 }));
 
 import { gitExecutor } from './git/exec';
-import { deleteMachine, loadCommitGraphMachines, loadMachineFileDiff, remoteRepositoryPath, saveMachine, testMachine, type RefMutationRunner } from './machines';
+import { deleteMachine, listMachines, loadCommitGraphMachines, loadMachineFileDiff, remoteRepositoryPath, saveMachine, testMachine, type RefMutationRunner } from './machines';
 
 const runGuard: RefMutationRunner = (_directory, operation) => operation();
 const tab = { path: '/repo', commonDir: '/repo/.git' };
@@ -98,6 +98,46 @@ describe('missing machine checkout', () => {
 });
 
 describe('machine poll lifecycle', () => {
+  it('keeps failed removals disabled for retry while cleaning other repositories', async () => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const otherTab = { path: '/other', commonDir: '/other/.git' };
+    let locked = true;
+    vi.mocked(gitExecutor.run).mockImplementation(async (args, options) => {
+      if (args[0] === 'update-ref' && options?.cwd === tab.path && locked) throw new Error('ref is locked');
+      return { args: [...args], cwd: options?.cwd ?? tab.path, stdout: args[0] === 'for-each-ref' ? `refs/machines/${machine!.id}/HEAD\n` : '', stderr: '', exitCode: 0 };
+    });
+    await expect(deleteMachine(machine!.id, [tab, tab, otherTab], runGuard)).rejects.toThrow('/repo: ref is locked');
+    expect(listMachines()).toMatchObject([{ id: machine!.id, enabled: false }]);
+    expect(gitExecutor.run).toHaveBeenCalledWith(['update-ref', '--stdin'], expect.objectContaining({ cwd: otherTab.path }));
+    expect(gitExecutor.transaction).toHaveBeenCalledTimes(2);
+    expect((await loadCommitGraphMachines(tab, runGuard)).machines).toEqual([]);
+    expect(spawn).not.toHaveBeenCalled();
+
+    locked = false;
+    await expect(deleteMachine(machine!.id, [tab, otherTab], runGuard)).resolves.toEqual([]);
+    expect(listMachines()).toEqual([]);
+  });
+
+  it.each([
+    { output: 'diff --git a/new.txt b/new.txt\n+content\n', error: '', succeeds: true },
+    { output: '', error: 'Could not access new.txt', succeeds: false },
+    { output: 'diff --git a/new.txt b/new.txt\n', error: 'Could not read new.txt', succeeds: false }
+  ])('distinguishes a no-index patch from a failed read: $succeeds, $error', async ({ output, error, succeeds }) => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const status = pendingSsh();
+    const snapshot = loadCommitGraphMachines(tab, runGuard);
+    status.stdout.end(snapshotOutput.replace('\0\0', '\0? new.txt\0\0'));
+    status.emit('close', 0);
+    await snapshot;
+    const child = pendingSsh();
+    const diff = loadMachineFileDiff(tab, { machineId: machine!.id, path: 'new.txt', staged: false, untracked: true });
+    child.stdout.end(output);
+    child.stderr.end(error);
+    child.emit('close', 1);
+    if (succeeds) await expect(diff).resolves.toBe(output);
+    else await expect(diff).rejects.toThrow(error);
+  });
+
   it('fails the connection check when the POSIX shell needed by polling is unavailable', async () => {
     vi.mocked(spawn).mockImplementationOnce((_executable, args) => {
       const child = Object.assign(new ChildProcess(), { stdout: new PassThrough(), stderr: new PassThrough() });

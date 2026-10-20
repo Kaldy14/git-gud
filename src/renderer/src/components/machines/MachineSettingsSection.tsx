@@ -34,7 +34,8 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
   });
   const remove = useMutation({
     mutationFn: (id: string) => window.api.deleteMachine(id),
-    onSuccess: refresh,
+    onMutate: () => setErrorMessage(undefined),
+    onSettled: refresh,
     onError: (error) => setErrorMessage(error instanceof Error ? error.message : 'Could not remove the machine.')
   });
 

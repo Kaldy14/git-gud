@@ -109,8 +109,8 @@ export function machineFileDiffCommand(
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
-    // --no-index exits 1 when the files differ, which is the expected case.
-    `${diff}`,
-    'code=$?; [ "$code" -le 1 ] && exit 0 || exit "$code"'
+    // Preserve exit status and stderr; the SSH boundary distinguishes a normal
+    // --no-index patch (exit 1) from file access errors using both output streams.
+    diff
   ]);
 }

@@ -94,11 +94,23 @@ export async function deleteMachine(
   tabs: readonly MachineTab[],
   runDuringRefMutation: RefMutationRunner
 ): Promise<RemoteMachine[]> {
-  store.set('machines', listMachines().filter((machine) => machine.id !== machineId));
+  // Stop in-flight polls from recreating refs, but retain a failed removal so
+  // the user can retry after resolving a lock or filesystem permission error.
+  store.set('machines', listMachines().map((machine) => machine.id === machineId ? { ...machine, enabled: false } : machine));
   clearSnapshots(machineId);
 
-  const commonDirs = new Map(tabs.map((tab) => [tab.commonDir, tab]));
-  await Promise.allSettled([...commonDirs.values()].map((tab) => deleteMachineRefs(tab, machineId, runDuringRefMutation)));
+  const repositories = [...new Map(tabs.map((tab) => [tab.commonDir, tab])).values()];
+  const failures = await Promise.all(repositories.map(async (tab) => {
+    try {
+      await deleteMachineRefs(tab, machineId, runDuringRefMutation);
+      return undefined;
+    } catch (error) {
+      return `${tab.path}: ${error instanceof Error ? error.message : 'unknown error'}`;
+    }
+  }));
+  const failureMessage = failures.filter((message) => message !== undefined).join('; ');
+  if (failureMessage) throw new Error(`Could not remove mirrored refs. The machine is disabled; retry Remove after fixing: ${failureMessage}`);
+  store.set('machines', listMachines().filter((machine) => machine.id !== machineId));
   return listMachines();
 }
 
@@ -159,7 +171,8 @@ export async function loadMachineFileDiff(tab: MachineTab, request: RemoteMachin
   }
   return runSsh(machine.sshHost, machineFileDiffCommand(remoteRepositoryPath(tab), request), {
     timeoutMs: SNAPSHOT_TIMEOUT_MS,
-    maxBytes: MAX_DIFF_BYTES
+    maxBytes: MAX_DIFF_BYTES,
+    allowDiffExitCode: request.untracked
   });
 }
 
@@ -281,7 +294,7 @@ function isCurrentMachine(machine: RemoteMachine): boolean {
   return listMachines().some((candidate) => candidate.enabled && candidate.id === machine.id && candidate.sshHost === machine.sshHost);
 }
 
-function runSsh(host: string, command: string, options: { timeoutMs: number; maxBytes?: number }): Promise<string> {
+function runSsh(host: string, command: string, options: { timeoutMs: number; maxBytes?: number; allowDiffExitCode?: boolean }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn('ssh', [...SSH_OPTIONS, '-T', host, command], { stdio: ['ignore', 'pipe', 'pipe'] });
     const stdout: Buffer[] = [];
@@ -314,7 +327,10 @@ function runSsh(host: string, command: string, options: { timeoutMs: number; max
     });
     child.on('error', (error) => finish(error));
     child.on('close', (code) => {
-      if (code === 0) finish(undefined, Buffer.concat(stdout).toString('utf8'));
+      const output = Buffer.concat(stdout).toString('utf8');
+      // --no-index uses 1 for both a patch and an access error. Keep errors
+      // visible instead of accepting an empty or failed read as a clean file.
+      if (code === 0 || (options.allowDiffExitCode && code === 1 && output.length > 0 && !stderr.trim())) finish(undefined, output);
       else finish(new Error(sshErrorMessage(host, stderr, code)));
     });
   });
