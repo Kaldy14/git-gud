@@ -12,6 +12,22 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:graph-avatars', ['/repo', Array(12001).fill(candidate)])).toThrow('at most 12000');
   });
 
+  it('validates view-only machine payloads', () => {
+    expect(validateIpcArgs('repo:graph-machines', ['/repo'])).toEqual(['/repo']);
+    expect(validateIpcArgs('machines:save', [{ name: 'omarchy', sshHost: 'omarchy', enabled: false }])).toEqual([
+      { id: undefined, name: 'omarchy', sshHost: 'omarchy', enabled: false }
+    ]);
+    expect(() => validateIpcArgs('machines:save', [{ name: 'omarchy', sshHost: 'x'.repeat(254) }])).toThrow();
+    expect(() => validateIpcArgs('machines:test', [{ name: 'omarchy', sshHost: 'omarchy', enabled: 'yes' }])).toThrow('boolean');
+    expect(validateIpcArgs('machines:tailscale-status', [])).toEqual([]);
+    expect(() => validateIpcArgs('machines:tailscale-status', ['extra'])).toThrow();
+    expect(validateIpcArgs('repo:machine-file-diff', ['/repo', { machineId: 'm1', path: 'src/a.ts', staged: true, untracked: false }])).toEqual([
+      '/repo',
+      { machineId: 'm1', path: 'src/a.ts', staged: true, untracked: false }
+    ]);
+    expect(() => validateIpcArgs('repo:machine-file-diff', ['/repo', { machineId: 'm1', path: 'a', staged: 'no', untracked: false }])).toThrow();
+  });
+
   it('accepts valid typed command payloads', () => {
     expect(validateIpcArgs('app:pull-request-deep-links-ready', [])).toEqual([]);
     expect(validateIpcArgs('updates:get-state', [])).toEqual([]);

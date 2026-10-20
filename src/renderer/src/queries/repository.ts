@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-import { mergeCommitGraphWorktrees } from '@shared/graph';
+import { mergeCommitGraphMachines, mergeCommitGraphWorktrees } from '@shared/graph';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import type {
   CommitGraphAvatarCandidate,
@@ -132,9 +132,13 @@ export function useCommitGraph(
     retry: false,
     staleTime: 1500
   });
+  const machines = useCommitGraphMachines(repoPath);
   const selectGraph = useCallback(
-    (page: CommitGraphPage) => mergeCommitGraphAvatarUrls(mergeCommitGraphWorktrees(page, worktrees.data), avatarUrls),
-    [avatarUrls, worktrees.data]
+    (page: CommitGraphPage) => mergeCommitGraphAvatarUrls(
+      mergeCommitGraphMachines(mergeCommitGraphWorktrees(page, worktrees.data), machines.data),
+      avatarUrls
+    ),
+    [avatarUrls, machines.data, worktrees.data]
   );
   const query = useQuery({
     queryKey: repoPath ? commitGraphQueryKey(repoPath, limit) : ['commit-graph', 'none', limit],
@@ -175,6 +179,47 @@ export function useCommitGraph(
   }, [limit, query.data?.limit, query.isPlaceholderData, queryClient, repoPath]);
 
   return query;
+}
+
+const MACHINE_REFRESH_INTERVAL_MS = 15_000;
+
+/**
+ * Read-only snapshots of other machines' checkouts. Polls on its own cadence
+ * instead of every graph refresh, because each poll is an SSH round trip.
+ */
+export function useCommitGraphMachines(repoPath: string | undefined) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ['commit-graph-machines', repoPath ?? 'none'],
+    queryFn: async () => {
+      if (!repoPath) throw new Error('Repository path is required.');
+      const machines = await window.api.getCommitGraphMachines(repoPath);
+      // New machine-only commits were fetched into refs/machines; reload the log.
+      if (machines.refsChanged) void queryClient.invalidateQueries({ queryKey: ['commit-graph', repoPath] });
+      return machines;
+    },
+    enabled: Boolean(repoPath && !repoPath.startsWith('github://')),
+    retry: false,
+    staleTime: MACHINE_REFRESH_INTERVAL_MS / 2,
+    refetchInterval: MACHINE_REFRESH_INTERVAL_MS
+  });
+}
+
+export function useMachines() {
+  return useQuery({
+    queryKey: ['machines'],
+    queryFn: () => window.api.listMachines(),
+    staleTime: 60_000
+  });
+}
+
+export function useTailscaleStatus() {
+  return useQuery({
+    queryKey: ['tailscale-status'],
+    queryFn: () => window.api.getTailscaleStatus(),
+    staleTime: 0,
+    retry: false
+  });
 }
 
 function useCommitGraphAvatarUrls(

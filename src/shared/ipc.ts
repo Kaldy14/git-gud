@@ -80,6 +80,12 @@ import type {
   GitWipDetail,
   PortainerConnection,
   PortainerConnectionInput,
+  RemoteMachine,
+  RemoteMachineFileDiffRequest,
+  RemoteMachineInput,
+  RemoteMachineTestResult,
+  TailscaleStatus,
+  CommitGraphMachines,
   PortainerConnectionTestResult,
   PortainerStackCatalog,
   PortainerStackImages,
@@ -204,6 +210,14 @@ export type IpcChannelMap = {
   'repo:graph-worktrees': {
     args: [repoPath: string];
     result: CommitGraphWorktrees;
+  };
+  'repo:graph-machines': {
+    args: [repoPath: string];
+    result: CommitGraphMachines;
+  };
+  'repo:machine-file-diff': {
+    args: [repoPath: string, request: RemoteMachineFileDiffRequest];
+    result: string;
   };
   'repo:graph-avatars': {
     args: [repoPath: string, candidates: CommitGraphAvatarCandidate[]];
@@ -525,6 +539,26 @@ export type IpcChannelMap = {
     args: [profileId: string, alertIds: string[]];
     result: DashboardActionAlertState;
   };
+  'machines:list': {
+    args: [];
+    result: RemoteMachine[];
+  };
+  'machines:save': {
+    args: [machine: RemoteMachineInput];
+    result: RemoteMachine[];
+  };
+  'machines:delete': {
+    args: [machineId: string];
+    result: RemoteMachine[];
+  };
+  'machines:test': {
+    args: [machine: RemoteMachineInput];
+    result: RemoteMachineTestResult;
+  };
+  'machines:tailscale-status': {
+    args: [];
+    result: TailscaleStatus;
+  };
   'portainer:connections': {
     args: [];
     result: PortainerConnection[];
@@ -674,6 +708,8 @@ export type RendererApi = {
   getRepositoryIcon: (repoPath: string) => Promise<string | undefined>;
   getCommitGraph: (repoPath: string, limit?: number) => Promise<CommitGraphPage>;
   getCommitGraphWorktrees: (repoPath: string) => Promise<CommitGraphWorktrees>;
+  getCommitGraphMachines: (repoPath: string) => Promise<CommitGraphMachines>;
+  getMachineFileDiff: (repoPath: string, request: RemoteMachineFileDiffRequest) => Promise<string>;
   getCommitGraphAvatarUrls: (repoPath: string, candidates: CommitGraphAvatarCandidate[]) => Promise<Record<string, string>>;
   getCommitDetail: (repoPath: string, sha: string) => Promise<GitCommitDetail>;
   getCommitSelectionDetail: (repoPath: string, shas: string[]) => Promise<GitCommitSelectionDetail>;
@@ -768,6 +804,11 @@ export type RendererApi = {
     profileId: string,
     alertIds: string[]
   ) => Promise<DashboardActionAlertState>;
+  listMachines: () => Promise<RemoteMachine[]>;
+  saveMachine: (machine: RemoteMachineInput) => Promise<RemoteMachine[]>;
+  deleteMachine: (machineId: string) => Promise<RemoteMachine[]>;
+  testMachine: (machine: RemoteMachineInput) => Promise<RemoteMachineTestResult>;
+  getTailscaleStatus: () => Promise<TailscaleStatus>;
   listPortainerConnections: () => Promise<PortainerConnection[]>;
   savePortainerConnection: (
     connection: PortainerConnectionInput

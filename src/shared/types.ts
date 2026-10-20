@@ -817,12 +817,20 @@ export type AppSettingsInput = Partial<Omit<AppSettings, 'graphColumns'>> & {
 
 export type GraphNodeKind = 'commit' | 'merge' | 'wip' | 'stash';
 
-type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip';
+type RefChipKind = 'branch' | 'remote' | 'tag' | 'stash' | 'wip' | 'machine';
+
+/** Another computer whose checkout of this repository is mirrored read-only. */
+export type GraphMachine = {
+  id: string;
+  name: string;
+};
 
 export type GraphRefChip = {
   label: string;
   kind: RefChipKind;
   current?: boolean;
+  /** Set for `machine` chips: the computer whose local branch this is. */
+  machine?: GraphMachine;
 };
 
 export type GraphRailStyle = {
@@ -852,6 +860,13 @@ export type GraphWorktree = {
   current: boolean;
 };
 
+/** Uncommitted changes in another computer's checkout. */
+export type GraphMachineWip = GraphMachine & {
+  branch?: string;
+  checkedAt: string;
+  stale: boolean;
+};
+
 type GraphAuthor = {
   name: string;
   email?: string;
@@ -875,6 +890,9 @@ export type CommitGraphRow = {
   rails: GraphRailSegment[];
   refs?: GraphRefChip[];
   worktree?: GraphWorktree;
+  machineWip?: GraphMachineWip;
+  /** Machines whose local branches contain this commit while no local or remote ref does. */
+  unpushedOn?: GraphMachine[];
   dateMarker?: string;
   files: GraphFile[];
 };
@@ -1121,6 +1139,83 @@ export type GitHubActionsDashboardTile = {
 
 export type GitHubActionsDashboardTileInput = Omit<GitHubActionsDashboardTile, 'id'> & {
   id?: string;
+};
+
+export type RemoteMachine = {
+  id: string;
+  name: string;
+  /** Host passed to `ssh`, e.g. a Tailscale MagicDNS name or an ~/.ssh/config alias. */
+  sshHost: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RemoteMachineInput = {
+  id?: string;
+  name: string;
+  sshHost: string;
+  enabled?: boolean;
+};
+
+export type RemoteMachineTestResult = {
+  ok: boolean;
+  message: string;
+};
+
+/** A device on the local Tailscale tailnet that could be added as a machine. */
+export type TailscalePeer = {
+  /** First MagicDNS label, used as the default machine name. */
+  name: string;
+  /** Full MagicDNS name passed to `ssh`. */
+  host: string;
+  os: string;
+  online: boolean;
+  /** The peer advertises Tailscale SSH host keys. */
+  tailscaleSsh: boolean;
+};
+
+export type TailscaleStatus =
+  | { state: 'missing' }
+  | { state: 'stopped'; message: string }
+  | { state: 'running'; tailnet?: string; peers: TailscalePeer[] };
+
+export type RemoteMachineBranch = {
+  name: string;
+  sha: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+  current: boolean;
+};
+
+export type RemoteMachineRepositoryState = 'online' | 'offline' | 'missing';
+
+/** Read-only view of one machine's checkout, matched by the same path under its home directory. */
+export type RemoteMachineRepository = {
+  machine: GraphMachine & { sshHost: string };
+  remotePath: string;
+  state: RemoteMachineRepositoryState;
+  message?: string;
+  checkedAt: string;
+  /** False once the latest check failed and this snapshot comes from an earlier one. */
+  current: boolean;
+  status?: GitStatusSummary;
+  branches: RemoteMachineBranch[];
+};
+
+export type CommitGraphMachines = {
+  repoPath: string;
+  machines: RemoteMachineRepository[];
+  /** True when this refresh fetched new commits into refs/machines, so the graph must reload. */
+  refsChanged: boolean;
+};
+
+export type RemoteMachineFileDiffRequest = {
+  machineId: string;
+  path: string;
+  staged: boolean;
+  untracked: boolean;
 };
 
 export type PortainerConnection = {

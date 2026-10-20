@@ -123,6 +123,8 @@ import {
   listPortainerConnections,
   savePortainerConnection
 } from './portainerConnections';
+import { deleteMachine, listMachines, loadCommitGraphMachines, loadMachineFileDiff, saveMachine, testMachine } from './machines';
+import { readTailscaleStatus } from './tailscale';
 import {
   assignProfileToRepository,
   createProfileCommandEnv,
@@ -531,6 +533,12 @@ export function registerIpcHandlers(
     return loadCommitGraph(tab, limit, getAppSettings().remoteAvatars);
   });
   handle('repo:graph-worktrees', async (_event, repoPath) => loadCommitGraphWorktrees(getOpenRepositoryTab(repoPath)));
+  const runDuringRefMutation = <T,>(commonDir: string, operation: () => Promise<T>): Promise<T> =>
+    repoWatchers.runDuringRefMutation(commonDir, operation);
+  handle('repo:graph-machines', async (_event, repoPath) =>
+    loadCommitGraphMachines(getOpenRepositoryTab(repoPath), runDuringRefMutation));
+  handle('repo:machine-file-diff', async (_event, repoPath, request) =>
+    loadMachineFileDiff(getOpenRepositoryTab(repoPath), request));
   handle('repo:graph-avatars', async (_event, repoPath, candidates) => {
     const tab = getOpenRepositoryTab(repoPath);
     return getAppSettings().remoteAvatars ? loadCommitGraphAvatarUrls(tab, candidates) : {};
@@ -801,6 +809,11 @@ export function registerIpcHandlers(
     broadcastDashboardActionAlerts(state);
     return state;
   });
+  handle('machines:list', () => listMachines());
+  handle('machines:save', (_event, machine) => saveMachine(machine));
+  handle('machines:delete', (_event, machineId) => deleteMachine(machineId, getWorkspace().tabs, runDuringRefMutation));
+  handle('machines:test', (_event, machine) => testMachine(machine));
+  handle('machines:tailscale-status', () => readTailscaleStatus());
   handle('portainer:connections', () => listPortainerConnections());
   handle('portainer:connection-save', (_event, connection) =>
     savePortainerConnection(connection)

@@ -9,11 +9,13 @@ import type {
   GitStatusSummary,
   GitWorktree,
   GraphFile,
+  GraphMachine,
   GraphFileStatus,
   GraphRefChip,
   RepoTab
 } from '@shared/types';
 
+import { listEnabledGraphMachines } from '../machines';
 import { createProfileCommandEnv, listProfiles } from '../profiles';
 import { GitCommandError, gitExecutor } from './exec';
 import {
@@ -36,19 +38,22 @@ export async function loadCommitGraph(
   const limit = normalizeLimit(requestedLimit);
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const logLimit = limit < MAX_COMMIT_GRAPH_LIMIT ? limit + 1 : limit;
-  const [logCommits, refs, status, stashes, worktrees, remotes] = await Promise.all([
-    loadLogCommits(tab.path, logLimit, env),
+  const machines = listEnabledGraphMachines();
+  const [logCommits, refs, status, stashes, worktrees, remotes, machineRefs] = await Promise.all([
+    loadLogCommits(tab.path, logLimit, env, machines),
     // Graph chips and WIP nodes need ref tips and file state, not the sidebar's
     // ahead/behind counts for every old branch and linked worktree.
     loadRefs(tab.path, env, { includeTracking: false }),
     loadStatus(tab.path, env, [], { aheadBehind: false }),
     loadStashes(tab.path, env),
     loadWorktrees(tab.path, env),
-    loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([])
+    loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([]),
+    loadMachineRefs(tab.path, env, machines, limit)
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
   const refMap = createRefMap(refs);
+  for (const chip of machineRefs.chips) addRef(refMap, chip.sha, chip.chip);
   const profile = tab.assignedProfileId
     ? listProfiles().find((candidate) => candidate.id === tab.assignedProfileId)
     : undefined;
@@ -87,7 +92,9 @@ export async function loadCommitGraph(
       attachedStashBases.add(commit.sha);
     }
 
-    inputs.push(logCommitToGraphInput(commit, refMap.get(commit.sha), githubAvatarUrls));
+    const input = logCommitToGraphInput(commit, refMap.get(commit.sha), githubAvatarUrls);
+    const unpushedOn = machineRefs.unpushed.get(commit.sha);
+    inputs.push(unpushedOn ? { ...input, unpushedOn } : input);
   }
 
   inputs.push(...wipInputs.filter((input) => !loadedCommitShas.has(input.parentShas[0] ?? '')));
@@ -235,10 +242,51 @@ function createStashInputsByBase(stashes: GitStashEntry[]): Map<string, GraphCom
   return inputsByBase;
 }
 
+type MachineRefs = {
+  chips: { sha: string; chip: GraphRefChip }[];
+  /** Commits only reachable from other machines' local branches. */
+  unpushed: Map<string, GraphMachine[]>;
+};
+
+// Mirrored branch tips live in refs/machines/<id>/heads/*, fetched by machines.ts.
+async function loadMachineRefs(
+  repoPath: string,
+  env: NodeJS.ProcessEnv | undefined,
+  machines: readonly GraphMachine[],
+  limit: number
+): Promise<MachineRefs> {
+  const result: MachineRefs = { chips: [], unpushed: new Map() };
+  if (machines.length === 0) return result;
+
+  await Promise.all(machines.map(async (machine) => {
+    const prefix = `refs/machines/${machine.id}`;
+    const [refs, unpushed] = await Promise.all([
+      gitExecutor.run(['for-each-ref', '--format=%(objectname)%00%(refname)', `${prefix}/heads/`], { cwd: repoPath, env }),
+      gitExecutor.run(
+        ['rev-list', `--max-count=${limit}`, `--glob=${prefix}/heads`, '--not', '--branches', '--remotes', '--tags'],
+        { cwd: repoPath, env, allowedExitCodes: [128] }
+      )
+    ]);
+
+    for (const line of refs.stdout.split('\n')) {
+      const [sha, refName] = line.split('\0');
+      if (!sha || !refName) continue;
+      result.chips.push({ sha, chip: { label: refName.slice(prefix.length + '/heads/'.length), kind: 'machine', machine } });
+    }
+
+    for (const sha of unpushed.exitCode === 0 ? unpushed.stdout.split('\n') : []) {
+      if (sha) result.unpushed.set(sha, [...result.unpushed.get(sha) ?? [], machine]);
+    }
+  }));
+
+  return result;
+}
+
 async function loadLogCommits(
   repoPath: string,
   limit: number,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  machines: readonly GraphMachine[] = []
 ): Promise<GitLogCommit[]> {
   try {
     const head = await gitExecutor.run(['rev-parse', '--verify', '-q', 'HEAD'], {
@@ -246,7 +294,12 @@ async function loadLogCommits(
       env,
       allowedExitCodes: [1]
     });
-    const revisions = head.exitCode === 0 ? ['--branches', '--remotes', '--tags', 'HEAD'] : ['--branches', '--remotes', '--tags'];
+    const revisions = [
+      '--branches', '--remotes', '--tags',
+      // Machine HEADs keep a detached remote checkout's base commit in the graph.
+      ...machines.map((machine) => `--glob=refs/machines/${machine.id}`),
+      ...(head.exitCode === 0 ? ['HEAD'] : [])
+    ];
     const result = await gitExecutor.run(
       [
         'log',
@@ -320,7 +373,8 @@ function createRefMap(refs: GitRefsSummary): Map<string, GraphRefChip[]> {
 function addRef(refMap: Map<string, GraphRefChip[]>, sha: string, chip: GraphRefChip): void {
   const chips = refMap.get(sha) ?? [];
 
-  if (!chips.some((candidate) => candidate.kind === chip.kind && candidate.label === chip.label)) {
+  if (!chips.some((candidate) =>
+    candidate.kind === chip.kind && candidate.label === chip.label && candidate.machine?.id === chip.machine?.id)) {
     chips.push(chip);
   }
 

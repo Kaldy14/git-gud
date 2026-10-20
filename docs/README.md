@@ -65,6 +65,17 @@ Git Gud can install its bundled `git-gud-agent-notes` skill into the user's Code
 
 See [agent-notes.md](agent-notes.md) for the authoring rules, installation behavior, storage format, and current limits.
 
+## Other machines (view-only)
+
+**Settings → Machines** lists the devices on your Tailscale tailnet (from a read-only `tailscale status --json`; phones and TVs are hidden, online devices and those with Tailscale SSH come first). **Add** tests the connection over SSH and saves the device with its full MagicDNS name; a failed test shows the SSH error and an **Add anyway** button. When Tailscale isn't installed, stopped, or signed out, the section says so and shows the manual form, which takes any SSH host or `~/.ssh/config` alias (also reachable from Tailscale via **Use an SSH host instead…**). SSH runs with `StrictHostKeyChecking=accept-new`, so the first connection trusts the host key without a prompt and a changed key still fails. For each open repository, Git Gud looks for the same checkout path relative to the remote home folder, using the main checkout when a linked worktree tab is open. Each machine can be hidden from the graph with the eye toggle in its sidebar section.
+
+- **Reads only.** Every 15 seconds one SSH round trip (`ssh -o BatchMode=yes`, a multiplexed control socket under `/tmp/gg-ssh-*`) runs `git status --porcelain=v2` and `git for-each-ref refs/heads` with `GIT_OPTIONAL_LOCKS=0`, so the remote index is never refreshed or rewritten. Diffs are fetched on demand the same way. Nothing on the other machine is ever changed.
+- **Local mirror refs.** When the remote branch tips change, Git Gud fetches them into the local repository under `refs/machines/<machine-id>/heads/*` (no tags, no FETCH_HEAD, no gc). The graph log includes those refs, so machine-only commits appear in history. Removing a machine deletes its `refs/machines/<id>/` refs from open repositories.
+- **Graph.** Machine branches render as chips with a monitor icon, folded into the matching local or remote chip when they point at the same commit. Commits reachable only from a machine branch get an **unpushed** badge. A dirty remote working directory adds an orange `// WIP` row above its base commit; selecting it opens a read-only panel (staged, unstaged, and untracked groups) and clicking a file shows its diff. Stage, commit, review, and context-menu actions are not offered for machine rows.
+- **Offline.** If SSH fails, the last snapshot stays visible, dimmed with a dashed chip and "as of HH:MM", and the panel shows the SSH error.
+
+Implementation: `src/main/machines.ts` (store, SSH, ref sync), `src/main/tailscale.ts` (device discovery), `src/main/git/parsers/machine.ts` (remote commands and parsing), `mergeCommitGraphMachines` in `src/shared/graph.ts`, and `src/renderer/src/components/machines/`.
+
 ## Graph rendering model
 
 Each row draws its own SVG cell from declarative `RailSegment`s (`through`, `stopTop`, `startBottom`, `curveIn`, `curveOut`) plus one node (`commit` avatar, `merge` dot, `stash` box, `wip` dashed ring). The shared M2 lane engine emits this shape from topo-ordered Git commits plus synthetic WIP/stash tips. Rail segments may carry `color`/`dashed` style metadata: lanes started by synthetic tips stay dashed in their override color all the way down to their base commit. Ref chips mark the checked-out branch (`current`, rendered filled and sorted first), and the commit-graph query keeps previous rows on screen during load-more refetches (scoped per repository).

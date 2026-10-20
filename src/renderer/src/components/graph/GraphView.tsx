@@ -20,12 +20,14 @@ import {
   GitMerge,
   LaptopMinimal,
   Loader2,
+  Monitor,
   Pencil,
   RefreshCw,
   RotateCcw,
   Tag,
   TreePine,
   Trash2,
+  Unplug,
   Undo2,
   Workflow,
   X
@@ -72,6 +74,8 @@ import type {
   GitHubPullRequestSummary,
   GitStashRefInput,
   GitTagDeleteInput,
+  GraphMachine,
+  GraphMachineWip,
   GraphRailSegment,
   GraphRefChip,
   GraphWorktree
@@ -549,6 +553,8 @@ export function GraphView({
     selectionAnchorShaRef.current = row.sha;
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
+    // Other machines are view-only: no actions apply to their working directory.
+    if (row.machineWip) return;
     setContextMenu({
       kind: 'commit',
       row,
@@ -681,7 +687,7 @@ export function GraphView({
     if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       const row = findSelectedContextMenuRow(rows, selectedSha);
 
-      if (row) {
+      if (row && !row.machineWip) {
         event.preventDefault();
         const rect = event.currentTarget.getBoundingClientRect();
         setContextMenu({ kind: 'commit', row, x: rect.left + Math.min(rect.width / 2, 420), y: rect.top + 48 });
@@ -1217,7 +1223,7 @@ function GraphRowView({
   const graphLaneX = graphLaneViewportX(row.node.lane, graphWidth, graphScrollLeft);
   const refColor = row.colorOverride ? hexToRgba(nodeColor, 0.3) : laneRefColor(row.node.lane);
   const currentRefColor = row.colorOverride ?? laneRefColor(row.node.lane, true);
-  const hasRefConnector = visibleRefs.some((ref) => ref.kind === 'branch' || ref.kind === 'remote' || ref.kind === 'tag');
+  const hasRefConnector = visibleRefs.some((ref) => ref.kind === 'branch' || ref.kind === 'remote' || ref.kind === 'tag' || ref.kind === 'machine');
   const hasCurrentBranch = visibleRefs.some(
     (ref) => graphBranchCheckoutLocation(ref, linkedWorktreeBranches) === 'current'
   );
@@ -1271,7 +1277,9 @@ function GraphRowView({
       ) : null}
 
       <div className="ref-cell pl-3">
-        {isWip && row.worktree ? (
+        {isWip && row.machineWip ? (
+          <MachineWipChipView machine={row.machineWip} />
+        ) : isWip && row.worktree ? (
           <WorktreeChipView worktree={row.worktree} color={refColor} />
         ) : (
           <RefChipStack
@@ -1321,19 +1329,27 @@ function GraphRowView({
               // WIP
             </span>
             {row.files.length > 0 ? <WipStatusCounts files={row.files} /> : null}
+            {row.machineWip ? (
+              <span className="ml-auto shrink-0 truncate text-[11px] text-[var(--text-3)]">
+                read-only · {row.machineWip.stale ? `as of ${formatMachineTime(row.machineWip.checkedAt)}` : 'live'}
+              </span>
+            ) : null}
           </>
         ) : (
-          <CommitSubjectLine subject={row.subject} isMerge={row.node.kind === 'merge'} />
+          <>
+            <CommitSubjectLine subject={row.subject} isMerge={row.node.kind === 'merge'} />
+            {row.unpushedOn ? <UnpushedMachineBadge machines={row.unpushedOn} /> : null}
+          </>
         )}
       </div>
       {visibleColumns.author ? (
         <span className="relative min-w-0 truncate border-l border-[var(--border)] px-3 text-[12px] text-[var(--text-2)]" title={row.author.email ?? row.author.name}>
-          {isWip ? 'Working directory' : row.author.name || 'Unknown'}
+          {row.machineWip ? `${row.machineWip.name} · working directory` : isWip ? 'Working directory' : row.author.name || 'Unknown'}
         </span>
       ) : null}
       {visibleColumns.date ? (
         <span className="relative truncate border-l border-[var(--border)] px-3 text-[11px] tabular-nums text-[var(--text-2)]" title={row.authoredAt ?? row.committedAt}>
-          {isWip ? 'Now' : row.dateLabel}
+          {row.machineWip?.stale ? formatMachineTime(row.machineWip.checkedAt) : isWip ? 'Now' : row.dateLabel}
         </span>
       ) : null}
       {visibleColumns.sha ? (
@@ -1623,6 +1639,36 @@ function graphRowDomId(sha: string): string {
   return `graph-row-${sha.replace(/[^\dA-Za-z_-]/g, '-')}`;
 }
 
+function MachineWipChipView({ machine }: { machine: GraphMachineWip }): ReactElement {
+  const status = machine.stale ? `unreachable, as of ${formatMachineTime(machine.checkedAt)}` : 'read-only';
+  return (
+    <span
+      className="ref-chip machine-wip-chip"
+      data-stale={machine.stale ? 'true' : undefined}
+      title={`${machine.name} working directory${machine.branch ? ` on ${machine.branch}` : ''} (${status})`}
+      aria-label={`${machine.name}, other machine, has uncommitted changes, ${status}`}
+    >
+      <Monitor size={12} aria-hidden="true" />
+      <span className="ref-chip-label">{machine.name}</span>
+      {machine.stale ? <Unplug size={12} aria-hidden="true" /> : null}
+    </span>
+  );
+}
+
+function UnpushedMachineBadge({ machines }: { machines: GraphMachine[] }): ReactElement {
+  const names = machines.map((machine) => machine.name).join(', ');
+  return (
+    <span className="machine-badge" title={`Only on ${names}: no local or remote branch here contains this commit.`}>
+      <Monitor size={11} aria-hidden="true" />
+      {machines.length === 1 ? 'unpushed' : `unpushed · ${machines.length}`}
+    </span>
+  );
+}
+
+function formatMachineTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 function WorktreeChipView({
   worktree,
   color
@@ -1761,6 +1807,8 @@ function hexToRgba(hex: string, alpha: number): string {
 
 type RefChipDisplay = GraphRefChip & {
   remotePeerLabels?: string[];
+  /** Machines whose same-named local branch points at this commit. */
+  machinePeers?: GraphMachine[];
 };
 
 function RefChipStack({
@@ -1824,7 +1872,7 @@ function RefChipStack({
       <div className="ref-stack-expanded">
         {displayRefs.map((chip) => (
           <RefChipView
-            key={`${chip.kind}:${chip.label}`}
+            key={`${chip.kind}:${chip.label}:${chip.machine?.id ?? ''}`}
             chip={chip}
             linkedWorktreeBranches={linkedWorktreeBranches}
             color={color}
@@ -1865,7 +1913,7 @@ function RefChipView({
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
   onTagContextMenu: (event: MouseEvent<HTMLElement>, tagName: string) => void;
 }): ReactElement {
-  const { kind, label, remotePeerLabels } = chip;
+  const { kind, label, remotePeerLabels, machinePeers } = chip;
   const hasRemotePeer = (remotePeerLabels?.length ?? 0) > 0;
   const checkoutLocation = graphBranchCheckoutLocation(chip, linkedWorktreeBranches);
   const isCurrentBranch = checkoutLocation === 'current';
@@ -1873,7 +1921,8 @@ function RefChipView({
   const isPending = kind === pendingRef?.kind && label === pendingRef.name;
   const displayLabel = kind === 'remote' ? branchNameFromRemoteRef(label) : label;
   const title = refChipTitle(chip, checkoutLocation);
-  const ariaLabel = `${label}${isPending ? ', checkout in progress' : isCurrentBranch ? ', current branch' : isLinkedWorktree ? ', linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}`;
+  const machinePeerNames = machinePeers?.map((machine) => machine.name).join(', ');
+  const ariaLabel = `${label}${kind === 'machine' && chip.machine ? `, on ${chip.machine.name}` : ''}${isPending ? ', checkout in progress' : isCurrentBranch ? ', current branch' : isLinkedWorktree ? ', linked worktree' : ''}${hasRemotePeer ? `, tracks ${remotePeerLabels?.join(', ')}` : ''}${machinePeerNames ? `, also on ${machinePeerNames}` : ''}`;
   const leadingIcon =
     isPending ? (
       <Loader2 size={12} className="animate-spin" aria-hidden="true" />
@@ -1883,7 +1932,7 @@ function RefChipView({
       <Tag size={10} />
     ) : kind === 'stash' ? (
       <Archive size={10} />
-    ) : kind === 'remote' ? null : (
+    ) : kind === 'remote' || kind === 'machine' ? null : (
       <Pencil size={10} />
     );
 
@@ -1908,10 +1957,13 @@ function RefChipView({
       {hasRemotePeer ? (
         <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
       ) : null}
+      {kind === 'machine' || machinePeers?.length ? (
+        <Monitor size={12} className="machine-ref-icon" aria-hidden="true" />
+      ) : null}
     </>
   );
 
-  if (kind === 'stash') {
+  if (kind === 'stash' || kind === 'machine') {
     return (
       <span className="ref-chip" style={style} title={title} aria-label={ariaLabel}>
         {content}
@@ -1976,18 +2028,38 @@ function coalesceRemotePeers(refs: GraphRefChip[]): RefChipDisplay[] {
     remotePeersByLocalBranch.set(localBranchName, remotePeers);
   }
 
+  // A machine branch folds into the same-named local branch, or else the same-named remote chip.
+  const remoteHostLabels = new Map<string, string>();
+  for (const ref of refs) {
+    const name = ref.kind === 'remote' ? branchNameFromRemoteRef(ref.label) : undefined;
+    if (name && !localBranchLabels.has(name) && !remoteHostLabels.has(name)) remoteHostLabels.set(name, ref.label);
+  }
+  const machinePeersByHost = new Map<string, GraphMachine[]>();
+  for (const ref of refs) {
+    if (ref.kind !== 'machine' || !ref.machine) continue;
+    const host = localBranchLabels.has(ref.label) ? `branch:${ref.label}` : remoteHostLabels.has(ref.label) ? `remote:${remoteHostLabels.get(ref.label)}` : undefined;
+    if (host) machinePeersByHost.set(host, [...machinePeersByHost.get(host) ?? [], ref.machine]);
+  }
+
   return refs.flatMap((ref) => {
     if (ref.kind === 'remote' && localBranchLabels.has(branchNameFromRemoteRef(ref.label))) {
       return [];
     }
 
+    if (ref.kind === 'machine' && (localBranchLabels.has(ref.label) || remoteHostLabels.has(ref.label))) {
+      return [];
+    }
+
+    const machinePeers = machinePeersByHost.get(`${ref.kind}:${ref.label}`);
+    const withMachines = machinePeers?.length ? { machinePeers } : {};
+
     if (ref.kind !== 'branch') {
-      return [{ ...ref }];
+      return [{ ...ref, ...withMachines }];
     }
 
     const remotePeerLabels = remotePeersByLocalBranch.get(ref.label);
 
-    return [{ ...ref, ...(remotePeerLabels?.length ? { remotePeerLabels } : {}) }];
+    return [{ ...ref, ...(remotePeerLabels?.length ? { remotePeerLabels } : {}), ...withMachines }];
   });
 }
 
@@ -1995,6 +2067,12 @@ function refChipTitle(
   chip: RefChipDisplay,
   checkoutLocation: GraphBranchCheckoutLocation | undefined = chip.current ? 'current' : undefined
 ): string {
+  if (chip.kind === 'machine') return `${chip.label} (local branch on ${chip.machine?.name ?? 'another machine'}, view-only)`;
+  const base = localRefChipTitle(chip, checkoutLocation);
+  return chip.machinePeers?.length ? `${base}\nAlso at this commit on ${chip.machinePeers.map((machine) => machine.name).join(', ')}` : base;
+}
+
+function localRefChipTitle(chip: RefChipDisplay, checkoutLocation: GraphBranchCheckoutLocation | undefined): string {
   const peerLabels = chip.remotePeerLabels ?? [];
 
   if (checkoutLocation === 'current' && peerLabels.length > 0) {
@@ -2021,7 +2099,12 @@ function refChipTitle(
 }
 
 function refChipTitleLines(chip: RefChipDisplay): string[] {
-  return chip.remotePeerLabels?.length ? [chip.label, ...chip.remotePeerLabels] : [chip.label];
+  const label = chip.kind === 'machine' ? `${chip.label} (${chip.machine?.name ?? 'machine'})` : chip.label;
+  return [
+    label,
+    ...(chip.remotePeerLabels ?? []),
+    ...(chip.machinePeers ?? []).map((machine) => `${chip.label} (${machine.name})`)
+  ];
 }
 
 function RailCell({

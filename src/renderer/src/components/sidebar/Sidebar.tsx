@@ -52,10 +52,13 @@ import type {
   GitStashEntry,
   GitStashRefInput,
   GitTagDeleteInput,
-  GitTagRef
+  GitTagRef,
+  RemoteMachine,
+  RemoteMachineRepository
 } from '@shared/types';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
+import { MachineSidebarSections } from './MachineSidebarSections';
 import { buildBranchTree, prioritizeWorktreeBranches, type BranchTreeNode } from './branchTree';
 
 type SidebarProps = {
@@ -106,6 +109,10 @@ type SidebarProps = {
   onStashApply: (input: GitStashRefInput) => void;
   onStashPop: (input: GitStashRefInput) => void;
   onStashDrop: (input: GitStashRefInput) => void;
+  machines?: readonly RemoteMachine[];
+  machineSnapshots?: readonly RemoteMachineRepository[];
+  onSetMachineEnabled?: (machine: RemoteMachine, enabled: boolean) => void;
+  onRevealCommit?: (sha: string) => void;
 };
 
 type SectionId = 'local' | 'remote' | 'worktrees' | 'stashes' | 'tags';
@@ -217,7 +224,11 @@ export function Sidebar({
   onDeleteTag,
   onStashApply,
   onStashPop,
-  onStashDrop
+  onStashDrop,
+  machines,
+  machineSnapshots,
+  onSetMachineEnabled,
+  onRevealCommit
 }: SidebarProps): ReactElement {
   const resizeStateRef = useRef<SidebarResizeState | undefined>(undefined);
   const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -555,6 +566,16 @@ export function Sidebar({
             </section>
           );
         })}
+        {machines?.length && onSetMachineEnabled && onRevealCommit ? (
+          <MachineSidebarSections
+            machines={machines}
+            snapshots={machineSnapshots ?? []}
+            filter={filter}
+            onSetMachineEnabled={onSetMachineEnabled}
+            onRevealCommit={onRevealCommit}
+            onTreeKeyDown={handleSidebarTreeKeyDown}
+          />
+        ) : null}
       </div>
 
       {contextMenu ? (

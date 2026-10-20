@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.15] - 2026-10-20
+
+### Added
+
+- View other computers' local branches, unpushed commits, and uncommitted changes in the repository graph over read-only SSH.
+- Add computers from Tailscale in Settings, test their connection, and inspect staged, unstaged, and untracked file diffs without changing the remote checkout.
+- Keep the last machine snapshot visible when a computer goes offline, and hide individual machines from the graph.
+
 ## [2026.10.13] - 2026-10-14
 
 ### Added

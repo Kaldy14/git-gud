@@ -58,6 +58,7 @@
   --graph-text: #c6c6c8;
   --graph-text-muted: #8c8c91;
   --graph-ref-text: #c8cfd1;
+  --machine: #f0a13f;
   --graph-ref-current-text: #f0f0f0;
   --graph-separator: #2e3034;
 
@@ -1663,6 +1664,36 @@ button.ref-chip {
 
 .ref-chip-extra-icon {
   opacity: 0.76;
+}
+
+/* Other machines (view-only mirrors). Amber is reserved for machine identity, never a lane color. */
+.machine-ref-icon {
+  color: var(--machine);
+}
+
+.machine-wip-chip {
+  border: 1px solid var(--machine);
+  background: rgba(240, 161, 63, 0.14);
+  color: var(--machine);
+}
+
+.machine-wip-chip[data-stale='true'] {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+.machine-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(240, 161, 63, 0.14);
+  color: var(--machine);
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .ref-chip-avatar {

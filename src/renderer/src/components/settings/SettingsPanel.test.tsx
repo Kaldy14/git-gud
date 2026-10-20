@@ -1,9 +1,15 @@
-import { renderToStaticMarkup } from 'react-dom/server';
+import type { ReactElement } from 'react';
+import { renderToStaticMarkup as renderMarkup } from 'react-dom/server';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDefaultAppSettings } from '@shared/settings';
 
 import { SettingsPanel } from './SettingsPanel';
+
+function renderToStaticMarkup(element: ReactElement): string {
+  return renderMarkup(<QueryClientProvider client={new QueryClient()}>{element}</QueryClientProvider>);
+}
 
 describe('SettingsPanel', () => {
   it('explains the configurable auto-fetch interval and safe fetch-only behavior', () => {
@@ -52,5 +58,24 @@ describe('SettingsPanel', () => {
     expect(markup).toContain('tasks started anywhere');
     expect(markup).toContain('Installed');
     expect(markup).toContain('Remove skill');
+  });
+
+  it('explains that machines are view-only and looks for Tailscale devices', () => {
+    const markup = renderToStaticMarkup(
+      <SettingsPanel
+        settings={createDefaultAppSettings()}
+        isSaving={false}
+        isCodexSkillBusy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onInstallCodexSkill={vi.fn()}
+        onRemoveCodexSkill={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('Machines');
+    expect(markup).toContain('it never changes anything there');
+    expect(markup).toContain('Add from Tailscale');
+    expect(markup).toContain('Looking for Tailscale');
   });
 });
