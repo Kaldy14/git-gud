@@ -28,6 +28,14 @@ describe('IPC argument validation', () => {
     expect(() => validateIpcArgs('repo:machine-file-diff', ['/repo', { machineId: 'm1', path: 'a', staged: 'no', untracked: false }])).toThrow();
   });
 
+  it.each(['../.ssh/config', '/etc/passwd', 'src/../../secret', 'C:\\Users\\secret', 'C:secret', '\\\\host\\share', 'src\\..\\secret', 'a\0b'])(
+    'rejects remote diff paths outside the checkout: %s', (path) => {
+      expect(() => validateIpcArgs('repo:machine-file-diff', ['/repo', {
+        machineId: 'm1', path, staged: false, untracked: true
+      }])).toThrow('repository-relative');
+    }
+  );
+
   it('accepts valid typed command payloads', () => {
     expect(validateIpcArgs('app:pull-request-deep-links-ready', [])).toEqual([]);
     expect(validateIpcArgs('updates:get-state', [])).toEqual([]);

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parsePatchFiles } from '@pierre/diffs';
 
 import {
   MACHINE_MISSING_MARKER,
@@ -133,5 +134,24 @@ describe('machine shell commands', () => {
       path: 'tracked.txt', staged: false, untracked: false
     })]);
     expect(diff.stdout).toContain('+two');
+  });
+
+  it('returns a renderable diff with conflict markers for an unmerged file', async () => {
+    const git = (...args: string[]) => run('git', ['-C', repoPath, ...args]);
+    await git('checkout', '-qb', 'theirs');
+    await writeFile(join(repoPath, 'tracked.txt'), 'theirs\n');
+    await git('commit', '-qam', 'theirs');
+    await git('checkout', '-q', 'main');
+    await writeFile(join(repoPath, 'tracked.txt'), 'ours\n');
+    await git('commit', '-qam', 'ours');
+    await expect(git('merge', 'theirs')).rejects.toMatchObject({ code: 1 });
+
+    const { stdout } = await run('sh', ['-c', machineFileDiffCommand(repoPath, {
+      path: 'tracked.txt', staged: false, untracked: false
+    })]);
+    expect(stdout).toContain('+<<<<<<< HEAD');
+    const files = parsePatchFiles(stdout).flatMap((patch) => patch.files);
+    expect(files).toHaveLength(1);
+    expect(files.flatMap((file) => file.hunks)).not.toHaveLength(0);
   });
 });

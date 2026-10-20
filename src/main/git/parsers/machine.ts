@@ -1,3 +1,5 @@
+import { posix, win32 } from 'node:path';
+
 import type { GitStatusSummary, RemoteMachineBranch } from '@shared/types';
 
 import { parseStatusPorcelainV2 } from './status';
@@ -19,6 +21,14 @@ export function remoteShellPath(remotePath: string): string {
   if (remotePath === '~') return '~';
   if (remotePath.startsWith('~/')) return `~/${quoteRemoteShell(remotePath.slice(2))}`;
   return quoteRemoteShell(remotePath);
+}
+
+/** Git's no-index diff must never receive a path outside the remote checkout. */
+export function assertMachineFilePath(path: string): void {
+  if (!path || path.includes('\0') || posix.isAbsolute(path) || win32.isAbsolute(path) ||
+    /^[A-Za-z]:/.test(path) || path.split(/[\\/]/).some((part) => part === '..')) {
+    throw new Error('A repository-relative file path without traversal is required.');
+  }
 }
 
 /**
@@ -77,10 +87,13 @@ export function machineFileDiffCommand(
   remotePath: string,
   request: { path: string; staged: boolean; untracked: boolean }
 ): string {
+  assertMachineFilePath(request.path);
   const path = quoteRemoteShell(request.path);
   const diff = request.untracked
     ? `git diff --no-color --no-index -- /dev/null ${path}`
-    : `git diff --no-color${request.staged ? ' --cached' : ''} -- ${path}`;
+    // A combined merge diff has no renderable hunks in PatchDiff. Compare
+    // unmerged working files with ours so conflict markers stay visible.
+    : `git diff --no-color${request.staged ? ' --cached' : ' --ours'} -- ${path}`;
 
   return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',

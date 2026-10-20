@@ -25,7 +25,7 @@ vi.mock('./git/exec', () => ({
 }));
 
 import { gitExecutor } from './git/exec';
-import { deleteMachine, loadCommitGraphMachines, remoteRepositoryPath, saveMachine, type RefMutationRunner } from './machines';
+import { deleteMachine, loadCommitGraphMachines, loadMachineFileDiff, remoteRepositoryPath, saveMachine, type RefMutationRunner } from './machines';
 
 const runGuard: RefMutationRunner = (_directory, operation) => operation();
 const tab = { path: '/repo', commonDir: '/repo/.git' };
@@ -98,6 +98,27 @@ describe('missing machine checkout', () => {
 });
 
 describe('machine poll lifecycle', () => {
+  it('only reads untracked files that Git listed in the snapshot', async () => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const child = pendingSsh();
+    const pending = loadCommitGraphMachines(tab, runGuard);
+    child.stdout.end(snapshotOutput.replace('\0\0__GG_REFS__', '\0? new.txt\0\0__GG_REFS__'));
+    child.emit('close', 0);
+    await pending;
+    const request = { machineId: machine!.id, staged: false, untracked: true };
+
+    for (const path of ['symlink/secret.txt', '.git/config', '../outside.txt']) {
+      await expect(loadMachineFileDiff(tab, { ...request, path })).rejects.toThrow('not untracked');
+    }
+    expect(spawn).toHaveBeenCalledTimes(1);
+
+    const diff = pendingSsh();
+    const read = loadMachineFileDiff(tab, { ...request, path: 'new.txt' });
+    diff.stdout.end('file diff');
+    diff.emit('close', 0);
+    expect(await read).toBe('file diff');
+  });
+
   it('does not recreate refs when a machine is removed during its SSH read', async () => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const child = pendingSsh();

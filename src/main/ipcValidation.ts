@@ -1,4 +1,5 @@
 import { parseCodeReference } from '@shared/codeReference';
+import { assertMachineFilePath } from './git/parsers/machine';
 import type { ArtifactCleanupInput, BranchCleanupInput, BranchCleanupOptions } from '@shared/maintenance';
 import { parseBugRequest } from '@shared/bugFinder';
 import type {
@@ -847,9 +848,11 @@ function readRemoteMachineInput(value: unknown): RemoteMachineInput {
 
 function readRemoteMachineFileDiffRequest(value: unknown): RemoteMachineFileDiffRequest {
   const record = readRecord(value, 'machine file diff request');
+  const path = readNonEmptyLimitedString(record.path, 'path', 4_096);
+  assertMachineFilePath(path);
   return {
     machineId: readNonEmptyLimitedString(record.machineId, 'machineId', 128),
-    path: readNonEmptyLimitedString(record.path, 'path', 4_096),
+    path,
     staged: readBooleanProperty(record, 'staged'),
     untracked: readBooleanProperty(record, 'untracked')
   };

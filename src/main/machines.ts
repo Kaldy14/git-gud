@@ -151,6 +151,12 @@ export function loadCommitGraphMachines(tab: MachineTab, runDuringRefMutation: R
 export async function loadMachineFileDiff(tab: MachineTab, request: RemoteMachineFileDiffRequest): Promise<string> {
   const machine = listMachines().find((candidate) => candidate.id === request.machineId);
   if (!machine) throw new Error('The machine no longer exists.');
+  // --no-index reads arbitrary files, so only allow files Git actually listed.
+  // This also prevents a renderer from walking through a directory symlink.
+  if (request.untracked && !snapshots.get(snapshotKey(tab.path, machine.id))?.status?.files.some((file) =>
+    file.path === request.path && file.status === 'untracked')) {
+    throw new Error('The file is not untracked in the latest machine snapshot.');
+  }
   return runSsh(machine.sshHost, machineFileDiffCommand(remoteRepositoryPath(tab), request), {
     timeoutMs: SNAPSHOT_TIMEOUT_MS,
     maxBytes: MAX_DIFF_BYTES
