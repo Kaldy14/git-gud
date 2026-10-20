@@ -119,10 +119,11 @@ describe('machine poll lifecycle', () => {
   });
 
   it.each([
-    { output: 'diff --git a/new.txt b/new.txt\n+content\n', error: '', succeeds: true },
-    { output: '', error: 'Could not access new.txt', succeeds: false },
-    { output: 'diff --git a/new.txt b/new.txt\n', error: 'Could not read new.txt', succeeds: false }
-  ])('distinguishes a no-index patch from a failed read: $succeeds, $error', async ({ output, error, succeeds }) => {
+    { output: 'diff --git a/new.txt b/new.txt\n+content\n', error: '', code: 1, succeeds: true },
+    { output: 'diff --git a/new.txt b/new.txt\n+content\n', error: 'Warning: Permanently added host', code: 1, succeeds: true },
+    { output: '', error: 'Could not access new.txt', code: 2, succeeds: false },
+    { output: 'diff --git a/new.txt b/new.txt\n', error: 'Could not read new.txt', code: 2, succeeds: false }
+  ])('distinguishes a no-index patch from a failed read: $succeeds, $error', async ({ output, error, code, succeeds }) => {
     const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
     const status = pendingSsh();
     const snapshot = loadCommitGraphMachines(tab, runGuard);
@@ -133,7 +134,7 @@ describe('machine poll lifecycle', () => {
     const diff = loadMachineFileDiff(tab, { machineId: machine!.id, path: 'new.txt', staged: false, untracked: true });
     child.stdout.end(output);
     child.stderr.end(error);
-    child.emit('close', 1);
+    child.emit('close', code);
     if (succeeds) await expect(diff).resolves.toBe(output);
     else await expect(diff).rejects.toThrow(error);
   });
@@ -172,6 +173,36 @@ describe('machine poll lifecycle', () => {
     }
     expect(gitExecutor.run).toHaveBeenCalledWith(['update-ref', '-d', headRef], expect.objectContaining({ kind: 'mutation' }));
     expect(vi.mocked(gitExecutor.run).mock.calls.filter(([args]) => args[0] === 'fetch')).toHaveLength(1);
+  });
+
+  it.each(['for-each-ref', 'fetch', 'update-ref'])('preserves ref-change state when synchronization fails during %s', async (failedCommand) => {
+    const [machine] = saveMachine({ name: 'omarchy', sshHost: 'omarchy' });
+    const prefix = `refs/machines/${machine!.id}/`;
+    const branchSha = 'b'.repeat(40);
+    let fetched = false;
+    vi.mocked(gitExecutor.run).mockImplementation(async (args) => {
+      if (args[0] === 'fetch') fetched = true;
+      if (args[0] === failedCommand) throw new Error('ref is locked');
+      return {
+        args: [...args], cwd: tab.path,
+        stdout: args[0] === 'for-each-ref' ? `${prefix}HEAD\0${sha}\n` : '', stderr: '', exitCode: 0
+      };
+    });
+    const child = pendingSsh();
+    const pending = loadCommitGraphMachines(tab, runGuard);
+    child.stdout.end(`# branch.oid (initial)\0# branch.head orphan\0\0new-branch\0${branchSha}\0\0`);
+    child.emit('close', 0);
+
+    const result = await pending;
+    expect(fetched).toBe(failedCommand !== 'for-each-ref');
+    expect(result.refsChanged).toBe(failedCommand !== 'for-each-ref');
+    expect(result.machines[0]).toMatchObject({
+      state: 'online', current: true, message: expect.stringContaining('ref is locked'),
+      branches: [{ name: 'new-branch', sha: branchSha }]
+    });
+    if (failedCommand === 'update-ref') {
+      expect(gitExecutor.run).toHaveBeenCalledWith(['update-ref', '-d', `${prefix}HEAD`], expect.objectContaining({ kind: 'mutation' }));
+    }
   });
 
   it('only reads untracked files that Git listed in the snapshot', async () => {

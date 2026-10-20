@@ -115,7 +115,7 @@ describe('machine shell commands', () => {
 
   it('preserves the no-index access error when an untracked file disappeared', async () => {
     await expect(run('sh', ['-c', machineFileDiffCommand(repoPath, { path: 'vanished.txt', staged: false, untracked: true })]))
-      .rejects.toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('vanished.txt') });
+      .rejects.toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('vanished.txt') });
   });
 
   it('reports unavailable Git as a command failure instead of a missing checkout', async () => {

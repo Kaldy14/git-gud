@@ -24,3 +24,24 @@ it('selects a copied file without rendering a separate modification to its sourc
   expect(selectMachineFileDiff(patch, 'new.txt')).toMatchObject({ name: 'new.txt', prevName: 'old.txt' });
   expect(selectMachineFileDiff(patch, 'missing.txt')).toBeUndefined();
 });
+
+it.each([
+  { path: 'café.txt', encoded: String.raw`caf\303\251.txt` },
+  { path: 'tab\tquote".txt', encoded: String.raw`tab\tquote\".txt` },
+  { path: 'line\nfeed.txt', encoded: String.raw`line\nfeed.txt` },
+  { path: 'literal\\t.txt', encoded: String.raw`literal\\t.txt` }
+])('matches Git-quoted patch names for $encoded', ({ path, encoded }) => {
+  const patch = [
+    `diff --git "a/${encoded}" "b/${encoded}"`, 'new file mode 100644',
+    '--- /dev/null', `+++ "b/${encoded}"`, '@@ -0,0 +1 @@', '+content', ''
+  ].join('\n');
+  expect(selectMachineFileDiff(patch, path)?.name).toBe(path);
+});
+
+it('decodes the quoted source and destination of a pure rename', () => {
+  const patch = [
+    'diff --git "a/old\\t.txt" "b/new\\t.txt"', 'similarity index 100%',
+    'rename from "old\\t.txt"', 'rename to "new\\t.txt"', ''
+  ].join('\n');
+  expect(selectMachineFileDiff(patch, 'new\t.txt')).toMatchObject({ name: 'new\t.txt', prevName: 'old\t.txt' });
+});

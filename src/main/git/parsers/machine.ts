@@ -146,8 +146,10 @@ export function machineFileDiffCommand(
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
     readOnlyGitFunction(),
     assertUnfilteredCommand(`printf '%s\\0' ${paths}`),
-    // Preserve exit status and stderr; the SSH boundary distinguishes a normal
-    // --no-index patch (exit 1) from file access errors using both output streams.
-    diff
+    // SSH notices share stderr with Git. Mark a no-index read error as exit 2
+    // remotely, while streaming the patch through fd 3 without buffering it.
+    request.untracked
+      ? `{ diff_error=$(${diff} 2>&1 1>&3); diff_code=$?; if [ -n "$diff_error" ]; then printf '%s\\n' "$diff_error" >&2; [ "$diff_code" -ne 1 ] || diff_code=2; fi; exit "$diff_code"; } 3>&1`
+      : diff
   ]);
 }

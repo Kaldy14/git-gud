@@ -227,13 +227,9 @@ async function loadMachineRepository(
     };
   }
 
-  let refsChanged = false;
-  let message: string | undefined;
-  try {
-    refsChanged = await syncMachineRefs(tab, machine, remotePath, output.branches, output.status.branch.oid, runDuringRefMutation);
-  } catch (error) {
-    message = `Branch tips could not be fetched: ${error instanceof Error ? error.message : 'unknown error'}`;
-  }
+  const { refsChanged, message } = await syncMachineRefs(
+    tab, machine, remotePath, output.branches, output.status.branch.oid, runDuringRefMutation
+  );
 
   const snapshot: RemoteMachineRepository = {
     machine: identity,
@@ -256,38 +252,49 @@ async function syncMachineRefs(
   branches: readonly { name: string; sha: string }[],
   headSha: string | undefined,
   runDuringRefMutation: RefMutationRunner
-): Promise<boolean> {
-  const prefix = `refs/machines/${machine.id}/`;
-  const expected = new Map(branches.map((branch) => [`${prefix}heads/${branch.name}`, branch.sha]));
-  if (headSha && /^[0-9a-f]{40,64}$/.test(headSha)) expected.set(`${prefix}HEAD`, headSha);
+): Promise<{ refsChanged: boolean; message?: string }> {
+  let refsChanged = false;
+  try {
+    const prefix = `refs/machines/${machine.id}/`;
+    const expected = new Map(branches.map((branch) => [`${prefix}heads/${branch.name}`, branch.sha]));
+    if (headSha && /^[0-9a-f]{40,64}$/.test(headSha)) expected.set(`${prefix}HEAD`, headSha);
 
-  const env = createProfileCommandEnv(tab.assignedProfileId);
-  const local = await gitExecutor.run(['for-each-ref', '--format=%(refname)%00%(objectname)', prefix], { cwd: tab.path, env });
-  const actual = new Map(local.stdout.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string]));
-  if (actual.size === expected.size && [...expected].every(([ref, sha]) => actual.get(ref) === sha)) return false;
+    const env = createProfileCommandEnv(tab.assignedProfileId);
+    const local = await gitExecutor.run(['for-each-ref', '--format=%(refname)%00%(objectname)', prefix], { cwd: tab.path, env });
+    const actual = new Map(local.stdout.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string]));
+    if (actual.size === expected.size && [...expected].every(([ref, sha]) => actual.get(ref) === sha)) return { refsChanged: false };
 
-  const fetchUrl = `${machine.sshHost}:${remotePath.startsWith('~/') ? remotePath.slice(2) : remotePath === '~' ? '.' : remotePath}`;
-  return gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
-    if (!isCurrentMachine(machine)) return false;
-    await gitExecutor.run([
-      'fetch', '--no-tags', '--prune', '--no-write-fetch-head', '--no-auto-gc', '--no-write-commit-graph', '--no-recurse-submodules',
-      fetchUrl,
-      `+refs/heads/*:${prefix}heads/*`,
-      ...(expected.has(`${prefix}HEAD`) ? [`+HEAD:${prefix}HEAD`] : [])
-    ], {
-      cwd: tab.path,
-      kind: 'fetch',
-      env: { ...env, GIT_SSH_COMMAND: ['ssh', ...SSH_OPTIONS].join(' '), GIT_TERMINAL_PROMPT: '0' },
-      timeoutMs: FETCH_TIMEOUT_MS
-    });
-    // The heads wildcard cannot prune this separately fetched ref when the
-    // checkout switches to an orphan branch with no first commit yet.
-    const headRef = `${prefix}HEAD`;
-    if (!expected.has(headRef) && actual.has(headRef)) {
-      await gitExecutor.run(['update-ref', '-d', headRef], { cwd: tab.path, kind: 'mutation', env });
-    }
-    return true;
-  }));
+    const fetchUrl = `${machine.sshHost}:${remotePath.startsWith('~/') ? remotePath.slice(2) : remotePath === '~' ? '.' : remotePath}`;
+    await gitExecutor.transaction(tab.commonDir, () => runDuringRefMutation(tab.commonDir, async () => {
+      if (!isCurrentMachine(machine)) return;
+      // Fetch can update refs before failing, and obsolete-HEAD cleanup can fail
+      // after a successful fetch. Invalidate the graph in either case.
+      refsChanged = true;
+      await gitExecutor.run([
+        'fetch', '--no-tags', '--prune', '--no-write-fetch-head', '--no-auto-gc', '--no-write-commit-graph', '--no-recurse-submodules',
+        fetchUrl,
+        `+refs/heads/*:${prefix}heads/*`,
+        ...(expected.has(`${prefix}HEAD`) ? [`+HEAD:${prefix}HEAD`] : [])
+      ], {
+        cwd: tab.path,
+        kind: 'fetch',
+        env: { ...env, GIT_SSH_COMMAND: ['ssh', ...SSH_OPTIONS].join(' '), GIT_TERMINAL_PROMPT: '0' },
+        timeoutMs: FETCH_TIMEOUT_MS
+      });
+      // The heads wildcard cannot prune this separately fetched ref when the
+      // checkout switches to an orphan branch with no first commit yet.
+      const headRef = `${prefix}HEAD`;
+      if (!expected.has(headRef) && actual.has(headRef)) {
+        await gitExecutor.run(['update-ref', '-d', headRef], { cwd: tab.path, kind: 'mutation', env });
+      }
+    }));
+    return { refsChanged };
+  } catch (error) {
+    return {
+      refsChanged,
+      message: `Branch tips could not be fetched: ${error instanceof Error ? error.message : 'unknown error'}`
+    };
+  }
 }
 
 function isCurrentMachine(machine: RemoteMachine): boolean {
@@ -328,9 +335,9 @@ function runSsh(host: string, command: string, options: { timeoutMs: number; max
     child.on('error', (error) => finish(error));
     child.on('close', (code) => {
       const output = Buffer.concat(stdout).toString('utf8');
-      // --no-index uses 1 for both a patch and an access error. Keep errors
-      // visible instead of accepting an empty or failed read as a clean file.
-      if (code === 0 || (options.allowDiffExitCode && code === 1 && output.length > 0 && !stderr.trim())) finish(undefined, output);
+      // The remote command converts no-index read errors to exit 2, so an SSH
+      // notice on stderr cannot hide a valid patch (exit 1).
+      if (code === 0 || (options.allowDiffExitCode && code === 1 && output.length > 0)) finish(undefined, output);
       else finish(new Error(sshErrorMessage(host, stderr, code)));
     });
   });
