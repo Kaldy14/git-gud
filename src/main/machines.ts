@@ -17,7 +17,7 @@ import type {
 } from '@shared/types';
 
 import { gitExecutor } from './git/exec';
-import { machineFileDiffCommand, machineSnapshotCommand, machineUploadPackCommand, parseMachineSnapshot } from './git/parsers/machine';
+import { machineFileDiffCommand, machineSnapshotCommand, machineTestCommand, machineUploadPackCommand, parseMachineSnapshot } from './git/parsers/machine';
 import { createProfileCommandEnv } from './profiles';
 
 type MachineStoreShape = { machines: RemoteMachine[] };
@@ -129,7 +129,7 @@ async function deleteMachineRefs(
 
 export async function testMachine(input: Pick<RemoteMachineInput, 'sshHost'>): Promise<RemoteMachineTestResult> {
   try {
-    const result = await runSsh(normalizeSshHost(input.sshHost), "sh -c 'git --version && hostname'", { timeoutMs: SNAPSHOT_TIMEOUT_MS });
+    const result = await runSsh(normalizeSshHost(input.sshHost), machineTestCommand(), { timeoutMs: SNAPSHOT_TIMEOUT_MS });
     const [version, hostname] = result.trim().split('\n');
     return { ok: true, message: `Connected to ${hostname ?? 'machine'} (${version ?? 'git'}).` };
   } catch (error) {

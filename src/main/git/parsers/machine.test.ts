@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { chmod, mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import {
   MACHINE_REFS_MARKER,
   machineFileDiffCommand,
   machineSnapshotCommand,
+  machineTestCommand,
   machineUploadPackCommand,
   parseMachineSnapshot,
   quoteRemoteShell,
@@ -155,6 +156,35 @@ describe('machine shell commands', () => {
       expect((await run('git', ['-C', guarded, 'rev-parse', ref])).stdout)
         .toBe((await run('git', ['-C', repoPath, 'rev-parse', 'main'])).stdout);
       expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unsupported Git before testing, inspecting, or serving a repository', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-gud-old-git-'));
+    try {
+      const calls = join(directory, 'calls');
+      const inspected = join(directory, 'inspected');
+      const realGit = (await run('sh', ['-c', 'command -v git'])).stdout.trim();
+      const wrapper = join(directory, 'git');
+      await writeFile(wrapper, `#!/bin/sh\nprintf '%s\n' "$*" >> ${quoteRemoteShell(calls)}\nif [ "$1" = --no-lazy-fetch ]; then exit 129; fi\nprintf inspected >> ${quoteRemoteShell(inspected)}\nexec ${quoteRemoteShell(realGit)} "$@"\n`);
+      await chmod(wrapper, 0o755);
+      const env = { ...process.env, PATH: `${directory}${delimiter}${process.env.PATH}` };
+      const commands = [
+        machineTestCommand(), machineSnapshotCommand(repoPath),
+        machineFileDiffCommand(repoPath, { path: 'tracked.txt', staged: false, untracked: false }),
+        `${machineUploadPackCommand()} ${quoteRemoteShell(repoPath)}`
+      ];
+      for (const command of commands) {
+        await expect(run('sh', ['-c', command], { env })).rejects.toMatchObject({
+          code: 2, stdout: '', stderr: expect.stringContaining('Update Git on this machine')
+        });
+      }
+      expect(existsSync(inspected)).toBe(false);
+      expect((await readFile(calls, 'utf8')).trim().split('\n')).toEqual(Array(4).fill('--no-lazy-fetch --version'));
+      const supported = await run('sh', ['-c', machineTestCommand()]);
+      expect(supported.stdout.trim().split('\n')).toEqual([expect.stringMatching(/^git version /), expect.any(String)]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

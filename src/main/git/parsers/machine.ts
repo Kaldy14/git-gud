@@ -13,6 +13,14 @@ export type MachineSnapshotOutput =
   | { kind: 'missing' }
   | { kind: 'repository'; status: GitStatusSummary; branches: RemoteMachineBranch[] };
 
+// Probe the option itself: older Git silently ignores GIT_NO_LAZY_FETCH.
+const REQUIRE_READ_ONLY_GIT = "git --no-lazy-fetch --version >/dev/null 2>&1 || { printf 'Update Git on this machine: read-only inspection requires --no-lazy-fetch support (Git 2.46 or newer).\\n' >&2; exit 2; }";
+
+/** Connection tests enforce the same Git capability as every inspection command. */
+export function machineTestCommand(): string {
+  return posixCommand([REQUIRE_READ_ONLY_GIT, 'git --version && hostname']);
+}
+
 /** Single-quotes a value for the remote POSIX shell. */
 export function quoteRemoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -42,6 +50,7 @@ export function machineSnapshotCommand(remotePath: string): string {
     // Tracking text is parsed below, so every Git process needs a stable locale.
     'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0 LC_ALL=C',
     'command -v git >/dev/null 2>&1 || { printf "Git is not available on the remote PATH.\\n" >&2; exit 127; }',
+    REQUIRE_READ_ONLY_GIT,
     // Only an absent repository clears mirrored refs. Ownership and permission
     // errors must retain the last snapshot and reach the offline error message.
     `probe=$(git -C ${remoteShellPath(remotePath)} rev-parse --is-inside-work-tree --show-prefix 2>&1); code=$?`,
@@ -69,6 +78,7 @@ export function machineUploadPackCommand(): string {
   // An empty hook override breaks Git's pack-objects invocation; reject hooks instead.
   return `${posixCommand([
     'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0',
+    REQUIRE_READ_ONLY_GIT,
     'git -C "$1" config --get uploadpack.packObjectsHook >/dev/null; code=$?',
     `case "$code" in 0) printf 'Read-only mirroring is unavailable for upload-pack hooks.\\n' >&2; exit 2;; 1) ;; *) exit "$code";; esac`,
     'exec git -c core.hooksPath=/dev/null upload-pack "$@"'
@@ -154,6 +164,7 @@ export function machineFileDiffCommand(
 
   return posixCommand([
     'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0',
+    REQUIRE_READ_ONLY_GIT,
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
     readOnlyGitFunction(),
     assertUnfilteredCommand(`printf '%s\\0' ${paths}`),
