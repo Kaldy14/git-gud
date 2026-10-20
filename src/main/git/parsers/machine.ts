@@ -26,13 +26,19 @@ export function remoteShellPath(remotePath: string): string {
  * locks are disabled so the remote index is never refreshed or rewritten.
  */
 export function machineSnapshotCommand(remotePath: string): string {
-  return [
+  return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
+    'command -v git >/dev/null 2>&1 || { printf "Git is not available on the remote PATH.\\n" >&2; exit 127; }',
     `cd -- ${remoteShellPath(remotePath)} 2>/dev/null && git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { printf ${MACHINE_MISSING_MARKER}; exit 0; }`,
     'git status --porcelain=v2 --branch -z --untracked-files=all',
     "printf '\\0__GG_REFS__\\0'",
     "git for-each-ref --format='%(refname:strip=2)%00%(objectname)%00%(upstream:short)%00%(upstream:track,nobracket)' refs/heads"
-  ].join('; ');
+  ]);
+}
+
+/** SSH invokes the login shell, which may be fish or another non-POSIX shell. */
+function posixCommand(commands: string[]): string {
+  return `sh -c ${quoteRemoteShell(commands.join('; '))}`;
 }
 
 export function parseMachineSnapshot(output: string): MachineSnapshotOutput {
@@ -76,11 +82,11 @@ export function machineFileDiffCommand(
     ? `git diff --no-color --no-index -- /dev/null ${path}`
     : `git diff --no-color${request.staged ? ' --cached' : ''} -- ${path}`;
 
-  return [
+  return posixCommand([
     'export GIT_OPTIONAL_LOCKS=0',
     `cd -- ${remoteShellPath(remotePath)} || exit 2`,
     // --no-index exits 1 when the files differ, which is the expected case.
     `${diff}`,
     'code=$?; [ "$code" -le 1 ] && exit 0 || exit "$code"'
-  ].join('; ');
+  ]);
 }

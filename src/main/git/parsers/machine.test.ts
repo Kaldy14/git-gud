@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -111,5 +111,17 @@ describe('machine shell commands', () => {
     await expect(
       run('sh', ['-c', machineFileDiffCommand(join(repoPath, 'nope'), { path: 'tracked.txt', staged: false, untracked: false })])
     ).rejects.toMatchObject({ code: 2 });
+  });
+
+  it('reports unavailable Git as a command failure instead of a missing checkout', async () => {
+    const shellOnlyPath = await mkdtemp(join(tmpdir(), 'git-gud-shell-only-'));
+    try {
+      await symlink('/bin/sh', join(shellOnlyPath, 'sh'));
+      await expect(run('/bin/sh', ['-c', machineSnapshotCommand(repoPath)], {
+        env: { ...process.env, PATH: shellOnlyPath }
+      })).rejects.toMatchObject({ code: 127, stdout: '', stderr: expect.stringContaining('Git is not available') });
+    } finally {
+      await rm(shellOnlyPath, { recursive: true, force: true });
+    }
   });
 });
