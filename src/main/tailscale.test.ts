@@ -67,4 +67,11 @@ describe('tailscale status parsing', () => {
     expect(parseTailscaleStatus({ BackendState: 'NeedsLogin' })).toMatchObject({ state: 'stopped', message: expect.stringMatching(/Sign in/) });
     expect(parseTailscaleStatus(null)).toMatchObject({ state: 'stopped' });
   });
+
+  it('directs devices awaiting approval to a tailnet administrator instead of another sign-in', () => {
+    expect(parseTailscaleStatus({ BackendState: 'NeedsMachineAuth' })).toEqual({
+      state: 'stopped',
+      message: 'Ask a tailnet administrator to approve this device on the Machines page in the Tailscale admin console, then try again.'
+    });
+  });
 });

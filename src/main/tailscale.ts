@@ -33,8 +33,11 @@ export async function readTailscaleStatus(): Promise<TailscaleStatus> {
 export function parseTailscaleStatus(value: unknown): TailscaleStatus {
   const status = asRecord(value);
   const backendState = typeof status.BackendState === 'string' ? status.BackendState : '';
-  if (backendState === 'NeedsLogin' || backendState === 'NeedsMachineAuth') {
-    return { state: 'stopped', message: 'Sign in to Tailscale on this Mac, then try again.' };
+  if (backendState === 'NeedsLogin') {
+    return { state: 'stopped', message: 'Sign in to Tailscale, then try again.' };
+  }
+  if (backendState === 'NeedsMachineAuth') {
+    return { state: 'stopped', message: 'Ask a tailnet administrator to approve this device on the Machines page in the Tailscale admin console, then try again.' };
   }
   if (backendState !== 'Running') return { state: 'stopped', message: 'Tailscale is not connected. Turn it on and try again.' };
 

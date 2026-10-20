@@ -554,7 +554,10 @@ export function GraphView({
     onBulkSelectionChange([]);
     onSelectRow(row.sha);
     // Other machines are view-only: no actions apply to their working directory.
-    if (row.machineWip) return;
+    if (row.machineWip) {
+      setContextMenu(undefined);
+      return;
+    }
     setContextMenu({
       kind: 'commit',
       row,
