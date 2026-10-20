@@ -12,7 +12,7 @@ import { loadStatus, loadWorktrees } from './repositoryOverview';
 import * as machines from '../machines';
 
 describe('loadCommitGraph', () => {
-  it('does not label detached HEADs in any local worktree as existing only on a machine', async () => {
+  it('excludes commits retained by local worktree HEADs and stashes from machine-only badges', async () => {
     const repoPath = await mkdtemp(join(tmpdir(), 'git-gud-machine-detached-'));
     const enabledMachines = vi.spyOn(machines, 'listEnabledGraphMachines').mockReturnValue([
       { id: 'detached-test', name: 'Other machine' }
@@ -45,6 +45,25 @@ describe('loadCommitGraph', () => {
       await git(linkedPath, ['checkout', '--orphan', 'empty-worktree']);
       const unbornPage = await loadCommitGraph({ path: repoPath }, 50, false);
       expect(unbornPage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
+        { id: 'detached-test', name: 'Other machine' }
+      ]);
+
+      // Older stashes retain commits even when refs/stash points at a newer base.
+      await git(repoPath, ['checkout', '--detach', sha]);
+      await writeRepoFile(repoPath, 'stash.txt', 'retained locally\n');
+      await git(repoPath, ['add', 'stash.txt']);
+      await git(repoPath, ['stash', 'push', '-m', 'retain detached commit']);
+      await git(repoPath, ['checkout', 'main']);
+      await writeRepoFile(repoPath, 'newer.txt', 'newer stash on main\n');
+      await git(repoPath, ['add', 'newer.txt']);
+      await git(repoPath, ['stash', 'push', '-m', 'newer stash']);
+      const stashedPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(stashedPage.rows.find((row) => row.sha === sha)?.unpushedOn).toBeUndefined();
+      expect(stashedPage.rows.filter((row) => row.node.kind === 'stash')).toHaveLength(2);
+
+      await git(repoPath, ['stash', 'drop', 'stash@{1}']);
+      const droppedPage = await loadCommitGraph({ path: repoPath }, 50, false);
+      expect(droppedPage.rows.find((row) => row.sha === sha)?.unpushedOn).toEqual([
         { id: 'detached-test', name: 'Other machine' }
       ]);
     } finally {

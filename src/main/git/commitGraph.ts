@@ -41,17 +41,22 @@ export async function loadCommitGraph(
   const machines = listEnabledGraphMachines();
   const statusPromise = loadStatus(tab.path, env, [], { aheadBehind: false });
   const worktreesPromise = loadWorktrees(tab.path, env);
+  const stashesPromise = loadStashes(tab.path, env);
   const [logCommits, refs, status, stashes, worktrees, remotes, machineRefs] = await Promise.all([
     loadLogCommits(tab.path, logLimit, env, machines),
     // Graph chips and WIP nodes need ref tips and file state, not the sidebar's
     // ahead/behind counts for every old branch and linked worktree.
     loadRefs(tab.path, env, { includeTracking: false }),
     statusPromise,
-    loadStashes(tab.path, env),
+    stashesPromise,
     worktreesPromise,
     loadRemoteAvatars ? loadRemotes(tab.path, env) : Promise.resolve([]),
-    Promise.all([statusPromise, worktreesPromise]).then(([status, worktrees]) =>
-      loadMachineRefs(tab.path, env, machines, limit, [status.branch.oid, ...worktrees.map((worktree) => worktree.head)]))
+    Promise.all([statusPromise, worktreesPromise, stashesPromise]).then(([status, worktrees, stashes]) =>
+      loadMachineRefs(tab.path, env, machines, limit, [
+        status.branch.oid, ...worktrees.map((worktree) => worktree.head),
+        // refs/stash covers only the newest entry; older stashes also retain commits.
+        ...stashes.map((stash) => stash.sha)
+      ]))
   ]);
   const hasMore = limit < MAX_COMMIT_GRAPH_LIMIT && logCommits.length > limit;
   const commits = logCommits.slice(0, limit);
@@ -257,12 +262,12 @@ async function loadMachineRefs(
   env: NodeJS.ProcessEnv | undefined,
   machines: readonly GraphMachine[],
   limit: number,
-  localHeads: readonly (string | undefined)[]
+  localTips: readonly (string | undefined)[]
 ): Promise<MachineRefs> {
   const result: MachineRefs = { chips: [], unpushed: new Map() };
   if (machines.length === 0) return result;
   // Unborn worktrees report an all-zero HEAD, which rev-list rejects.
-  const localRevisions = [...new Set(localHeads.flatMap((head) => head && !/^0+$/.test(head) ? [head] : []))];
+  const localRevisions = [...new Set(localTips.flatMap((head) => head && !/^0+$/.test(head) ? [head] : []))];
 
   await Promise.all(machines.map(async (machine) => {
     const prefix = `refs/machines/${machine.id}`;
