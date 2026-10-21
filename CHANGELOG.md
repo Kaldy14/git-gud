@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.10.16] - 2026-10-21
+
+### Changed
+
+- Collapse skipped jobs in workflow run summaries by default, folding them into one expandable card per dependency level and a single sidebar row. Search matches and a selected skipped job stay visible.
+- Fit the workflow run header on one line and show run status, trigger, duration, and commit inline beside the workflow name.
+
 ## [2026.10.15] - 2026-10-20
 
 ### Added
