@@ -7327,17 +7327,17 @@ button.ref-chip {
 }
 
 .workflow-run-view-header {
-  display: grid;
-  min-height: 78px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 8px 16px;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
   border-bottom: 1px solid var(--border);
-  padding: 10px 18px 12px;
+  padding: 6px 18px;
 }
 
 .workflow-run-back {
   display: inline-flex;
+  flex-shrink: 0;
   width: fit-content;
   align-items: center;
   gap: 6px;
@@ -7353,9 +7353,15 @@ button.ref-chip {
   color: var(--text-1);
 }
 
+.workflow-run-view-separator {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
 .workflow-run-view-title {
   display: flex;
   min-width: 0;
+  flex: 1;
   align-items: center;
   gap: 8px;
 }
@@ -7364,16 +7370,17 @@ button.ref-chip {
   overflow: hidden;
   margin: 0;
   color: var(--text-1);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 700;
-  line-height: 23px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .workflow-run-view-title > span {
+  flex-shrink: 0;
   color: var(--text-3);
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .workflow-run-view [data-tone='success'] {
@@ -7393,9 +7400,7 @@ button.ref-chip {
 }
 
 .workflow-run-github-link {
-  grid-row: 1 / span 2;
-  grid-column: 2;
-  align-self: center;
+  flex-shrink: 0;
   gap: 5px;
   text-decoration: none;
 }
@@ -7570,6 +7575,10 @@ button.ref-chip {
   letter-spacing: 0.02em;
 }
 
+.workflow-run-skipped-nav {
+  color: var(--text-3);
+}
+
 .workflow-run-sidebar-loading {
   display: flex;
   align-items: center;
@@ -7593,45 +7602,52 @@ button.ref-chip {
 }
 
 .workflow-run-facts {
-  display: grid;
-  grid-template-columns: minmax(230px, 2fr) repeat(3, minmax(110px, 1fr));
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--bg-panel);
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 0 4px;
+  color: var(--text-2);
+  font-size: 10px;
 }
 
 .workflow-run-facts > div {
-  display: grid;
+  display: flex;
   min-width: 0;
-  min-height: 70px;
-  align-content: center;
-  gap: 5px;
-  padding: 10px 14px;
+  align-items: center;
 }
 
-.workflow-run-facts > div + div {
-  border-left: 1px solid var(--border);
-}
-
-.workflow-run-facts span,
-.workflow-job-meta > span {
+.workflow-run-facts > div + div::before {
+  margin-right: 12px;
   color: var(--text-3);
-  font-size: 9px;
+  content: '·';
 }
 
-.workflow-run-facts strong {
+.workflow-run-facts dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  color: var(--text-1);
-  font-size: 11px;
-  text-overflow: ellipsis;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
-.workflow-run-fact-ref {
+.workflow-run-facts dd {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.workflow-run-facts dd[data-tone] {
+  font-weight: 650;
+}
+
+.workflow-job-meta > span {
+  color: var(--text-3);
+  font-size: 9px;
 }
 
 .workflow-run-graph {
@@ -7641,12 +7657,12 @@ button.ref-chip {
 
 .workflow-run-graph > header {
   display: flex;
-  min-height: 65px;
+  min-height: 36px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--border);
-  padding: 10px 0;
+  padding: 0 0 8px;
 }
 
 .workflow-run-graph > header > div {
@@ -7655,9 +7671,9 @@ button.ref-chip {
   gap: 8px;
 }
 
-.workflow-run-graph > header > div > span {
-  display: grid;
-  gap: 3px;
+.workflow-run-graph > header > .workflow-run-graph-title {
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .workflow-run-graph > header strong {
@@ -7665,14 +7681,20 @@ button.ref-chip {
   font-size: 12px;
 }
 
-.workflow-run-graph > header small {
-  color: var(--text-3);
-  font-size: 9px;
+.workflow-run-graph-actions {
+  min-width: 0;
+  max-width: 55%;
+  justify-content: flex-end;
+}
+
+.workflow-run-skipped-toggle {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .workflow-run-branch-chip {
   display: inline-flex;
-  max-width: 42%;
+  min-width: 0;
   align-items: center;
   gap: 4px;
   overflow: hidden;
@@ -7752,6 +7774,17 @@ button.ref-chip {
   line-height: 15px;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.workflow-run-skipped-card {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-3);
+  box-shadow: none;
+}
+
+.workflow-run-skipped-card > svg:last-child {
+  margin-top: 1.5px;
 }
 
 .workflow-run-job-card > small {
@@ -7882,19 +7915,6 @@ button.ref-chip {
 @media (max-width: 820px) {
   .workflow-run-view-layout {
     grid-template-columns: 190px minmax(0, 1fr);
-  }
-
-  .workflow-run-facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .workflow-run-facts > div:nth-child(3) {
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
-
-  .workflow-run-facts > div:nth-child(4) {
-    border-top: 1px solid var(--border);
   }
 
 }

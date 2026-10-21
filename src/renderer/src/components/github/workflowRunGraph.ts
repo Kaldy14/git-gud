@@ -72,3 +72,51 @@ export function arrangeWorkflowJobGraph(
 
   return columns;
 }
+
+export function isSkippedWorkflowJob(job: GitHubWorkflowJob): boolean {
+  return job.status === 'completed' && job.conclusion === 'skipped';
+}
+
+export type WorkflowGraphNode =
+  | { kind: 'job'; key: string; job: GitHubWorkflowJob }
+  | { kind: 'skipped'; key: string; jobs: GitHubWorkflowJob[] };
+
+export type WorkflowGraphLayout = {
+  columns: WorkflowGraphNode[][];
+  /** Maps every job id to the key of the node that currently represents it. */
+  nodeKeyByJobId: Map<number, string>;
+};
+
+/**
+ * Keeps each job in its dependency column, but folds a column's skipped jobs into a
+ * single trailing node unless expanded so large conditional workflows stay readable.
+ */
+export function layoutWorkflowJobGraph(
+  jobs: GitHubWorkflowJob[],
+  showSkipped: boolean
+): WorkflowGraphLayout {
+  const nodeKeyByJobId = new Map<number, string>();
+  const columns = arrangeWorkflowJobGraph(jobs).map((column, columnIndex) => {
+    const nodes: WorkflowGraphNode[] = [];
+    const skipped: GitHubWorkflowJob[] = [];
+    for (const job of column) {
+      if (!showSkipped && isSkippedWorkflowJob(job)) {
+        skipped.push(job);
+        continue;
+      }
+      const key = `job:${job.id}`;
+      nodeKeyByJobId.set(job.id, key);
+      nodes.push({ kind: 'job', key, job });
+    }
+    if (skipped.length > 0) {
+      const key = `skipped:${columnIndex}`;
+      for (const job of skipped) {
+        nodeKeyByJobId.set(job.id, key);
+      }
+      nodes.push({ kind: 'skipped', key, jobs: skipped });
+    }
+    return nodes;
+  });
+
+  return { columns, nodeKeyByJobId };
+}

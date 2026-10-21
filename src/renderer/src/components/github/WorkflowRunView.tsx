@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleSlash2,
+  Clock,
   ExternalLink,
   GitBranch,
   GitCommitHorizontal,
@@ -39,7 +40,8 @@ import {
   workflowJobNameSegments
 } from './workflowJobSearch';
 import {
-  arrangeWorkflowJobGraph,
+  isSkippedWorkflowJob,
+  layoutWorkflowJobGraph,
   workflowGraphEdgePath
 } from './workflowRunGraph';
 
@@ -79,6 +81,9 @@ export function WorkflowRunView({
     (job) => job.status === 'completed'
   ).length;
   const totalJobs = detailQuery.data?.totalJobCount ?? 0;
+  const [skippedJobsExpanded, setSkippedJobsExpanded] = useState(false);
+  const activeJobs = useMemo(() => jobs.filter((job) => !isSkippedWorkflowJob(job)), [jobs]);
+  const skippedJobs = useMemo(() => jobs.filter(isSkippedWorkflowJob), [jobs]);
 
   const sectionRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -107,6 +112,12 @@ export function WorkflowRunView({
         : undefined,
     [activeMatchIndex, isSearchOpen, matchJobIds, searchQuery]
   );
+  // Skipped jobs start collapsed, but a search hit or a selected skipped job must stay visible.
+  const showSkipped =
+    skippedJobsExpanded ||
+    skippedJobs.some(
+      (job) => job.id === selectedJobId || search?.matchJobIds.has(job.id) === true
+    );
 
   const openSearchRef = useRef(() => {});
 
@@ -203,6 +214,23 @@ export function WorkflowRunView({
     }
   }
 
+  function renderJobNavItem(job: GitHubWorkflowJob): ReactElement {
+    return (
+      <button
+        className="workflow-run-nav-item workflow-run-job-nav"
+        data-active={selectedJobId === job.id}
+        data-workflow-job-id={job.id}
+        {...workflowJobSearchAttributes(job.id, search)}
+        type="button"
+        key={job.id}
+        onClick={() => setSelectedJobId(job.id)}
+      >
+        <StatusIcon item={job} size={13} />
+        <WorkflowJobName name={job.name} search={search} />
+      </button>
+    );
+  }
+
   function handleSectionKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
     if (isSearchOpen && event.key === 'Escape' && !event.defaultPrevented) {
       event.preventDefault();
@@ -222,6 +250,7 @@ export function WorkflowRunView({
           <ArrowLeft size={14} />
           <span>{owner}/{repository}</span>
         </button>
+        <span className="workflow-run-view-separator" aria-hidden="true">/</span>
         <div className="workflow-run-view-title">
           <StatusIcon item={run} size={19} />
           <h1>{run.displayTitle}</h1>
@@ -269,20 +298,19 @@ export function WorkflowRunView({
             <span>All jobs</span>
             {totalJobs > 0 ? <span>{completedJobs ?? 0}/{totalJobs}</span> : null}
           </div>
-          {jobs.map((job) => (
+          {activeJobs.map(renderJobNavItem)}
+          {skippedJobs.length > 0 ? (
             <button
-              className="workflow-run-nav-item workflow-run-job-nav"
-              data-active={selectedJobId === job.id}
-              data-workflow-job-id={job.id}
-              {...workflowJobSearchAttributes(job.id, search)}
+              className="workflow-run-nav-item workflow-run-skipped-nav"
               type="button"
-              key={job.id}
-              onClick={() => setSelectedJobId(job.id)}
+              aria-expanded={showSkipped}
+              onClick={() => setSkippedJobsExpanded(!showSkipped)}
             >
-              <StatusIcon item={job} size={13} />
-              <WorkflowJobName name={job.name} search={search} />
+              {showSkipped ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              <span>{skippedJobsLabel(skippedJobs.length)}</span>
             </button>
-          ))}
+          ) : null}
+          {showSkipped ? skippedJobs.map(renderJobNavItem) : null}
           {detailQuery.isLoading ? (
             <div className="workflow-run-sidebar-loading">
               <Loader2 size={13} className="animate-spin" /> Loading jobs…
@@ -313,8 +341,11 @@ export function WorkflowRunView({
                 detailQuery.data?.dependencyGraphAvailable === true
               }
               isLoading={detailQuery.isLoading}
+              skippedJobCount={skippedJobs.length}
+              showSkipped={showSkipped}
               search={search}
               onSelectJob={setSelectedJobId}
+              onShowSkippedChange={setSkippedJobsExpanded}
             />
           )}
         </main>
@@ -329,57 +360,76 @@ function WorkflowRunSummary({
   jobs,
   dependencyGraphAvailable,
   isLoading,
+  skippedJobCount,
+  showSkipped,
   search,
-  onSelectJob
+  onSelectJob,
+  onShowSkippedChange
 }: {
   run: GitHubWorkflowRun;
   owner: string;
   jobs: GitHubWorkflowJob[];
   dependencyGraphAvailable: boolean;
   isLoading: boolean;
+  skippedJobCount: number;
+  showSkipped: boolean;
   search: WorkflowJobSearchState | undefined;
   onSelectJob: (jobId: number) => void;
+  onShowSkippedChange: (showSkipped: boolean) => void;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
   const duration = formatDuration(run.startedAt, run.updatedAt, run.status !== 'completed');
 
   return (
     <div className="workflow-run-summary-page">
-      <section className="workflow-run-facts" aria-label="Workflow run facts">
-        <div>
-          <span>Triggered via {formatEvent(run.event)}</span>
-          <strong>{run.actor ?? owner} triggered this run</strong>
-        </div>
-        <div>
-          <span>Status</span>
-          <strong data-tone={presentation.tone}>{presentation.label}</strong>
-        </div>
-        <div>
-          <span>Total duration</span>
-          <strong>{duration}</strong>
-        </div>
-        <div>
-          <span>Commit</span>
-          <strong className="workflow-run-fact-ref">
-            <GitCommitHorizontal size={12} /> {run.sha.slice(0, 7)}
-          </strong>
-        </div>
-      </section>
-
       <section className="workflow-run-graph" aria-label={`${run.name} jobs`}>
         <header>
-          <div>
-            <Workflow size={15} />
-            <span>
-              <strong>{run.name}</strong>
-              <small>on: {formatEvent(run.event)}</small>
-            </span>
+          <div className="workflow-run-graph-title">
+            <Workflow size={14} />
+            <strong>{run.name}</strong>
+            <dl className="workflow-run-facts" aria-label="Workflow run facts">
+              <div>
+                <dt>Status</dt>
+                <dd data-tone={presentation.tone}>{presentation.label}</dd>
+              </div>
+              <div>
+                <dt>Trigger</dt>
+                <dd>
+                  {formatEvent(run.event)} by {run.actor ?? owner}
+                </dd>
+              </div>
+              <div>
+                <dt>Total duration</dt>
+                <dd>
+                  <Clock size={11} /> {duration}
+                </dd>
+              </div>
+              <div>
+                <dt>Commit</dt>
+                <dd>
+                  <GitCommitHorizontal size={11} /> {run.sha.slice(0, 7)}
+                </dd>
+              </div>
+            </dl>
           </div>
-          {run.branch ? (
-            <span className="workflow-run-branch-chip">
-              <GitBranch size={11} /> {run.branch}
-            </span>
-          ) : null}
+          <div className="workflow-run-graph-actions">
+            {skippedJobCount > 0 ? (
+              <button
+                className="btn-subtle workflow-run-skipped-toggle"
+                type="button"
+                aria-expanded={showSkipped}
+                onClick={() => onShowSkippedChange(!showSkipped)}
+              >
+                {showSkipped ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                {showSkipped ? 'Hide' : 'Show'} {skippedJobsLabel(skippedJobCount)}
+              </button>
+            ) : null}
+            {run.branch ? (
+              <span className="workflow-run-branch-chip">
+                <GitBranch size={11} /> {run.branch}
+              </span>
+            ) : null}
+          </div>
         </header>
         {isLoading && jobs.length === 0 ? (
           <div className="workflow-run-graph-loading">
@@ -387,7 +437,13 @@ function WorkflowRunSummary({
             Loading workflow jobs…
           </div>
         ) : jobs.length > 0 ? (
-          <WorkflowDependencyGraph jobs={jobs} search={search} onSelectJob={onSelectJob} />
+          <WorkflowDependencyGraph
+            jobs={jobs}
+            showSkipped={showSkipped}
+            search={search}
+            onSelectJob={onSelectJob}
+            onShowSkipped={() => onShowSkippedChange(true)}
+          />
         ) : (
           <div className="workflow-run-graph-empty">
             <CircleSlash2 size={18} /> No jobs were reported for this run.
@@ -404,23 +460,30 @@ function WorkflowRunSummary({
 }
 
 type WorkflowGraphEdge = {
-  sourceJobId: number;
-  targetJobId: number;
+  sourceKey: string;
+  targetKey: string;
   path: string;
 };
 
 function WorkflowDependencyGraph({
   jobs,
+  showSkipped,
   search,
-  onSelectJob
+  onSelectJob,
+  onShowSkipped
 }: {
   jobs: GitHubWorkflowJob[];
+  showSkipped: boolean;
   search: WorkflowJobSearchState | undefined;
   onSelectJob: (jobId: number) => void;
+  onShowSkipped: () => void;
 }): ReactElement {
-  const columns = useMemo(() => arrangeWorkflowJobGraph(jobs), [jobs]);
+  const { columns, nodeKeyByJobId } = useMemo(
+    () => layoutWorkflowJobGraph(jobs, showSkipped),
+    [jobs, showSkipped]
+  );
   const containerRef = useRef<HTMLDivElement>(null);
-  const nodeRefs = useRef(new Map<number, HTMLButtonElement>());
+  const nodeRefs = useRef(new Map<string, HTMLButtonElement>());
   const [edges, setEdges] = useState<WorkflowGraphEdge[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
@@ -436,18 +499,29 @@ function WorkflowDependencyGraph({
     function measure(): void {
       frame = undefined;
       const containerBounds = measuredContainer.getBoundingClientRect();
+      // Collapsed skipped jobs share one node, so their edges are rerouted to it and deduped.
+      const seenEdgeKeys = new Set<string>();
       const nextEdges = jobs.flatMap((job) => {
-        const target = nodeRefs.current.get(job.id);
-        if (!target) {
+        const targetKey = nodeKeyByJobId.get(job.id);
+        const target = targetKey === undefined ? undefined : nodeRefs.current.get(targetKey);
+        if (targetKey === undefined || !target) {
           return [];
         }
         const targetBounds = target.getBoundingClientRect();
 
         return job.dependencyJobIds.flatMap((dependencyJobId) => {
-          const source = nodeRefs.current.get(dependencyJobId);
-          if (!source) {
+          const sourceKey = nodeKeyByJobId.get(dependencyJobId);
+          const source = sourceKey === undefined ? undefined : nodeRefs.current.get(sourceKey);
+          const edgeKey = `${sourceKey}->${targetKey}`;
+          if (
+            sourceKey === undefined ||
+            !source ||
+            sourceKey === targetKey ||
+            seenEdgeKeys.has(edgeKey)
+          ) {
             return [];
           }
+          seenEdgeKeys.add(edgeKey);
           const sourceBounds = source.getBoundingClientRect();
           const sourceX = sourceBounds.right - containerBounds.left;
           const sourceY = sourceBounds.top - containerBounds.top + sourceBounds.height / 2;
@@ -456,8 +530,8 @@ function WorkflowDependencyGraph({
 
           return [
             {
-              sourceJobId: dependencyJobId,
-              targetJobId: job.id,
+              sourceKey,
+              targetKey,
               path: workflowGraphEdgePath(sourceX, sourceY, targetX, targetY)
             }
           ];
@@ -496,7 +570,7 @@ function WorkflowDependencyGraph({
         window.cancelAnimationFrame(frame);
       }
     };
-  }, [jobs, columns]);
+  }, [jobs, columns, nodeKeyByJobId]);
 
   return (
     <div className="workflow-run-job-scroll">
@@ -512,41 +586,63 @@ function WorkflowDependencyGraph({
             {edges.map((edge) => (
               <path
                 d={edge.path}
-                key={`${edge.sourceJobId}:${edge.targetJobId}`}
+                key={`${edge.sourceKey}->${edge.targetKey}`}
               />
             ))}
           </svg>
         ) : null}
         {columns.map((column, columnIndex) => (
           <div className="workflow-run-job-column" key={columnIndex}>
-            {column.map((job) => (
-              <button
-                className="workflow-run-job-card"
-                type="button"
-                key={job.id}
-                ref={(node) => {
-                  if (node) {
-                    nodeRefs.current.set(job.id, node);
-                  } else {
-                    nodeRefs.current.delete(job.id);
-                  }
-                }}
-                data-tone={workflowRunPresentation(job).tone}
-                data-workflow-job-id={job.id}
-                {...workflowJobSearchAttributes(job.id, search)}
-                onClick={() => onSelectJob(job.id)}
-              >
-                <StatusIcon item={job} size={13} />
-                <WorkflowJobName name={job.name} search={search} />
-                <small>
-                  {formatDuration(
-                    job.startedAt,
-                    job.completedAt,
-                    job.status !== 'completed'
-                  )}
-                </small>
-              </button>
-            ))}
+            {column.map((node) => {
+              const ref = (element: HTMLButtonElement | null): void => {
+                if (element) {
+                  nodeRefs.current.set(node.key, element);
+                } else {
+                  nodeRefs.current.delete(node.key);
+                }
+              };
+              if (node.kind === 'skipped') {
+                return (
+                  <button
+                    className="workflow-run-job-card workflow-run-skipped-card"
+                    type="button"
+                    key={node.key}
+                    ref={ref}
+                    data-tone="neutral"
+                    title={node.jobs.map((job) => job.name).join('\n')}
+                    aria-label={`Show ${skippedJobsLabel(node.jobs.length)}`}
+                    onClick={onShowSkipped}
+                  >
+                    <CircleSlash2 size={13} />
+                    <span>{skippedJobsLabel(node.jobs.length)}</span>
+                    <ChevronDown size={12} />
+                  </button>
+                );
+              }
+              const { job } = node;
+              return (
+                <button
+                  className="workflow-run-job-card"
+                  type="button"
+                  key={node.key}
+                  ref={ref}
+                  data-tone={workflowRunPresentation(job).tone}
+                  data-workflow-job-id={job.id}
+                  {...workflowJobSearchAttributes(job.id, search)}
+                  onClick={() => onSelectJob(job.id)}
+                >
+                  <StatusIcon item={job} size={13} />
+                  <WorkflowJobName name={job.name} search={search} />
+                  <small>
+                    {formatDuration(
+                      job.startedAt,
+                      job.completedAt,
+                      job.status !== 'completed'
+                    )}
+                  </small>
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -563,10 +659,14 @@ function sameWorkflowGraphEdges(
     previous.every(
       (edge, index) =>
         edge.path === next[index].path &&
-        edge.sourceJobId === next[index].sourceJobId &&
-        edge.targetJobId === next[index].targetJobId
+        edge.sourceKey === next[index].sourceKey &&
+        edge.targetKey === next[index].targetKey
     )
   );
+}
+
+function skippedJobsLabel(count: number): string {
+  return `${count} skipped ${count === 1 ? 'job' : 'jobs'}`;
 }
 
 function WorkflowJobSearchBar({

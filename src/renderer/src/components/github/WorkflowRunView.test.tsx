@@ -8,6 +8,7 @@ import type { GitHubWorkflowRun } from '@shared/types';
 import { WorkflowRunView } from './WorkflowRunView';
 import {
   arrangeWorkflowJobGraph,
+  layoutWorkflowJobGraph,
   workflowGraphEdgePath
 } from './workflowRunGraph';
 
@@ -128,6 +129,70 @@ describe('WorkflowRunView', () => {
       ['deploy'],
       ['record']
     ]);
+  });
+
+  it('collapses skipped jobs in navigation and the graph by default', () => {
+    const queryClient = new QueryClient();
+    const input = {
+      profileId: 'profile-1',
+      owner: 'acme',
+      repository: 'widgets',
+      runId: 101
+    };
+    queryClient.setQueryData(gitHubWorkflowRunDetailQueryKey(input), {
+      ...input,
+      workflowPath: '.github/workflows/ci.yml',
+      dependencyGraphAvailable: true,
+      totalJobCount: 3,
+      jobs: [
+        workflowJob(1, 'detect-changes'),
+        { ...workflowJob(2, 'build-academy', [1]), conclusion: 'skipped' as const },
+        { ...workflowJob(3, 'build-gorse', [1]), conclusion: 'skipped' as const }
+      ],
+      loadedAt: '2026-07-27T10:02:00Z'
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <WorkflowRunView
+          profileId={input.profileId}
+          owner={input.owner}
+          repository={input.repository}
+          run={workflowRun()}
+          onBack={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    expect(markup).toContain('detect-changes');
+    expect(markup).not.toContain('<span class="workflow-run-job-name">build-academy</span>');
+    expect(markup).toContain('Show 2 skipped jobs');
+    expect(markup).toContain('aria-expanded="false"');
+  });
+
+  it('folds skipped jobs into one node per dependency level and reroutes them', () => {
+    const skipped = (job: ReturnType<typeof workflowJob>) => ({
+      ...job,
+      conclusion: 'skipped' as const
+    });
+    const jobs = [
+      workflowJob(1, 'detect'),
+      workflowJob(2, 'build', [1]),
+      skipped(workflowJob(3, 'build-docs', [1])),
+      skipped(workflowJob(4, 'deploy-docs', [3]))
+    ];
+
+    const collapsed = layoutWorkflowJobGraph(jobs, false);
+    expect(
+      collapsed.columns.map((column) =>
+        column.map((node) => (node.kind === 'job' ? node.job.name : node.jobs.length))
+      )
+    ).toEqual([['detect'], ['build', 1], [1]]);
+    expect(collapsed.nodeKeyByJobId.get(3)).toBe('skipped:1');
+    expect(collapsed.nodeKeyByJobId.get(4)).toBe('skipped:2');
+
+    const expanded = layoutWorkflowJobGraph(jobs, true);
+    expect(expanded.columns.flat().every((node) => node.kind === 'job')).toBe(true);
   });
 
   it('rounds dependency-line bends while leaving level links straight', () => {
