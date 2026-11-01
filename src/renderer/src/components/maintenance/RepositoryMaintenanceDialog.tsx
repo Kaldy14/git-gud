@@ -1223,7 +1223,7 @@ export function RepositoryMaintenanceDialog({
               </button>
             ) : (
               <button
-                className="btn-subtle btn-regular border-[var(--danger-border)] text-[var(--danger-text)]"
+                className="btn-regular btn-danger"
                 type="button"
                 disabled={isMutating || !canReview || (requiresAcknowledgement && !acknowledged)}
                 onClick={() => void handleConfirmCleanup()}

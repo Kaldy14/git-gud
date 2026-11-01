@@ -2373,7 +2373,7 @@ function GraphCommitNode({
       ) : (
         <>
           <circle cx={cx} cy={cy} r={imageRadius} fill={authorColor} />
-          <text x={cx} y={cy + 1.9} textAnchor="middle" fontSize="5.4" fontWeight="700" fill="var(--bg-field)">
+          <text x={cx} y={cy + 2.5} textAnchor="middle" fontSize="7" fontWeight="700" fill="var(--bg-field)">
             {authorInitials.slice(0, 2)}
           </text>
         </>

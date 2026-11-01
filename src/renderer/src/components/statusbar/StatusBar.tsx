@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Ban,
   CheckCircle2,
+  CloudDownload,
   Download,
   FolderGit2,
   GitBranch,
@@ -20,6 +21,7 @@ import type {
 } from '@shared/types';
 
 import type { BackgroundOperationStatus } from './backgroundOperationStatus';
+import { formatFetchedAgo } from './fetchedAgo';
 
 type StatusBarProps = {
   activeTab?: RepoTab;
@@ -130,7 +132,14 @@ export function StatusBar({
             {statusLabel}
           </span>
         ) : null}
-        {repositoryOverview?.stashes.length ? <span>{repositoryOverview.stashes.length} stash</span> : null}
+        {repositoryOverview && repositoryOverview.remotes.length > 0 ? (
+          <LastFetched lastFetchedAt={repositoryOverview.lastFetchedAt} />
+        ) : null}
+        {repositoryOverview?.stashes.length ? (
+          <span>
+            {repositoryOverview.stashes.length} {repositoryOverview.stashes.length === 1 ? 'stash' : 'stashes'}
+          </span>
+        ) : null}
         {identityLabel ? (
           <span className="statusbar-identity flex items-center gap-1.5">
             <UserCircle size={12} />
@@ -140,6 +149,25 @@ export function StatusBar({
         <span className="statusbar-version">v{import.meta.env.VITE_APP_VERSION}</span>
       </span>
     </footer>
+  );
+}
+
+function LastFetched({ lastFetchedAt }: { lastFetchedAt?: string }): ReactElement {
+  const [now, setNow] = useState(() => Date.now());
+
+  // A fetch that lands between ticks reads as "just now" because future ages are clamped to zero.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const { label, title } = formatFetchedAgo(lastFetchedAt, now);
+
+  return (
+    <span className="statusbar-fetched flex items-center gap-1.5" title={title}>
+      <CloudDownload size={12} />
+      {label}
+    </span>
   );
 }
 

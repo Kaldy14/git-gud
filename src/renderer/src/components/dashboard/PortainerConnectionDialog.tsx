@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import {
   clearPortainerConnectionQueries,
@@ -373,7 +374,5 @@ function connectionInput(form: ConnectionFormState): PortainerConnectionInput {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')
-    : 'Unable to update the Portainer connection.';
+  return ipcErrorMessage(error, 'Unable to update the Portainer connection.');
 }

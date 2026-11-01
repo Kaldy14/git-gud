@@ -150,6 +150,37 @@ export async function launchExternalApplication(
   };
 }
 
+/** Opens a folder in an application's existing instance and returns once the launch is handed off. */
+export async function openPathInExternalApplication(
+  applicationId: ExternalApplicationId,
+  targetPath: string
+): Promise<ExternalApplication> {
+  const installedApplication = (await loadInstalledExternalApplications())
+    .find((candidate) => candidate.id === applicationId);
+
+  if (!installedApplication) {
+    throw new Error('That application is no longer installed.');
+  }
+
+  const command = externalApplicationOpenCommand(installedApplication, targetPath, process.platform);
+
+  if (process.platform === 'darwin') {
+    try {
+      await execFileAsync(command.executable, command.args, { timeout: 15_000 });
+    } catch {
+      throw new Error(`Could not open the repository in ${installedApplication.name}.`);
+    }
+  } else {
+    await spawnObserved(command.executable, command.args);
+  }
+
+  return {
+    id: installedApplication.id,
+    name: installedApplication.name,
+    iconDataUrl: installedApplication.iconDataUrl
+  };
+}
+
 async function loadInstalledExternalApplications(): Promise<InstalledExternalApplication[]> {
   installedApplicationsPromise ??= Promise.all(
     supportedApplicationSpecs().map(resolveInstalledApplication)
@@ -427,6 +458,19 @@ function externalApplicationLaunchCommand(
   };
 }
 
+// Unlike the pull-request launch, this reuses a running app instance and does not wait for it to exit.
+function externalApplicationOpenCommand(
+  application: Pick<InstalledExternalApplication, 'appPath' | 'waitCliPath'>,
+  targetPath: string,
+  platform: NodeJS.Platform
+): { executable: string; args: string[] } {
+  if (platform === 'win32') {
+    return { executable: application.waitCliPath ?? application.appPath, args: [targetPath] };
+  }
+
+  return { executable: '/usr/bin/open', args: ['-a', application.appPath, targetPath] };
+}
+
 function getEnvironmentValue(
   environment: NodeJS.ProcessEnv,
   name: string
@@ -438,6 +482,7 @@ function getEnvironmentValue(
 
 export const externalApplicationsTestUtils = {
   externalApplicationLaunchCommand,
+  externalApplicationOpenCommand,
   resolveWindowsApplicationPath,
   supportedApplicationSpecs,
   windowsApplicationPaths

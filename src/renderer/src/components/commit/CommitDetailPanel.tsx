@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowDownAZ,
   BookOpenCheck,
   Check,
@@ -54,7 +56,7 @@ import {
 } from '@renderer/components/commit/fileDetailUtils';
 import { AuthorAvatar } from '@renderer/components/avatar/AuthorAvatar';
 import { FILE_STATUS_COLORS } from '@shared/graph';
-import type { CommitGraphRow, GitCommitPerson, GitFileChangeDetail, GitIgnoreInput, GitRepositoryDetail, GitStatusCode, RepoProfileState } from '@shared/types';
+import type { CommitGraphRow, GitCommitPerson, GitFileChangeDetail, GitIdentity, GitIgnoreInput, GitRepositoryDetail, GitStashRefInput, GitStatusCode, RepoProfileState } from '@shared/types';
 import {
   DEFAULT_DETAIL_PANEL_WIDTH,
   MAX_DETAIL_PANEL_WIDTH,
@@ -93,6 +95,13 @@ type CommitDetailPanelProps = {
   onOpenWipFile: (file: GitFileChangeDetail) => void;
   onRevealWipFile: (file: GitFileChangeDetail) => void;
   onStashWipFile: (file: GitFileChangeDetail) => void;
+  stashActions?: StashActions;
+};
+
+type StashActions = {
+  onApply: (input: GitStashRefInput) => void;
+  onPop: (input: GitStashRefInput) => void;
+  onDrop: (input: GitStashRefInput) => void;
 };
 
 const DEFAULT_COMMIT_MESSAGE_EDITOR_HEIGHT = 220;
@@ -129,7 +138,8 @@ export function CommitDetailPanel({
   onCopyWipFilePath,
   onOpenWipFile,
   onRevealWipFile,
-  onStashWipFile
+  onStashWipFile,
+  stashActions
 }: CommitDetailPanelProps): ReactElement {
   const queryClient = useQueryClient();
   const resizeStateRef = useRef<{ startX: number; startWidth: number; width: number } | undefined>(undefined);
@@ -531,6 +541,7 @@ export function CommitDetailPanel({
         onDiscardAllWip={onDiscardAllWip}
         onOpenReview={() => onSetReviewOpen(true)}
         onToggleCollapsed={onToggleCollapsed}
+        stashActions={stashActions}
       />
 
       {isDetailLoading && !detail ? (
@@ -704,7 +715,8 @@ function PanelHeader({
   onEditCommitMessage,
   onDiscardAllWip,
   onOpenReview,
-  onToggleCollapsed
+  onToggleCollapsed,
+  stashActions
 }: {
   row: CommitGraphRow;
   detail?: GitRepositoryDetail;
@@ -718,6 +730,7 @@ function PanelHeader({
   onDiscardAllWip: () => void;
   onOpenReview: () => void;
   onToggleCollapsed?: () => void;
+  stashActions?: StashActions;
 }): ReactElement {
   const isWip = row.node.kind === 'wip';
   const wipDetail = detail?.kind === 'wip' ? detail : undefined;
@@ -773,7 +786,7 @@ function PanelHeader({
     return (
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
         <button
-          className="icon-btn h-7 w-7 shrink-0 rounded border border-[var(--danger-border)] text-[var(--danger-text)]"
+          className="icon-btn icon-btn-danger h-7 w-7 shrink-0"
           type="button"
           disabled={discardDisabled}
           onClick={onDiscardAllWip}
@@ -785,8 +798,11 @@ function PanelHeader({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {wipDetail ? (
             <>
-              <span className="min-w-0 truncate font-semibold text-[var(--text-1)]">{formatFileChangeLabel(wipDetail.dirtyCount)} on</span>
-              <span className="shrink-0 rounded bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--bg-field)]">
+              <span className="shrink-0 whitespace-nowrap font-semibold text-[var(--text-1)]">{formatFileChangeLabel(wipDetail.dirtyCount)} on</span>
+              <span
+                className="min-w-0 truncate rounded bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--bg-field)]"
+                title={wipDetail.branch.head}
+              >
                 {wipDetail.branch.head}
               </span>
             </>
@@ -795,6 +811,53 @@ function PanelHeader({
           )}
         </div>
         {headerActions}
+      </div>
+    );
+  }
+
+  const stashSelector = row.node.kind === 'stash' ? row.refs?.find((ref) => ref.kind === 'stash')?.label : undefined;
+
+  if (stashSelector && stashActions && selectionCount <= 1) {
+    const stashInput = { selector: stashSelector, expectedSha: row.sha };
+
+    return (
+      <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
+        <span className="flex min-w-0 items-center gap-2">
+          <Archive size={14} className="shrink-0 text-[var(--text-3)]" />
+          <span className="mono min-w-0 truncate font-semibold text-[var(--text-1)]">{stashSelector}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          <button
+            className="btn-subtle btn-compact"
+            type="button"
+            disabled={isMutating}
+            title="Apply this stash and keep it in the stash list"
+            onClick={() => stashActions.onApply(stashInput)}
+          >
+            <ArchiveRestore size={12} />
+            Apply
+          </button>
+          <button
+            className="btn-subtle btn-compact"
+            type="button"
+            disabled={isMutating}
+            title="Apply this stash and remove it from the stash list"
+            onClick={() => stashActions.onPop(stashInput)}
+          >
+            Pop
+          </button>
+          <button
+            className="icon-btn icon-btn-danger h-7 w-7"
+            type="button"
+            disabled={isMutating}
+            aria-label={`Drop ${stashSelector}`}
+            title="Drop this stash"
+            onClick={() => stashActions.onDrop(stashInput)}
+          >
+            <Trash2 size={14} />
+          </button>
+          {headerActions}
+        </span>
       </div>
     );
   }
@@ -1151,7 +1214,7 @@ function CommitMessageSummary({
 }): ReactElement {
   const content = (
     <>
-      <span className="block text-[17px] font-semibold leading-snug text-[var(--text-1)]">
+      <span className="block text-balance text-[17px] font-semibold leading-snug text-[var(--text-1)]">
         {subject}
       </span>
       {body ? (
@@ -1354,19 +1417,25 @@ function formatCommitDate(value: string | undefined): string {
     return 'date unknown';
   }
 
-  const day = new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  }).format(date);
-  const time = new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  }).format(date);
-
-  return `${day} @ ${time}`;
+  return commitDateFormatter.format(date);
 }
+
+// Matches the locale-aware dates used by the graph, inspector, and review views.
+const commitDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+const identitySourceLabels = {
+  profile: 'Git Gud profile',
+  'repo-config': 'Repository config',
+  'global-config': 'Global config',
+  unknown: 'Unknown source'
+} satisfies Record<GitIdentity['source'], string>;
+
+const identitySourceTitles = {
+  profile: 'Commits use the name and email from the active Git Gud profile.',
+  'repo-config': "Commits use the name and email from this repository's Git config.",
+  'global-config': 'Commits use the name and email from your global Git config.',
+  unknown: 'Git did not report where this name and email come from.'
+} satisfies Record<GitIdentity['source'], string>;
 
 type WipCommitSectionProps = {
   detail: GitRepositoryDetail;
@@ -1418,6 +1487,12 @@ function WipCommitSection({
       }
     : profileState?.effectiveIdentity;
   const canCommit = Boolean(commitMessage.trim()) && (hasStagedFiles || amend) && !isCommitting;
+  const summaryLength = commitMessage.split('\n', 1)[0]?.trim().length ?? 0;
+  const commitHint = !hasStagedFiles && !amend
+    ? 'Stage changes to commit them.'
+    : !commitMessage.trim()
+      ? 'Write a summary to commit.'
+      : '⌘↩ to commit';
 
   return (
     <div className="shrink-0 space-y-2.5 border-t border-[var(--border)] px-4 py-3.5">
@@ -1425,7 +1500,9 @@ function WipCommitSection({
         <span className="min-w-0 truncate">
           {identity?.name || 'Unknown author'} {identity?.email ? `<${identity.email}>` : ''}
         </span>
-        <span className="shrink-0">{identity?.source ?? 'unknown'}</span>
+        <span className="shrink-0" title={identitySourceTitles[identity?.source ?? 'unknown']}>
+          {identitySourceLabels[identity?.source ?? 'unknown']}
+        </span>
       </div>
       <div className="relative">
         <textarea
@@ -1463,6 +1540,17 @@ function WipCommitSection({
           ) : null}
         </span>
       </div>
+      <div className="-mt-1 flex items-center justify-between gap-3 text-[11px] text-[var(--text-3)]">
+        <span id="commit-composer-hint" className="min-w-0 truncate">{isCommitting ? 'Committing…' : commitHint}</span>
+        {summaryLength > 0 ? (
+          <span
+            className={`mono shrink-0 ${summaryLength > 72 ? 'text-[var(--warning-text)]' : ''}`}
+            title="Summary line length. Git tools display about 72 characters."
+          >
+            {summaryLength}/72
+          </span>
+        ) : null}
+      </div>
       <div className="flex items-center justify-between gap-2">
         <label className="flex min-w-0 items-center gap-2 text-xs text-[var(--text-2)]">
           <input
@@ -1472,7 +1560,13 @@ function WipCommitSection({
           />
           Amend previous commit
         </label>
-        <button className="btn-primary h-8 text-xs" type="button" disabled={!canCommit} onClick={onCommit}>
+        <button
+          className="btn-primary h-8 text-xs"
+          type="button"
+          disabled={!canCommit}
+          aria-describedby="commit-composer-hint"
+          onClick={onCommit}
+        >
           {isCommitting ? <Loader2 size={13} className="animate-spin" /> : <GitCommit size={13} />}
           <span>{amend ? 'Amend' : 'Commit'}</span>
         </button>

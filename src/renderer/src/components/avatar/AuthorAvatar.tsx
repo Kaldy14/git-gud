@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
 
+import { authorColor } from '@shared/graph';
+
 type AuthorAvatarProps = {
   name: string;
   email?: string;
@@ -9,20 +11,11 @@ type AuthorAvatarProps = {
   className?: string;
 };
 
-const AVATAR_COLORS = [
-  'var(--avatar-1)',
-  'var(--avatar-2)',
-  'var(--avatar-3)',
-  'var(--avatar-4)',
-  'var(--avatar-5)',
-  'var(--avatar-6)'
-] as const;
-
 export function AuthorAvatar({ name, email, avatarUrl, size = 32, className = '' }: AuthorAvatarProps): ReactElement {
   const [imageFailed, setImageFailed] = useState(false);
   const label = authorLabel(name, email);
   const style = useMemo(() => ({ width: size, height: size }), [size]);
-  const baseClassName = `shrink-0 rounded bg-[var(--avatar-card-bg)] ${className}`.trim();
+  const baseClassName = `shrink-0 rounded-full bg-[var(--avatar-card-bg)] ${className}`.trim();
 
   if (avatarUrl && !imageFailed) {
     return (
@@ -40,7 +33,7 @@ export function AuthorAvatar({ name, email, avatarUrl, size = 32, className = ''
 
   return (
     <GeneratedAvatar
-      seed={email || name || 'unknown'}
+      color={authorColor(email ?? name)}
       initials={authorInitials(name || email || 'Unknown')}
       label={label}
       size={size}
@@ -50,20 +43,18 @@ export function AuthorAvatar({ name, email, avatarUrl, size = 32, className = ''
 }
 
 function GeneratedAvatar({
-  seed,
+  color,
   initials,
   label,
   size,
   className
 }: {
-  seed: string;
+  color: string;
   initials: string;
   label: string;
   size: number;
   className: string;
 }): ReactElement {
-  const color = AVATAR_COLORS[Math.abs(hashString(seed)) % AVATAR_COLORS.length];
-
   return (
     <svg
       role="img"
@@ -73,7 +64,7 @@ function GeneratedAvatar({
       style={{ width: size, height: size }}
     >
       <title>{label}</title>
-      <rect x="0" y="0" width="40" height="40" rx="5" fill={color} />
+      <circle cx="20" cy="20" r="20" fill={color} />
       <text x="20" y="25" textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--bg-field)">
         {initials}
       </text>
@@ -96,14 +87,4 @@ function authorInitials(value: string): string {
 function authorLabel(name: string, email: string | undefined): string {
   const displayName = name || 'Unknown author';
   return email ? `${displayName} <${email}>` : displayName;
-}
-
-function hashString(value: string): number {
-  let hash = 0;
-
-  for (const character of value) {
-    hash = (hash * 31 + character.charCodeAt(0)) | 0;
-  }
-
-  return hash;
 }

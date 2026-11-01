@@ -97,9 +97,11 @@ import type {
 } from './types';
 import type {
   ExternalApplication,
+  ExternalApplicationId,
   OpenPullRequestInApplicationInput,
   OpenPullRequestInApplicationResult
 } from './externalApplications';
+import type { MenuCommand } from './menuCommands';
 import type { PullRequestDeepLinkTarget } from './pullRequestDeepLink';
 
 export type RepositoryInitializeInput = {
@@ -317,6 +319,10 @@ export type IpcChannelMap = {
   };
   'repo:reveal-file': {
     args: [repoPath: string, path: string];
+    result: GitOperationResult;
+  };
+  'repo:open-in-application': {
+    args: [repoPath: string, applicationId: ExternalApplicationId];
     result: GitOperationResult;
   };
   'system:open-codex-task': {
@@ -740,6 +746,9 @@ export type RendererApi = {
   discardAllChanges: (repoPath: string) => Promise<GitOperationResult>;
   openFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
   revealFile: (repoPath: string, path: string) => Promise<GitOperationResult>;
+  openRepositoryInApplication: (repoPath: string, applicationId: ExternalApplicationId) => Promise<GitOperationResult>;
+  /** Resolves a dropped file or folder to its filesystem path; empty for non-file drops. */
+  getPathForFile: (file: File) => string;
   openCodexTask: (repoPath: string, prompt: string) => Promise<void>;
   listExternalApplications: () => Promise<ExternalApplication[]>;
   stageAll: (repoPath: string) => Promise<GitOperationResult>;
@@ -869,6 +878,7 @@ export type RendererApi = {
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;
   onRepositoryChanged: (listener: (event: RepoChangedEvent) => void) => () => void;
   onOperationProgress: (listener: (event: GitOperationProgressEvent) => void) => () => void;
+  onMenuCommand: (listener: (command: MenuCommand) => void) => () => void;
   onDashboardActionAlertsChanged: (
     listener: (state: DashboardActionAlertState) => void
   ) => () => void;

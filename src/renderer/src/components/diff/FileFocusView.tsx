@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Rows3,
   Sparkles,
+  Trash2,
   X
 } from 'lucide-react';
 
@@ -43,6 +44,7 @@ import type {
   DiffSyntaxTheme,
   GitFileChangeDetail,
   GitFileDiffSegment,
+  GitPatchApplyInput,
   GitRepositoryDetail,
   GitStatusCode
 } from '@shared/types';
@@ -114,14 +116,14 @@ export function FileFocusView({
   const patchMode = selectedWipScope === 'staged' ? 'unstage' : 'stage';
   const patchApplyMutation = useMutation({
     mutationKey: ['repository-mutation', repoPath],
-    mutationFn: async (hunk: StageablePatchHunk) => {
+    mutationFn: async ({ hunk, mode }: { hunk: StageablePatchHunk; mode: GitPatchApplyInput['mode'] }) => {
       if (!repoPath || !selectedFileDetail) {
         throw new Error('A selected WIP file is required.');
       }
 
       return window.api.applyWipPatch(repoPath, {
         path: selectedFileDetail.path,
-        mode: patchMode,
+        mode,
         patch: hunk.patch
       });
     },
@@ -275,9 +277,17 @@ export function FileFocusView({
                             errorMessage: patchApplyMutation.error instanceof Error ? patchApplyMutation.error.message : undefined,
                             onApplyHunk: (hunk) => {
                               if (!isOperationBusy) {
-                                patchApplyMutation.mutate(hunk);
+                                patchApplyMutation.mutate({ hunk, mode: patchMode });
                               }
-                            }
+                            },
+                            // Only unstaged hunks can be discarded; staged ones must be unstaged first.
+                            onDiscardHunk: patchMode === 'stage'
+                              ? (hunk) => {
+                                  if (!isOperationBusy) {
+                                    patchApplyMutation.mutate({ hunk, mode: 'discard' });
+                                  }
+                                }
+                              : undefined
                           }
                         : undefined
                   })}
@@ -453,20 +463,42 @@ type HunkStagingConfig = {
   isMutating: boolean;
   errorMessage?: string;
   onApplyHunk: (hunk: StageablePatchHunk) => void;
+  onDiscardHunk?: (hunk: StageablePatchHunk) => void;
 };
 
 function HunkStagingPanel({ config }: { config: HunkStagingConfig }): ReactElement | null {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [confirmingDiscardId, setConfirmingDiscardId] = useState<string>();
+  const pendingFocusRef = useRef<string | undefined>(undefined);
+
+  // The confirm and trash buttons replace each other, so move focus explicitly to keep Escape and Tab in the panel.
+  useEffect(() => {
+    const selector = pendingFocusRef.current;
+    pendingFocusRef.current = undefined;
+    if (selector) panelRef.current?.querySelector<HTMLElement>(selector)?.focus();
+  });
+
   if (config.hunks.length === 0) {
     return null;
   }
 
   const actionLabel = config.mode === 'stage' ? 'Stage' : 'Unstage';
 
+  function startDiscard(hunkId: string): void {
+    pendingFocusRef.current = `[data-discard-cancel="${CSS.escape(hunkId)}"]`;
+    setConfirmingDiscardId(hunkId);
+  }
+
+  function cancelDiscard(hunkId: string): void {
+    pendingFocusRef.current = `[data-discard-hunk="${CSS.escape(hunkId)}"]`;
+    setConfirmingDiscardId(undefined);
+  }
+
   return (
-    <div className="border-b border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2">
+    <div ref={panelRef} className="border-b border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-3">
         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
-          {actionLabel} hunks
+          {config.onDiscardHunk ? 'Stage or discard hunks' : `${actionLabel} hunks`}
         </span>
         <span className="text-[11px] text-[var(--text-3)]">{config.hunks.length} line group{config.hunks.length === 1 ? '' : 's'}</span>
       </div>
@@ -484,15 +516,66 @@ function HunkStagingPanel({ config }: { config: HunkStagingConfig }): ReactEleme
                 <span className="mono">{hunk.header}</span>
               </p>
             </div>
-            <button
-              className="btn-subtle h-7 text-[11px]"
-              type="button"
-              disabled={config.isMutating}
-              onClick={() => config.onApplyHunk(hunk)}
-            >
-              {config.isMutating ? <Loader2 size={12} className="animate-spin" /> : config.mode === 'stage' ? <Check size={12} /> : <RotateCcw size={12} />}
-              {actionLabel}
-            </button>
+            {confirmingDiscardId === hunk.id && config.onDiscardHunk ? (
+              <div
+                className="flex items-center gap-1.5"
+                role="group"
+                aria-label={`Confirm discarding ${hunk.header}`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.stopPropagation();
+                    cancelDiscard(hunk.id);
+                  }
+                }}
+              >
+                <button
+                  className="btn-subtle h-7 text-[11px]"
+                  type="button"
+                  data-discard-cancel={hunk.id}
+                  onClick={() => cancelDiscard(hunk.id)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-danger h-7 px-2.5 text-[11px]"
+                  type="button"
+                  disabled={config.isMutating}
+                  title="Remove this change from the working copy. This cannot be undone."
+                  onClick={() => {
+                    setConfirmingDiscardId(undefined);
+                    config.onDiscardHunk?.(hunk);
+                  }}
+                >
+                  <Trash2 size={12} />
+                  Discard
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                {config.onDiscardHunk ? (
+                  <button
+                    className="icon-btn icon-btn-danger h-7 w-7"
+                    type="button"
+                    disabled={config.isMutating}
+                    title="Discard this change"
+                    aria-label={`Discard ${hunk.header}`}
+                    data-discard-hunk={hunk.id}
+                    onClick={() => startDiscard(hunk.id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                ) : null}
+                <button
+                  className="btn-subtle h-7 text-[11px]"
+                  type="button"
+                  disabled={config.isMutating}
+                  onClick={() => config.onApplyHunk(hunk)}
+                >
+                  {config.isMutating ? <Loader2 size={12} className="animate-spin" /> : config.mode === 'stage' ? <Check size={12} /> : <RotateCcw size={12} />}
+                  {actionLabel}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

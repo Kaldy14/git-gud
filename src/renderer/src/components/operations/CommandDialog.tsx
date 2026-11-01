@@ -1,10 +1,10 @@
 import type { FormEvent, ReactElement } from 'react';
 import { useId, useMemo, useState } from 'react';
-import { AlertTriangle, Check, X } from 'lucide-react';
+import { AlertTriangle, Info, X, type LucideIcon } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 
-type CommandDialogTone = 'default' | 'danger';
+type CommandDialogTone = 'default' | 'warning' | 'danger';
 
 type CommandDialogTextField = {
   id: string;
@@ -54,8 +54,18 @@ export type CommandDialogConfig = {
   confirmLabel: string;
   cancelLabel?: string;
   tone?: CommandDialogTone;
+  /** Header icon for non-destructive dialogs; warning and danger tones always use an alert icon. */
+  icon?: LucideIcon;
+  /** Notices only need the confirm button, so the redundant cancel action is hidden. */
+  acknowledgeOnly?: boolean;
   fields: CommandDialogField[];
   onSubmit: (values: CommandDialogValues) => void;
+};
+
+const toneIconClassName: Record<CommandDialogTone, string> = {
+  default: 'text-[var(--accent-2)]',
+  warning: 'text-[var(--warning-text)]',
+  danger: 'text-[var(--danger-text)]'
 };
 
 type CommandDialogProps = {
@@ -71,6 +81,7 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
     () => fields.every((field) => field.kind !== 'text' || !field.required || field.value.trim().length > 0),
     [fields]
   );
+  const HeaderIcon = dialog.tone === 'danger' || dialog.tone === 'warning' ? AlertTriangle : (dialog.icon ?? Info);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -94,8 +105,8 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
         onSubmit={handleSubmit}
       >
         <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-          <span className={dialog.tone === 'danger' ? 'text-[var(--danger-text)]' : 'text-[var(--accent-2)]'}>
-            {dialog.tone === 'danger' ? <AlertTriangle size={17} /> : <Check size={17} />}
+          <span className={`shrink-0 ${toneIconClassName[dialog.tone ?? 'default']}`}>
+            <HeaderIcon size={17} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="truncate text-sm font-semibold text-[var(--text-1)]">{dialog.title}</h2>
@@ -132,11 +143,13 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
         </div>
 
         <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-4 py-3">
-          <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>
-            {dialog.cancelLabel ?? 'Cancel'}
-          </button>
+          {dialog.acknowledgeOnly ? null : (
+            <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>
+              {dialog.cancelLabel ?? 'Cancel'}
+            </button>
+          )}
           <button
-            className={dialog.tone === 'danger' ? 'btn-subtle h-8 border-[var(--danger-border)] text-xs text-[var(--danger-text)]' : 'btn-primary h-8 text-xs'}
+            className={dialog.tone === 'danger' ? 'btn-danger h-8 text-xs' : 'btn-primary h-8 text-xs'}
             type="submit"
             disabled={!canSubmit}
           >

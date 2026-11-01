@@ -48,7 +48,7 @@ export function PushRejectedBanner({
           {prompt.isCurrentBranch ? 'Pull' : 'Checkout & Pull'}
         </button>
         <button
-          className="btn-subtle h-7 border-[var(--danger-border)] text-[11px] text-[var(--danger-text)]"
+          className="btn-danger h-7 text-[11px]"
           type="button"
           disabled={isBusy}
           onClick={() => onForcePush(prompt)}

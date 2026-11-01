@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Open the current repository in a detected editor, terminal, or Finder from the toolbar or the command palette; Git Gud remembers the last application you chose.
+- Show how many commits are waiting to be pulled and pushed beside Fetch and Push.
+- Discard a single unstaged hunk from the file diff after a confirmation step.
+- Use standard tab shortcuts from the new File and Window menus: ⌘T new tab, ⌘W close tab, ⇧⌘T reopen closed tab, ⌘1–⌘9 switch tab, ⌃Tab and ⌃⇧Tab for next and previous tab, ⌘O open repository, and ⌘, for Settings.
+- Drag repository folders onto the window to open them in new tabs.
+- Remember the window's size, position, and maximized or full-screen state between launches.
+- Right-click a repository tab to close it, close other tabs, close tabs to the right, copy its path, or open it in your chosen application.
+- Apply, pop, or drop a stash from its details header.
+- Show when the repository was last fetched in the status bar.
+- Explain why Commit is unavailable, show the ⌘↩ shortcut, and count the summary line against 72 characters.
+
+### Fixed
+
+- Render buttons and fields with their intended sizes, colours, borders, and radii; a CSS cascade conflict was overriding their styles, which flattened button hierarchy, hid the start page action cards, and hid the syntax theme cards' selected state.
+- Show destructive confirmations such as Delete branch, Discard all, Drop stash, and Force push as red danger buttons, and mark the Discard all changes icon as destructive.
+- Focus a dialog's first field when it opens so you can type a branch or tag name immediately, return focus to the control that opened the dialog, and drop the focus ring around whole dialogs.
+- Keep the command palette at a stable width while typing, align result categories in a column, and remove the clipped focus box around its search field.
+- Give each command dialog an icon that matches its action instead of a success checkmark, and show informational dialogs with a single acknowledgement button.
+- Use the same avatar colour and round shape for an author in the graph and in commit details, make graph initials legible, and format commit dates like the rest of the app.
+- Show where commit identities come from in plain language (Repository config, Global config, or Git Gud profile).
+- Explain in plain language when a chosen or dropped folder is not a Git repository, or is a file.
+- Show Git's error text for failed operations without Electron's “Error invoking remote method …” prefix.
+- Disable Fetch and Push in repositories without remotes and explain how to add one.
+- Show sidebar ahead/behind counts as ↑ and ↓ with a tooltip, and pluralize the stash count in the status bar.
+- Keep branch names and change counts readable in narrow windows, label the default diff layout setting, group the new profile name and email fields, and avoid single-word last lines in descriptions.
+
 ## [2026.10.16] - 2026-10-21
 
 ### Changed

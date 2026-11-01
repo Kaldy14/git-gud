@@ -767,7 +767,7 @@ function SectionRows({
               depth={depth}
               isActive={branch.current}
               isActionDisabled={branch.current || isOperationBusy}
-              title={isOperationBusy && !branch.current ? 'A Git operation is running' : branch.name}
+              title={isOperationBusy && !branch.current ? 'A Git operation is running' : `${branch.name}${describeAheadBehind(branch.ahead, branch.behind)}`}
               onContextMenu={(event) => onContextMenu(event, { kind: 'local', branch })}
               onDoubleClick={() => {
                 if (!branch.current) {
@@ -1703,19 +1703,16 @@ function matchesFilter(value: string, filter: string): boolean {
 }
 
 function formatAheadBehind(ahead: number, behind: number): string | undefined {
-  if (ahead > 0 && behind > 0) {
-    return `+${ahead}/-${behind}`;
-  }
+  const parts = [ahead > 0 ? `↑${ahead}` : '', behind > 0 ? `↓${behind}` : ''].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
 
-  if (ahead > 0) {
-    return `+${ahead}`;
-  }
-
-  if (behind > 0) {
-    return `-${behind}`;
-  }
-
-  return undefined;
+function describeAheadBehind(ahead: number, behind: number): string {
+  const parts = [
+    ahead > 0 ? `${ahead} ${ahead === 1 ? 'commit' : 'commits'} to push` : '',
+    behind > 0 ? `${behind} to pull` : ''
+  ].filter(Boolean);
+  return parts.length > 0 ? ` · ${parts.join(', ')}` : '';
 }
 
 function formatStashSubject(subject: string): string {

@@ -4,7 +4,10 @@ import path from 'node:path';
 import { shell } from 'electron';
 
 import { createCodexTaskDeepLink } from '@shared/codex';
+import type { ExternalApplicationId } from '@shared/externalApplications';
 import type { GitOperationResult, RepoTab } from '@shared/types';
+
+import { openPathInExternalApplication } from './externalApplications';
 
 type FileTab = Pick<RepoTab, 'path'>;
 type CodexTab = Pick<RepoTab, 'path' | 'gitDir' | 'commonDir'>;
@@ -26,6 +29,15 @@ export async function revealRepositoryFileInFinder(tab: FileTab, relativePath: s
   const revealPath = await findNearestExistingPath(targetPath, tab.path);
   shell.showItemInFolder(revealPath);
 
+  return createSystemOperationResult(tab.path);
+}
+
+export async function openRepositoryInApplication(
+  tab: FileTab,
+  applicationId: ExternalApplicationId
+): Promise<GitOperationResult> {
+  await access(tab.path);
+  await openPathInExternalApplication(applicationId, tab.path);
   return createSystemOperationResult(tab.path);
 }
 

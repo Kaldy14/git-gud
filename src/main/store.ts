@@ -44,6 +44,7 @@ import {
 } from '@shared/workspace';
 
 import { listProfiles } from './profiles';
+import { normalizeSavedWindowState, type SavedWindowState } from './windowState';
 
 type StoreShape = {
   workspace: WorkspaceState;
@@ -54,6 +55,7 @@ type StoreShape = {
   selectedDashboardIds: Record<string, string>;
   dashboardActionAlerts: StoredDashboardActionAlerts;
   repositoryFetchTimestamps: Record<string, string>;
+  windowState?: SavedWindowState;
 };
 
 type StoredDashboardActionRun = {
@@ -108,6 +110,14 @@ export function getWorkspace(): WorkspaceState {
   const workspace = normalizeWorkspaceState(storedWorkspace ?? createDefaultWorkspaceState(activeProfileId));
 
   return workspaceForProfile(workspace, activeProfileId);
+}
+
+export function getWindowState(): SavedWindowState | undefined {
+  return normalizeSavedWindowState(store.get('windowState'));
+}
+
+export function saveWindowState(state: SavedWindowState): void {
+  store.set('windowState', state);
 }
 
 export function getRepositoryLastFetchedAt(commonDir: string): string | undefined {

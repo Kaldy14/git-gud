@@ -372,9 +372,13 @@ async function resolveCommit(
 
 export async function applyWipPatch(tab: DetailTab, input: GitPatchApplyInput): Promise<GitOperationResult> {
   const patch = normalizePatch(input.patch);
-  const args = ['apply', '--cached', '--recount', '--unidiff-zero', '--whitespace=nowarn'];
+  const args = ['apply', '--recount', '--unidiff-zero', '--whitespace=nowarn'];
 
-  if (input.mode === 'unstage') {
+  if (input.mode !== 'discard') {
+    args.push('--cached');
+  }
+
+  if (input.mode !== 'stage') {
     args.push('--reverse');
   }
 

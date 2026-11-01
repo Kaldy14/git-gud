@@ -7,7 +7,6 @@ import {
   Gauge,
   GitGraph,
   Monitor,
-  Palette,
   RefreshCw,
   Rows3,
   Settings,
@@ -95,29 +94,31 @@ export function SettingsPanel({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <section className="space-y-3 border-b border-[var(--border)] pb-4">
             <SettingHeading icon={<Rows3 size={15} />} label="Diffs" />
-            <div className="segmented">
-              <button
-                type="button"
-                data-active={draft.defaultDiffStyle === 'unified'}
-                onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'unified' }))}
-              >
-                <Rows3 size={12} />
-                Unified
-              </button>
-              <button
-                type="button"
-                data-active={draft.defaultDiffStyle === 'split'}
-                onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'split' }))}
-              >
-                <SplitSquareHorizontal size={12} />
-                Split
-              </button>
-            </div>
-            <fieldset className="space-y-2">
-              <legend className="flex items-center gap-2 text-xs font-semibold text-[var(--text-1)]">
-                <Palette size={13} className="text-[var(--accent-2)]" />
-                Syntax theme
-              </legend>
+            <fieldset>
+              <legend className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">Default layout</legend>
+              <div className="segmented">
+                <button
+                  type="button"
+                  aria-pressed={draft.defaultDiffStyle === 'unified'}
+                  data-active={draft.defaultDiffStyle === 'unified'}
+                  onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'unified' }))}
+                >
+                  <Rows3 size={12} />
+                  Unified
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={draft.defaultDiffStyle === 'split'}
+                  data-active={draft.defaultDiffStyle === 'split'}
+                  onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'split' }))}
+                >
+                  <SplitSquareHorizontal size={12} />
+                  Split
+                </button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">Syntax theme</legend>
               <div className="grid grid-cols-2 gap-2">
                 <SyntaxThemeOption
                   label="Git Gud Dark"
@@ -136,7 +137,7 @@ export function SettingsPanel({
                   onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
                 />
               </div>
-              <p className="text-[11px] leading-4 text-[var(--text-3)]">
+              <p className="mt-2 text-[11px] leading-4 text-[var(--text-3)]">
                 Applied to file diffs and review views.
               </p>
             </fieldset>

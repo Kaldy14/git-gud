@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type { WorkspaceState } from '@shared/types';
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import {
   createDefaultWorkspaceState,
   closeRepositoryTab,
@@ -246,7 +247,7 @@ async function runWorkspaceAction(
 }
 
 function workspaceActionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'The requested workspace action failed.';
+  return ipcErrorMessage(error, 'The requested workspace action failed.');
 }
 
 function hasSameTabOrder(left: WorkspaceState, right: WorkspaceState): boolean {

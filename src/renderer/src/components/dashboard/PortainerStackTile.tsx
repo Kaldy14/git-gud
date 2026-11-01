@@ -11,6 +11,7 @@ import {
   XCircle
 } from 'lucide-react';
 
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import {
   usePortainerStackImages,
   usePortainerStackRuntime
@@ -303,7 +304,5 @@ function formatLoadedAt(value: string): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')
-    : 'Unable to load the Portainer stack.';
+  return ipcErrorMessage(error, 'Unable to load the Portainer stack.');
 }

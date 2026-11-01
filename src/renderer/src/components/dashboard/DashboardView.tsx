@@ -33,6 +33,7 @@ import {
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
 import {
@@ -767,7 +768,7 @@ export function DashboardView({
                   <Pencil size={13} />
                 </button>
                 <button
-                  className="icon-btn h-7 w-7 text-[var(--danger-text)]"
+                  className="icon-btn icon-btn-danger h-7 w-7"
                   type="button"
                   aria-label="Delete dashboard"
                   title="Delete dashboard"
@@ -2512,14 +2513,5 @@ function formatAbsoluteTime(isoDate: string): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? cleanIpcErrorMessage(error.message)
-    : 'An unexpected error occurred.';
-}
-
-function cleanIpcErrorMessage(message: string): string {
-  return message.replace(
-    /^Error invoking remote method '[^']+': Error: /,
-    ''
-  );
+  return ipcErrorMessage(error, 'An unexpected error occurred.');
 }

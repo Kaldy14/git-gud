@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { basename, isAbsolute, resolve } from 'node:path';
 
 import type { RepositorySummary } from '@shared/types';
@@ -12,8 +13,18 @@ class RepositoryValidationError extends Error {
 }
 
 export async function validateRepository(repoPath: string): Promise<RepositorySummary> {
+  const selectedPath = resolve(repoPath);
+  const selectedEntry = await stat(selectedPath).catch(() => undefined);
+
+  if (!selectedEntry) {
+    throw new RepositoryValidationError(`${selectedPath} no longer exists.`);
+  }
+
+  if (!selectedEntry.isDirectory()) {
+    throw new RepositoryValidationError(`“${basename(selectedPath)}” is a file. Choose the repository folder instead.`);
+  }
+
   try {
-    const selectedPath = resolve(repoPath);
     const isBare = trimGitOutput(
       (await gitExecutor.run(['rev-parse', '--is-bare-repository'], { cwd: selectedPath })).stdout
     );
@@ -46,7 +57,11 @@ export async function validateRepository(repoPath: string): Promise<RepositorySu
     }
 
     if (error instanceof GitCommandError) {
-      throw new RepositoryValidationError(error.message);
+      throw new RepositoryValidationError(
+        /not a git repository/i.test(error.message)
+          ? `“${basename(selectedPath)}” is not a Git repository. Choose a folder that contains one, or create a repository there.`
+          : error.message
+      );
     }
 
     throw error;

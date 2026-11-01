@@ -1,5 +1,6 @@
 import type { CodeReference } from '@shared/codeReference';
-import { loadPreferredApplication, selectApplication } from './preferredApplication';
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
+import { loadPreferredApplication, selectApplication } from '@renderer/components/applications/preferredApplication';
 import { BugFinderCode } from './BugFinderCode';
 import { ModalSurface } from '../accessibility/ModalSurface';
 import { useState } from 'react';
@@ -77,7 +78,7 @@ export function BugFinderView({
       });
       setNotice(result.message);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Could not open the evidence file.');
+      setNotice(ipcErrorMessage(error, 'Could not open the evidence file.'));
     }
   }
   async function copy(items: BugFinding[]) {

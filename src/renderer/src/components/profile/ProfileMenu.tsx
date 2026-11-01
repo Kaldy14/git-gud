@@ -321,7 +321,7 @@ export function ProfileMenu({
 
           <form className="mt-2 space-y-2 border-t border-[var(--border)] px-2 pt-2" onSubmit={(event) => void handleSubmit(event)}>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
+              <span className="text-xs font-semibold text-[var(--text-1)]">
                 {editingProfileId ? 'Edit workspace profile' : 'New profile'}
               </span>
               {editingProfileId ? (
@@ -337,6 +337,15 @@ export function ProfileMenu({
                 className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Email</span>
+              <input
+                className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
               />
             </label>
 
@@ -426,15 +435,6 @@ export function ProfileMenu({
                 </label>
               </div>
             ) : null}
-            <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Email</span>
-              <input
-                className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
 
             {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
 

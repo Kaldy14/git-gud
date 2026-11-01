@@ -91,6 +91,23 @@ describe('Windows external application integration', () => {
     });
   });
 
+  it('opens a repository in the running app instance without waiting for it to exit', () => {
+    expect(externalApplicationsTestUtils.externalApplicationOpenCommand({
+      appPath: '/System/Applications/Utilities/Terminal.app'
+    }, '/Users/me/repo with space', 'darwin')).toEqual({
+      executable: '/usr/bin/open',
+      args: ['-a', '/System/Applications/Utilities/Terminal.app', '/Users/me/repo with space']
+    });
+
+    expect(externalApplicationsTestUtils.externalApplicationOpenCommand({
+      appPath: 'C:\\Program Files\\Cursor\\Cursor.exe',
+      waitCliPath: 'C:\\Program Files\\Cursor\\resources\\app\\bin\\cursor.cmd'
+    }, 'C:\\repo', 'win32')).toEqual({
+      executable: 'C:\\Program Files\\Cursor\\resources\\app\\bin\\cursor.cmd',
+      args: ['C:\\repo']
+    });
+  });
+
   it('discovers, icons, and launches an installed Windows editor without a console window', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
     vi.stubEnv('LOCALAPPDATA', 'C:\\Users\\me\\AppData\\Local');

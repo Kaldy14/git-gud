@@ -30,7 +30,8 @@ import type {
   ExternalApplication,
   ExternalApplicationId
 } from '@shared/externalApplications';
-import { selectApplication, loadPreferredApplication, savePreferredApplication } from './preferredApplication';
+import { ApplicationIcon } from '@renderer/components/applications/ApplicationIcon';
+import { selectApplication, loadPreferredApplication, savePreferredApplication } from '@renderer/components/applications/preferredApplication';
 import type { GitHubPullRequestDetail } from '@shared/types';
 
 
@@ -276,25 +277,6 @@ function CloseReviewButton({ onClose }: { onClose: () => void }): ReactElement {
     >
       <X size={14} />
     </button>
-  );
-}
-
-function ApplicationIcon({
-  application,
-  size
-}: {
-  application: ExternalApplication;
-  size: number;
-}): ReactElement {
-  return (
-    <img
-      src={application.iconDataUrl}
-      alt=""
-      width={size}
-      height={size}
-      className="shrink-0 rounded-[4px]"
-      draggable={false}
-    />
   );
 }
 

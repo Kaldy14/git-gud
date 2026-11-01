@@ -13,6 +13,7 @@ import {
   GitBranchMinus,
   GitMerge,
   GitPullRequestArrow,
+  MonitorUp,
   MoreHorizontal,
   Search,
   Tag,
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu';
 
+import { ApplicationIcon } from '@renderer/components/applications/ApplicationIcon';
+import type { ExternalApplication } from '@shared/externalApplications';
 import type { GitRepositoryOverview, GitUndoEntry, PrimarySyncOperation, RepoTab } from '@shared/types';
 
 type ToolbarProps = {
@@ -50,6 +53,9 @@ type ToolbarProps = {
   onTagSelected: () => void;
   onOpenRepositoryMaintenance: () => void;
   hasSelectedCommit: boolean;
+  applications: readonly ExternalApplication[];
+  selectedApplication?: ExternalApplication;
+  onOpenInApplication: (application: ExternalApplication) => void;
 };
 
 export function Toolbar({
@@ -71,7 +77,10 @@ export function Toolbar({
   onInteractiveRebaseSelected,
   onTagSelected,
   onOpenRepositoryMaintenance,
-  hasSelectedCommit
+  hasSelectedCommit,
+  applications,
+  selectedApplication,
+  onOpenInApplication
 }: ToolbarProps): ReactElement {
   const hasRepo = Boolean(activeTab);
   const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : '—';
@@ -79,6 +88,12 @@ export function Toolbar({
   const hasConflicts = (repositoryOverview?.status.conflictedCount ?? 0) > 0;
   const hasStashes = (repositoryOverview?.stashes.length ?? 0) > 0;
   const undoTitle = latestUndo?.staleReason ?? latestUndo?.label ?? 'No undoable operation';
+  const branchState = repositoryOverview?.status.branch;
+  const upstream = branchState?.upstream;
+  const aheadCount = upstream ? branchState?.ahead ?? 0 : 0;
+  const behindCount = upstream ? branchState?.behind ?? 0 : 0;
+  // Unknown while the overview loads; only a loaded repository without remotes disables sync.
+  const hasNoRemotes = repositoryOverview ? repositoryOverview.remotes.length === 0 : false;
 
   return (
     <div className="app-toolbar h-12 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
@@ -128,15 +143,19 @@ export function Toolbar({
         />
         <PrimarySyncAction
           operation={defaultSyncOperation}
-          disabled={!hasRepo || isBusy}
+          disabled={!hasRepo || isBusy || hasNoRemotes}
+          unavailableReason={hasNoRemotes ? noRemoteHint : undefined}
+          behindCount={behindCount}
+          upstream={upstream}
           onRun={() => onSync(defaultSyncOperation)}
           onChange={onChangeDefaultSyncOperation}
         />
         <ToolbarAction
           label="Push"
           icon={<ArrowUpFromLine size={17} />}
-          hint="Push current branch"
-          disabled={!hasRepo || isBusy}
+          hint={hasNoRemotes ? noRemoteHint : aheadCount > 0 && upstream ? `Push ${formatCommitCount(aheadCount)} to ${upstream}` : 'Push current branch'}
+          badge={aheadCount > 0 ? { count: aheadCount, description: `${formatCommitCount(aheadCount)} to push` } : undefined}
+          disabled={!hasRepo || isBusy || hasNoRemotes}
           onClick={onPush}
           emphasized={hasRepo}
         />
@@ -165,6 +184,12 @@ export function Toolbar({
       </div>
 
       <div className="flex h-full shrink-0 items-center justify-self-end">
+        <OpenInApplicationAction
+          disabled={!hasRepo || isBusy}
+          applications={applications}
+          selectedApplication={selectedApplication}
+          onOpen={onOpenInApplication}
+        />
         <ActionsMenu
           disabled={!hasRepo || isBusy}
           hasSelectedCommit={hasSelectedCommit}
@@ -222,15 +247,22 @@ const primarySyncOptions: ReadonlyArray<{
 function PrimarySyncAction({
   operation,
   disabled,
+  behindCount,
+  upstream,
+  unavailableReason,
   onRun,
   onChange
 }: {
   operation: PrimarySyncOperation;
   disabled: boolean;
+  behindCount: number;
+  upstream?: string;
+  unavailableReason?: string;
   onRun: () => void;
   onChange: (operation: PrimarySyncOperation) => void;
 }): ReactElement {
   const selected = primarySyncOptions.find((option) => option.operation === operation) ?? primarySyncOptions[0];
+  const behindDescription = `${formatCommitCount(behindCount)} to pull`;
   const icon = operation === 'fetch-all'
     ? <ArrowDownToLine size={17} />
     : <GitPullRequestArrow size={17} />;
@@ -240,7 +272,8 @@ function PrimarySyncAction({
       <ToolbarAction
         label={selected.buttonLabel}
         icon={icon}
-        hint={selected.hint}
+        hint={unavailableReason ?? (behindCount > 0 && upstream ? `${selected.hint}. ${upstream} has ${behindDescription}.` : selected.hint)}
+        badge={behindCount > 0 ? { count: behindCount, description: behindDescription } : undefined}
         disabled={disabled}
         onClick={onRun}
         emphasized
@@ -269,6 +302,59 @@ function PrimarySyncAction({
                 {option.operation === operation ? <Check size={13} /> : null}
               </span>
               <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function OpenInApplicationAction({
+  disabled,
+  applications,
+  selectedApplication,
+  onOpen
+}: {
+  disabled: boolean;
+  applications: readonly ExternalApplication[];
+  selectedApplication?: ExternalApplication;
+  onOpen: (application: ExternalApplication) => void;
+}): ReactElement {
+  const unavailable = disabled || !selectedApplication;
+
+  return (
+    <div className="tb-sync-control">
+      <ToolbarAction
+        label="Open"
+        icon={selectedApplication ? <ApplicationIcon application={selectedApplication} size={18} /> : <MonitorUp size={17} />}
+        hint={selectedApplication ? `Open repository in ${selectedApplication.name}` : 'No supported editor, terminal, or file manager was found'}
+        ariaLabel={selectedApplication ? `Open repository in ${selectedApplication.name}` : 'Open repository'}
+        disabled={unavailable}
+        onClick={() => selectedApplication && onOpen(selectedApplication)}
+        emphasized
+        className="tb-sync-action"
+      />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="tb-sync-menu-trigger"
+            type="button"
+            disabled={unavailable}
+            title="Choose an application"
+            aria-label="Choose an application to open the repository in"
+          >
+            <ChevronDown size={11} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={-2} className="w-60" aria-label="Open repository in">
+          <p className="px-2 py-1.5 text-[11px] leading-4 text-[var(--text-3)]">Open this repository in</p>
+          <DropdownMenuSeparator className="mx-0 my-1" />
+          {applications.map((application) => (
+            <DropdownMenuItem key={application.id} className="min-h-9" onSelect={() => onOpen(application)}>
+              <ApplicationIcon application={application} size={20} />
+              <span className="min-w-0 flex-1 truncate text-left">{application.name}</span>
+              {application.id === selectedApplication?.id ? <Check size={13} className="text-[var(--accent-2)]" /> : null}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -416,24 +502,40 @@ type ToolbarActionProps = {
   label: string;
   icon: ReactNode;
   hint: string;
+  ariaLabel?: string;
+  badge?: { count: number; description: string };
   emphasized?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   className?: string;
 };
 
-function ToolbarAction({ label, icon, hint, emphasized = false, disabled = true, onClick, className = '' }: ToolbarActionProps): ReactElement {
+function ToolbarAction({ label, icon, hint, ariaLabel, badge, emphasized = false, disabled = true, onClick, className = '' }: ToolbarActionProps): ReactElement {
   return (
     <button
       className={`tb-action ${className}`.trim()}
       type="button"
       disabled={disabled}
       title={hint}
+      aria-label={ariaLabel ?? (badge ? `${label}, ${badge.description}` : undefined)}
       onClick={onClick}
       style={emphasized && !disabled ? { opacity: 1, color: 'var(--text-2)' } : undefined}
     >
-      <span className="tb-action-label">{label}</span>
+      <span className="tb-action-label">
+        {label}
+        {badge ? (
+          <span className="tb-action-badge" aria-hidden="true">
+            {badge.count > 99 ? '99+' : badge.count}
+          </span>
+        ) : null}
+      </span>
       <span className="tb-action-icon">{icon}</span>
     </button>
   );
+}
+
+const noRemoteHint = 'This repository has no remotes. Add one with + beside Remote in the sidebar.';
+
+function formatCommitCount(count: number): string {
+  return `${count} ${count === 1 ? 'commit' : 'commits'}`;
 }

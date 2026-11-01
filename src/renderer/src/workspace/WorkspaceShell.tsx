@@ -2,20 +2,28 @@ import type { ReactElement } from 'react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowRight,
   ArrowUp,
   Beaker,
+  Cherry,
+  Cloud,
   FileClock,
   FolderOpen,
   FolderX,
   GitBranch,
   GitBranchMinus,
+  GitCommitHorizontal,
   GitCompareArrows,
+  GitMerge,
   Keyboard,
+  Link2,
   PanelLeftClose,
   PanelRightClose,
+  PencilLine,
   RefreshCw,
+  RotateCcw,
   Rows3,
   SearchCode,
   Settings,
@@ -25,9 +33,18 @@ import {
   X
 } from 'lucide-react';
 import { useWorkerPool } from '@pierre/diffs/react';
-import { useIsMutating, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { ApplicationIcon } from '@renderer/components/applications/ApplicationIcon';
+import {
+  loadPreferredApplication,
+  repositoryApplicationStorageKey,
+  repositoryApplications,
+  savePreferredApplication,
+  selectApplication
+} from '@renderer/components/applications/preferredApplication';
 import { CommitDetailPanel } from '@renderer/components/commit/CommitDetailPanel';
+import { RepositoryDropOverlay } from '@renderer/components/start/RepositoryDropOverlay';
 import { MachineFileDiffView, MachineWipPanel, type MachineFileSelection } from '@renderer/components/machines/MachineWipPanel';
 import { machineFileGroups } from '@renderer/components/machines/machineFiles';
 import type { DiffStyle, WipDiffScope } from '@renderer/components/commit/fileDetailUtils';
@@ -46,6 +63,7 @@ import {
 } from '@renderer/components/inspection/RepositoryInspectorDialog';
 import { CommandDialog, type CommandDialogConfig, type CommandDialogValues } from '@renderer/components/operations/CommandDialog';
 import { buildRepositoryRepairPrompt, isRepositoryCorruptionError } from '@renderer/lib/repositoryRepair';
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import { ConflictBanner } from '@renderer/components/operations/ConflictBanner';
 import { OperationLog, type OperationLogEntry } from '@renderer/components/operations/OperationLog';
 import {
@@ -118,6 +136,17 @@ import {
 } from '@renderer/workspace/branchActivation';
 import type { CheckoutTransition } from '@renderer/workspace/checkoutTransition';
 import { createRepositoryOperationQueue } from '@renderer/workspace/repositoryOperationQueue';
+import {
+  adjacentTabStop,
+  listTabStops,
+  rememberClosedRepository,
+  tabDigitFromKeyboardEvent,
+  tabStopForDigit,
+  tabsToClose,
+  type TabStop
+} from '@renderer/workspace/tabNavigation';
+import type { ExternalApplication } from '@shared/externalApplications';
+import type { MenuCommand } from '@shared/menuCommands';
 import {
   indexPullRequestsByBranch,
   repositoryMatchesGitHubRepository,
@@ -204,6 +233,15 @@ type InteractiveRebaseDialogState = {
   isLoading: boolean;
   isRunning: boolean;
   errorMessage?: string;
+};
+
+const emptyExternalApplications: ExternalApplication[] = [];
+
+type TabCommandState = {
+  isModalOpen: boolean;
+  stops: TabStop[];
+  activate: (stop: TabStop) => void;
+  run: (command: MenuCommand) => void;
 };
 
 type ShortcutState = {
@@ -407,6 +445,29 @@ export function WorkspaceShell(): ReactElement {
     onOpenQuickJump: () => {},
     onOpenCommitSearch: () => {},
     onFocusSidebarFilter: () => {}
+  });
+  const recentlyClosedRepositoriesRef = useRef<string[]>([]);
+  const externalApplicationsQuery = useQuery({
+    queryKey: ['system', 'external-applications'],
+    queryFn: () => window.api.listExternalApplications(),
+    staleTime: Number.POSITIVE_INFINITY
+  });
+  const externalApplications = useMemo(
+    () => repositoryApplications(externalApplicationsQuery.data ?? emptyExternalApplications),
+    [externalApplicationsQuery.data]
+  );
+  // Until a repository app is chosen, reuse the editor picked for pull requests.
+  const [repositoryApplicationId, setRepositoryApplicationId] = useState(
+    () =>
+      loadPreferredApplication(window.localStorage, repositoryApplicationStorageKey) ??
+      loadPreferredApplication(window.localStorage)
+  );
+  const repositoryApplication = selectApplication(externalApplications, repositoryApplicationId);
+  const tabCommandsRef = useRef<TabCommandState>({
+    isModalOpen: false,
+    stops: [],
+    activate: () => {},
+    run: () => {}
   });
   const queryClient = useQueryClient();
 
@@ -890,6 +951,16 @@ export function WorkspaceShell(): ReactElement {
     });
   }, []);
 
+  const isModalOpen = Boolean(
+    commandDialog ||
+      visibleStashDialog ||
+      interactiveRebaseDialog ||
+      isSettingsOpen ||
+      isQuickJumpOpen ||
+      repositoryInspector ||
+      repositoryMaintenance
+  );
+
   useEffect(() => {
     shortcutStateRef.current = {
       isBlocked: Boolean(
@@ -909,7 +980,33 @@ export function WorkspaceShell(): ReactElement {
       onOpenCommitSearch: handleOpenCommitSearch,
       onFocusSidebarFilter: handleFocusSidebarFilter
     };
+    tabCommandsRef.current = {
+      isModalOpen,
+      stops: listTabStops(workspace.tabs.map((tab) => tab.id), isStartTabOpen),
+      activate: activateTabStop,
+      run: (command) => void handleMenuCommand(command)
+    };
   });
+
+  useEffect(() => {
+    function handleTabDigit(event: KeyboardEvent): void {
+      const digit = tabDigitFromKeyboardEvent(event);
+      const tabCommands = tabCommandsRef.current;
+      const stop = digit && !tabCommands.isModalOpen ? tabStopForDigit(tabCommands.stops, digit) : undefined;
+
+      if (stop) {
+        event.preventDefault();
+        tabCommands.activate(stop);
+      }
+    }
+
+    window.addEventListener('keydown', handleTabDigit);
+    const removeMenuListener = window.api.onMenuCommand((command) => tabCommandsRef.current.run(command));
+    return () => {
+      window.removeEventListener('keydown', handleTabDigit);
+      removeMenuListener();
+    };
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -1540,14 +1637,15 @@ export function WorkspaceShell(): ReactElement {
     );
   }
 
-  function handleCloseTab(tabId: string): void {
+  function handleCloseTab(tabId: string): Promise<void> {
     const tab = workspace.tabs.find((candidate) => candidate.id === tabId);
-    void closeTab(tabId);
+    const closing = closeTab(tabId);
 
     if (!tab) {
-      return;
+      return closing;
     }
 
+    recentlyClosedRepositoriesRef.current = rememberClosedRepository(recentlyClosedRepositoriesRef.current, tab.path);
     clearRepositoryQueries(queryClient, tab.path);
     setGraphLimitByTab((value) => withoutRecordKey(value, tabId));
     setGraphPaginationByTab((value) => withoutRecordKey(value, tabId));
@@ -1558,6 +1656,20 @@ export function WorkspaceShell(): ReactElement {
     setFileFocusByTab((value) => withoutRecordKey(value, tabId));
     setReviewTargetByTab((value) => withoutRecordKey(value, tabId));
     delete reviewViewStateByTabRef.current[tabId];
+    return closing;
+  }
+
+  async function handleCloseTabsFrom(tabId: string, scope: 'others' | 'right'): Promise<void> {
+    const closingIds = tabsToClose(workspace.tabs.map((tab) => tab.id), tabId, scope);
+
+    if (scope === 'others' || closingIds.includes(workspace.activeTabId ?? '')) {
+      await handleActivateRepositoryTab(tabId);
+    }
+
+    // Close one at a time so each workspace update from the main process lands in order.
+    for (const closingId of closingIds) {
+      await handleCloseTab(closingId);
+    }
   }
 
   function handleOpenStartTab(): void {
@@ -1577,6 +1689,84 @@ export function WorkspaceShell(): ReactElement {
     }
 
     setIsStartTabOpen(false);
+    setIsStartTabActive(false);
+  }
+
+  function currentTabStop(): TabStop | undefined {
+    if (gitHubWorkspaceView) {
+      return undefined;
+    }
+
+    if (isStartTabActive) {
+      return { kind: 'start' };
+    }
+
+    return workspace.activeTabId ? { kind: 'repository', tabId: workspace.activeTabId } : undefined;
+  }
+
+  function activateTabStop(stop: TabStop): void {
+    if (stop.kind === 'start') {
+      handleActivateStartTab();
+      return;
+    }
+
+    void handleActivateRepositoryTab(stop.tabId);
+  }
+
+  async function handleMenuCommand(command: MenuCommand): Promise<void> {
+    if (tabCommandsRef.current.isModalOpen) {
+      return;
+    }
+
+    switch (command) {
+      case 'new-tab':
+        handleOpenStartTab();
+        return;
+      case 'open-settings':
+        handleOpenSettings();
+        return;
+      case 'next-tab':
+      case 'previous-tab': {
+        const stop = adjacentTabStop(tabCommandsRef.current.stops, currentTabStop(), command === 'next-tab' ? 1 : -1);
+        if (stop) activateTabStop(stop);
+        return;
+      }
+      case 'close-tab':
+        // Dashboards and pull requests have their own close controls.
+        if (gitHubWorkspaceView) return;
+        if (isStartTabActive) handleCloseStartTab();
+        else if (activeTab) handleCloseTab(activeTab.id);
+        return;
+      case 'reopen-closed-tab': {
+        const [repoPath, ...remaining] = recentlyClosedRepositoriesRef.current;
+        if (!repoPath) return;
+        recentlyClosedRepositoriesRef.current = remaining;
+        if (await openRepositoryAtPath(repoPath)) showOpenedRepository();
+        return;
+      }
+      case 'open-repository':
+        if (await openRepository()) showOpenedRepository();
+        return;
+    }
+  }
+
+  async function handleOpenDroppedRepositories(paths: string[]): Promise<void> {
+    let openedAny = false;
+
+    for (const repoPath of paths) {
+      if (await openRepositoryAtPath(repoPath)) {
+        openedAny = true;
+      }
+    }
+
+    if (openedAny) {
+      if (isStartTabActive) completeStartPageAction();
+      showOpenedRepository();
+    }
+  }
+
+  function showOpenedRepository(): void {
+    setGitHubWorkspaceView(undefined);
     setIsStartTabActive(false);
   }
 
@@ -1928,6 +2118,11 @@ export function WorkspaceShell(): ReactElement {
 
         try {
           const result = await action(requestedRepoPath);
+          if (result.lastFetchedAt) {
+            queryClient.setQueryData<GitRepositoryOverview>(repositoryOverviewQueryKey(result.repoPath), (overview) =>
+              overview ? { ...overview, lastFetchedAt: result.lastFetchedAt } : overview
+            );
+          }
           setActiveRepositoryOperations((operations) => {
             const operation = operations[requestedRepoPath];
             return operation?.id === id
@@ -1972,7 +2167,7 @@ export function WorkspaceShell(): ReactElement {
           );
           return true;
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Git operation failed.';
+          const message = ipcErrorMessage(error, 'Git operation failed.');
           setOperationLogEntries((entries) =>
             applyOperationFailure(entries, id, message, new Date().toISOString())
           );
@@ -2085,6 +2280,7 @@ export function WorkspaceShell(): ReactElement {
   function handleAddRemote(): void {
     openCommandDialog({
       title: 'Add remote',
+      icon: Cloud,
       description: 'Connect this repository to another Git remote.',
       confirmLabel: 'Add Remote',
       fields: [
@@ -2129,6 +2325,7 @@ export function WorkspaceShell(): ReactElement {
   function handleEditRemote(remote: GitRemote): void {
     openCommandDialog({
       title: `Edit remote ${remote.name}`,
+      icon: Cloud,
       description: 'Update the remote name and its fetch or push destinations.',
       confirmLabel: 'Save Remote',
       fields: [
@@ -2247,6 +2444,7 @@ export function WorkspaceShell(): ReactElement {
 
     openCommandDialog({
       title: `Set upstream for ${name}`,
+      icon: Link2,
       description: 'Choose the existing remote branch this local branch should track.',
       confirmLabel: 'Set Upstream',
       fields: [
@@ -2503,6 +2701,16 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  function handleOpenRepositoryInApplication(application: ExternalApplication, repoPath?: string): void {
+    setRepositoryApplicationId(application.id);
+    savePreferredApplication(window.localStorage, application.id, repositoryApplicationStorageKey);
+    void runRepositoryOperation(
+      `Open in ${application.name}`,
+      (targetPath) => window.api.openRepositoryInApplication(targetPath, application.id),
+      { repoPath }
+    );
+  }
+
   function handleOpenWipFile(file: GitFileChangeDetail): void {
     void runRepositoryOperation(`Open ${file.path}`, (repoPath) => window.api.openFile(repoPath, file.path));
   }
@@ -2536,6 +2744,7 @@ export function WorkspaceShell(): ReactElement {
   function handleCreateBranch(startPoint?: string): void {
     openCommandDialog({
       title: startPoint ? 'Create branch here' : 'Create branch',
+      icon: GitBranch,
       description: startPoint
         ? `Create a local branch at ${startPoint.slice(0, 8)}.`
         : 'Create a local branch from the current HEAD.',
@@ -2585,6 +2794,8 @@ export function WorkspaceShell(): ReactElement {
     if ((repositoryQuery.data?.status.conflictedCount ?? 0) > 0) {
       openCommandDialog({
         title: 'Resolve conflicts before stashing',
+        tone: 'warning',
+        acknowledgeOnly: true,
         description: 'Git cannot create a stash while the repository has unresolved conflicts.',
         confirmLabel: 'Close',
         fields: [],
@@ -2612,6 +2823,8 @@ export function WorkspaceShell(): ReactElement {
     }).catch((error: unknown) => {
       openCommandDialog({
         title: 'Unable to load changed files',
+        tone: 'warning',
+        acknowledgeOnly: true,
         description: error instanceof Error ? error.message : 'The changed files could not be loaded.',
         confirmLabel: 'Close',
         fields: [],
@@ -2644,6 +2857,7 @@ export function WorkspaceShell(): ReactElement {
     const { selector } = input;
     openCommandDialog({
       title: `Apply ${selector}`,
+      icon: ArchiveRestore,
       description: 'Apply this stash without removing it from the stash list.',
       confirmLabel: 'Apply Stash',
       fields: [],
@@ -2665,6 +2879,7 @@ export function WorkspaceShell(): ReactElement {
 
     openCommandDialog({
       title: `Pop ${selector}`,
+      icon: ArchiveRestore,
       description: 'Apply this stash and remove it if the operation succeeds.',
       confirmLabel: 'Pop Stash',
       fields: [],
@@ -2707,6 +2922,7 @@ export function WorkspaceShell(): ReactElement {
   function handleCheckoutRemoteBranch(name: string): void {
     openCommandDialog({
       title: 'Checkout remote branch',
+      icon: GitBranch,
       description: `Create a local tracking branch from ${name}.`,
       confirmLabel: 'Checkout',
       fields: [
@@ -2834,6 +3050,7 @@ export function WorkspaceShell(): ReactElement {
   function handleCheckoutCommit(sha: string): void {
     openCommandDialog({
       title: 'Checkout commit',
+      icon: GitCommitHorizontal,
       description: `Checkout ${sha.slice(0, 8)} in detached HEAD.`,
       confirmLabel: 'Checkout',
       fields: [],
@@ -2846,6 +3063,7 @@ export function WorkspaceShell(): ReactElement {
   function handleRenameBranch(name: string): void {
     openCommandDialog({
       title: 'Rename branch',
+      icon: PencilLine,
       description: `Rename ${name}.`,
       confirmLabel: 'Rename',
       fields: [
@@ -2977,6 +3195,7 @@ export function WorkspaceShell(): ReactElement {
   function handleOpenCreateTagDialog(sha: string): void {
     openCommandDialog({
       title: 'Create tag here',
+      icon: Tag,
       description: `Create a tag at ${sha.slice(0, 8)}.`,
       confirmLabel: 'Create Tag',
       fields: [
@@ -3005,6 +3224,7 @@ export function WorkspaceShell(): ReactElement {
   function handleOpenCreateAndPushTagDialog(sha: string): void {
     openCommandDialog({
       title: 'Create tag here and push',
+      icon: Tag,
       description: `Create an annotated tag at ${sha.slice(0, 8)} and push it to origin.`,
       confirmLabel: 'Create Tag and Push',
       fields: [
@@ -3069,6 +3289,7 @@ export function WorkspaceShell(): ReactElement {
 
     openCommandDialog({
       title: 'Merge into current branch',
+      icon: GitMerge,
       description: `Merge ${label} into the checked-out branch.`,
       confirmLabel: 'Merge',
       fields: [],
@@ -3103,6 +3324,7 @@ export function WorkspaceShell(): ReactElement {
 
     openCommandDialog({
       title: isBulk ? 'Cherry-pick selected commits' : 'Cherry-pick commit',
+      icon: Cherry,
       description: isBulk
         ? `Apply ${shas.length} selected commits onto the current branch, oldest to newest.`
         : `Apply \u201c${label}\u201d onto the current branch.`,
@@ -3118,6 +3340,7 @@ export function WorkspaceShell(): ReactElement {
   function handleRevertCommit(sha: string): void {
     openCommandDialog({
       title: 'Revert commit',
+      icon: RotateCcw,
       description: `Create a new commit that reverts ${sha.slice(0, 8)}.`,
       confirmLabel: 'Revert',
       fields: [],
@@ -3173,6 +3396,7 @@ export function WorkspaceShell(): ReactElement {
 
     openCommandDialog({
       title: 'Rebase current branch',
+      icon: Workflow,
       description: `Replay the current branch onto ${label}.`,
       confirmLabel: 'Rebase',
       fields: [],
@@ -3467,9 +3691,18 @@ export function WorkspaceShell(): ReactElement {
       onSelect: () =>
         openCommandDialog({
           title: 'Keyboard shortcuts',
+          icon: Keyboard,
+          acknowledgeOnly: true,
           description: 'Navigate and run common actions without leaving the graph.',
           detail: [
             '⌘P  Command palette',
+            '⌘T  New tab',
+            '⌘W  Close tab',
+            '⇧⌘T  Reopen closed tab',
+            '⌘1–⌘9  Switch to tab (⌘9 selects the last tab)',
+            '⌃Tab / ⌃⇧Tab  Next / previous tab',
+            '⌘O  Open repository',
+            '⌘,  Settings',
             '⌘F  Find commits by SHA or message',
             '⌘⇧F  Fetch all remotes',
             '⌘⇧U  Push current branch',
@@ -3499,7 +3732,18 @@ export function WorkspaceShell(): ReactElement {
         operationRetryActionsRef.current.clear();
         setOperationLogEntries([]);
       }
-    }
+    },
+    ...externalApplications.map((application): PaletteAction => ({
+      id: `open-in-${application.id}`,
+      label: `Open repository in ${application.name}`,
+      category: 'Workspace',
+      detail: activeTab?.path,
+      keywords: ['open', 'editor', 'terminal', 'finder', 'reveal', application.name],
+      icon: <ApplicationIcon application={application} size={14} />,
+      disabled: !activeTab || isOperationBusy,
+      disabledReason: !activeTab ? 'Open a repository first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      onSelect: () => handleOpenRepositoryInApplication(application)
+    }))
   ];
 
   return (
@@ -3507,6 +3751,10 @@ export function WorkspaceShell(): ReactElement {
       className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-1)]"
       aria-busy={Boolean(profileTransition)}
     >
+      <RepositoryDropOverlay
+        disabled={isModalOpen || Boolean(profileTransition)}
+        onOpenPaths={(paths) => void handleOpenDroppedRepositories(paths)}
+      />
       <DashboardActionsMonitor
         dashboards={dashboardsQuery.data?.dashboards ?? []}
         isDashboardVisible={gitHubWorkspaceView?.kind === 'dashboard'}
@@ -3532,7 +3780,13 @@ export function WorkspaceShell(): ReactElement {
         activeRepoDirty={(repositoryQuery.data?.status.dirtyCount ?? 0) > 0}
         onActivateTab={(tabId) => void handleActivateRepositoryTab(tabId)}
         onReorderTab={(tabId, targetIndex) => void reorderTab(tabId, targetIndex)}
-        onCloseTab={handleCloseTab}
+        onCloseTab={(tabId) => void handleCloseTab(tabId)}
+        onCloseOtherTabs={(tabId) => void handleCloseTabsFrom(tabId, 'others')}
+        onCloseTabsToRight={(tabId) => void handleCloseTabsFrom(tabId, 'right')}
+        repositoryApplication={repositoryApplication}
+        onOpenTabInApplication={(tabId, application) =>
+          handleOpenRepositoryInApplication(application, workspace.tabs.find((tab) => tab.id === tabId)?.path)
+        }
         onOpenStartTab={handleOpenStartTab}
         onActivateStartTab={handleActivateStartTab}
         onCloseStartTab={handleCloseStartTab}
@@ -3568,6 +3822,9 @@ export function WorkspaceShell(): ReactElement {
           onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
           onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
           onOpenRepositoryMaintenance={handleOpenRepositoryMaintenance}
+          applications={externalApplications}
+          selectedApplication={repositoryApplication}
+          onOpenInApplication={handleOpenRepositoryInApplication}
         />
       ) : null}
 
@@ -3996,6 +4253,7 @@ export function WorkspaceShell(): ReactElement {
                   onOpenWipFile={handleOpenWipFile}
                   onRevealWipFile={handleRevealWipFile}
                   onStashWipFile={handleStashWipFile}
+                  stashActions={{ onApply: handleStashApply, onPop: handleStashPop, onDrop: handleStashDrop }}
                 />
               ) : null}
             </>

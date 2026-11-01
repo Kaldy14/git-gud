@@ -7,6 +7,7 @@ import {
   autoUpdater,
   BrowserWindow,
   Menu,
+  screen,
   shell,
   type MenuItemConstructorOptions
 } from 'electron';
@@ -16,7 +17,8 @@ import { gitExecutor } from './git/exec';
 import { registerIpcHandlers } from './ipc';
 import { cleanupExpiredPullRequestWorktrees } from './managedPullRequestWorktrees';
 import { isTrustedRendererUrl } from './ipcSecurity';
-import { flushPendingWorkspaceWrites, getWorkspace } from './store';
+import { flushPendingWorkspaceWrites, getWindowState, getWorkspace, saveWindowState } from './store';
+import { restoreWindowBounds, type SavedWindowState } from './windowState';
 import { reviewGuideManager } from './reviewGuide';
 import {
   GIT_GUD_PROTOCOL,
@@ -24,6 +26,7 @@ import {
   PULL_REQUEST_DEEP_LINK_EVENT
 } from '@shared/pullRequestDeepLink';
 import { pullRequestDeepLinkQueue } from './pullRequestDeepLinks';
+import { MENU_COMMAND_EVENT, type MenuCommand } from '@shared/menuCommands';
 import {
   ApplicationUpdater,
   hasCompatibleMacOsUpdateSignature,
@@ -47,9 +50,12 @@ const repoWatchers = new RepoWatcherRegistry((event) => {
 
 function createWindow(): void {
   const iconPath = resolveAppIconPath();
+  const savedWindowState = getWindowState();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workAreas = [primaryDisplay, ...screen.getAllDisplays().filter((display) => display.id !== primaryDisplay.id)]
+    .map((display) => display.workArea);
   const mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    ...restoreWindowBounds(savedWindowState, workAreas),
     // Let macOS resize freely, including quarter-screen window tiling.
     minWidth: process.platform === 'darwin' ? 0 : 1100,
     minHeight: process.platform === 'darwin' ? 0 : 720,
@@ -71,14 +77,39 @@ function createWindow(): void {
   });
 
   mainWindow.on('ready-to-show', () => {
+    if (savedWindowState?.fullScreen) {
+      mainWindow.setFullScreen(true);
+    } else if (savedWindowState?.maximized) {
+      mainWindow.maximize();
+    }
+
     mainWindow.show();
   });
+
+  let windowStateTimer: ReturnType<typeof setTimeout> | undefined;
+  const persistWindowState = (): void => {
+    clearTimeout(windowStateTimer);
+    if (!mainWindow.isDestroyed()) saveWindowState(captureWindowState(mainWindow));
+  };
+  const schedulePersistWindowState = (): void => {
+    clearTimeout(windowStateTimer);
+    windowStateTimer = setTimeout(persistWindowState, 400);
+  };
+
+  mainWindow.on('resize', schedulePersistWindowState);
+  mainWindow.on('move', schedulePersistWindowState);
+  mainWindow.on('maximize', schedulePersistWindowState);
+  mainWindow.on('unmaximize', schedulePersistWindowState);
+  mainWindow.on('enter-full-screen', schedulePersistWindowState);
+  mainWindow.on('leave-full-screen', schedulePersistWindowState);
 
   mainWindow.webContents.on('did-start-loading', () => {
     pullRequestDeepLinkQueue.markRendererUnavailable();
   });
 
   mainWindow.on('close', (event) => {
+    persistWindowState();
+
     if (isQuitting) {
       return;
     }
@@ -114,6 +145,14 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
+}
+
+function captureWindowState(window: BrowserWindow): SavedWindowState {
+  const maximized = window.isMaximized();
+  const fullScreen = window.isFullScreen();
+  // Normal bounds keep the size the window returns to after leaving maximized or full screen.
+  const bounds = maximized || fullScreen ? window.getNormalBounds() : window.getBounds();
+  return { ...bounds, maximized, fullScreen };
 }
 
 function openPullRequestDeepLink(value: string): boolean {
@@ -256,6 +295,8 @@ function installApplicationMenu(
           click: checkForUpdates
         },
         { type: 'separator' },
+        menuCommandItem('Settings…', 'CmdOrCtrl+,', 'open-settings'),
+        { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
         { role: 'unhide' },
@@ -267,12 +308,44 @@ function installApplicationMenu(
         }
       ]
     },
+    {
+      label: 'File',
+      submenu: [
+        menuCommandItem('New Tab', 'CmdOrCtrl+T', 'new-tab'),
+        menuCommandItem('Open Repository…', 'CmdOrCtrl+O', 'open-repository'),
+        menuCommandItem('Reopen Closed Tab', 'CmdOrCtrl+Shift+T', 'reopen-closed-tab'),
+        { type: 'separator' },
+        menuCommandItem('Close Tab', 'CmdOrCtrl+W', 'close-tab')
+      ]
+    },
     { role: 'editMenu' },
     { role: 'viewMenu' },
-    { role: 'windowMenu' }
+    {
+      // Replaces the default Window menu so Ctrl+W closes a tab rather than the whole window.
+      role: 'windowMenu',
+      submenu: [
+        { role: 'minimize' },
+        ...(process.platform === 'darwin' ? [{ role: 'zoom' } as const] : []),
+        { type: 'separator' },
+        menuCommandItem('Show Previous Tab', 'Ctrl+Shift+Tab', 'previous-tab'),
+        menuCommandItem('Show Next Tab', 'Ctrl+Tab', 'next-tab'),
+        ...(process.platform === 'darwin' ? [{ type: 'separator' } as const, { role: 'front' } as const] : [])
+      ]
+    }
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function menuCommandItem(label: string, accelerator: string, command: MenuCommand): MenuItemConstructorOptions {
+  return {
+    label,
+    accelerator,
+    click: () => {
+      const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      window?.webContents.send(MENU_COMMAND_EVENT, command);
+    }
+  };
 }
 
 function createApplicationUpdater(): ApplicationUpdater {

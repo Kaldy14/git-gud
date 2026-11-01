@@ -126,17 +126,36 @@ code,
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-button {
-  border-radius: 6px;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
+/* Element resets stay in the base layer so Tailwind utilities on buttons and fields win. */
+@layer base {
+  button {
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
 
-button:disabled {
-  cursor: default;
+  button:disabled {
+    cursor: default;
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
 }
 
 :where(a[href], button, input, textarea, select, [tabindex]):focus-visible {
@@ -144,13 +163,9 @@ button:disabled {
   outline-offset: -2px;
 }
 
-input {
-  font: inherit;
-}
-
-textarea,
-select {
-  font: inherit;
+/* Dialog panels take programmatic focus for screen readers; the open dialog is already the visible focus context. */
+[role='dialog'][tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 .repository-start-input {
@@ -180,6 +195,44 @@ select {
 .repository-start-input:disabled {
   color: var(--text-3);
   opacity: 0.68;
+}
+
+/* Shown while a folder is dragged over the window; it never intercepts the drop itself. */
+.repository-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(14 18 24 / 0.72);
+  pointer-events: none;
+}
+
+.repository-drop-overlay-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(440px, 100%);
+  padding: 36px 28px;
+  border: 2px dashed var(--accent-2);
+  border-radius: 12px;
+  background: var(--bg-popover);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.45);
+  color: var(--accent-2);
+  text-align: center;
+}
+
+.repository-drop-overlay-card p {
+  margin: 4px 0 0;
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.repository-drop-overlay-card span {
+  color: var(--text-3);
+  font-size: 12px;
 }
 
 .drag-region {
@@ -580,6 +633,15 @@ select {
   color: var(--text-3);
 }
 
+.icon-btn.icon-btn-danger {
+  color: var(--danger-text);
+}
+
+.icon-btn.icon-btn-danger:not(:disabled):hover {
+  background: var(--danger-bg);
+  color: #ffc9c5;
+}
+
 .icon-btn-regular {
   width: 32px;
   height: 32px;
@@ -741,6 +803,28 @@ select {
   place-items: center;
 }
 
+/* Ahead/behind counts follow the label so they never cover the icon or the sync menu chevron. */
+.tb-action-badge {
+  display: inline-block;
+  min-width: 13px;
+  height: 13px;
+  /* Negative block margins keep the label row, and so the icon row, at the same height. */
+  margin: -2px 0 -2px 3px;
+  padding: 0 3.5px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--bg-field);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  vertical-align: 1px;
+}
+
+.tb-action:disabled .tb-action-badge {
+  opacity: 0.6;
+}
+
 .tb-divider {
   width: 1px;
   height: 34px;
@@ -756,6 +840,7 @@ select {
   gap: 0;
   height: 44px;
   min-width: 0;
+  max-width: 212px;
   padding: 0 11px;
   border-radius: 4px;
   text-align: left;
@@ -777,15 +862,15 @@ select {
   min-width: 0;
   align-items: center;
   gap: 5px;
-  max-width: 190px;
+  max-width: 100%;
   white-space: nowrap;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--text-1);
 }
 
-.tb-select-branch .tb-select-value {
-  max-width: 205px;
+.tb-select-branch {
+  max-width: 342px;
 }
 
 /* --- Sidebar --------------------------------------------------------- */
@@ -1255,6 +1340,11 @@ select {
 .menu-row:hover {
   background: var(--bg-hover);
   color: var(--text-1);
+}
+
+/* The palette surface frames its always-focused search field. */
+.command-palette-input:focus-visible {
+  outline: none;
 }
 
 .menu-row:disabled,
@@ -1882,6 +1972,12 @@ button.ref-chip {
   }
 }
 
+@media (max-width: 900px) {
+  .statusbar-fetched {
+    display: none;
+  }
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -1960,6 +2056,31 @@ button.ref-chip {
 .btn-subtle:disabled {
   color: var(--text-3);
   opacity: 0.62;
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--danger-border);
+  border-radius: 5px;
+  background: var(--danger-bg);
+  padding: 0 13px;
+  color: var(--danger-text);
+  font-weight: 700;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.btn-danger:not(:disabled):hover {
+  border-color: var(--danger-text);
+  background: #3a1b1f;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
 }
 
 .btn-regular {
@@ -2099,7 +2220,7 @@ button.ref-chip {
   width: 34px;
   height: 34px;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 50%;
   background: var(--bg-field);
   box-shadow: 0 0 0 2px var(--bg-sidebar);
   color: var(--text-3);
@@ -2118,6 +2239,10 @@ button.ref-chip {
 .commit-message-editor-card:focus-within {
   border-color: var(--accent-2);
   box-shadow: 0 0 0 1px rgb(95 214 195 / 0.12);
+}
+
+.commit-message-editor-card :is(input, textarea):focus-visible {
+  outline: none;
 }
 
 .commit-message-editor-card [data-over-limit='true'] {
@@ -8439,29 +8564,6 @@ button.ref-chip {
   gap: 6px;
 }
 
-.btn-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 34px;
-  border: 1px solid var(--danger-border);
-  border-radius: 5px;
-  background: var(--danger-bg);
-  padding: 0 13px;
-  color: var(--danger-text);
-  font-weight: 700;
-}
-
-.btn-danger:not(:disabled):hover {
-  border-color: var(--danger-text);
-  background: #3a1b1f;
-}
-
-.btn-danger:disabled {
-  opacity: 0.5;
-}
-
 @media (max-width: 1120px) {
   .review-toolbar {
     padding-inline: 8px;
@@ -8501,10 +8603,6 @@ button.ref-chip {
 
   .tb-divider {
     margin-inline: 3px;
-  }
-
-  .tb-select .tb-select-value {
-    max-width: 132px;
   }
 
   .pr-review-header-status,

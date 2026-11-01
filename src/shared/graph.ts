@@ -419,7 +419,8 @@ function initials(value: string): string {
   );
 }
 
-function authorColor(identity: string): string {
+/** Generated avatar color for an author identity (email, else name); shared by the graph and detail panels. */
+export function authorColor(identity: string): string {
   return AUTHOR_COLORS[Math.abs(hashString(identity)) % AUTHOR_COLORS.length];
 }
 

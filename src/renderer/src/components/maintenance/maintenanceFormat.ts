@@ -1,3 +1,4 @@
+import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import type { BranchCleanupEvidence } from '@shared/maintenance';
 
 export const EVIDENCE_LABELS: Record<BranchCleanupEvidence, string> = {
@@ -35,5 +36,5 @@ export function formatTime(value: string): string {
 }
 
 export function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : fallback;
+  return ipcErrorMessage(error, fallback);
 }

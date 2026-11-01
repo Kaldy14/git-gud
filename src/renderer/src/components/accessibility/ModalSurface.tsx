@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode, RefObject } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ModalSurfaceProps = {
   children: ReactNode;
@@ -34,9 +34,12 @@ export function ModalSurface({
   const internalPanelRef = useRef<HTMLElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const activePanelRef = panelRef ?? internalPanelRef;
+  // Captured during the first render, before React applies autoFocus inside the panel.
+  const [returnFocusTarget] = useState(() =>
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  );
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     const panel = activePanelRef.current;
     const backdrop = backdropRef.current;
     const siblingInertStates = new Map<HTMLElement, boolean>();
@@ -56,7 +59,8 @@ export function ModalSurface({
 
     if (initialFocus) {
       initialFocus.focus({ preventScroll: true });
-    } else {
+    } else if (!panel?.contains(document.activeElement)) {
+      // React's autoFocus focuses fields without an autofocus attribute; keep that focus.
       panel?.focus({ preventScroll: true });
     }
 
@@ -65,9 +69,9 @@ export function ModalSurface({
         sibling.inert = wasInert;
       }
 
-      previouslyFocused?.focus({ preventScroll: true });
+      returnFocusTarget?.focus({ preventScroll: true });
     };
-  }, [activePanelRef]);
+  }, [activePanelRef, returnFocusTarget]);
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
     if (event.key === 'Escape') {

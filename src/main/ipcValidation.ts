@@ -151,6 +151,10 @@ const validators = {
   'repo:discard-all': (args) => readOnlyArg(args, 'repo:discard-all', 'repoPath', readString),
   'repo:open-file': (args) => readStringPair(args, 'repo:open-file', 'repoPath', 'path'),
   'repo:reveal-file': (args) => readStringPair(args, 'repo:reveal-file', 'repoPath', 'path'),
+  'repo:open-in-application': (args) => {
+    assertArgCount('repo:open-in-application', args, 2);
+    return [readString(args[0], 'repoPath'), readEnum(args[1], 'applicationId', externalApplicationIds)];
+  },
   'system:open-codex-task': (args) => readCodexTaskArgs(args),
   'system:external-applications': (args) => noArgs('system:external-applications', args),
   'repo:stage-all': (args) => readOnlyArg(args, 'repo:stage-all', 'repoPath', readString),
@@ -1552,7 +1556,7 @@ function readPatchApplyInput(value: unknown): GitPatchApplyInput {
   const record = readRecord(value, 'patch apply input');
   return {
     path: readStringProperty(record, 'path'),
-    mode: readEnumProperty(record, 'mode', ['stage', 'unstage']),
+    mode: readEnumProperty(record, 'mode', ['stage', 'unstage', 'discard']),
     patch: readStringProperty(record, 'patch')
   };
 }

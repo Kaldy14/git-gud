@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
 import { FilePlus2, FolderGit2, GitPullRequest, LayoutDashboard, Plus, X } from 'lucide-react';
+import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 
+import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/menuKeyboard';
 import { ProfileMenu } from '@renderer/components/profile/ProfileMenu';
 import {
   resolveTabDropIndex,
   type TabDropPosition
 } from '@renderer/components/tabs/tabReordering';
+import type { ExternalApplication } from '@shared/externalApplications';
 import type { GitProfile, RepoProfileState, RepoTab } from '@shared/types';
 
 const START_TAB_ID = 'new-repository-tab';
@@ -39,6 +42,10 @@ type TabStripProps = {
   onActivateTab: (tabId: string) => void;
   onReorderTab: (tabId: string, targetIndex: number) => void;
   onCloseTab: (tabId: string) => void;
+  onCloseOtherTabs: (tabId: string) => void;
+  onCloseTabsToRight: (tabId: string) => void;
+  repositoryApplication?: ExternalApplication;
+  onOpenTabInApplication: (tabId: string, application: ExternalApplication) => void;
   onOpenStartTab: () => void;
   onActivateStartTab: () => void;
   onCloseStartTab: () => void;
@@ -64,6 +71,10 @@ export function TabStrip({
   onActivateTab,
   onReorderTab,
   onCloseTab,
+  onCloseOtherTabs,
+  onCloseTabsToRight,
+  repositoryApplication,
+  onOpenTabInApplication,
   onOpenStartTab,
   onActivateStartTab,
   onCloseStartTab,
@@ -214,59 +225,99 @@ export function TabStrip({
             const isActive = tab.id === activeTabId;
 
             return (
-              <div
-                key={tab.id}
-                className="no-drag repo-tab repo-tab--repository group"
-                data-active={isActive}
-                data-dragging={draggedTabId === tab.id}
-                data-drop-position={
-                  dropTarget?.tabId === tab.id && draggedTabId !== tab.id
-                    ? dropTarget.position
-                    : undefined
-                }
-                data-tab-id={tab.id}
-                data-reorderable={tabs.length > 1}
-                title={tab.path}
-              >
-                <button
-                  id={tabDomId(tab.id)}
-                  className="repo-tab-main"
-                  data-tab-drag-handle={tabs.length > 1}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  tabIndex={isActive ? 0 : -1}
-                  onPointerDown={(event) => handleTabPointerDown(event, tab.id)}
-                  onPointerMove={handleTabPointerMove}
-                  onPointerUp={handleTabPointerUp}
-                  onPointerCancel={finishTabDrag}
-                  onClick={() => {
-                    if (suppressTabClickRef.current === tab.id) {
-                      suppressTabClickRef.current = undefined;
-                      return;
+              <ContextMenuPrimitive.Root key={tab.id}>
+                <ContextMenuPrimitive.Trigger asChild onKeyDown={openContextMenuFromKeyboard}>
+                  <div
+                    className="no-drag repo-tab repo-tab--repository group"
+                    data-active={isActive}
+                    data-dragging={draggedTabId === tab.id}
+                    data-drop-position={
+                      dropTarget?.tabId === tab.id && draggedTabId !== tab.id
+                        ? dropTarget.position
+                        : undefined
                     }
+                    data-tab-id={tab.id}
+                    data-reorderable={tabs.length > 1}
+                    title={tab.path}
+                  >
+                    <button
+                      id={tabDomId(tab.id)}
+                      className="repo-tab-main"
+                      data-tab-drag-handle={tabs.length > 1}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
+                      onPointerDown={(event) => handleTabPointerDown(event, tab.id)}
+                      onPointerMove={handleTabPointerMove}
+                      onPointerUp={handleTabPointerUp}
+                      onPointerCancel={finishTabDrag}
+                      onClick={() => {
+                        if (suppressTabClickRef.current === tab.id) {
+                          suppressTabClickRef.current = undefined;
+                          return;
+                        }
 
-                    onActivateTab(tab.id);
-                  }}
-                  onKeyDown={(event) =>
-                    handleTabKeyDown(event, tabIndex, navigationTabIds, activateNavigationTab)
-                  }
-                >
-                  <RepositoryTabIcon repoPath={tab.path} />
-                  <span className="min-w-0 flex-1 truncate">{tab.name}</span>
-                  {isActive && activeRepoDirty ? (
-                    <span className="repo-tab-dirty size-2 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Close ${tab.name}`}
-                  className="repo-tab-close"
-                  onClick={() => onCloseTab(tab.id)}
-                >
-                  <X size={11} />
-                </button>
-              </div>
+                        onActivateTab(tab.id);
+                      }}
+                      onKeyDown={(event) =>
+                        handleTabKeyDown(event, tabIndex, navigationTabIds, activateNavigationTab)
+                      }
+                    >
+                      <RepositoryTabIcon repoPath={tab.path} />
+                      <span className="min-w-0 flex-1 truncate">{tab.name}</span>
+                      {isActive && activeRepoDirty ? (
+                        <span className="repo-tab-dirty size-2 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Close ${tab.name}`}
+                      className="repo-tab-close"
+                      onClick={() => onCloseTab(tab.id)}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                </ContextMenuPrimitive.Trigger>
+                <ContextMenuPrimitive.Portal>
+                  <ContextMenuPrimitive.Content
+                    className="context-menu-surface"
+                    collisionPadding={8}
+                    aria-label={`Tab actions for ${tab.name}`}
+                  >
+                    <ContextMenuPrimitive.Item className="menu-row" onSelect={() => onCloseTab(tab.id)}>
+                      <span>Close Tab</span>
+                    </ContextMenuPrimitive.Item>
+                    <ContextMenuPrimitive.Item
+                      className="menu-row"
+                      disabled={tabs.length < 2}
+                      onSelect={() => onCloseOtherTabs(tab.id)}
+                    >
+                      <span>Close Other Tabs</span>
+                    </ContextMenuPrimitive.Item>
+                    <ContextMenuPrimitive.Item
+                      className="menu-row"
+                      disabled={tabIndex === tabs.length - 1}
+                      onSelect={() => onCloseTabsToRight(tab.id)}
+                    >
+                      <span>Close Tabs to the Right</span>
+                    </ContextMenuPrimitive.Item>
+                    <ContextMenuPrimitive.Separator className="context-menu-separator" />
+                    <ContextMenuPrimitive.Item className="menu-row" onSelect={() => void navigator.clipboard.writeText(tab.path)}>
+                      <span>Copy Repository Path</span>
+                    </ContextMenuPrimitive.Item>
+                    {repositoryApplication ? (
+                      <ContextMenuPrimitive.Item
+                        className="menu-row"
+                        onSelect={() => onOpenTabInApplication(tab.id, repositoryApplication)}
+                      >
+                        <span>Open in {repositoryApplication.name}</span>
+                      </ContextMenuPrimitive.Item>
+                    ) : null}
+                  </ContextMenuPrimitive.Content>
+                </ContextMenuPrimitive.Portal>
+              </ContextMenuPrimitive.Root>
             );
           })}
           {isStartTabOpen ? (

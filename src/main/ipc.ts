@@ -162,7 +162,12 @@ import {
   updateSidebarCollapsed,
   updateSidebarWidth
 } from './store';
-import { openCodexTaskForRepository, openRepositoryFileInEditor, revealRepositoryFileInFinder } from './system';
+import {
+  openCodexTaskForRepository,
+  openRepositoryFileInEditor,
+  openRepositoryInApplication,
+  revealRepositoryFileInFinder
+} from './system';
 
 type IpcHandler<TChannel extends IpcChannelName> = (
   event: IpcMainInvokeEvent,
@@ -648,6 +653,9 @@ export function registerIpcHandlers(
   );
   handle('repo:open-file', async (_event, repoPath, path) => openRepositoryFileInEditor(getOpenRepositoryTab(repoPath), path));
   handle('repo:reveal-file', async (_event, repoPath, path) => revealRepositoryFileInFinder(getOpenRepositoryTab(repoPath), path));
+  handle('repo:open-in-application', async (_event, repoPath, applicationId) =>
+    openRepositoryInApplication(getOpenRepositoryTab(repoPath), applicationId)
+  );
   handle('system:open-codex-task', async (_event, repoPath, prompt) =>
     openCodexTaskForRepository(getOpenRepositoryTab(repoPath), prompt)
   );
@@ -661,14 +669,14 @@ export function registerIpcHandlers(
     inRepositoryTransaction(repoPath, async (tab) => {
       const result = await fetchRepository(tab);
       recordRepositoryFetch(tab.commonDir, result.happenedAt);
-      return result;
+      return { ...result, lastFetchedAt: result.happenedAt };
     })
   );
   handle('repo:fetch-remote', async (_event, repoPath, remote) =>
     inRepositoryTransaction(repoPath, async (tab) => {
       const result = await fetchRemote(tab, remote);
       recordRepositoryFetch(tab.commonDir, result.happenedAt);
-      return result;
+      return { ...result, lastFetchedAt: result.happenedAt };
     })
   );
   handle('repo:add-remote', async (_event, repoPath, input) =>
@@ -681,9 +689,14 @@ export function registerIpcHandlers(
     inRepositoryTransaction(repoPath, (tab) => removeRemote(tab, remote))
   );
   handle('repo:pull', async (_event, repoPath, input) =>
-    inRepositoryTransaction(repoPath, (tab) =>
-      pullRepository(tab, input, (fetchedAt) => recordRepositoryFetch(tab.commonDir, fetchedAt))
-    )
+    inRepositoryTransaction(repoPath, async (tab) => {
+      let lastFetchedAt: string | undefined;
+      const result = await pullRepository(tab, input, (fetchedAt) => {
+        lastFetchedAt = fetchedAt;
+        recordRepositoryFetch(tab.commonDir, fetchedAt);
+      });
+      return lastFetchedAt ? { ...result, lastFetchedAt } : result;
+    })
   );
   handle('repo:push', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => pushRepository(tab, input))
@@ -719,7 +732,7 @@ export function registerIpcHandlers(
     inRepositoryTransaction(repoPath, async (tab) => {
       const result = await refreshMaintenanceRefs(tab);
       recordRepositoryFetch(tab.commonDir, result.happenedAt);
-      return result;
+      return { ...result, lastFetchedAt: result.happenedAt };
     })
   );
   handle('repo:checkout', async (_event, repoPath, target) =>

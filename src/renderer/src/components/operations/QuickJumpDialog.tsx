@@ -141,7 +141,7 @@ export function QuickJumpDialog({
   return (
     <ModalSurface
       labelledBy={titleId}
-      className="w-full max-w-[680px] overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
+      className="w-[min(680px,calc(100vw-2rem))] overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
       backdropClassName="fixed inset-0 z-50 grid place-items-start justify-center bg-black/45 px-4 py-[10vh]"
       onClose={onClose}
     >
@@ -149,7 +149,7 @@ export function QuickJumpDialog({
       <div className="flex h-12 items-center gap-3 border-b border-[var(--border)] px-4">
         <Search size={16} className="text-[var(--accent-2)]" />
         <input
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-[var(--text-1)] outline-none placeholder:text-[var(--text-3)]"
+          className="command-palette-input h-full min-w-0 flex-1 bg-transparent text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)]"
           value={query}
           data-modal-initial-focus="true"
           role="combobox"
@@ -175,7 +175,7 @@ export function QuickJumpDialog({
             <button
               key={item.id}
               id={`${resultsId}-${safeDomId(item.id)}`}
-              className="menu-row grid grid-cols-[20px_minmax(0,1fr)_104px]"
+              className="menu-row"
               type="button"
               role="option"
               aria-selected={index === activeItemIndex}
@@ -194,12 +194,12 @@ export function QuickJumpDialog({
                 onClose();
               }}
             >
-              <span className="grid place-items-center text-[var(--text-3)]">{item.icon}</span>
-              <span className="min-w-0">
+              <span className="grid w-5 shrink-0 place-items-center text-[var(--text-3)]">{item.icon}</span>
+              <span className="min-w-0 flex-1">
                 <span className="block truncate">{item.label}</span>
                 {item.detail ? <span className="mt-0.5 block truncate text-[11px] text-[var(--text-3)]">{item.detail}</span> : null}
               </span>
-              <span className="self-center truncate text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
+              <span className="w-[104px] shrink-0 truncate text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
                 {item.category}
               </span>
             </button>

@@ -80,7 +80,7 @@ export function InteractiveRebaseDialog({
           )}
         </div>
         <button
-          className="btn-subtle h-7 border-[var(--danger-border)] text-[11px] text-[var(--danger-text)]"
+          className="btn-danger h-7 text-[11px]"
           type="button"
           onClick={onClose}
           disabled={isRunning}
@@ -383,7 +383,7 @@ function InteractiveRebaseEditor({
             Reset
           </button>
           <button
-            className="btn-subtle h-9 border-[var(--danger-border)] text-xs text-[var(--danger-text)]"
+            className="btn-danger h-9 text-xs"
             type="button"
             onClick={onClose}
             disabled={isRunning}

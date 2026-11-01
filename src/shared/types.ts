@@ -472,7 +472,8 @@ export type GitComparison = {
 
 export type GitPatchApplyInput = {
   path: string;
-  mode: 'stage' | 'unstage';
+  /** `discard` reverses an unstaged hunk in the working tree; the index is left untouched. */
+  mode: 'stage' | 'unstage' | 'discard';
   patch: string;
 };
 
@@ -770,6 +771,8 @@ export type GitOperationResult = {
   undoEntry?: GitUndoEntry;
   conflictState?: GitConflictState;
   invalidates?: GitQueryInvalidation[];
+  /** Set when the operation fetched; a fetch that changes no refs invalidates nothing, so this carries the new time. */
+  lastFetchedAt?: string;
 };
 
 export type GitOperationProgressEvent = {

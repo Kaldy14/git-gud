@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -59,6 +59,31 @@ describe('patch staging', () => {
       expect(stagedPatch).toContain('+five changed');
       expect(stagedPatch).not.toContain('+two changed');
       expect(unstagedPatch).toContain('+two changed');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('discards one worktree hunk without touching other worktree or staged changes', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-patch-staging-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      await writeRepoFile(repoPath, 'file.txt', 'one staged\ntwo\nthree\nfour\nfive\n');
+      await git(repoPath, ['add', 'file.txt']);
+      await writeRepoFile(repoPath, 'file.txt', 'one staged\ntwo changed\nthree\nfour\nfive changed\n');
+
+      const diff = await loadFileDiff(tab, { kind: 'wip', path: 'file.txt', staged: false });
+      const [firstHunk] = splitHunkPatches(diff.stageablePatch ?? '');
+
+      expect(firstHunk).toContain('two changed');
+
+      await applyWipPatch(tab, { path: 'file.txt', mode: 'discard', patch: firstHunk ?? '' });
+
+      expect(await readFile(join(repoPath, 'file.txt'), 'utf8')).toBe('one staged\ntwo\nthree\nfour\nfive changed\n');
+      expect((await git(repoPath, ['show', ':file.txt'])).stdout).toBe('one staged\ntwo\nthree\nfour\nfive\n');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

@@ -1,7 +1,8 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 import type { IpcChannelMap, RendererApi, RendererDevApi } from '@shared/ipc';
 import { PULL_REQUEST_DEEP_LINK_EVENT } from '@shared/pullRequestDeepLink';
+import { isMenuCommand, MENU_COMMAND_EVENT } from '@shared/menuCommands';
 
 function invoke<TChannel extends keyof IpcChannelMap>(
   channel: TChannel,
@@ -71,6 +72,8 @@ const api: RendererApi = {
   discardAllChanges: (repoPath) => invoke('repo:discard-all', repoPath),
   openFile: (repoPath, path) => invoke('repo:open-file', repoPath, path),
   revealFile: (repoPath, path) => invoke('repo:reveal-file', repoPath, path),
+  openRepositoryInApplication: (repoPath, applicationId) => invoke('repo:open-in-application', repoPath, applicationId),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   openCodexTask: (repoPath, prompt) => invoke('system:open-codex-task', repoPath, prompt),
   listExternalApplications: () => invoke('system:external-applications'),
   stageAll: (repoPath) => invoke('repo:stage-all', repoPath),
@@ -209,6 +212,16 @@ const api: RendererApi = {
 
     ipcRenderer.on(channel, wrappedListener);
     return () => ipcRenderer.removeListener(channel, wrappedListener);
+  },
+  onMenuCommand: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, command: unknown): void => {
+      if (isMenuCommand(command)) {
+        listener(command);
+      }
+    };
+
+    ipcRenderer.on(MENU_COMMAND_EVENT, wrappedListener);
+    return () => ipcRenderer.removeListener(MENU_COMMAND_EVENT, wrappedListener);
   },
   onOpenPullRequestDeepLink: (listener) => {
     const wrappedListener = (
