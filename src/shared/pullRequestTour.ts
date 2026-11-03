@@ -64,7 +64,9 @@ export function pullRequestTourHunks(plan: Pick<GitReviewPlan, 'units'>): Map<st
   for (const chunk of plan.units.flatMap((unit) => unit.chunks)) {
     const byNumber = new Map<number, PatchRow[]>();
     for (const row of reviewGuidePatchLines(chunk.patch)) {
-      byNumber.set(row.hunk, [...(byNumber.get(row.hunk) ?? []), row]);
+      const rows = byNumber.get(row.hunk);
+      if (rows) rows.push(row);
+      else byNumber.set(row.hunk, [row]);
     }
     const list = hunks.get(chunk.path) ?? [];
     list.push(...[...byNumber.values()].map((rows) => ({ rows })));
