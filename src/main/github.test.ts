@@ -1250,6 +1250,18 @@ describe('GitHub pull request inbox', () => {
       defaultMethod: 'merge'
     });
   });
+
+  it('still opens pull requests when GitHub hides merge settings from read-only viewers', () => {
+    expect(parseGitHubRepositoryMergeSettings({ name: 'widgets' })).toEqual({
+      allowedMethods: ['merge'],
+      defaultMethod: 'merge'
+    });
+    expect(() => parseGitHubRepositoryMergeSettings({
+      allow_squash_merge: false,
+      allow_merge_commit: false,
+      allow_rebase_merge: false
+    })).toThrow('no enabled merge method');
+  });
 });
 
 function pullRequestSummary(): GitHubPullRequestSummary {

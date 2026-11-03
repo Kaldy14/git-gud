@@ -156,11 +156,12 @@ export function machineFileDiffCommand(
   const paths = !request.untracked && request.originalPath && request.originalPath !== request.path
     ? `${quoteRemoteShell(request.originalPath)} ${path}` : path;
   const diff = request.untracked
-    ? `read_only_git diff --no-color --no-ext-diff --no-textconv --no-index -- /dev/null ${path}`
+    ? `read_only_git diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-index -- /dev/null ${path}`
     // A combined merge diff has no renderable hunks in PatchDiff. Compare
     // unmerged working files with ours so conflict markers stay visible.
     // Shell quoting does not stop Git from interpreting a filename as a pattern.
-    : `read_only_git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv --submodule=short --ignore-submodules=dirty --find-renames --find-copies${request.originalPath ? ' --find-copies-harder' : ''}${request.staged ? ' --cached' : ' --ours'} -- ${paths}`;
+    // Fixed a/ b/ prefixes: a remote diff.mnemonicPrefix or diff.noprefix would leave the patch unparseable.
+    : `read_only_git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --submodule=short --ignore-submodules=dirty --find-renames --find-copies${request.originalPath ? ' --find-copies-harder' : ''}${request.staged ? ' --cached' : ' --ours'} -- ${paths}`;
 
   return posixCommand([
     'export GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0',

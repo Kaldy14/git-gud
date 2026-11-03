@@ -2,6 +2,7 @@ import { parseCodeReference } from '@shared/codeReference';
 import { assertMachineFilePath } from './git/parsers/machine';
 import type { ArtifactCleanupInput, BranchCleanupInput, BranchCleanupOptions } from '@shared/maintenance';
 import { parseBugRequest } from '@shared/bugFinder';
+import type { PullRequestTourContext } from '@shared/pullRequestTour';
 import type {
   IpcChannelMap,
   IpcChannelName,
@@ -330,12 +331,9 @@ const validators = {
       readOpenPullRequestInApplicationInput
     ),
   'bug-finder:request': (args) => readOnlyArg(args, 'bug-finder:request', 'request', parseBugRequest),
-  'github:pull-request-guide-status': (args) =>
-    readOnlyArg(args, 'github:pull-request-guide-status', 'locator', readGitHubPullRequestLocator),
-  'github:pull-request-review-guide-state': (args) =>
-    readGitHubPullRequestReviewGuideArgs('github:pull-request-review-guide-state', args),
-  'github:start-pull-request-review-guide': (args) =>
-    readGitHubPullRequestReviewGuideArgs('github:start-pull-request-review-guide', args),
+  'github:pull-request-tour-state': (args) =>
+    readOnlyArg(args, 'github:pull-request-tour-state', 'locator', readGitHubPullRequestLocator),
+  'github:start-pull-request-tour': (args) => readStartPullRequestTourArgs(args),
   'github:submit-pull-request-review': (args) =>
     readOnlyArg(args, 'github:submit-pull-request-review', 'input', readGitHubPullRequestReviewInput),
   'github:add-pull-request-comment': (args) =>
@@ -736,14 +734,24 @@ function readOpenPullRequestInApplicationInput(
   };
 }
 
-function readGitHubPullRequestReviewGuideArgs(
-  channel: 'github:pull-request-review-guide-state' | 'github:start-pull-request-review-guide',
+function readStartPullRequestTourArgs(
   args: readonly unknown[]
-): [GitHubPullRequestLocator, string] {
-  assertArgCount(channel, args, 2);
+): [GitHubPullRequestLocator, string, string, PullRequestTourContext] {
+  assertArgCount('github:start-pull-request-tour', args, 4);
+  const headSha = readNonEmptyLimitedString(args[2], 'headSha', 64).toLowerCase();
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(headSha)) {
+    throw new Error('headSha must be a full Git object ID.');
+  }
+  const context = readRecord(args[3], 'context');
   return [
     readGitHubPullRequestLocator(args[0]),
-    readReviewSourceFingerprint(args[1])
+    readReviewSourceFingerprint(args[1]),
+    headSha,
+    {
+      body: readLimitedString(context.body, 'context.body', 200_000),
+      baseRefName: readNonEmptyLimitedString(context.baseRefName, 'context.baseRefName', 512),
+      settledReview: readLimitedString(context.settledReview, 'context.settledReview', 20_000)
+    }
   ];
 }
 

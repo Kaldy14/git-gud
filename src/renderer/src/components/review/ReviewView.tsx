@@ -9,6 +9,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useMemo,
@@ -25,6 +26,7 @@ import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ArrowUpRight,
   Check,
   CheckCheck,
   ChevronDown,
@@ -69,7 +71,7 @@ import {
 } from '@renderer/components/ui/dropdown-menu';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import { reviewPlanQueryKey, useAgentNotes, useReviewPlan } from '@renderer/queries/repository';
-import { reviewGuidePatchChangesLine } from '@shared/reviewGuide';
+import { reviewGuidePatchChangesLine, reviewGuidePatchContainsLine } from '@shared/reviewGuide';
 import type {
   DiffSyntaxTheme,
   GitAgentNote,
@@ -153,6 +155,8 @@ import {
   type ReviewViewState
 } from './reviewViewState';
 
+type ExternalGuideLocation = { file: GitReviewGuideFile; navigationSignal: number; unitId: string };
+
 type ReviewViewProps = {
   repoPath: string;
   target: GitReviewTarget;
@@ -183,6 +187,11 @@ type ReviewViewProps = {
   fileTreePanel?: { open: boolean; onClose: () => void; onToggle: () => void };
   initialViewState?: ReviewViewState;
   onViewStateChange?: (state: ReviewViewState) => void;
+  // Opens a file (optionally a line range) from outside the review, such as the pull-request
+  // Guide. Bump signal to repeat the same request.
+  navigationRequest?: { path: string; line?: number; endLine?: number; side?: 'left' | 'right'; signal: number };
+  // Notes from the pull-request Guide, shown inline at their lines with a link back to their stop.
+  guideReferences?: readonly ReviewInlineGuideNote[];
 };
 
 export type ReviewLineComment = {
@@ -229,12 +238,27 @@ type ReviewCommentThread = ReviewLineComment & {
 type ReviewDiffAnnotation =
   | { kind: 'thread'; thread: ReviewCommentThread }
   | { kind: 'composer' }
-  | { kind: 'guide-note'; note: GitReviewGuideNote }
+  | { kind: 'guide-note'; note: ReviewInlineGuideNote }
   | { kind: 'agent-note'; note: GitAgentNote; hidden: boolean };
 
 const NO_GUIDE_FINDINGS: readonly ReviewGuideFinding[] = [];
 
-const NO_GUIDE_NOTES: readonly GitReviewGuideNote[] = [];
+const NO_GUIDE_NOTES: readonly ReviewInlineGuideNote[] = [];
+
+/** An inline AI note; Guide notes also carry their letter key, title, and a way back to their stop. */
+export type ReviewInlineGuideNote = GitReviewGuideNote & {
+  marker?: string;
+  title?: string;
+  stopLabel?: string;
+  onOpen?: () => void;
+};
+
+function combineGuideNotes(
+  briefNotes: readonly ReviewInlineGuideNote[],
+  guideReferences: readonly ReviewInlineGuideNote[]
+): readonly ReviewInlineGuideNote[] {
+  return guideReferences.length ? [...briefNotes, ...guideReferences] : briefNotes;
+}
 
 
 const NO_AGENT_NOTES: readonly GitAgentNote[] = [];
@@ -351,7 +375,9 @@ export function ReviewView({
   layout = 'standard',
   fileTreePanel,
   initialViewState,
-  onViewStateChange
+  onViewStateChange,
+  navigationRequest,
+  guideReferences = NO_GUIDE_NOTES
 }: ReviewViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const viewStateRef = useRef(createReviewViewState(initialViewState));
@@ -991,16 +1017,41 @@ export function ReviewView({
     }
   }
 
-  function selectAllFile(path: string | undefined): void {
-    if (!path || selectedCommentTarget !== undefined || commentMutation.isPending) return;
-    const unitId = reviewGuide && selectedUnit?.unit.chunks.some((chunk) => chunk.path === path) ? selectedUnit.unit.id : findReviewUnitIdForPath(allFileUnits, path);
-    if (!unitId) return;
+  function selectAllFile(path: string | undefined, preferredUnitId?: string): boolean {
+    if (!path || selectedCommentTarget !== undefined || commentMutation.isPending) return false;
+    const unitId = preferredUnitId ?? (reviewGuide && selectedUnit?.unit.chunks.some((chunk) => chunk.path === path) ? selectedUnit.unit.id : findReviewUnitIdForPath(allFileUnits, path));
+    if (!unitId) return false;
     // Reveal this file only. Saved review filters continue to apply to every other file.
     setRevealedFilePath(path);
     setRequestedFilePath(path);
     setFileNavigationSignal((signal) => signal + 1);
     selectReviewUnit(unitId, 'file');
+    return true;
   }
+
+  // Wait for the plan before honoring an outside request, then handle each signal once.
+  const handledNavigationSignal = useRef<number | undefined>(undefined);
+  const [externalGuideLocation, setExternalGuideLocation] = useState<ExternalGuideLocation>();
+  const openRequestedLocation = useEffectEvent((request: NonNullable<ReviewViewProps['navigationRequest']>) => {
+    if (handledNavigationSignal.current === request.signal) return;
+    handledNavigationSignal.current = request.signal;
+    const { path, line, endLine, side = 'right' } = request;
+    // A file can span several sections; open the one holding the requested line.
+    const unitId = line === undefined ? undefined : allFileUnits.find((candidate) => candidate.unit.chunks.some((chunk) =>
+      chunk.path === path && reviewGuidePatchContainsLine(chunk.patch, line, side)))?.unit.id;
+    if (!selectAllFile(path, unitId) || line === undefined) return;
+    setExternalGuideLocation({
+      file: { path, line, endLine, side, priority: 'review', reason: '' },
+      navigationSignal: fileNavigationSignal + 1,
+      unitId: unitId ?? findReviewUnitIdForPath(allFileUnits, path) ?? ''
+    });
+  });
+  const isPlanReady = Boolean(presentation);
+  useEffect(() => {
+    // A one-shot reaction to an outside request once the plan exists; it cannot run during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (navigationRequest && isPlanReady) openRequestedLocation(navigationRequest);
+  }, [navigationRequest, isPlanReady]);
 
   function navigateFiles(direction: -1 | 1): void {
     if (
@@ -1555,6 +1606,8 @@ export function ReviewView({
         fileTreePanel={fileTreePanel}
         allFileUnits={allFileUnits}
         onSelectAllFile={selectAllFile}
+        externalGuideLocation={externalGuideLocation}
+        guideReferences={guideReferences}
         selectedFilePath={selectedFilePath}
         restoredScrollTop={
           selectedUnit &&
@@ -1903,6 +1956,8 @@ function ReviewBody({
   fileTreePanel,
   allFileUnits,
   onSelectAllFile,
+  externalGuideLocation,
+  guideReferences,
   selectedFilePath,
   restoredScrollTop,
   fileNavigationSignal,
@@ -1946,6 +2001,8 @@ function ReviewBody({
   fileTreePanel?: ReviewViewProps['fileTreePanel'];
   allFileUnits: VisibleReviewUnit[];
   onSelectAllFile: (path: string | undefined) => void;
+  externalGuideLocation?: ExternalGuideLocation;
+  guideReferences: readonly ReviewInlineGuideNote[];
   selectedFilePath?: string;
   restoredScrollTop?: number;
   fileNavigationSignal: number;
@@ -1959,13 +2016,16 @@ function ReviewBody({
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
-  const [guideLocation, setGuideLocation] = useState<{ file: GitReviewGuideFile; navigationSignal: number; unitId: string; commentId?: string | number }>();
+  const [briefLocation, setGuideLocation] = useState<ExternalGuideLocation & { commentId?: string | number }>();
   const [briefTab, setBriefTab] = useState<'summaries' | 'findings'>('summaries');
   const guideFindings = useMemo(() => createReviewGuideFindings(reviewGuide ? allFileUnits : [], lineCollaboration?.threads ?? []), [reviewGuide, allFileUnits, lineCollaboration?.threads]);
   const selectedFindings = guideFindings.get(selectedUnit?.unit.id ?? '') ?? NO_GUIDE_FINDINGS;
-  if (guideLocation && (!reviewGuide || guideLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
+  if (briefLocation && (!reviewGuide || briefLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
     setGuideLocation(undefined);
   }
+  // AI brief jumps take precedence; otherwise honor a jump requested from outside the review.
+  const guideLocation: typeof briefLocation = briefLocation ??
+    (externalGuideLocation?.unitId === selectedUnit?.unit.id && !reviewSearch?.isSelected ? externalGuideLocation : undefined);
   const consumedGuideLocation = useRef<typeof guideLocation>(undefined);
   const reviewQueueRef = useRef<HTMLElement>(null);
   const queueResize = usePanelResize({
@@ -2424,7 +2484,7 @@ function ReviewBody({
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
                           agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
-                          guideNotes={selectedGuideUnit?.summaries ? NO_GUIDE_NOTES : selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES}
+                          guideNotes={combineGuideNotes(selectedGuideUnit?.summaries ? NO_GUIDE_NOTES : selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES, guideReferences)}
                           guideFile={selectedGuideUnit?.files.find((item) => item.path === file.chunks[0].path)}
                           guideSide={guideLocation?.file.side}
                           guideEndLine={guideLocation?.file.endLine}
@@ -2860,7 +2920,7 @@ function ReviewFile({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   agentNotes: readonly GitAgentNote[];
-  guideNotes?: readonly GitReviewGuideNote[];
+  guideNotes?: readonly ReviewInlineGuideNote[];
   guideFile?: GitReviewGuideFile;
   guideLine?: number;
   guideSide?: 'left' | 'right';
@@ -3009,7 +3069,7 @@ function ReviewChunk({
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   lineCollaboration?: ReviewLineCollaboration;
   agentNotes: readonly GitAgentNote[];
-  guideNotes?: readonly GitReviewGuideNote[];
+  guideNotes?: readonly ReviewInlineGuideNote[];
   hiddenAgentNoteIds: ReadonlySet<string>;
   onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
   typeDefinitionInteraction?: ReviewTypeDefinitionInteraction;
@@ -3196,8 +3256,18 @@ function ReviewChunk({
   );
 }
 
-function ReviewGuideInlineNote({ note }: { note: GitReviewGuideNote }): ReactElement {
+function ReviewGuideInlineNote({ note }: { note: ReviewInlineGuideNote }): ReactElement {
   const [hidden, setHidden] = useState(false);
+  if (note.marker) {
+    return <aside className="review-guide-inline-note" data-guide-reference aria-label={`Guide note ${note.marker}`}>
+      <span className="pr-guide-marker" aria-hidden="true">{note.marker}</span>
+      <div>
+        <strong>{note.title}</strong>
+        {note.body ? <ReviewCommentBody body={note.body} compact /> : null}
+      </div>
+      {note.onOpen ? <button type="button" className="review-guide-reference-open" onClick={note.onOpen}>{note.stopLabel ?? 'Open in Guide'}<ArrowUpRight size={11} aria-hidden="true" /></button> : null}
+    </aside>;
+  }
   return <aside className="review-guide-inline-note" aria-label="AI guide note">
     <span>AI guide</span>
     {hidden ? <button type="button" onClick={() => setHidden(false)}>Show note</button> : <>

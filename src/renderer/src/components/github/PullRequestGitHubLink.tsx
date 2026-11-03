@@ -7,13 +7,15 @@ import { openContextMenuFromKeyboard } from '@renderer/components/accessibility/
 import { copyPullRequestLink } from './pullRequestLinkClipboard';
 
 type PullRequestGitHubLinkProps = {
+  size?: 'regular' | 'compact';
   url: string;
   onNotice?: (notice: { tone: 'success' | 'danger'; message: string }) => void;
 };
 
 export function PullRequestGitHubLink({
   url,
-  onNotice
+  onNotice,
+  size = 'regular'
 }: PullRequestGitHubLinkProps): ReactElement {
   function copyLink(): void {
     void copyPullRequestLink(url, navigator.clipboard)
@@ -35,7 +37,7 @@ export function PullRequestGitHubLink({
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
         <a
-          className="btn-subtle btn-regular"
+          className={`btn-subtle btn-${size}`}
           href={url}
           target="_blank"
           rel="noreferrer"

@@ -140,3 +140,46 @@ function findThreadRoot(
 
   return current;
 }
+
+export type PullRequestActivityItem =
+  | { kind: 'entry'; key: string; entry: PullRequestTimelineEntry }
+  | { kind: 'commits'; key: string; commits: Extract<PullRequestTimelineEntry, { kind: 'commit' }>[] };
+
+export function isBotAuthor(author: string): boolean {
+  return author.endsWith('[bot]');
+}
+
+function entryAuthor(entry: PullRequestTimelineEntry): string {
+  switch (entry.kind) {
+    case 'commit': return entry.commit.author;
+    case 'conversation': return entry.comment.author;
+    case 'review': return entry.review.author;
+    case 'review-thread': return entry.thread.root.author;
+  }
+}
+
+// Collapse runs of consecutive commits so pushes don't bury the discussion, and
+// optionally hide bot comments and reviews (bot commits stay visible).
+export function groupPullRequestActivity(
+  entries: readonly PullRequestTimelineEntry[],
+  options: { hideBots: boolean }
+): PullRequestActivityItem[] {
+  const items: PullRequestActivityItem[] = [];
+  for (const entry of entries) {
+    if (options.hideBots && entry.kind !== 'commit' && isBotAuthor(entryAuthor(entry))) continue;
+    const last = items.at(-1);
+    if (entry.kind === 'commit' && last?.kind === 'commits') {
+      last.commits.push(entry);
+    } else if (entry.kind === 'commit') {
+      items.push({ kind: 'commits', key: `commits:${entry.key}`, commits: [entry] });
+    } else {
+      items.push({ kind: 'entry', key: entry.key, entry });
+    }
+  }
+  // A single commit reads better as an ordinary entry.
+  return items.map((item) =>
+    item.kind === 'commits' && item.commits.length === 1
+      ? { kind: 'entry', key: item.commits[0]!.key, entry: item.commits[0]! }
+      : item
+  );
+}

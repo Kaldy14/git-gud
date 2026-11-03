@@ -9,7 +9,6 @@ import {
   GitMerge,
   Loader2,
   MonitorUp,
-  PanelRightOpen,
   MoreHorizontal,
   ShieldCheck,
   X
@@ -38,13 +37,11 @@ import type { GitHubPullRequestDetail } from '@shared/types';
 type PullRequestHeaderActionsProps = {
   detail: GitHubPullRequestDetail;
   repoPath?: string;
-  isOverviewOpen: boolean;
   reviewDraftCount: number;
   mergeLabel: string;
   mergeDisabled: boolean;
   mergeTitle: string;
   isMergePending: boolean;
-  onToggleOverview: () => void;
   onFinishReview: () => void;
   onSelectReviewDecision: (event: 'comment' | 'approve' | 'request-changes') => void;
   onOpenMerge: () => void;
@@ -66,13 +63,11 @@ const emptyApplications: readonly ExternalApplication[] = [];
 export function PullRequestHeaderActions({
   detail,
   repoPath,
-  isOverviewOpen,
   reviewDraftCount,
   mergeLabel,
   mergeDisabled,
   mergeTitle,
   isMergePending,
-  onToggleOverview,
   onFinishReview,
   onSelectReviewDecision,
   onOpenMerge,
@@ -92,16 +87,6 @@ export function PullRequestHeaderActions({
 
   return (
     <div className="pr-review-header-actions pr-review-actions-persistent">
-      <button
-        className="btn-subtle btn-regular"
-        type="button"
-        aria-expanded={isOverviewOpen}
-        aria-pressed={isOverviewOpen}
-        onClick={onToggleOverview}
-      >
-        <PanelRightOpen size={13} />
-        Details
-      </button>
       <div className="pr-review-decision-split">
         <button className="btn-primary btn-regular" type="button" onClick={onFinishReview}>
           <ShieldCheck size={13} />
@@ -148,7 +133,8 @@ export function PullRequestHeaderActions({
           </DropdownMenuContent>
         </DropdownMenu> : null}
       </div>
-      <button
+      {/* A finished pull request has nothing to merge; the status chip already says so. */}
+      {detail.state === 'merged' || detail.state === 'closed' ? null : <button
         className="btn-subtle btn-regular pr-header-merge"
         type="button"
         disabled={mergeDisabled}
@@ -159,7 +145,7 @@ export function PullRequestHeaderActions({
         {isMergePending ? <Loader2 size={13} /> : <GitMerge size={13} />}
         <span className="pr-merge-label-full">{mergeLabel}</span>
         <span className="pr-merge-label-compact" aria-hidden="true">Merge</span>
-      </button>
+      </button>}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

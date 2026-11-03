@@ -20,6 +20,7 @@ import { isTrustedRendererUrl } from './ipcSecurity';
 import { flushPendingWorkspaceWrites, getWindowState, getWorkspace, saveWindowState } from './store';
 import { restoreWindowBounds, type SavedWindowState } from './windowState';
 import { reviewGuideManager } from './reviewGuide';
+import { shutdownClaudeProcesses } from './claudeHarness';
 import {
   GIT_GUD_PROTOCOL,
   parsePullRequestDeepLink,
@@ -437,6 +438,7 @@ async function quitAfterCleanup(afterCleanup: () => void = exitWithoutNodeCleanu
     stopRepositoryAutoFetch();
     flushPendingWorkspaceWrites();
     reviewGuideManager.shutdown();
+    shutdownClaudeProcesses();
     await Promise.race([
       gitExecutor.shutdown(quitCleanupTimeoutMs - 250),
       wait(quitCleanupTimeoutMs)

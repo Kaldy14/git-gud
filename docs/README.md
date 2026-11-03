@@ -30,7 +30,8 @@ src/renderer/src/
     sidebar/Sidebar.tsx               PR destination, expandable dashboard list, refs sections, collapse rail
     dashboard/DashboardView.tsx       GitHub Actions tiles, live run rows, dashboard and tile dialogs
     github/PullRequestInboxView.tsx   profile-scoped GitHub pull-request inbox
-    github/PullRequestReviewView.tsx  focused PR review, local line/file drafts, comment editing, submission
+    github/PullRequestReviewView.tsx  PR detail: header, Summary/Guide/Activity/Code tabs, drafts, submission
+    github/guide/                     AI review guide tour (rail, stops, excerpts, notes)
     graph/GraphView.tsx               virtualized commit graph: ref chips, per-row SVG rails, nodes, date markers,
                                       arrow-key row navigation, viewport-clamped context menus, WIP status counts
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer/actions
@@ -51,7 +52,15 @@ src/renderer/src/
 
 ## Theme
 
-Dark slate palette defined as CSS variables in `styles/main.css` (`--bg-*`, `--text-1..3`, `--border*`, `--accent`). Branch lane colors (`LANE_COLORS`) and file status colors (`FILE_STATUS_COLORS`) live in `src/shared/graph.ts`. Components use Tailwind v4 utilities referencing the variables; repeated patterns (toolbar actions, chips, menus, segmented controls) are shared classes in `main.css`.
+Dark slate palette defined as CSS variables in `styles/main.css` (`--bg-*`, `--text-1..3`, `--border*`, `--accent`). `:root` also defines a type scale (`--text-2xs` 10px for counts and eyebrows only, `--text-xs` 11 meta, `--text-sm` 12 UI and comment bodies, `--text-md` 13 prose and titles, `--text-xl` 18 guide stop titles; weights 500/600; `--leading-*`), spacing (`--space-1..6`, 4–24px), radii (`--radius-row`, `--radius-container`), and focus/selection tokens (`--focus-ring`, `--select-indicator`). Status tones: success, danger, `pending` = in progress (blue `--info-*`), `warning` = blocked or needs attention (amber, also guide attention), `muted` = no signal (drafts, closed, unknown or absent checks). Code chips in comments are neutral so they are not confused with teal links. Branch lane colors (`LANE_COLORS`) and file status colors (`FILE_STATUS_COLORS`) live in `src/shared/graph.ts`. Components use Tailwind v4 utilities referencing the variables; repeated patterns (toolbar actions, chips, menus, segmented controls) are shared classes in `main.css`.
+
+## Pull request detail
+
+A pull request opens with four tabs, modelled on T3 Code's PR detail: **Summary** (reviewers, checks breakdown, merge readiness, links, description, images), **Guide**, **Activity** (comments, reviews, and collapsed commit runs; newest first, optional bot hiding), and **Code** (the existing `ReviewView` with its section split). The last tab is remembered. Inactive panes stay mounted so drafts, scroll, and review state survive tab switches. The header follows T3 Code too: a crumb row (repository, `#number`, actions) above the title, a status line (state, checks, author, updated, commits), and a branch line (base ← head, files, line counts). Scrolling a pane past 48px collapses the title fold and the crumb row shows the number and title instead; the state is remembered per tab. Summary and Activity share one centred 832px reading column.
+
+### Review guide
+
+The Guide tab ports T3 Code's review guide: an ordered tour of stops, each with a title, summary, optional attention call (tradeoff, contract, product, risk, accessibility), code excerpts, lettered line notes, file rows, and questions. `src/main/pullRequestTour.ts` adapts T3 Code's prompt and runs it through the Pi harness with the numbered patch inline (PR reviews have no checkout); when Pi is not installed or not signed in, it falls back to the Claude Code CLI (`claude -p`, `src/main/claudeHarness.ts`); `src/shared/pullRequestTour.ts` validates the response so every excerpt sits inside one real hunk, notes sit inside an excerpt, and every changed file is placed exactly once. The latest guide per pull request is kept in the `git-gud-pull-request-guides` store, so it survives restarts and shows a "written before the latest push" banner when the head moves. J/K step through stops; read progress is stored per guide in local storage. The stop rail is drawn as a commit-graph lane (teal through read stops, a ring on the current stop, slate ahead); each attention call is a copper run-in head over the judgement, and copper note keys link excerpt lines and notes in both directions with a one-shot highlight. Clicking an excerpt header opens Code at the section and lines that contain it (`ReviewView`'s `navigationRequest`), and **Back to Guide** returns. The Guide is the pull request's only AI layer: its notes also appear inline in Code with their copper keys and a link back to their stop, the inbox's guide button reads and starts the same Guide, and the per-section **AI brief** remains only for local branch reviews.
 
 ## Pull request comments
 

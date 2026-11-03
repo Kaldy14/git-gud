@@ -1,6 +1,6 @@
 import { BugFinderButton } from './BugFinderButton';
 import type { ReactElement } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -9,6 +9,7 @@ import {
   CircleDot,
   ExternalLink,
   GitBranch,
+  GitMerge,
   GitPullRequest,
   Inbox,
   Loader2,
@@ -30,7 +31,7 @@ import { PullRequestLineStats } from './PullRequestLineStats';
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
 import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
-import { pullRequestStatus } from './pullRequestInboxStatus';
+import { pullRequestChecksTone, pullRequestStatus } from './pullRequestInboxStatus';
 import {
   loadDismissedPullRequestSuggestionIds,
   saveDismissedPullRequestSuggestionIds
@@ -89,6 +90,19 @@ const GROUPS: Array<{
 
 type InboxScope = 'all' | 'review-requests' | 'authored' | GitHubPullRequestCategory;
 
+type InboxViewMemory = {
+  search: string;
+  scope: InboxScope;
+  repository: string;
+  updatedRange: UpdatedRange;
+  expandedGroups: Partial<Record<GitHubPullRequestCategory, boolean>>;
+  scrollTop: number;
+};
+
+// The inbox unmounts while a pull request is open. Remember filters and scroll for the
+// session so Back returns to the same list.
+const inboxViewMemory = new Map<string, InboxViewMemory>();
+
 export function PullRequestInboxView({
   profile,
   inbox,
@@ -100,13 +114,24 @@ export function PullRequestInboxView({
   onOpenProfileSettings,
   onSelectPullRequest
 }: PullRequestInboxViewProps): ReactElement {
-  const [search, setSearch] = useState('');
-  const [scope, setScope] = useState<InboxScope>('all');
-  const [repository, setRepository] = useState('all');
-  const [updatedRange, setUpdatedRange] = useState<UpdatedRange>('30');
+  const memoryKey = profile?.id ?? '';
+  const [remembered] = useState(() => inboxViewMemory.get(memoryKey));
+  const [search, setSearch] = useState(remembered?.search ?? '');
+  const [scope, setScope] = useState<InboxScope>(remembered?.scope ?? 'all');
+  const [repository, setRepository] = useState(remembered?.repository ?? 'all');
+  const [updatedRange, setUpdatedRange] = useState<UpdatedRange>(remembered?.updatedRange ?? '30');
   const [expandedGroups, setExpandedGroups] = useState<
     Partial<Record<GitHubPullRequestCategory, boolean>>
-  >({});
+  >(remembered?.expandedGroups ?? {});
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const scrollTopRef = useRef(remembered?.scrollTop ?? 0);
+  useEffect(() => {
+    inboxViewMemory.set(memoryKey, { search, scope, repository, updatedRange, expandedGroups, scrollTop: scrollTopRef.current });
+  }, [memoryKey, search, scope, repository, updatedRange, expandedGroups]);
+  const hasInbox = Boolean(inbox);
+  useLayoutEffect(() => {
+    if (hasInbox && resultsRef.current) resultsRef.current.scrollTop = scrollTopRef.current;
+  }, [hasInbox]);
   const suggestionProfileId = inbox?.profileId ?? profile?.id ?? '';
   const persistedDismissedSuggestions = useMemo(
     () =>
@@ -156,11 +181,11 @@ export function PullRequestInboxView({
     if (candidate === 'authored') return pr.author === (inbox?.viewerLogin ?? profile?.githubLogin);
     return pr.category === candidate;
   };
-  const scopedPullRequests = filteredPullRequests.filter(
-    (pr) =>
-      matchesScope(pr, scope) &&
-      (repository === 'all' || `${pr.owner}/${pr.repository}` === repository)
+  const repositoryPullRequests = filteredPullRequests.filter(
+    (pr) => repository === 'all' || `${pr.owner}/${pr.repository}` === repository
   );
+  const scopedPullRequests = repositoryPullRequests.filter((pr) => matchesScope(pr, scope));
+  const hasActiveFilters = Boolean(search) || scope !== 'all' || repository !== 'all' || updatedRange !== 'all';
   const scopes: Array<{ id: InboxScope; label: string }> = [
     { id: 'all', label: 'All pull requests' },
     { id: 'review-requests', label: 'Review requests' },
@@ -260,14 +285,12 @@ export function PullRequestInboxView({
             <button
               type="button"
               key={item.id}
-              aria-current={scope === item.id && repository === 'all' ? 'page' : undefined}
-              onClick={() => {
-                setScope(item.id);
-                setRepository('all');
-              }}
+              className={item.id === 'needs-action' ? 'pr-scope-group-start' : undefined}
+              aria-current={scope === item.id ? 'page' : undefined}
+              onClick={() => setScope(item.id)}
             >
               <span>{item.label}</span>
-              <span>{filteredPullRequests.filter((pr) => matchesScope(pr, item.id)).length}</span>
+              <span>{repositoryPullRequests.filter((pr) => matchesScope(pr, item.id)).length}</span>
             </button>
           ))}
           {repositories.length > 0 ? <h2>Repositories</h2> : null}
@@ -277,10 +300,9 @@ export function PullRequestInboxView({
               key={name}
               title={name}
               aria-current={repository === name ? 'page' : undefined}
-              onClick={() => {
-                setScope('all');
-                setRepository(name);
-              }}
+              aria-pressed={repository === name}
+              // Scope and repository combine; clicking the active repository clears it.
+              onClick={() => setRepository(repository === name ? 'all' : name)}
             >
               <span>{name}</span>
               <span>
@@ -292,11 +314,15 @@ export function PullRequestInboxView({
             </button>
           ))}
         </nav>
-        <div className="pr-inbox-results">
-          <div className="pr-inbox-results-heading">
-            <span>Grouped by next action</span>
-            <span>{scopedPullRequests.length} visible</span>
-          </div>
+        <div
+          className="pr-inbox-results"
+          ref={resultsRef}
+          onScroll={(event) => {
+            scrollTopRef.current = event.currentTarget.scrollTop;
+            const current = inboxViewMemory.get(memoryKey);
+            if (current) current.scrollTop = scrollTopRef.current;
+          }}
+        >
           {errorMessage ? (
             <div className="pr-inline-error" role="alert">
               <AlertTriangle size={13} />
@@ -364,23 +390,35 @@ export function PullRequestInboxView({
             <div className="pr-inbox-empty-results">
               <Inbox size={24} />
               <h2>
-                {search || repository !== 'all' || scope !== 'all'
-                  ? 'No matching pull requests'
-                  : 'No pull requests in this time range'}
+                {(inbox?.pullRequests.length ?? 0) === 0
+                  ? `No open pull requests for @${profile.githubLogin}`
+                  : search || repository !== 'all' || scope !== 'all'
+                    ? 'No matching pull requests'
+                    : 'No pull requests in this time range'}
               </h2>
-              <p>Change the filters or refresh to check for new pull requests.</p>
-              <button
-                className="btn-subtle btn-regular"
-                type="button"
-                onClick={() => {
-                  setSearch('');
-                  setScope('all');
-                  setRepository('all');
-                  setUpdatedRange('all');
-                }}
-              >
-                Clear filters
-              </button>
+              <p>
+                {(inbox?.pullRequests.length ?? 0) === 0
+                  ? 'Review requests and pull requests you open will appear here.'
+                  : 'Change the filters or refresh to check for new pull requests.'}
+              </p>
+              {(inbox?.pullRequests.length ?? 0) > 0 && hasActiveFilters ? (
+                <button
+                  className="btn-subtle btn-regular"
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    setScope('all');
+                    setRepository('all');
+                    setUpdatedRange('all');
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : (
+                <button className="btn-subtle btn-regular" type="button" onClick={onRefresh}>
+                  Refresh
+                </button>
+              )}
             </div>
           ) : null}
           {visibleSuggestions.length ? (
@@ -446,12 +484,7 @@ function PullRequestRow({
 }): ReactElement {
   const [didAvatarFail, setDidAvatarFail] = useState(false);
   const status = pullRequestStatus(pullRequest);
-  const checkTone =
-    pullRequest.checks.state === 'success'
-      ? 'success'
-      : pullRequest.checks.state === 'failure' || pullRequest.checks.state === 'error'
-        ? 'danger'
-        : 'pending';
+  const checkTone = pullRequestChecksTone(pullRequest.checks);
 
   return (
     <div className="pr-inbox-row" onClick={onSelect}>
@@ -492,16 +525,19 @@ function PullRequestRow({
           <AlertTriangle size={13} data-tone={status.tone} />
         ) : status.icon === 'check' ? (
           <Check size={13} data-tone={status.tone} />
+        ) : status.icon === 'merge' ? (
+          <GitMerge size={13} data-tone={status.tone} />
         ) : (
           <CircleDot size={11} data-tone={status.tone} />
         )}
-        {status.label}
+        <span className="pr-row-label" title={status.label}>{status.label}</span>
       </span>
-      <span className="pr-row-checks" data-tone={checkTone}>
+      <span className="pr-row-checks" data-tone={checkTone} title={checksTitle(pullRequest.checks)}>
         {checkTone === 'success' ? <Check size={14} /> : checkTone === 'danger' ? <AlertTriangle size={13} /> : <CircleDot size={11} />}
+        {/* Skipped and neutral runs count toward GitHub's total but are not outstanding. */}
         {pullRequest.checks.total > 0
-          ? `${pullRequest.checks.passed}/${pullRequest.checks.total}`
-          : 'No checks'}
+          ? <span className="pr-row-label">{pullRequest.checks.passed}/{pullRequest.checks.passed + pullRequest.checks.failed + pullRequest.checks.pending}</span>
+          : <span aria-label="No checks">–</span>}
       </span>
       <PullRequestGuideIndicator pullRequest={pullRequest} onOpen={onOpenGuide} />
       <BugFinderButton pullRequest={pullRequest} onOpen={onOpenBugFinder} />
@@ -511,6 +547,17 @@ function PullRequestRow({
       </span>
     </div>
   );
+}
+
+function checksTitle(checks: GitHubPullRequestSummary['checks']): string {
+  if (checks.total === 0) return 'No checks reported';
+  const skipped = Math.max(0, checks.total - checks.passed - checks.failed - checks.pending);
+  return [
+    `${checks.passed} passed`,
+    checks.failed ? `${checks.failed} failed` : '',
+    checks.pending ? `${checks.pending} pending` : '',
+    skipped ? `${skipped} skipped` : ''
+  ].filter(Boolean).join(' · ');
 }
 
 function InboxMessage({

@@ -102,7 +102,6 @@ import {
   updateGitHubPullRequestReviewComment
 } from './github';
 import { githubPullRequestReviewPlans } from './githubReviewPlans';
-import { GitHubPullRequestGuides } from './githubPullRequestGuides';
 import { validateRepository } from './git/repoInspector';
 import { clearReviewSyntaxCache, clearReviewSyntaxCacheForRepository } from './git/reviewSyntax';
 import { resolveReviewTypeDefinition } from './git/reviewTypeDefinition';
@@ -134,6 +133,7 @@ import {
 } from './profiles';
 import { loadReviewedChunks, updateReviewProgress } from './reviewProgress';
 import { reviewGuideManager } from './reviewGuide';
+import { pullRequestTourManager } from './pullRequestTour';
 
 import type { ApplicationUpdater } from './updater';
 import {
@@ -184,7 +184,6 @@ type TrackedOperation = {
   background?: boolean;
 };
 
-const githubPullRequestGuides = new GitHubPullRequestGuides(reviewGuideManager);
 const activeOperations = new Map<string, TrackedOperation>();
 const backgroundOperations = new Map<string, TrackedOperation>();
 let repositoryAutoFetch: RepositoryAutoFetch | undefined;
@@ -884,14 +883,10 @@ export function registerIpcHandlers(
     openPullRequestInApplication(getOpenRepositoryTab(repoPath), input)
   );
   handle('bug-finder:request', (_event, request) => handleBugFinder(request));
-  handle('github:pull-request-guide-status', (_event, locator) => githubPullRequestGuides.getStatus(locator));
-  handle('github:pull-request-review-guide-state', (_event, locator, sourceFingerprint) => {
+  handle('github:pull-request-tour-state', (_event, locator) => pullRequestTourManager().getState(locator));
+  handle('github:start-pull-request-tour', (_event, locator, sourceFingerprint, headSha, context) => {
     const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
-    return reviewGuideManager.getState(plan.repoPath, sourceFingerprint);
-  });
-  handle('github:start-pull-request-review-guide', (_event, locator, sourceFingerprint) => {
-    const plan = githubPullRequestReviewPlans.get(locator, sourceFingerprint);
-    return githubPullRequestGuides.start(locator, plan);
+    return pullRequestTourManager().start(locator, { plan, headSha, number: locator.number, context });
   });
   handle('github:submit-pull-request-review', (_event, input) => submitGitHubPullRequestReview(input));
   handle('github:add-pull-request-comment', (_event, input) => addGitHubPullRequestComment(input));

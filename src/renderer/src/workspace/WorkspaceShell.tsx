@@ -3769,7 +3769,7 @@ export function WorkspaceShell(): ReactElement {
             : workspace.activeTabId
         }
         isStartTabOpen={isStartTabOpen}
-        isStartTabActive={isStartTabActive}
+        isStartTabActive={isStartTabActive && !gitHubWorkspaceView}
         isDashboardsTabActive={
           gitHubWorkspaceView?.kind === 'dashboard' ||
           gitHubWorkspaceView?.kind === 'workflow-run'

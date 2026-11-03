@@ -7,9 +7,33 @@ import type {
   GitHubPullRequestReviewComment
 } from '@shared/types';
 
-import { buildPullRequestTimeline } from './pullRequestTimeline';
+import { buildPullRequestTimeline, groupPullRequestActivity } from './pullRequestTimeline';
 
 describe('pull request timeline', () => {
+  it('collapses consecutive commits and can hide bot discussion', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [
+        commit({ sha: 'a1', committedAt: '2026-07-29T08:00:00Z' }),
+        commit({ sha: 'a2', committedAt: '2026-07-29T08:10:00Z' }),
+        commit({ sha: 'a3', committedAt: '2026-07-29T11:00:00Z' })
+      ],
+      conversationComments: [
+        conversationComment({ id: 1, createdAt: '2026-07-29T09:00:00Z' }),
+        conversationComment({ id: 2, author: 'coderabbitai[bot]', createdAt: '2026-07-29T10:00:00Z' })
+      ],
+      reviews: [],
+      reviewComments: []
+    });
+
+    expect(groupPullRequestActivity(timeline, { hideBots: false }).map((item) =>
+      item.kind === 'commits' ? `commits:${item.commits.length}` : item.entry.kind)
+    ).toEqual(['commits:2', 'conversation', 'conversation', 'commit']);
+    // Bot comments drop out; commits stay.
+    expect(groupPullRequestActivity(timeline, { hideBots: true }).map((item) =>
+      item.kind === 'commits' ? `commits:${item.commits.length}` : item.entry.kind)
+    ).toEqual(['commits:2', 'conversation', 'commit']);
+  });
+
   it('sorts commits, comments, and reviews chronologically', () => {
     expect(
       buildPullRequestTimeline({

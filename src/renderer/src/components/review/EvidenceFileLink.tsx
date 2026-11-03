@@ -4,8 +4,9 @@ import type { CodeReference } from '@shared/codeReference';
 
 const icons = createFileTreeIconResolver({ set: 'complete', colored: true });
 
-export function EvidenceFileLink({ reference, onOpen }: {
+export function EvidenceFileLink({ reference, target = 'your selected code editor', onOpen }: {
   reference: CodeReference;
+  target?: string;
   onOpen: (reference: CodeReference) => void;
 }) {
   useInsertionEffect(() => {
@@ -22,8 +23,8 @@ export function EvidenceFileLink({ reference, onOpen }: {
   const filename = reference.path.split('/').at(-1);
   return (
     <a className="evidence-file-chip" href={reference.path}
-      title={`${location} · Open in your selected code editor`}
-      aria-label={`Open ${location} in your selected code editor`}
+      title={`${location} · Open in ${target}`}
+      aria-label={`Open ${location} in ${target}`}
       onClick={event => { event.preventDefault(); onOpen(reference); }}>
       <svg aria-hidden="true" viewBox={icon.viewBox ?? '0 0 16 16'} data-icon-token={icon.token}>
         <use href={`#${icon.name}`} />

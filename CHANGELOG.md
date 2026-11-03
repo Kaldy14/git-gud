@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Pull requests open with Summary, Guide, Activity, and Code tabs. Summary shows author, branches, reviewers, a checks breakdown, merge readiness, and the description; Activity lists comments and reviews newest first, collapses runs of commits, and can hide bot comments; Code keeps the existing review sections.
+- The review guide's stop list is a lane like the commit graph, showing read stops, the current stop, and what is ahead; note keys jump between code lines and their notes; merged pull requests show a merge mark instead of a green check.
+- Review guide notes also appear inline in the Code tab with a link back to their stop, and the inbox guide button opens and writes the same guide; the separate AI brief is no longer offered for pull requests.
+- File names in the review guide's prose are links with file icons that open the file in Code; inline code in comments uses a softer, lighter style.
+- Write an AI review guide for a pull request: a tour of numbered stops in reading order with code excerpts, lettered notes, the calls a maintainer should judge, and questions to consider. Step with J/K, track read stops, and jump from any excerpt to its exact lines in Code and back.
 - Open the current repository in a detected editor, terminal, or Finder from the toolbar or the command palette; Git Gud remembers the last application you chose.
 - Show how many commits are waiting to be pulled and pushed beside Fetch and Push.
 - Discard a single unstaged hunk from the file diff after a confirmation step.
@@ -19,8 +24,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Show when the repository was last fetched in the status bar.
 - Explain why Commit is unavailable, show the ⌘↩ shortcut, and count the summary line against 72 characters.
 
+### Changed
+
+- Pull request views use one type scale: comment bodies, thread headers, sidebar meta, and guide notes are no longer rendered at 8–10.5px, and markdown headings stay at least as large as their text.
+- Pending checks and running work are blue rather than amber; amber now means something needs attention. Drafts, closed pull requests, and unknown checks are shown in a muted tone. Focus rings and selected rows meet 3:1 contrast, and the guide rail uses the same selection style as other lists.
+- The pull request detail follows T3 Code's layout: a crumb row with the title, status, author, and branches that folds away as you scroll, a segmented tab bar, and a centered column for Summary and Activity. Timeline threads sit flush in their review card, and the inbox header matches the pull request header.
+
 ### Fixed
 
+- Write review guides even when Pi is not signed in, using the Claude Code CLI if it is installed.
+- Diffs from other machines no longer break when that machine's Git uses mnemonic or no diff prefixes.
+- Open pull requests in repositories where you lack write access; GitHub hides their merge settings, which previously failed the whole view.
+- Returning from a pull request restores the inbox search, filters, expanded groups, and scroll position. Scope and repository filters now combine.
+- The pull request inbox no longer suggests clearing filters when there are no pull requests, shows skipped checks separately, and keeps long status labels inside their column.
 - Render buttons and fields with their intended sizes, colours, borders, and radii; a CSS cascade conflict was overriding their styles, which flattened button hierarchy, hid the start page action cards, and hid the syntax theme cards' selected state.
 - Show destructive confirmations such as Delete branch, Discard all, Drop stash, and Force push as red danger buttons, and mark the Discard all changes icon as destructive.
 - Focus a dialog's first field when it opens so you can type a branch or tag name immediately, return focus to the control that opened the dialog, and drop the focus ring around whole dialogs.

@@ -5,6 +5,21 @@
 - Focused local and GitHub pull-request review plans should include bounded, prioritized full-file text context when available so unchanged lines above and below a hunk remain expandable.
 - Preserve the patch-only fallback for binary, oversized, unavailable, or non-UTF-8 file contents.
 
+## Pull request detail and Guide
+
+- Keep the Summary, Guide, Activity, and Code tabs; Code must keep `ReviewView`'s section split. Keep inactive panes mounted (hidden) so drafts and review state survive tab switches.
+- `PullRequestDetailHeader` (in `PullRequestDetailTabs.tsx`) is shared by the loaded and loading views. Author, branches, and size live in the header, not in Summary's meta rows. Keep Summary and Activity in the same centred column so tab switches keep their edges.
+- Guide excerpts must stay inside one hunk of the loaded plan; validate model output in `src/shared/pullRequestTour.ts` rather than trusting line numbers.
+- Guide-to-Code jumps go through `ReviewView`'s `navigationRequest` (path, line range, side) so they land on the section holding those lines.
+- The Guide is the only AI layer in the PR view: pass its notes to `ReviewView` as `guideReferences` and do not pass `reviewGuideProvider` there (the AI brief is for local reviews). Pi is the default harness; fall back to the Claude Code CLI only when Pi is missing or signed out, never to hide real Pi failures.
+- Guide prose renders through `GuideProse`: inline code naming a changed file (full path or unique suffix such as `machines.ts`) becomes a borderless file link that opens Code; other inline code keeps the T3-style tinted code style.
+
+## PR visual tokens
+
+- Use the `:root` type, spacing, and tone tokens in `main.css` for PR surfaces; keep content text at 11px or larger (10px only for counts, pills, and eyebrows).
+- Tones: `pending` = in progress (info blue), `warning` = needs attention (amber), `muted` = no signal. Do not use amber for pending.
+- In the Guide, teal marks position (the stop lane, current node and ordinal, selected tab, Next link) and copper (`--guide-annotation`) marks the guide's own commentary (note keys, judgement heads). Note keys are only for real code↔note references, and both directions must stay linked. Merged PRs use the neutral `merged` tone with a merge icon, not success green.
+
 ## Pull request review comments
 
 - Keep new line and file comments local until the user submits the review.
@@ -24,3 +39,4 @@
 - Validate SSH hosts with `SSH_HOST_PATTERN`; a leading `-` must stay impossible.
 - Tailscale discovery only runs `tailscale status --json` (`src/main/tailscale.ts`); check the app bundle and Homebrew paths because Finder-launched apps have a minimal PATH. Adding a device saves its full MagicDNS name after a passing connection test, and offers "Add anyway" on failure.
 - Keep the last snapshot when SSH fails and show it as stale; changing a machine's SSH host clears its cached snapshot.
+- Machine diffs pin `--src-prefix=a/ --dst-prefix=b/` so a remote `diff.mnemonicPrefix` or `diff.noprefix` cannot make patches unparseable.

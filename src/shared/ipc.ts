@@ -1,5 +1,6 @@
 import type { CommitGraphWorktrees } from './graph';
 import type { BugFinderRequest, BugFinderResult } from './bugFinder';
+import type { PullRequestTourContext, PullRequestTourState } from './pullRequestTour';
 import type { ArtifactCleanupInput, ArtifactCleanupPlan, ArtifactCleanupResult, BranchCleanupInput, BranchCleanupOptions, BranchCleanupPlan, BranchCleanupResult } from './maintenance';
 import type {
   ApplicationUpdateState,
@@ -47,7 +48,6 @@ import type {
   GitHubPullRequestConflictInput,
   GitHubPullRequestDetail,
   GitHubPullRequestInbox,
-  GitHubPullRequestGuideStatus,
   GitHubPullRequestLocator,
   GitHubPullRequestMergeInput,
   GitHubPullRequestReviewerCandidate,
@@ -638,17 +638,13 @@ export type IpcChannelMap = {
     result: OpenPullRequestInApplicationResult;
   };
   'bug-finder:request': { args: [request: BugFinderRequest]; result: BugFinderResult };
-  'github:pull-request-guide-status': {
+  'github:pull-request-tour-state': {
     args: [locator: GitHubPullRequestLocator];
-    result: GitHubPullRequestGuideStatus;
+    result: PullRequestTourState;
   };
-  'github:pull-request-review-guide-state': {
-    args: [locator: GitHubPullRequestLocator, sourceFingerprint: string];
-    result: GitReviewGuideState;
-  };
-  'github:start-pull-request-review-guide': {
-    args: [locator: GitHubPullRequestLocator, sourceFingerprint: string];
-    result: GitReviewGuideState;
+  'github:start-pull-request-tour': {
+    args: [locator: GitHubPullRequestLocator, sourceFingerprint: string, headSha: string, context: PullRequestTourContext];
+    result: PullRequestTourState;
   };
   'github:submit-pull-request-review': {
     args: [input: GitHubPullRequestReviewInput];
@@ -860,15 +856,13 @@ export type RendererApi = {
     input: OpenPullRequestInApplicationInput
   ) => Promise<OpenPullRequestInApplicationResult>;
   bugFinder: (request: BugFinderRequest) => Promise<BugFinderResult>;
-  getGitHubPullRequestGuideStatus: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestGuideStatus>;
-  getGitHubPullRequestReviewGuideState: (
+  getGitHubPullRequestTourState: (locator: GitHubPullRequestLocator) => Promise<PullRequestTourState>;
+  startGitHubPullRequestTour: (
     locator: GitHubPullRequestLocator,
-    sourceFingerprint: string
-  ) => Promise<GitReviewGuideState>;
-  startGitHubPullRequestReviewGuide: (
-    locator: GitHubPullRequestLocator,
-    sourceFingerprint: string
-  ) => Promise<GitReviewGuideState>;
+    sourceFingerprint: string,
+    headSha: string,
+    context: PullRequestTourContext
+  ) => Promise<PullRequestTourState>;
   submitGitHubPullRequestReview: (input: GitHubPullRequestReviewInput) => Promise<GitHubPullRequestActionResult>;
   addGitHubPullRequestComment: (input: GitHubPullRequestCommentInput) => Promise<GitHubPullRequestActionResult>;
   updateGitHubPullRequestReviewComment: (input: GitHubPullRequestReviewCommentUpdateInput) => Promise<GitHubPullRequestActionResult>;
