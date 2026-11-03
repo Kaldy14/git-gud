@@ -145,7 +145,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewSections, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
+import { createReviewSections, getReviewFileIdentity, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
 import {
   createReviewViewState,
   getReviewScrollTopForNavigation,
@@ -2043,6 +2043,17 @@ function ReviewBody({
     unitId?: string;
   }>({ fileNavigationSignal: 0 });
   const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(() => new Set());
+  // A jump from outside the review must show its file even if the reader collapsed it earlier.
+  const [expandedForLocation, setExpandedForLocation] = useState(externalGuideLocation);
+  if (externalGuideLocation !== expandedForLocation) {
+    setExpandedForLocation(externalGuideLocation);
+    const path = externalGuideLocation?.file.path;
+    if (path) {
+      const keys = new Set(allFileUnits.flatMap((unit) => unit.unit.chunks)
+        .filter((chunk) => chunk.path === path).map(getReviewFileIdentity));
+      setCollapsedFileKeys((current) => new Set([...current].filter((key) => !keys.has(key))));
+    }
+  }
   const agentNotesByPath = useMemo(() => {
     const notesByPath = new Map<string, GitAgentNote[]>();
 
@@ -2133,8 +2144,11 @@ function ReviewBody({
       for (const diff of file?.querySelectorAll('.gg-diff') ?? []) {
         const shadowComment = commentSelector ? diff.shadowRoot?.querySelector<HTMLElement>(commentSelector) : undefined;
         if (shadowComment) { shadowComment.scrollIntoView({ block: 'center' }); return; }
+        // Excerpts may start on unchanged context, so fall back to context rows.
         const line = diff.shadowRoot?.querySelector<HTMLElement>(
           `[data-line="${location.line}"][data-line-type="${location.side === 'left' ? 'change-deletion' : 'change-addition'}"]`
+        ) ?? diff.shadowRoot?.querySelector<HTMLElement>(
+          `[data-line="${location.line}"]:is([data-line-type="context"], [data-line-type="context-expanded"])`
         );
         if (line) {
           line.scrollIntoView({ block: 'center' });

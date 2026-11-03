@@ -25,7 +25,12 @@ export async function runClaudePrompt(options: ClaudePromptOptions): Promise<str
   const environment = await resolvePiEnvironment();
   const executable = await resolveClaudeExecutable(environment);
   const env = Object.fromEntries(Object.entries(environment).filter(([key]) => !SESSION_VARIABLES.test(key)));
-  const child = spawn(executable, ['-p', '--output-format', 'text', '--tools', ''], {
+  // Pull-request text is untrusted. No built-in tools, no MCP servers (an empty strict config),
+  // no skills or commands, and nothing persisted: the run can only answer with text.
+  const child = spawn(executable, [
+    '-p', '--output-format', 'text', '--tools', '', '--strict-mcp-config',
+    '--disable-slash-commands', '--no-session-persistence'
+  ], {
     cwd: options.cwd,
     env,
     stdio: 'pipe',
@@ -34,13 +39,19 @@ export async function runClaudePrompt(options: ClaudePromptOptions): Promise<str
   activeProcesses.add(child);
 
   try {
-    return await new Promise<string>((resolve, reject) => {
+    return await new Promise<string>((resolveRun, rejectRun) => {
       let stdout = '';
       let stderr = '';
+      let settled = false;
+      const resolve = (value: string) => { if (!settled) { settled = true; resolveRun(value); } };
+      const reject = (error: Error) => { if (!settled) { settled = true; rejectRun(error); } };
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
         reject(new Error(`${options.errorLabel} timed out.`));
       }, options.timeoutMs);
+      // An early exit while the prompt is still being written raises EPIPE on stdin; report it as
+      // a failed run instead of an uncaught main-process error. The close handler adds stderr.
+      child.stdin.on('error', () => undefined);
       child.stdout.setEncoding('utf8');
       child.stderr.setEncoding('utf8');
       child.stdout.on('data', (chunk: string) => {
