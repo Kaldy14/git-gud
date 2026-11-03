@@ -34,6 +34,23 @@ describe('pull request timeline', () => {
     ).toEqual(['commits:2', 'conversation', 'commit']);
   });
 
+  it('keeps a bot-started thread when a person replied to it', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [],
+      conversationComments: [],
+      reviews: [],
+      reviewComments: [
+        reviewComment({ id: 30, author: 'coderabbitai[bot]', reviewId: undefined }),
+        reviewComment({ id: 31, author: 'teammate', inReplyToId: 30, reviewId: undefined, createdAt: '2026-07-29T09:05:00Z' }),
+        reviewComment({ id: 40, author: 'coderabbitai[bot]', reviewId: undefined, createdAt: '2026-07-29T10:00:00Z' })
+      ]
+    });
+
+    const kept = groupPullRequestActivity(timeline, { hideBots: true });
+    expect(kept.map((item) => item.kind === 'entry' && item.entry.kind === 'review-thread' ? item.entry.thread.root.id : undefined))
+      .toEqual([30]);
+  });
+
   it('sorts commits, comments, and reviews chronologically', () => {
     expect(
       buildPullRequestTimeline({

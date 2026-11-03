@@ -3935,6 +3935,7 @@ export function WorkspaceShell(): ReactElement {
               />
             ) : (
               <PullRequestInboxView
+                key={activeGitHubProfile?.id ?? ''}
                 profile={activeGitHubProfile}
                 inbox={pullRequestInboxQuery.data}
                 isLoading={pullRequestInboxQuery.isLoading}

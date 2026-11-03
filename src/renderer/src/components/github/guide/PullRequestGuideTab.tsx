@@ -95,6 +95,7 @@ export function PullRequestGuideTab({ detail, active, diffStyle, diffSyntaxTheme
       onOpenFile={onOpenFile}
       onFinish={onFinishReview}
       stopRequest={stopRequest}
+      stale={stale}
     />
   );
 }

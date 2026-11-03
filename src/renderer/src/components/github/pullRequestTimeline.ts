@@ -149,24 +149,29 @@ export function isBotAuthor(author: string): boolean {
   return author.endsWith('[bot]');
 }
 
-function entryAuthor(entry: PullRequestTimelineEntry): string {
+function threadAuthors(thread: PullRequestReviewThread): string[] {
+  return [thread.root.author, ...thread.replies.map((reply) => reply.author)];
+}
+
+// Everyone who wrote in an entry, including replies in its threads.
+function entryAuthors(entry: Exclude<PullRequestTimelineEntry, { kind: 'commit' }>): string[] {
   switch (entry.kind) {
-    case 'commit': return entry.commit.author;
-    case 'conversation': return entry.comment.author;
-    case 'review': return entry.review.author;
-    case 'review-thread': return entry.thread.root.author;
+    case 'conversation': return [entry.comment.author];
+    case 'review': return [entry.review.author, ...entry.threads.flatMap(threadAuthors)];
+    case 'review-thread': return threadAuthors(entry.thread);
   }
 }
 
 // Collapse runs of consecutive commits so pushes don't bury the discussion, and
-// optionally hide bot comments and reviews (bot commits stay visible).
+// optionally hide bot-only comments and reviews. An entry a person replied to stays whole,
+// bot root included, so the reply keeps its context. Bot commits stay visible.
 export function groupPullRequestActivity(
   entries: readonly PullRequestTimelineEntry[],
   options: { hideBots: boolean }
 ): PullRequestActivityItem[] {
   const items: PullRequestActivityItem[] = [];
   for (const entry of entries) {
-    if (options.hideBots && entry.kind !== 'commit' && isBotAuthor(entryAuthor(entry))) continue;
+    if (options.hideBots && entry.kind !== 'commit' && entryAuthors(entry).every(isBotAuthor)) continue;
     const last = items.at(-1);
     if (entry.kind === 'commit' && last?.kind === 'commits') {
       last.commits.push(entry);

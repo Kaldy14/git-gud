@@ -5993,7 +5993,7 @@ button.ref-chip {
   padding: 0.1em 0.35em;
   color: var(--text-1);
   font-family: var(--font-mono);
-  font-size: 0.85em;
+  font-size: max(var(--text-xs), 0.85em);
 }
 
 .review-line-comment-body pre {

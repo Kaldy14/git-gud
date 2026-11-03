@@ -109,7 +109,7 @@ function isEditable(target: EventTarget | null): boolean {
     (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 }
 
-export function GuideTour({ tour, plan, progressKey, banner, active, diffStyle, diffSyntaxTheme, onOpenFile, onFinish, stopRequest }: {
+export function GuideTour({ tour, plan, progressKey, banner, active, diffStyle, diffSyntaxTheme, onOpenFile, onFinish, stopRequest, stale = false }: {
   tour: PullRequestTour;
   plan: GitReviewPlan;
   progressKey: string;
@@ -120,6 +120,8 @@ export function GuideTour({ tour, plan, progressKey, banner, active, diffStyle, 
   onOpenFile: OpenFile;
   onFinish: () => void;
   stopRequest?: { index: number; signal: number };
+  // Written for an older head: its line coordinates may now point at different code.
+  stale?: boolean;
 }): ReactElement {
   const [progress, setProgressState] = useState(() => loadProgress(progressKey));
   const [railOpen, setRailOpen] = useState(false);
@@ -205,6 +207,7 @@ export function GuideTour({ tour, plan, progressKey, banner, active, diffStyle, 
               rail={rail}
               plan={plan}
               hunks={hunks}
+              stale={stale}
               diffStyle={diffStyle}
               diffSyntaxTheme={diffSyntaxTheme}
               onStep={step}
@@ -255,7 +258,8 @@ function GuideRail({ stops, position, seen, onSelect }: {
   );
 }
 
-function GuideStop({ headingRef, stop, index, stopCount, nextTitle, railOpen, onRailOpenChange, rail, plan, hunks, diffStyle, diffSyntaxTheme, onStep, onOpenFile, onFinish }: {
+function GuideStop({ stale, headingRef, stop, index, stopCount, nextTitle, railOpen, onRailOpenChange, rail, plan, hunks, diffStyle, diffSyntaxTheme, onStep, onOpenFile, onFinish }: {
+  stale: boolean;
   headingRef: RefObject<HTMLHeadingElement | null>;
   stop: PullRequestTourStop;
   index: number;
@@ -314,12 +318,14 @@ function GuideStop({ headingRef, stop, index, stopCount, nextTitle, railOpen, on
           <GuideExcerpt
             key={`${excerpt.path}:${excerpt.side}:${excerpt.start}-${excerpt.end}`}
             excerpt={excerpt}
-            slice={pullRequestTourExcerptPatch(plan, excerpt, hunks)}
+            // A stale guide's lines may now hold different code: show the missing state and open
+            // only the file, instead of drawing new code under old notes.
+            slice={stale ? undefined : pullRequestTourExcerptPatch(plan, excerpt, hunks)}
             markers={lettered
               .filter(({ note }) => note.path === excerpt.path && note.line >= excerpt.start && note.line <= excerpt.end)
               .map(({ marker, note }) => ({ marker, title: plainProse(note.title), line: note.line }))}
             diffSyntaxTheme={diffSyntaxTheme}
-            onOpenFile={onOpenFile}
+            onOpenFile={stale ? (location) => onOpenFile({ path: location.path }) : onOpenFile}
             onRevealNote={(marker) => revealGuideReference(`[data-guide-note="${marker}"]`)}
           />
         ))}

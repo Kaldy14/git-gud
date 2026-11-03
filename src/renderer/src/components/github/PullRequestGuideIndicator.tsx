@@ -35,10 +35,11 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
     onSuccess: (state) => queryClient.setQueryData(queryKey, state)
   });
   const state = query.data;
+  // A failed rewrite must not hide an existing guide: report failure only when there is none.
   const status = isStarting || state?.running ? 'running'
-    : generation.isError || query.isError || state?.errorMessage ? 'failed'
+    : query.isError ? 'failed'
       : !state ? 'loading'
-        : !state.tour ? 'idle'
+        : !state.tour ? (generation.isError || state.errorMessage ? 'failed' : 'idle')
           : pullRequest.headSha && state.tour.headSha !== pullRequest.headSha ? 'stale' : 'ready';
   const error = generation.error?.message ?? query.error?.message ?? state?.errorMessage;
   const label = status === 'ready' ? 'Review guide ready. Open guide'
