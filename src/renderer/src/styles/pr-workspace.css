@@ -1641,3 +1641,11 @@
 }
 .review-guide-inline-note[data-guide-reference] .review-guide-reference-open:hover { color: var(--guide-annotation); }
 .review-guide-inline-note[data-guide-reference] .review-guide-reference-open:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.pr-guide-excerpt figcaption code {
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  background: color-mix(in srgb, var(--text-1) 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-weight: var(--weight-medium);
+}

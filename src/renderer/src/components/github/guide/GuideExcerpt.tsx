@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import type { DiffLineAnnotation } from '@pierre/diffs';
 import { PatchDiff } from '@pierre/diffs/react';
 import { ArrowUpRight } from 'lucide-react';
@@ -42,7 +42,7 @@ export function GuideExcerpt({ excerpt, slice, markers, diffSyntaxTheme, onOpenF
 
   return (
     <figure className="pr-guide-excerpt">
-      {excerpt.caption ? <figcaption>{excerpt.caption}</figcaption> : null}
+      {excerpt.caption ? <figcaption>{inlineCode(excerpt.caption)}</figcaption> : null}
       <div className="pr-guide-excerpt-frame">
         <header>
           <button
@@ -92,6 +92,11 @@ export function GuideExcerpt({ excerpt, slice, markers, diffSyntaxTheme, onOpenF
       </div>
     </figure>
   );
+}
+
+// Captions are one line of prose; show `backticked` spans as code instead of literal backticks.
+function inlineCode(text: string): ReactNode[] {
+  return text.split(/`([^`]+)`/u).map((part, index) => (index % 2 ? <code key={index}>{part}</code> : part));
 }
 
 export function GuideMarker({ marker }: { marker: string }): ReactElement {
