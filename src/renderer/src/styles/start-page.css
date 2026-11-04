@@ -66,20 +66,20 @@
   color: var(--text-1);
   font-size: 13px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: var(--leading-heading);
 }
 
 .start-action-description {
   color: var(--text-3);
   font-size: 12px;
-  line-height: 17px;
+  line-height: var(--leading-label);
 }
 
 .start-drop-hint {
   margin: 20px 0 0;
   color: var(--text-3);
   font-size: 12px;
-  line-height: 17px;
+  line-height: var(--leading-label);
 }
 
 .start-recent-header {
@@ -173,7 +173,7 @@
   color: var(--text-1);
   font-size: 13px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: var(--leading-heading);
 }
 
 .start-recent-path {
@@ -243,7 +243,7 @@
   margin: 6px 0 0;
   color: var(--text-3);
   font-size: 13px;
-  line-height: 19px;
+  line-height: var(--leading-body);
 }
 
 .start-form {

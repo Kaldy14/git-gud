@@ -807,7 +807,7 @@ export function GraphView({
         />
       ) : null}
       {(!hasNoCommits || rows.length > 0) ? <div
-        className="grid h-7 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[12px] font-medium text-[var(--text-3)]"
+        className="grid h-7 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] pr-[var(--scrollbar-size)] text-[12px] font-medium text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
       >
         <div className="graph-column-header flex h-full items-center border-r border-[var(--border)] pl-3">
@@ -892,7 +892,7 @@ export function GraphView({
         aria-activedescendant={selectedSha && selectedRowIsMounted ? graphRowDomId(selectedSha) : undefined}
         onKeyDown={handleListKeyDown}
         onScroll={handleListScroll}
-        className={repairPrompt ? 'hidden' : 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none'}
+        className={repairPrompt ? 'hidden' : 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]'}
       >
         {isLoading && rows.length === 0 ? (
           <GraphMessage icon={<GitCommit size={15} />} label="Loading commit history…" />
@@ -1229,6 +1229,7 @@ function GraphRowView({
       role="option"
       aria-selected={isSelected || isBulkSelected}
       aria-label={graphRowAriaLabel(row)}
+      data-primary-selected={isSelected ? 'true' : undefined}
       data-bulk-selected={isBulkSelected ? 'true' : undefined}
       data-search-match={isSearchFiltering && isSearchMatch ? 'true' : undefined}
       data-search-muted={isSearchFiltering && !isSearchMatch ? 'true' : undefined}
@@ -1271,8 +1272,6 @@ function GraphRowView({
             linkedWorktreeBranches={linkedWorktreeBranches}
             color={refColor}
             currentColor={currentRefColor}
-            remoteAvatarUrl={remoteAvatars ? row.author.avatarUrl : undefined}
-            remoteAvatarFallbackUrl={remoteAvatars ? row.author.fallbackAvatarUrl : undefined}
             pendingRef={pendingRef}
             onRefClick={onRefClick}
             onBranchContextMenu={onBranchContextMenu}
@@ -1320,6 +1319,9 @@ function GraphRowView({
             {row.unpushedOn ? <UnpushedMachineBadge machines={row.unpushedOn} /> : null}
           </>
         )}
+        {dateSeparatorLabel ? (
+          <span className="graph-row-date" aria-hidden="true">{dateSeparatorLabel}</span>
+        ) : null}
       </div>
       {visibleColumns.author ? (
         <span className="relative min-w-0 truncate border-l border-[var(--border)] px-3 text-[13px] text-[var(--text-2)]" title={row.author.email ?? row.author.name}>
@@ -1337,11 +1339,7 @@ function GraphRowView({
         </span>
       ) : null}
 
-      {dateSeparatorLabel ? (
-        <div className="graph-date-separator" aria-hidden="true">
-          <span>{dateSeparatorLabel}</span>
-        </div>
-      ) : null}
+      {dateSeparatorLabel ? <div className="graph-date-separator" aria-hidden="true" /> : null}
     </div>
   );
 }
@@ -1472,7 +1470,7 @@ function CommitSubjectLine({ subject, isMerge }: { subject: string; isMerge: boo
   const [primary, secondary] = splitCommitSubject(subject);
 
   return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] font-medium leading-4">
+    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] font-normal leading-[var(--leading-body)]">
       <span className={isMerge ? 'graph-subject min-w-0 truncate text-[var(--graph-text-muted)]' : 'graph-subject min-w-0 truncate text-[var(--graph-text)]'}>
         {primary}
       </span>
@@ -1617,8 +1615,6 @@ function RefChipStack({
   linkedWorktreeBranches,
   color,
   currentColor,
-  remoteAvatarUrl,
-  remoteAvatarFallbackUrl,
   pendingRef,
   onRefClick,
   onBranchContextMenu,
@@ -1628,8 +1624,6 @@ function RefChipStack({
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
   currentColor: string;
-  remoteAvatarUrl?: string;
-  remoteAvatarFallbackUrl?: string;
   pendingRef?: CheckoutTransition['targetRef'];
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -1653,8 +1647,6 @@ function RefChipStack({
           linkedWorktreeBranches={linkedWorktreeBranches}
           color={color}
           currentColor={currentColor}
-          remoteAvatarUrl={remoteAvatarUrl}
-          remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
           pendingRef={pendingRef}
           onRefClick={onRefClick}
           onBranchContextMenu={onBranchContextMenu}
@@ -1678,8 +1670,6 @@ function RefChipStack({
             linkedWorktreeBranches={linkedWorktreeBranches}
             color={color}
             currentColor={currentColor}
-            remoteAvatarUrl={remoteAvatarUrl}
-            remoteAvatarFallbackUrl={remoteAvatarFallbackUrl}
             pendingRef={pendingRef}
             onRefClick={onRefClick}
             onBranchContextMenu={onBranchContextMenu}
@@ -1696,8 +1686,6 @@ function RefChipView({
   linkedWorktreeBranches,
   color,
   currentColor,
-  remoteAvatarUrl,
-  remoteAvatarFallbackUrl,
   pendingRef,
   onRefClick,
   onBranchContextMenu,
@@ -1707,8 +1695,6 @@ function RefChipView({
   linkedWorktreeBranches: ReadonlySet<string>;
   color: string;
   currentColor: string;
-  remoteAvatarUrl?: string;
-  remoteAvatarFallbackUrl?: string;
   pendingRef?: CheckoutTransition['targetRef'];
   onRefClick: (ref: GraphRefChip) => void;
   onBranchContextMenu: (event: MouseEvent<HTMLElement>, branchName: string) => void;
@@ -1745,9 +1731,6 @@ function RefChipView({
     <>
       {leadingIcon}
       <span className="ref-chip-label" title={label}>{displayLabel}</span>
-      {kind === 'remote' ? (
-        <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
-      ) : null}
       {kind === 'branch' ? (
         isLinkedWorktree ? (
           <TreePine size={13} className="ref-chip-extra-icon" aria-hidden="true" />
@@ -1755,8 +1738,8 @@ function RefChipView({
           <LaptopMinimal size={13} className="ref-chip-extra-icon" aria-hidden="true" />
         )
       ) : null}
-      {hasRemotePeer ? (
-        <RemoteRefIcon avatarUrl={remoteAvatarUrl} fallbackAvatarUrl={remoteAvatarFallbackUrl} />
+      {kind === 'remote' || hasRemotePeer ? (
+        <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" />
       ) : null}
       {kind === 'machine' || machinePeers?.length ? (
         <Monitor size={12} className="machine-ref-icon" aria-hidden="true" />
@@ -2103,7 +2086,7 @@ function GraphNode({
     return (
       <g>
         <title>{title}</title>
-        <circle cx={cx} cy={cy} r={5} fill={color} />
+        <circle cx={cx} cy={cy} r={5} fill="var(--graph-node-fill)" stroke={color} strokeWidth={2} />
       </g>
     );
   }
@@ -2146,74 +2129,49 @@ function GraphCommitNode({
   return (
     <g>
       <title>{title}</title>
-      <circle
-        cx={cx}
-        cy={cy}
-        r={outerRadius - ringStrokeWidth / 2}
-        className="graph-commit-node-ring"
-        fill="var(--bg-graph)"
-        stroke={color}
-        strokeWidth={ringStrokeWidth}
-      />
-      {imageSource ? (
-        <>
-          <clipPath id={clipId}>
-            <circle cx={cx} cy={cy} r={imageRadius} />
-          </clipPath>
-          <image
-            className="graph-commit-avatar"
-            href={imageSource}
-            x={cx - imageRadius}
-            y={cy - imageRadius}
-            width={imageSize}
-            height={imageSize}
-            clipPath={`url(#${clipId})`}
-            preserveAspectRatio="xMidYMid slice"
-            onError={handleImageError}
-          />
-        </>
-      ) : (
-        <>
-          <circle cx={cx} cy={cy} r={imageRadius} style={{ fill: `color-mix(in srgb, ${authorColor} 20%, var(--bg-graph))` }} />
-          <text
-            x={cx}
-            y={cy + 3}
-            textAnchor="middle"
-            fontSize="8"
-            fontWeight="600"
-            style={{ fill: `color-mix(in srgb, ${authorColor} 45%, var(--text-1))` }}
-          >
-            {authorInitials.slice(0, 2)}
-          </text>
-        </>
-      )}
+      <circle cx={cx} cy={cy} r={4} fill={color} />
+      <g className="graph-commit-identity">
+        <circle
+          cx={cx}
+          cy={cy}
+          r={outerRadius - ringStrokeWidth / 2}
+          fill="var(--graph-node-fill)"
+          stroke={color}
+          strokeWidth={ringStrokeWidth}
+        />
+        {imageSource ? (
+          <>
+            <clipPath id={clipId}>
+              <circle cx={cx} cy={cy} r={imageRadius} />
+            </clipPath>
+            <image
+              href={imageSource}
+              x={cx - imageRadius}
+              y={cy - imageRadius}
+              width={imageSize}
+              height={imageSize}
+              clipPath={`url(#${clipId})`}
+              preserveAspectRatio="xMidYMid slice"
+              onError={handleImageError}
+            />
+          </>
+        ) : (
+          <>
+            <circle cx={cx} cy={cy} r={imageRadius} style={{ fill: `color-mix(in srgb, ${authorColor} 20%, var(--graph-node-fill))` }} />
+            <text
+              x={cx}
+              y={cy + 3}
+              textAnchor="middle"
+              fontSize="8"
+              fontWeight="600"
+              style={{ fill: `color-mix(in srgb, ${authorColor} 45%, var(--text-1))` }}
+            >
+              {authorInitials.slice(0, 2)}
+            </text>
+          </>
+        )}
+      </g>
     </g>
-  );
-}
-
-function RemoteRefIcon({
-  avatarUrl,
-  fallbackAvatarUrl
-}: {
-  avatarUrl?: string;
-  fallbackAvatarUrl?: string;
-}): ReactElement {
-  const { imageSource, handleImageError } = useAvatarImageSource(avatarUrl, fallbackAvatarUrl);
-
-  if (!imageSource) {
-    return <Cloud size={12} className="ref-chip-extra-icon" aria-hidden="true" />;
-  }
-
-  return (
-    <img
-      src={imageSource}
-      alt=""
-      aria-hidden="true"
-      className="ref-chip-avatar"
-      referrerPolicy="no-referrer"
-      draggable={false}
-      onError={handleImageError}
-    />
   );
 }
 

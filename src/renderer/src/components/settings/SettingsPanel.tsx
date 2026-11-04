@@ -70,12 +70,12 @@ export function SettingsPanel({
     <ModalSurface
       labelledBy={titleId}
       describedBy={descriptionId}
-      className="h-full w-full max-w-[460px]"
+      className="h-full w-full max-w-[560px]"
       backdropClassName="fixed inset-0 z-50 flex items-stretch justify-end bg-black/45"
       onClose={onClose}
     >
       <form
-        className="flex h-full w-full max-w-[460px] flex-col border-l border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
+        className="flex h-full w-full max-w-[560px] flex-col border-l border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
         onSubmit={handleSubmit}
       >
         <header className="flex min-h-14 items-center gap-3 border-b border-[var(--border)] px-5">
@@ -89,238 +89,237 @@ export function SettingsPanel({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <section className="space-y-3 border-b border-[var(--border)] pb-5">
+          <section className="settings-group">
             <SettingHeading icon={<Rows3 size={15} />} label="Diffs" />
-            <fieldset>
-              <legend className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">Default layout</legend>
-              <div className="segmented" role="group" aria-label="Default diff layout">
-                <button
-                  type="button"
-                  aria-pressed={draft.defaultDiffStyle === 'unified'}
-                  data-active={draft.defaultDiffStyle === 'unified'}
-                  onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'unified' }))}
-                >
-                  <Rows3 size={12} />
-                  Unified
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={draft.defaultDiffStyle === 'split'}
-                  data-active={draft.defaultDiffStyle === 'split'}
-                  onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'split' }))}
-                >
-                  <SplitSquareHorizontal size={12} />
-                  Split
-                </button>
+            <div className="settings-group-body">
+              <div className="settings-row">
+                <fieldset className="contents">
+                  <legend className="settings-row-label">Default layout</legend>
+                  <div className="segmented" role="group" aria-label="Default diff layout">
+                    <button
+                      type="button"
+                      aria-pressed={draft.defaultDiffStyle === 'unified'}
+                      data-active={draft.defaultDiffStyle === 'unified'}
+                      onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'unified' }))}
+                    >
+                      <Rows3 size={12} />
+                      Unified
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={draft.defaultDiffStyle === 'split'}
+                      data-active={draft.defaultDiffStyle === 'split'}
+                      onClick={() => setDraft((value) => ({ ...value, defaultDiffStyle: 'split' }))}
+                    >
+                      <SplitSquareHorizontal size={12} />
+                      Split
+                    </button>
+                  </div>
+                </fieldset>
               </div>
-            </fieldset>
-            <fieldset>
-              <legend className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">Syntax theme</legend>
-              <div className="grid grid-cols-2 gap-2">
-                <SyntaxThemeOption
-                  label="Git Gud Dark"
-                  description="Balanced aqua and warm accents"
-                  colors={['#4fc1ff', '#dcdcaa', '#ce9178', '#4ec9b0']}
-                  value="git-gud-dark"
-                  selected={draft.diffSyntaxTheme}
-                  onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
-                />
-                <SyntaxThemeOption
-                  label="Tokyo Night Storm"
-                  description="Blue-violet storm palette"
-                  colors={['#7aa2f7', '#bb9af7', '#9ece6a', '#f7768e']}
-                  value="tokyo-night-storm"
-                  selected={draft.diffSyntaxTheme}
-                  onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
-                />
+              <div className="settings-row settings-row--block">
+                <fieldset className="min-w-0">
+                  <legend className="settings-row-label mb-2">Syntax theme</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    <SyntaxThemeOption
+                      label="Git Gud Dark"
+                      description="Balanced aqua and warm accents"
+                      colors={['#4fc1ff', '#dcdcaa', '#ce9178', '#4ec9b0']}
+                      value="git-gud-dark"
+                      selected={draft.diffSyntaxTheme}
+                      onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
+                    />
+                    <SyntaxThemeOption
+                      label="Tokyo Night Storm"
+                      description="Blue-violet storm palette"
+                      colors={['#7aa2f7', '#bb9af7', '#9ece6a', '#f7768e']}
+                      value="tokyo-night-storm"
+                      selected={draft.diffSyntaxTheme}
+                      onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
+                    />
+                  </div>
+                  <p className="settings-row-help">Applied to file diffs and review views.</p>
+                </fieldset>
               </div>
-              <p className="mt-2 text-[12px] leading-4 text-[var(--text-3)]">
-                Applied to file diffs and review views.
-              </p>
-            </fieldset>
+            </div>
           </section>
 
-          <section className="space-y-3 border-b border-[var(--border)] py-5">
+          <section className="settings-group">
             <SettingHeading icon={<GitGraph size={15} />} label="Graph" />
-            <label className="block text-xs text-[var(--text-2)]">
-              <span className="mb-1.5 block font-semibold text-[var(--text-1)]">History page size</span>
-              <input
-                className="form-input form-input--number"
-                type="number"
-                min={MIN_GRAPH_PAGE_SIZE}
-                max={MAX_GRAPH_PAGE_SIZE}
-                step={250}
-                value={draft.graphPageSize}
-                onChange={(event) =>
-                  setDraft((value) => ({
-                    ...value,
-                    graphPageSize: Number.parseInt(event.target.value, 10) || MIN_GRAPH_PAGE_SIZE
-                  }))
-                }
-              />
-              <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
-                History opens with the newest 50 commits, then loads up to this many at a time as you scroll.
-              </span>
-            </label>
-            <label className="flex items-start gap-2 py-1 text-xs text-[var(--text-2)]">
-              <input
-                className="mt-0.5"
-                type="checkbox"
-                checked={draft.largeRepoMode}
-                onChange={(event) => setDraft((value) => ({ ...value, largeRepoMode: event.target.checked }))}
-              />
-              <span className="min-w-0">
-                <span className="block font-semibold text-[var(--text-1)]">Large-repo mode</span>
-                <span className="mt-1 block leading-5 text-[var(--text-3)]">
-                  Renders fewer offscreen commits to reduce memory use.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-center gap-2 py-1 text-xs font-semibold text-[var(--text-1)]">
-              <input
-                type="checkbox"
-                checked={draft.graphColumns.sha}
-                onChange={(event) =>
-                  setDraft((value) => ({
-                    ...value,
-                    graphColumns: { ...value.graphColumns, sha: event.target.checked }
-                  }))
-                }
-              />
-              Show short commit SHAs
-            </label>
-            <label className="flex items-start gap-2 py-1 text-xs text-[var(--text-2)]">
-              <input
-                className="mt-0.5"
-                type="checkbox"
-                checked={draft.remoteAvatars}
-                onChange={(event) => setDraft((value) => ({ ...value, remoteAvatars: event.target.checked }))}
-              />
-              <span className="min-w-0">
-                <span className="block font-semibold text-[var(--text-1)]">Load remote author avatars</span>
-                <span className="mt-1 block leading-5 text-[var(--text-3)]">Uses GitHub identities for GitHub repositories, then falls back to Gravatar. Disable to keep author identities local.</span>
-              </span>
-            </label>
+            <div className="settings-group-body">
+              <label className="settings-row">
+                <SettingCopy
+                  label="History page size"
+                  help="History opens with the newest 50 commits, then loads up to this many at a time as you scroll."
+                />
+                <input
+                  className="form-input form-input--number"
+                  type="number"
+                  min={MIN_GRAPH_PAGE_SIZE}
+                  max={MAX_GRAPH_PAGE_SIZE}
+                  step={250}
+                  value={draft.graphPageSize}
+                  onChange={(event) =>
+                    setDraft((value) => ({
+                      ...value,
+                      graphPageSize: Number.parseInt(event.target.value, 10) || MIN_GRAPH_PAGE_SIZE
+                    }))
+                  }
+                />
+              </label>
+              <label className="settings-row">
+                <SettingCopy label="Large-repo mode" help="Renders fewer offscreen commits to reduce memory use." />
+                <input
+                  type="checkbox"
+                  checked={draft.largeRepoMode}
+                  onChange={(event) => setDraft((value) => ({ ...value, largeRepoMode: event.target.checked }))}
+                />
+              </label>
+              <label className="settings-row">
+                <SettingCopy label="Show short commit SHAs" />
+                <input
+                  type="checkbox"
+                  checked={draft.graphColumns.sha}
+                  onChange={(event) =>
+                    setDraft((value) => ({
+                      ...value,
+                      graphColumns: { ...value.graphColumns, sha: event.target.checked }
+                    }))
+                  }
+                />
+              </label>
+              <label className="settings-row">
+                <SettingCopy
+                  label="Load remote author avatars"
+                  help="Uses GitHub identities for GitHub repositories, then falls back to Gravatar. Disable to keep author identities local."
+                />
+                <input
+                  type="checkbox"
+                  checked={draft.remoteAvatars}
+                  onChange={(event) => setDraft((value) => ({ ...value, remoteAvatars: event.target.checked }))}
+                />
+              </label>
+            </div>
           </section>
 
-          <section className="space-y-3 border-b border-[var(--border)] py-5">
+          <section className="settings-group">
             <SettingHeading icon={<RefreshCw size={15} />} label="Repositories" />
-            <label className="block text-xs text-[var(--text-2)]">
-              <span className="mb-1.5 block font-semibold text-[var(--text-1)]">
-                Auto-fetch interval (minutes)
-              </span>
-              <input
-                className="form-input form-input--number"
-                type="number"
-                min={MIN_AUTO_FETCH_INTERVAL_MINUTES}
-                max={MAX_AUTO_FETCH_INTERVAL_MINUTES}
-                step={1}
-                value={draft.autoFetchIntervalMinutes}
-                onChange={(event) =>
-                  setDraft((value) => ({
-                    ...value,
-                    autoFetchIntervalMinutes:
-                      Number.parseInt(event.target.value, 10) ||
-                      MIN_AUTO_FETCH_INTERVAL_MINUTES
-                  }))
-                }
-              />
-              <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
-                Fetch remote updates for open repositories, even while the app is in
-                the background. Auto-fetch yields to your Git actions. Use 0 to turn
-                off auto-fetch. This never pulls or changes working files.
-              </span>
-            </label>
+            <div className="settings-group-body">
+              <label className="settings-row">
+                <SettingCopy
+                  label="Auto-fetch interval (minutes)"
+                  help="Fetch remote updates for open repositories, even while the app is in the background. Auto-fetch yields to your Git actions. Use 0 to turn off auto-fetch. This never pulls or changes working files."
+                />
+                <input
+                  className="form-input form-input--number"
+                  type="number"
+                  min={MIN_AUTO_FETCH_INTERVAL_MINUTES}
+                  max={MAX_AUTO_FETCH_INTERVAL_MINUTES}
+                  step={1}
+                  value={draft.autoFetchIntervalMinutes}
+                  onChange={(event) =>
+                    setDraft((value) => ({
+                      ...value,
+                      autoFetchIntervalMinutes:
+                        Number.parseInt(event.target.value, 10) ||
+                        MIN_AUTO_FETCH_INTERVAL_MINUTES
+                    }))
+                  }
+                />
+              </label>
+            </div>
           </section>
 
           <MachineSettingsSection heading={<SettingHeading icon={<Monitor size={15} />} label="Machines" note="Changes here apply right away." />} />
 
-          <section className="space-y-3 border-b border-[var(--border)] py-5">
+          <section className="settings-group">
             <SettingHeading icon={<Bot size={15} />} label="Codex" note="Install and remove apply right away." />
-            <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="block text-xs font-semibold text-[var(--text-1)]">Agent Notes skill</span>
-                  <span className="mt-1 block text-[12px] leading-5 text-[var(--text-3)]">
+            <div className="settings-group-body">
+              <div className="settings-row">
+                <span className="settings-row-copy">
+                  <span className="settings-row-label">Agent Notes skill</span>
+                  <span className="settings-row-help">
                     Lets Codex decide whether a changed line needs a short implementation note. Most tasks produce none.
+                  </span>
+                  <span className="settings-row-help">
+                    Once installed, this works for local Codex tasks started anywhere, not only tasks opened from Git Gud.
                   </span>
                 </span>
                 <CodexSkillStatus state={codexSkillState} />
               </div>
 
-              <p className="mt-2.5 text-[12px] leading-5 text-[var(--text-3)]">
-                Once installed, this works for local Codex tasks started anywhere, not only tasks opened from Git Gud.
-              </p>
+              <div className="settings-row">
+                <div className="settings-row-copy">
+                  {codexSkillState ? (
+                    <code className="settings-row-path" title={codexSkillState.installPath}>
+                      {codexSkillState.installPath}
+                    </code>
+                  ) : null}
 
-              {codexSkillState ? (
-                <code className="mt-2 block overflow-hidden text-ellipsis whitespace-nowrap rounded bg-[var(--bg-panel)] px-2 py-1.5 text-[10px] text-[var(--text-2)]" title={codexSkillState.installPath}>
-                  {codexSkillState.installPath}
-                </code>
-              ) : null}
+                  {codexSkillState?.message ? (
+                    <p className="mt-2 text-[12px] leading-4 text-[var(--warning-text)]">{codexSkillState.message}</p>
+                  ) : null}
+                  {codexSkillErrorMessage ? (
+                    <p className="mt-2 text-[12px] leading-4 text-[var(--danger-text)]" role="alert">{codexSkillErrorMessage}</p>
+                  ) : null}
+                </div>
 
-              {codexSkillState?.message ? (
-                <p className="mt-2 text-[12px] leading-5 text-[var(--warning-text)]">{codexSkillState.message}</p>
-              ) : null}
-              {codexSkillErrorMessage ? (
-                <p className="mt-2 text-[12px] leading-5 text-[var(--danger-text)]" role="alert">{codexSkillErrorMessage}</p>
-              ) : null}
-
-              <div className="mt-3 flex items-center gap-2">
-                {codexSkillState?.status === 'installed' ? (
-                  <button
-                    className="btn-subtle h-8 text-xs"
-                    type="button"
-                    disabled={isCodexSkillBusy}
-                    onClick={() => void onRemoveCodexSkill()}
-                  >
-                    <Trash2 size={12} />
-                    Remove skill
-                  </button>
-                ) : codexSkillState?.status === 'conflict' ? null : (
-                  <button
-                    className="btn-primary h-8 text-xs"
-                    type="button"
-                    disabled={isCodexSkillBusy || !codexSkillState}
-                    onClick={() => void onInstallCodexSkill()}
-                  >
-                    <Download size={12} />
-                    {codexSkillState?.status === 'update-available' ? 'Update skill' : 'Install skill'}
-                  </button>
-                )}
-                {codexSkillState?.status === 'update-available' ? (
-                  <button
-                    className="btn-subtle h-8 text-xs"
-                    type="button"
-                    disabled={isCodexSkillBusy}
-                    onClick={() => void onRemoveCodexSkill()}
-                  >
-                    <Trash2 size={12} />
-                    Remove
-                  </button>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  {codexSkillState?.status === 'installed' ? (
+                    <button
+                      className="btn-subtle h-8 text-xs"
+                      type="button"
+                      disabled={isCodexSkillBusy}
+                      onClick={() => void onRemoveCodexSkill()}
+                    >
+                      <Trash2 size={12} />
+                      Remove skill
+                    </button>
+                  ) : codexSkillState?.status === 'conflict' ? null : (
+                    <button
+                      className="btn-primary h-8 text-xs"
+                      type="button"
+                      disabled={isCodexSkillBusy || !codexSkillState}
+                      onClick={() => void onInstallCodexSkill()}
+                    >
+                      <Download size={12} />
+                      {codexSkillState?.status === 'update-available' ? 'Update skill' : 'Install skill'}
+                    </button>
+                  )}
+                  {codexSkillState?.status === 'update-available' ? (
+                    <button
+                      className="btn-subtle h-8 text-xs"
+                      type="button"
+                      disabled={isCodexSkillBusy}
+                      onClick={() => void onRemoveCodexSkill()}
+                    >
+                      <Trash2 size={12} />
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="space-y-3 py-5">
+          <section className="settings-group">
             <SettingHeading icon={<ShieldAlert size={15} />} label="Safety" />
-            <label className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
-              <input
-                className="mt-0.5"
-                type="checkbox"
-                checked={draft.confirmForcePush}
-                onChange={(event) => setDraft((value) => ({ ...value, confirmForcePush: event.target.checked }))}
-              />
-              <span className="min-w-0">
-                <span className="block font-semibold text-[var(--text-1)]">Confirm before force pushing</span>
-                <span className="mt-1 block leading-5 text-[var(--text-3)]">
-                  Show a destructive-action warning before replacing remote branch history.
-                </span>
-              </span>
-            </label>
+            <div className="settings-group-body">
+              <label className="settings-row">
+                <SettingCopy
+                  label="Confirm before force pushing"
+                  help="Show a destructive-action warning before replacing remote branch history."
+                />
+                <input
+                  type="checkbox"
+                  checked={draft.confirmForcePush}
+                  onChange={(event) => setDraft((value) => ({ ...value, confirmForcePush: event.target.checked }))}
+                />
+              </label>
+            </div>
           </section>
 
-          {errorMessage ? <p className="text-[12px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
+          {errorMessage ? <p className="mt-4 text-[12px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
         </div>
 
         <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] px-5">
@@ -390,11 +389,20 @@ function SyntaxThemeOption({
         ))}
       </span>
       <span className="flex items-center justify-between gap-2">
-        <span className="block truncate text-xs font-semibold text-[var(--text-1)]">{label}</span>
+        <span className="block truncate text-[13px] leading-5 text-[var(--text-1)]">{label}</span>
         {isSelected ? <Check size={13} className="shrink-0 text-[var(--accent-2)]" aria-hidden="true" /> : null}
       </span>
       <span className="mt-1 block text-[12px] leading-4 text-[var(--text-3)]">{description}</span>
     </button>
+  );
+}
+
+function SettingCopy({ label, help }: { label: string; help?: string }): ReactElement {
+  return (
+    <span className="settings-row-copy">
+      <span className="settings-row-label">{label}</span>
+      {help ? <span className="settings-row-help">{help}</span> : null}
+    </span>
   );
 }
 

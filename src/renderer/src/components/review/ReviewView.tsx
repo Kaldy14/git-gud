@@ -61,7 +61,7 @@ import {
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { useReviewContinuity, type ReviewContinuityIdentity } from './useReviewContinuity';
-import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import { createDiffOptionsBase, splitPath, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -2285,12 +2285,12 @@ function ReviewBody({
               </span>
               <span className="min-w-0 flex-1 text-left">
                 <span
-                  className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                  className="review-unit-title block truncate"
                   title={reviewSearch.query || 'Review search'}
                 >
                   Search · {compactReviewSearchQuery(reviewSearch.query)}
                 </span>
-                <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">
+                <span className="review-unit-meta block truncate">
                   {formatReviewSearchResultCount(reviewSearch.results.locationCount)}
                 </span>
               </span>
@@ -2323,18 +2323,18 @@ function ReviewBody({
                 </span>
                 <span className="min-w-0 flex-1 text-left">
                   <span
-                    className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                    className="review-unit-title block truncate"
                     title={reviewGuide ? undefined : candidate.unit.explanation}
                   >
                     {compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title}
                   </span>
-                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
                     {reviewGuideUnits.get(candidate.unit.id) ? (
                       <ReviewGuidePriority
                         priority={reviewGuideUnits.get(candidate.unit.id)!.priority}
                       />
                     ) : null}
-                    <span className="min-w-0 truncate text-[10.5px] text-[var(--text-3)]">
+                    <span className="review-unit-meta min-w-0 truncate">
                       {compact
                         ? formatReviewBlockSize(candidate)
                         : candidate.unit.reason}
@@ -2389,6 +2389,14 @@ function ReviewBody({
                   </span>
                   <span>{selectedUnit.skippedCount} hidden</span>
                 </div>
+              </>
+            ) : null}
+            {navigationTools}
+            <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
+              J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
+            </span>
+            {selectedUnit ? (
+              <div className="review-navigation-terminal">
                 <button
                   className="btn-subtle btn-regular review-viewed-next"
                   type="button"
@@ -2403,12 +2411,8 @@ function ReviewBody({
                     {mutationError}
                   </p>
                 ) : null}
-              </>
+              </div>
             ) : null}
-            {navigationTools}
-            <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
-              J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
-            </span>
           </footer>
         ) : null}
       </nav>
@@ -2967,6 +2971,7 @@ function ReviewFile({
   const isFileComposerOpen =
     lineCollaboration?.selectedChunkId === firstChunk.id &&
     lineCollaboration.selectedSubject === 'file';
+  const { directory, basename } = splitPath(firstChunk.path);
 
   return (
     <section
@@ -2989,11 +2994,9 @@ function ReviewFile({
               <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
             )}
             <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
-            <span
-              className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]"
-              title={firstChunk.path}
-            >
-              {firstChunk.path}
+            <span className="review-file-path" title={firstChunk.path}>
+              {directory ? <span className="review-file-directory">{directory}</span> : null}
+              <span className="review-file-basename">{basename}</span>
             </span>
             {guideFile ? <ReviewGuidePriority priority={guideFile.priority} reason={guideFile.reason} /> : null}
             <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>

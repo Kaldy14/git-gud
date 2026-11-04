@@ -711,7 +711,7 @@ function WorkingDirectoryBanner({
   }
 
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--worktree-banner-bg)] px-4 text-[12.5px] font-semibold text-[var(--text-1)]">
+    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--worktree-banner-bg)] px-4 text-[13px] font-semibold text-[var(--text-1)]">
       <span className="min-w-0 truncate">{formatFileChangeLabel(dirtyCount)} in working directory</span>
       <button
         className="btn-subtle btn-compact shrink-0"
@@ -1050,7 +1050,7 @@ function CommitMessageEditor({
             onKeyDown={handleEditorKeyDown}
           />
           <span
-            className="mono shrink-0 text-[10.5px] text-[var(--text-3)]"
+            className="mono shrink-0 text-[11px] text-[var(--text-3)]"
             data-over-limit={summary.length > 72 ? 'true' : undefined}
             title="Characters remaining in the recommended 72-character summary"
           >
@@ -1117,7 +1117,7 @@ function CommitMessageEditor({
       />
 
       <div className="shrink-0 space-y-2">
-        <div className="flex items-center justify-between gap-3 text-[10.5px] text-[var(--text-3)]">
+        <div className="flex items-center justify-between gap-3 text-[11px] text-[var(--text-3)]">
           <span>Updating creates a new commit SHA.</span>
           <span className="shrink-0">⌘↵ update · Esc cancel</span>
         </div>
@@ -1178,7 +1178,7 @@ function SummarySection({
 
     return (
       <div className="max-h-48 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-4 py-2.5">
-        <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">
+        <h2 className="text-[length:var(--text-title)] font-semibold leading-[var(--leading-title)] text-[var(--text-1)]">
           Combined changes
         </h2>
         <p className="mt-1 text-[11px] text-[var(--text-3)]">
@@ -1189,7 +1189,7 @@ function SummarySection({
         <div className="mt-3 space-y-1.5" data-testid="selected-commit-summary">
           {detail.commits.slice().reverse().map((commit, index) => (
             <div key={commit.sha} className="flex min-w-0 items-center gap-2 text-[12px] text-[var(--text-2)]">
-              <span className="mono w-14 shrink-0 text-[10.5px] text-[var(--text-3)]">{commit.shortSha}</span>
+              <span className="mono w-14 shrink-0 text-[11px] text-[var(--text-3)]">{commit.shortSha}</span>
               <span className="truncate">{commit.subject}</span>
               <span className="ml-auto shrink-0 text-[10px] text-[var(--text-3)]">{index + 1}</span>
             </div>
@@ -1232,11 +1232,11 @@ function CommitMessageSummary({
 }): ReactElement {
   const content = (
     <>
-      <span className="block text-balance text-[17px] font-semibold leading-snug text-[var(--text-1)]">
+      <span className="block text-balance text-[length:var(--text-title)] font-semibold leading-[var(--leading-title)] text-[var(--text-1)]">
         {subject}
       </span>
       {body ? (
-        <span className="mt-2.5 block whitespace-pre-wrap pr-1 text-[13px] leading-[1.55] text-[var(--text-2)] [overflow-wrap:anywhere]">
+        <span className="mt-2.5 block whitespace-pre-wrap pr-1 text-[13px] leading-[var(--leading-body)] text-[var(--text-2)] [overflow-wrap:anywhere]">
           {reflowCommitBody(body)}
         </span>
       ) : null}
@@ -1325,14 +1325,14 @@ function CommitAttributionRow({
         ) : null}
       </div>
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium text-[var(--text-1)]" title={title}>
+        <p className="truncate text-[13px] font-medium leading-[var(--leading-body)] text-[var(--text-1)]" title={title}>
           {commitAttribution(author, coAuthors)}
         </p>
-        <p className="text-[12px] text-[var(--text-3)]">
+        <p className="text-[12px] leading-[var(--leading-label)] text-[var(--text-3)]">
           authored {formatCommitDate(author.date)}
         </p>
         {parentSha ? (
-          <p className="text-[11px] text-[var(--text-3)]">
+          <p className="text-[11px] leading-[var(--leading-micro)] text-[var(--text-3)]">
             parent <span className="mono">{parentSha.slice(0, 8)}</span>
           </p>
         ) : null}
@@ -1404,8 +1404,8 @@ function SignatureRow({
         size={38}
       />
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium text-[var(--text-1)]">{person.name || 'Unknown author'}</p>
-        <p className="truncate text-[12px] text-[var(--text-3)]" title={email}>
+        <p className="truncate text-[13px] font-medium leading-[var(--leading-body)] text-[var(--text-1)]">{person.name || 'Unknown author'}</p>
+        <p className="truncate text-[12px] leading-[var(--leading-label)] text-[var(--text-3)]" title={email}>
           {action} {formatCommitDate(person.date)}
         </p>
       </div>
@@ -1935,7 +1935,7 @@ function FileGroupHeader({
 }): ReactElement {
   return (
     <div
-      className={`flex min-h-9 items-center justify-between gap-2 border-b border-[var(--border)] px-1 py-1 text-[13px] font-semibold ${tone === 'danger' ? 'text-[var(--danger-text)]' : 'text-[var(--text-2)]'}${separated ? ' mt-2 border-t border-[var(--border)] pt-2' : ''}`}
+      className={`flex min-h-9 items-center justify-between gap-2 border-b border-[var(--border)] px-1 py-1 text-[13px] font-semibold leading-[var(--leading-heading)] ${tone === 'danger' ? 'text-[var(--danger-text)]' : 'text-[var(--text-1)]'}${separated ? ' mt-2 border-t border-[var(--border)] pt-2' : ''}`}
     >
       <button
         className="flex min-w-0 items-start gap-1.5 rounded px-0.5 py-1 text-left outline-none hover:text-[var(--text-1)] focus-visible:ring-1 focus-visible:ring-[var(--select-border)]"
@@ -1947,7 +1947,7 @@ function FileGroupHeader({
         {expanded ? <ChevronDown size={13} className="mt-0.5 shrink-0 text-[var(--text-3)]" /> : <ChevronRight size={13} className="mt-0.5 shrink-0 text-[var(--text-3)]" />}
         <span className="min-w-0">
           <span className="block truncate">{label}</span>
-          {detail ? <span className="mt-0.5 block text-[10.5px] font-normal leading-4 text-[var(--text-3)]">{detail}</span> : null}
+          {detail ? <span className="mt-0.5 block text-[11px] font-normal leading-4 text-[var(--text-3)]">{detail}</span> : null}
         </span>
       </button>
       {action ? <div className="shrink-0">{action}</div> : null}

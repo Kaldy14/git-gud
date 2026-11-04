@@ -9,7 +9,6 @@ import {
   Copy,
   Download,
   EyeOff,
-  Folder,
   FolderGit2,
   Focus,
   GitBranch,
@@ -910,7 +909,7 @@ function SectionRows({
           renderBranch={(branch, label, depth) => (
             <SidebarRow
               key={branch.fullName}
-              icon={linkedWorktreeBranches.has(branch.name) ? <TreePine size={12} /> : <GitBranch size={12} />}
+              icon={linkedWorktreeBranches.has(branch.name) ? <TreePine size={12} /> : undefined}
               label={label}
               meta={formatAheadBehind(branch.ahead, branch.behind)}
               visibilityMode={branchVisibilityModeForRef(branchVisibility, 'local', branch.name)}
@@ -1141,7 +1140,6 @@ function RemoteSectionRows({
                         <SidebarRow
                           key={branch.fullName}
                           className="side-row--remote-branch"
-                          icon={<GitBranch size={12} />}
                           label={label}
                           meta={branch.sha.slice(0, 7)}
                           metaKind="hash"
@@ -1326,7 +1324,6 @@ function BranchTreeRows<Item>({
             onKeyDown={handleSidebarTreeKeyDown}
           >
             {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <Folder size={12} />
             <span className="side-row-label">{node.name}</span>
             <BranchVisibilityIcon mode={visibilityMode} />
           </button>
@@ -1356,7 +1353,7 @@ function SidebarRow({
 }: {
   className?: string;
   ariaLevel?: number;
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   meta?: string;
   metaKind?: 'hash';
@@ -1368,6 +1365,8 @@ function SidebarRow({
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: () => void;
 }): ReactElement {
+  const leadingIcon = isActive ? <Check size={12} /> : icon;
+
   return (
     <div
       className={`side-row${className ? ` ${className}` : ''}`}
@@ -1404,7 +1403,7 @@ function SidebarRow({
         }
       }}
     >
-      <span className="side-row-icon">{isActive ? <Check size={12} /> : icon}</span>
+      {leadingIcon ? <span className="side-row-icon">{leadingIcon}</span> : null}
       <span className="side-row-label">{label}</span>
       <BranchVisibilityIcon mode={visibilityMode} />
       {meta ? <span className="side-row-meta" data-kind={metaKind}>{meta}</span> : null}

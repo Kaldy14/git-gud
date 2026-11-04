@@ -1871,8 +1871,8 @@ function WorkflowRunRow({
           <span className="workflow-run-outcome" data-tone={presentation.tone}>{presentation.label}</span>
         </span>
         <span className="workflow-run-row-facts">
-          <span>{run.name}</span>
-          <span>#{run.runNumber}</span>
+          <span className="workflow-run-name" title={run.name}>{run.name}</span>
+          <span className="workflow-run-number">#{run.runNumber}</span>
           {run.branch ? (
             <span className="workflow-run-branch" title={run.branch}>
               <GitBranch size={11} className="shrink-0" />

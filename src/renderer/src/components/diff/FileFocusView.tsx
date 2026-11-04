@@ -35,6 +35,7 @@ import {
   findAdjacentFilePath,
   findFile,
   selectWipScope,
+  splitPath,
   type DiffStyle,
   type WipDiffScope
 } from '@renderer/components/commit/fileDetailUtils';
@@ -634,19 +635,6 @@ function StatusIcon({ status }: { status: GitStatusCode }): ReactElement {
   }
 
   return <Minus size={13} className="shrink-0" style={{ color: FILE_STATUS_COLORS.deleted }} aria-label={label} />;
-}
-
-function splitPath(path: string): { directory: string; basename: string } {
-  const separatorIndex = path.lastIndexOf('/');
-
-  if (separatorIndex === -1) {
-    return { directory: '', basename: path };
-  }
-
-  return {
-    directory: path.slice(0, separatorIndex + 1),
-    basename: path.slice(separatorIndex + 1)
-  };
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

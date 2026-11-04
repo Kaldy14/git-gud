@@ -82,26 +82,30 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
   const isManualShown = isManualOpen || (status !== undefined && status.state !== 'running');
 
   return (
-    <section className="space-y-3 border-b border-[var(--border)] py-5" aria-label="Machines">
+    <section className="settings-group" aria-label="Machines">
       {heading}
-      <p className="text-[11px] leading-5 text-[var(--text-3)]">
+      <p className="settings-row-help">
         See another computer's branches and uncommitted changes in the graph. Git Gud looks for the same repository
         path under that computer's home folder and only reads it; it never changes anything there.
       </p>
 
-      {(machines.data ?? []).map((machine) => (
-        <MachineRow
-          key={machine.id}
-          machine={machine}
-          test={tests[machine.id]}
-          isBusy={isBusy}
-          onToggle={(enabled) => save.mutate({ id: machine.id, name: machine.name, sshHost: machine.sshHost, enabled })}
-          onTest={() => void runTest(machine.id, machine)}
-          onRemove={() => remove.mutate(machine.id)}
-        />
-      ))}
+      {machines.data?.length ? (
+        <div className="settings-group-body">
+          {machines.data.map((machine) => (
+            <MachineRow
+              key={machine.id}
+              machine={machine}
+              test={tests[machine.id]}
+              isBusy={isBusy}
+              onToggle={(enabled) => save.mutate({ id: machine.id, name: machine.name, sshHost: machine.sshHost, enabled })}
+              onTest={() => void runTest(machine.id, machine)}
+              onRemove={() => remove.mutate(machine.id)}
+            />
+          ))}
+        </div>
+      ) : null}
 
-      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)]" aria-label="Tailscale devices" role="group">
+      <div className="settings-group-body" aria-label="Tailscale devices" role="group">
         <div className="flex h-9 items-center gap-2 border-b border-[var(--border)] px-3">
           <span className="text-xs font-semibold text-[var(--text-1)]">Add from Tailscale</span>
           {status?.state === 'running' && status.tailnet ? (
@@ -300,7 +304,7 @@ function MachineRow({
   onRemove: () => void;
 }): ReactElement {
   return (
-    <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5">
+    <div className="settings-row settings-row--block">
       <div className="flex items-center gap-2">
         <Monitor size={14} className="shrink-0 text-[var(--machine)]" aria-hidden="true" />
         <span className="min-w-0 flex-1">

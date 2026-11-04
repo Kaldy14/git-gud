@@ -283,6 +283,19 @@ export function folderStagingActions(
   };
 }
 
+export function splitPath(path: string): { directory: string; basename: string } {
+  const separatorIndex = path.lastIndexOf('/');
+
+  if (separatorIndex === -1) {
+    return { directory: '', basename: path };
+  }
+
+  return {
+    directory: path.slice(0, separatorIndex + 1),
+    basename: path.slice(separatorIndex + 1)
+  };
+}
+
 export function fileTreeAncestorPaths(path: string): string[] {
   const segments = path.split('/').filter(Boolean);
   return segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join('/'));
