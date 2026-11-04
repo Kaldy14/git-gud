@@ -1836,7 +1836,7 @@ function WipFileGroupSections({
         </>
       ) : null}
       <FileGroupHeader
-        label={`Unstaged Files (${unstagedFiles.length})`}
+        label={`Unstaged files (${unstagedFiles.length})`}
         separated={conflictedFiles.length > 0}
         expanded={!collapsedGroups.has('unstaged')}
         onToggle={() => toggleGroup('unstaged')}
@@ -1862,7 +1862,7 @@ function WipFileGroupSections({
         ? (unstagedFiles.length > 0 ? renderGroup('unstaged', unstagedFiles) : <UnstagedEmpty />)
         : null}
       <FileGroupHeader
-        label={`Staged Files (${stagedFiles.length})`}
+        label={`Staged files (${stagedFiles.length})`}
         separated
         expanded={!collapsedGroups.has('staged')}
         onToggle={() => toggleGroup('staged')}

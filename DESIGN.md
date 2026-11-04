@@ -115,3 +115,5 @@
 - Dashboard run outcomes follow their titles, and one visible timestamp sits with the workflow and branch. Trigger and start timestamps remain in accessible names. Job names are neutral with colored status icons, and in-progress CI uses info blue.
 - Workflow names containing matrix expressions match their expanded runtime names without evaluating expressions, so dependency lines reflect the workflow definition.
 - Review navigation, including Viewed & next, remains visibly unavailable while a comment composer is open.
+
+- Muted metadata uses `#a8afbb`, with 5.0:1 contrast on selected graph rows. Palette footers use 12px; review scope and navigation hints use 11px. The PR-grouped Actions view uses at least 11px content type, and pending context loading stays info blue at every width.

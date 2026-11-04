@@ -274,7 +274,7 @@
   flex: 1;
   justify-content: space-between;
   padding: 0 6px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .review-scope-control > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-scope-control > svg { flex-shrink: 0; }
@@ -409,7 +409,7 @@
   display: block;
   margin-top: 6px;
   color: var(--text-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 .review-mode-status {
   margin: 0;

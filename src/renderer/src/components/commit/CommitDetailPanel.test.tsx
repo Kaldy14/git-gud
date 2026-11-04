@@ -169,7 +169,7 @@ describe('changed files tree folder staging', () => {
 
   it('renders WIP trees in the Path view group order with counts and bulk actions', () => {
     const markup = renderTree([nestedUnstaged, nestedStaged, partiallyStaged, nestedConflict]);
-    const order = ['Conflicts (1)', 'Unstaged Files (2)', 'Staged Files (2)'].map((label) => markup.indexOf(label));
+    const order = ['Conflicts (1)', 'Unstaged files (2)', 'Staged files (2)'].map((label) => markup.indexOf(label));
 
     expect(order.every((index) => index > -1)).toBe(true);
     expect(order).toEqual([...order].sort((left, right) => left - right));
@@ -237,7 +237,7 @@ describe('changed files tree folder staging', () => {
     const markup = renderTree([nestedUnstaged, partiallyStaged], { isWip: false });
 
     expect(markup).toContain('aria-label="Changed files"');
-    expect(markup).not.toContain('Unstaged Files');
+    expect(markup).not.toContain('Unstaged files');
     expect(markup).not.toContain('Stage Folder');
     expect(markup).not.toContain('wip-file-primary-action');
   });

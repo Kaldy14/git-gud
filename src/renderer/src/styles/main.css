@@ -58,7 +58,7 @@
   /* Text */
   --text-1: #e4e6ea;
   --text-2: #b7bcc6;
-  --text-3: #9ba2af;
+  --text-3: #a8afbb;
   /* Dimmer than helper text so an empty field never reads as already filled in. */
   --text-placeholder: #828997;
   --graph-text: #d0d3d9;
@@ -4882,8 +4882,8 @@ button.ref-chip {
   align-items: center;
   flex: 0 0 auto;
   gap: 6px;
-  color: var(--accent-2);
-  font-size: 10.5px;
+  color: var(--info-text);
+  font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
 }
@@ -5123,12 +5123,6 @@ button.ref-chip {
 @media (prefers-reduced-motion: reduce) {
   .pr-review-skeleton {
     animation: none;
-  }
-}
-
-@media (max-width: 1200px) {
-  .pr-review-loading-progress {
-    color: var(--text-3);
   }
 }
 
@@ -7436,9 +7430,9 @@ button.ref-chip {
 .pull-request-workflow-identity strong {
   overflow: hidden;
   color: var(--text-1);
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 650;
-  line-height: 14px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7454,8 +7448,8 @@ button.ref-chip {
   gap: 4px;
   overflow: hidden;
   color: var(--text-3);
-  font-size: 8px;
-  line-height: 11px;
+  font-size: 11px;
+  line-height: 17px;
   white-space: nowrap;
 }
 
@@ -7479,7 +7473,7 @@ button.ref-chip {
   align-items: center;
   gap: 3px;
   color: var(--text-3);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -7506,7 +7500,7 @@ button.ref-chip {
 .pull-request-workflow-run {
   display: grid;
   min-width: 0;
-  min-height: 30px;
+  min-height: 36px;
   grid-template-columns: 16px minmax(0, 1fr) auto 11px;
   align-items: center;
   gap: 5px;
@@ -7535,14 +7529,14 @@ button.ref-chip {
 .pull-request-workflow-run > strong {
   overflow: hidden;
   color: var(--text-2);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pull-request-workflow-run > span:nth-child(3) {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -7559,11 +7553,11 @@ button.ref-chip {
 }
 
 .pull-request-workflow-empty {
-  min-height: 30px;
+  min-height: 36px;
   border-bottom: 1px solid rgb(59 65 76 / 0.58);
   padding: 8px 8px 7px 52px;
   color: var(--text-3);
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .actions-tile-search-note {
@@ -8158,7 +8152,7 @@ button.ref-chip {
 }
 
 .workflow-run-job-card > svg {
-  margin-top: 1px;
+  margin-top: 3px;
 }
 
 .workflow-run-job-card[data-tone] {
