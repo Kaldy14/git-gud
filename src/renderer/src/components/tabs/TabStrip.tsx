@@ -287,25 +287,25 @@ export function TabStrip({
                     aria-label={`Tab actions for ${tab.name}`}
                   >
                     <ContextMenuPrimitive.Item className="menu-row" onSelect={() => onCloseTab(tab.id)}>
-                      <span>Close Tab</span>
+                      <span>Close tab</span>
                     </ContextMenuPrimitive.Item>
                     <ContextMenuPrimitive.Item
                       className="menu-row"
                       disabled={tabs.length < 2}
                       onSelect={() => onCloseOtherTabs(tab.id)}
                     >
-                      <span>Close Other Tabs</span>
+                      <span>Close other tabs</span>
                     </ContextMenuPrimitive.Item>
                     <ContextMenuPrimitive.Item
                       className="menu-row"
                       disabled={tabIndex === tabs.length - 1}
                       onSelect={() => onCloseTabsToRight(tab.id)}
                     >
-                      <span>Close Tabs to the Right</span>
+                      <span>Close tabs to the right</span>
                     </ContextMenuPrimitive.Item>
                     <ContextMenuPrimitive.Separator className="context-menu-separator" />
                     <ContextMenuPrimitive.Item className="menu-row" onSelect={() => void navigator.clipboard.writeText(tab.path)}>
-                      <span>Copy Repository Path</span>
+                      <span>Copy repository path</span>
                     </ContextMenuPrimitive.Item>
                     {repositoryApplication ? (
                       <ContextMenuPrimitive.Item

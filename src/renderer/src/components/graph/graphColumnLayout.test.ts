@@ -26,6 +26,14 @@ describe('graph column fitting', () => {
     expect(manyLanes).toBeGreaterThan(240);
   });
 
+  it('spends surplus width on ref names while retaining a readable subject column', () => {
+    const wide = fitGraphColumnWidths({}, fit(86, 836));
+    const compact = fitGraphColumnWidths({}, fit(86, 594));
+    expect(wide.refs).toBe(220);
+    expect(836 - wide.refs - wide.graph).toBeGreaterThanOrEqual(480);
+    expect(compact.refs).toBe(133);
+  });
+
   it('counts rails that run wider than the node lanes', () => {
     const merge = row({ lane: 0, rails: [{ type: 'curveOut', from: 0, to: 3 }] });
 

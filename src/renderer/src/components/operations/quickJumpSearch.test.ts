@@ -81,3 +81,18 @@ describe('command palette search', () => {
     expect(labels(filterQuickJumpItems(items, '  ', 2))).toEqual(['One', 'Two']);
   });
 });
+
+describe('palette metadata matching', () => {
+  it('does not stitch an abbreviation across label, detail, category, and keywords', () => {
+    const items = [
+      { label: 'Compare references', scoreTarget: 'Compare references Ahead behind stats diff base head' },
+      { label: 'Push current branch', scoreTarget: 'Push current branch Publish local commits repository upstream' },
+      { label: 'review/keyboard-navigation', scoreTarget: 'review/keyboard-navigation refs/heads/review/keyboard-navigation local branch' },
+      { label: 'Interactive rebase from selected commit', scoreTarget: 'Interactive rebase from selected commit Reorder commits Git' }
+    ];
+
+    expect(labels(filterQuickJumpItems(items, 'rebase', 10))).toEqual(['Interactive rebase from selected commit']);
+    expect(labels(filterQuickJumpItems(items, 'intrb', 10))).toEqual(['Interactive rebase from selected commit']);
+    expect(labels(filterQuickJumpItems(items, 'upstream', 10))).toEqual(['Push current branch']);
+  });
+});

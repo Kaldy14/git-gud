@@ -2065,6 +2065,21 @@ button.ref-chip {
   background: transparent;
 }
 
+.graph-cell-viewport[data-selected='false'] .graph-commit-avatar {
+  filter: saturate(0.3);
+  opacity: 0.58;
+}
+
+.graph-cell-viewport[data-selected='false'] .graph-commit-node-ring {
+  stroke-opacity: 0.65;
+}
+
+.graph-row:hover .graph-commit-avatar,
+.graph-row:focus-visible .graph-commit-avatar {
+  filter: none;
+  opacity: 1;
+}
+
 .graph-cell-viewport svg {
   display: block;
   will-change: transform;
@@ -7603,9 +7618,9 @@ button.ref-chip {
 .workflow-run-copy > strong {
   overflow: hidden;
   color: var(--text-1);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 14px;
+  line-height: 17px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7616,7 +7631,7 @@ button.ref-chip {
   align-items: center;
   gap: 7px;
   color: var(--text-3);
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .workflow-run-copy > span > span {
@@ -7636,13 +7651,13 @@ button.ref-chip {
   display: grid;
   justify-items: end;
   gap: 2px;
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .workflow-run-meta small {
   color: var(--text-3);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 500;
 }
 

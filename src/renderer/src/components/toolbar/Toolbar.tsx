@@ -94,6 +94,7 @@ export function Toolbar({
   const behindCount = upstream ? branchState?.behind ?? 0 : 0;
   // Unknown while the overview loads; only a loaded repository without remotes disables sync.
   const hasNoRemotes = repositoryOverview ? repositoryOverview.remotes.length === 0 : false;
+  const hasNoCommits = Boolean(repositoryOverview && !branchState?.oid);
 
   return (
     <div className="app-toolbar h-11 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
@@ -163,8 +164,8 @@ export function Toolbar({
         <ToolbarAction
           label="Branch"
           icon={<GitBranch size={15} />}
-          hint="Create branch"
-          disabled={!hasRepo || isBusy}
+          hint={hasNoCommits ? 'Make the first commit before creating a branch' : 'Create branch'}
+          disabled={!hasRepo || isBusy || hasNoCommits}
           onClick={onCreateBranch}
         />
         <ToolbarAction

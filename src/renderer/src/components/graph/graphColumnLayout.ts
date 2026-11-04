@@ -64,8 +64,12 @@ export function fitGraphColumnWidths(
   preferences: GraphColumnPreferences,
   { lanesWidth, containerWidth, metadataWidth }: GraphColumnFit
 ): GraphColumnWidths {
-  const refs = preferences.refs ?? DEFAULT_REF_CELL_WIDTH;
   const graph = preferences.graph ?? clamp(lanesWidth, AUTO_GRAPH_MIN_WIDTH, AUTO_GRAPH_MAX_WIDTH);
+  // Let long ref names use spare room while reserving a comfortable subject column.
+  const automaticRefs = containerWidth
+    ? clamp(containerWidth - metadataWidth - graph - 480, DEFAULT_REF_CELL_WIDTH, 220)
+    : DEFAULT_REF_CELL_WIDTH;
+  const refs = preferences.refs ?? automaticRefs;
 
   if (!containerWidth) {
     return { refs, graph };

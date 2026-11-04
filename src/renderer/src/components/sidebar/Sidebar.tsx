@@ -250,7 +250,7 @@ export function Sidebar({
     stashes: repositoryOverview?.stashes.length ?? 0,
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
-  const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
+  const viewingCount = counts.local + counts.remote + counts.tags;
   const visibilityFilterCount = branchVisibility.solo.length + branchVisibility.hidden.length;
 
   useEffect(() => {
@@ -468,7 +468,7 @@ export function Sidebar({
               Refreshing
             </span>
           ) : null}
-          <span className="shrink-0 text-[11px] text-[var(--text-3)]" title="Branches, worktrees, stashes, and tags">
+          <span className="shrink-0 text-[11px] text-[var(--text-3)]" title="Local branches, remote branches, and tags">
             {viewingCount} {viewingCount === 1 ? 'ref' : 'refs'}
           </span>
         </div>

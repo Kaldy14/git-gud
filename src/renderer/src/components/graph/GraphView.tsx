@@ -806,7 +806,7 @@ export function GraphView({
           onClose={handleCloseSearch}
         />
       ) : null}
-      <div
+      {(!hasNoCommits || rows.length > 0) ? <div
         className="grid h-7 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-medium text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
       >
@@ -852,7 +852,7 @@ export function GraphView({
         {visibleColumns.author ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">Author</span> : null}
         {visibleColumns.date ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">Date</span> : null}
         {visibleColumns.sha ? <span className="flex h-full items-center border-l border-[var(--border)] px-3">SHA</span> : null}
-      </div>
+      </div> : null}
 
       {repairPrompt ? (
         <section className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-8 py-10" aria-label="Repository repair">
@@ -1934,7 +1934,7 @@ function RailCell({
   };
 
   return (
-    <div className="graph-cell-viewport" style={{ width: graphWidth, height: h }}>
+    <div className="graph-cell-viewport" data-selected={isSelected} style={{ width: graphWidth, height: h }}>
       <svg
         width={graphContentWidth}
         height={h}
@@ -2150,6 +2150,7 @@ function GraphCommitNode({
         cx={cx}
         cy={cy}
         r={outerRadius - ringStrokeWidth / 2}
+        className="graph-commit-node-ring"
         fill="var(--bg-graph)"
         stroke={color}
         strokeWidth={ringStrokeWidth}
@@ -2160,6 +2161,7 @@ function GraphCommitNode({
             <circle cx={cx} cy={cy} r={imageRadius} />
           </clipPath>
           <image
+            className="graph-commit-avatar"
             href={imageSource}
             x={cx - imageRadius}
             y={cy - imageRadius}
@@ -2243,7 +2245,7 @@ function GraphMessage({ icon, label, hint }: { icon: ReactElement; label: string
   return (
     <div className="grid h-full min-h-[240px] place-items-center px-6 text-xs text-[var(--text-3)]" role="status">
       <div className="max-w-[340px] text-center">
-        <div className="flex items-center justify-center gap-2">
+        <div className={`flex items-center justify-center gap-2 ${hint ? 'text-[15px] font-semibold text-[var(--text-1)]' : ''}`}>
           {icon}
           <span>{label}</span>
         </div>

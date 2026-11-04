@@ -93,8 +93,10 @@
 .start-recent-title {
   margin: 0;
   color: var(--text-1);
-  font-size: 15px;
+  font-size: 24px;
   font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
 }
 
 .start-recent-count {
@@ -104,7 +106,7 @@
 
 .start-search {
   position: relative;
-  margin-top: 12px;
+  margin-top: 20px;
 }
 
 .start-search > svg {

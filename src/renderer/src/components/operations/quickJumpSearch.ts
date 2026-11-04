@@ -8,6 +8,7 @@ export type QuickJumpCommitFields = {
 };
 
 export type QuickJumpSearchable = {
+  label: string;
   scoreTarget: string;
   commit?: QuickJumpCommitFields;
 };
@@ -34,7 +35,13 @@ export function filterQuickJumpItems<Item extends QuickJumpSearchable>(items: re
 }
 
 function quickJumpScore(item: QuickJumpSearchable, query: string): number {
-  return item.commit ? commitScore(item.commit, query) : fuzzyScore(query, normalizeSearch(item.scoreTarget));
+  if (item.commit) return commitScore(item.commit, query);
+
+  const directIndex = normalizeSearch(item.scoreTarget).indexOf(query);
+  if (directIndex >= 0) return 100 - directIndex;
+
+  // Abbreviations may span the visible label, never unrelated metadata and keywords.
+  return fuzzyScore(query, normalizeSearch(item.label));
 }
 
 /**

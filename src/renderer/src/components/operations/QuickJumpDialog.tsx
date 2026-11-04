@@ -104,6 +104,7 @@ export function QuickJumpDialog({
   const filteredItems = useMemo(() => filterQuickJumpItems(items, query, MAX_RESULTS), [items, query]);
   const activeItemIndex = nearestEnabledIndex(filteredItems, activeIndex, 1);
   const activeItem = filteredItems[activeItemIndex];
+  const loadedCommitCount = graphRows.filter((row) => row.node.kind === 'commit').length;
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'ArrowDown') {
@@ -213,8 +214,9 @@ export function QuickJumpDialog({
           </div>
         )}
       </div>
-      <footer className="flex h-8 items-center justify-between border-t border-[var(--border)] px-3 text-[10.5px] text-[var(--text-3)]">
+      <footer className="flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[var(--border)] px-3 py-1.5 text-[11px] text-[var(--text-3)]">
         <span>{filteredItems.length === 1 ? '1 result' : `${filteredItems.length} results`}</span>
+        {loadedCommitCount > 0 ? <span>Searched {loadedCommitCount} loaded commits</span> : null}
         {filteredItems.length > 0 ? <span>↑↓ Navigate · Enter Run</span> : null}
       </footer>
     </ModalSurface>

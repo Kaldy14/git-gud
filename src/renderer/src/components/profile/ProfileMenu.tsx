@@ -440,7 +440,7 @@ export function ProfileMenu({
 
             <button className="btn-primary h-8 w-full" type="submit" disabled={isPending || !name.trim() || !email.trim()}>
               <Plus size={13} />
-              <span>{editingProfileId ? 'Update and Switch' : 'Save and Switch'}</span>
+              <span>{editingProfileId ? 'Update and switch' : 'Save and switch'}</span>
             </button>
           </form>
         </div>

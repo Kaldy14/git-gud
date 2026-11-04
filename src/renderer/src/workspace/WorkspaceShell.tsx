@@ -65,6 +65,7 @@ import { CommandDialog, type CommandDialogConfig, type CommandDialogValues } fro
 import { buildRepositoryRepairPrompt, isRepositoryCorruptionError } from '@renderer/lib/repositoryRepair';
 import { ipcErrorMessage } from '@renderer/lib/ipcErrors';
 import { ConflictBanner } from '@renderer/components/operations/ConflictBanner';
+import { OperationErrorNotice } from '@renderer/components/operations/OperationErrorNotice';
 import { OperationLog, type OperationLogEntry } from '@renderer/components/operations/OperationLog';
 import {
   applyOperationFailure,
@@ -2744,6 +2745,7 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleCreateBranch(startPoint?: string): void {
+    if (!startPoint && hasNoCommits) return;
     openCommandDialog({
       title: startPoint ? 'Create branch here' : 'Create branch',
       icon: GitBranch,
@@ -3555,8 +3557,8 @@ export function WorkspaceShell(): ReactElement {
       category: 'Git',
       keywords: ['checkout', 'new branch'],
       icon: <GitBranch size={14} />,
-      disabled: !activeTab || isOperationBusy,
-      disabledReason: !activeTab ? 'Open a repository first' : isOperationBusy ? 'A Git operation is running' : undefined,
+      disabled: !activeTab || isOperationBusy || hasNoCommits,
+      disabledReason: !activeTab ? 'Open a repository first' : hasNoCommits ? 'Make the first commit before creating a branch' : isOperationBusy ? 'A Git operation is running' : undefined,
       onSelect: () => handleCreateBranch()
     },
     {
@@ -3848,8 +3850,7 @@ export function WorkspaceShell(): ReactElement {
       ) : null}
 
       {!gitHubWorkspaceView && !repositoryUnavailable && (errorMessage || (repositoryError && !repairPrompt)) ? (
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs text-[var(--danger-text)]" role="alert">
-          <span className="min-w-0 flex-1">{errorMessage ?? repositoryError}</span>
+        <OperationErrorNotice message={errorMessage ?? repositoryError ?? ''}>
           {errorMessage ? (
             <button className="icon-btn h-6 w-6 shrink-0" type="button" onClick={clearError} aria-label="Dismiss error">
               <X size={13} />
@@ -3867,7 +3868,7 @@ export function WorkspaceShell(): ReactElement {
               Retry
             </button>
           )}
-        </div>
+        </OperationErrorNotice>
       ) : null}
 
       {!gitHubWorkspaceView &&
