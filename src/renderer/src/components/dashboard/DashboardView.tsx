@@ -1862,30 +1862,23 @@ function WorkflowRunRow({
         {statusIcon}
       </span>
       <span className="workflow-run-copy">
-        <strong title={run.displayTitle}>{run.displayTitle}</strong>
-        <span>
+        <span className="workflow-run-heading">
+          <strong title={run.displayTitle}>{run.displayTitle}</strong>
+          <span className="workflow-run-outcome" data-tone={presentation.tone}>{presentation.label}</span>
+        </span>
+        <span className="workflow-run-row-facts">
           <span>{run.name}</span>
           <span>#{run.runNumber}</span>
           {run.branch ? (
             <span className="workflow-run-branch">
-              <GitBranch size={10} />
+              <GitBranch size={11} />
               {run.branch}
             </span>
           ) : null}
-        </span>
-      </span>
-      <span className="workflow-run-meta">
-        <span data-tone={presentation.tone}>{presentation.label}</span>
-        <small className="workflow-run-times">
-          <time dateTime={run.createdAt} title={formatAbsoluteTime(run.createdAt)}>
-            Triggered {triggeredRelativeTime}
+          <time dateTime={run.startedAt ?? run.createdAt} title={formatAbsoluteTime(run.startedAt ?? run.createdAt)}>
+            {run.startedAt ? `Started ${startedRelativeTime}` : `Triggered ${triggeredRelativeTime}`}
           </time>
-          {run.startedAt ? (
-            <time dateTime={run.startedAt} title={formatAbsoluteTime(run.startedAt)}>
-              Started {startedRelativeTime}
-            </time>
-          ) : null}
-        </small>
+        </span>
       </span>
       <ChevronRight size={12} className="workflow-run-external" aria-hidden="true" />
     </button>

@@ -506,7 +506,7 @@ describe('DashboardView', () => {
     expect(markup).toContain('id="dashboard-branch-filter-error"');
   });
 
-  it('shows the number of running workflows and their trigger and start times', () => {
+  it('groups each run with one timestamp and retains trigger and start times in its accessible name', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-27T10:09:00Z'));
 
@@ -525,6 +525,8 @@ describe('DashboardView', () => {
       expect(markup).toContain('3 Running');
       expect(markup).toContain('Triggered 9m ago');
       expect(markup).toContain('Started 8m ago');
+      expect(markup.match(/<time /g)).toHaveLength(runs.length);
+      expect(markup).toContain('triggered 9m ago, started 8m ago');
       expect(markup).toContain('Queued');
       expect(markup).toContain('Unknown');
       expect(markup).toContain('Open workflow run in Git Gud');

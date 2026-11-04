@@ -81,7 +81,7 @@ export function SettingsPanel({
         <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] px-5">
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-[15px] font-semibold text-[var(--text-1)]">Settings</h2>
-            <p id={descriptionId} className="mt-0.5 text-[11px] text-[var(--text-3)]">Local workflow defaults</p>
+            <p id={descriptionId} className="mt-0.5 text-[12px] text-[var(--text-3)]">Local workflow defaults</p>
           </div>
           <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close settings">
             <X size={14} />
@@ -134,7 +134,7 @@ export function SettingsPanel({
                   onSelect={(diffSyntaxTheme) => setDraft((value) => ({ ...value, diffSyntaxTheme }))}
                 />
               </div>
-              <p className="mt-2 text-[11px] leading-4 text-[var(--text-3)]">
+              <p className="mt-2 text-[12px] leading-4 text-[var(--text-3)]">
                 Applied to file diffs and review views.
               </p>
             </fieldset>
@@ -241,14 +241,14 @@ export function SettingsPanel({
               <div className="flex items-start justify-between gap-3">
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold text-[var(--text-1)]">Agent Notes skill</span>
-                  <span className="mt-1 block text-[11px] leading-5 text-[var(--text-3)]">
+                  <span className="mt-1 block text-[12px] leading-5 text-[var(--text-3)]">
                     Lets Codex decide whether a changed line needs a short implementation note. Most tasks produce none.
                   </span>
                 </span>
                 <CodexSkillStatus state={codexSkillState} />
               </div>
 
-              <p className="mt-2.5 text-[11px] leading-5 text-[var(--text-3)]">
+              <p className="mt-2.5 text-[12px] leading-5 text-[var(--text-3)]">
                 Once installed, this works for local Codex tasks started anywhere, not only tasks opened from Git Gud.
               </p>
 
@@ -259,10 +259,10 @@ export function SettingsPanel({
               ) : null}
 
               {codexSkillState?.message ? (
-                <p className="mt-2 text-[11px] leading-5 text-[var(--warning-text)]">{codexSkillState.message}</p>
+                <p className="mt-2 text-[12px] leading-5 text-[var(--warning-text)]">{codexSkillState.message}</p>
               ) : null}
               {codexSkillErrorMessage ? (
-                <p className="mt-2 text-[11px] leading-5 text-[var(--danger-text)]" role="alert">{codexSkillErrorMessage}</p>
+                <p className="mt-2 text-[12px] leading-5 text-[var(--danger-text)]" role="alert">{codexSkillErrorMessage}</p>
               ) : null}
 
               <div className="mt-3 flex items-center gap-2">
@@ -320,7 +320,7 @@ export function SettingsPanel({
             </label>
           </section>
 
-          {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
+          {errorMessage ? <p className="text-[12px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
         </div>
 
         <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] px-5">
@@ -393,7 +393,7 @@ function SyntaxThemeOption({
         <span className="block truncate text-xs font-semibold text-[var(--text-1)]">{label}</span>
         {isSelected ? <Check size={13} className="shrink-0 text-[var(--accent-2)]" aria-hidden="true" /> : null}
       </span>
-      <span className="mt-1 block text-[11px] leading-4 text-[var(--text-3)]">{description}</span>
+      <span className="mt-1 block text-[12px] leading-4 text-[var(--text-3)]">{description}</span>
     </button>
   );
 }
@@ -403,7 +403,7 @@ function SettingHeading({ icon, label, note }: { icon: ReactElement; label: stri
     <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[var(--text-1)]">
       <span className="text-[var(--text-3)]">{icon}</span>
       {label}
-      {note ? <span className="ml-auto text-[11px] font-normal text-[var(--text-3)]">{note}</span> : null}
+      {note ? <span className="ml-auto text-[12px] font-normal text-[var(--text-3)]">{note}</span> : null}
     </h3>
   );
 }

@@ -2384,7 +2384,7 @@ function ReviewBody({
                 <button
                   className="btn-primary btn-regular review-viewed-next"
                   type="button"
-                  disabled={isMutating}
+                  disabled={isMutating || lineCollaboration?.selectedChunkId !== undefined}
                   onClick={onToggleViewed}
                 >
                   <CheckCheck size={13} />
@@ -2442,7 +2442,7 @@ function ReviewBody({
                       selectedUnit.isViewed ? 'btn-subtle btn-compact' : 'btn-primary btn-compact'
                     }
                     type="button"
-                    disabled={isMutating}
+                    disabled={isMutating || lineCollaboration?.selectedChunkId !== undefined}
                     onClick={onToggleViewed}
                   >
                     {isMutating ? (

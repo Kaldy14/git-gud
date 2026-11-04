@@ -99,7 +99,7 @@ import type {
   GraphWorktree
 } from '@shared/types';
 
-const ROW_HEIGHT = 28;
+const ROW_HEIGHT = 30;
 const GRAPH_RAIL_STROKE_WIDTH = 2;
 const GRAPH_NODE_EDGE_INSET = 12;
 const GRAPH_COLUMN_WIDTH_STORAGE_KEY = 'git-gud:graph-column-preferences:v3';
@@ -807,7 +807,7 @@ export function GraphView({
         />
       ) : null}
       {(!hasNoCommits || rows.length > 0) ? <div
-        className="grid h-7 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[11px] font-medium text-[var(--text-3)]"
+        className="grid h-7 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-graph-header)] text-[12px] font-medium text-[var(--text-3)]"
         style={{ gridTemplateColumns }}
       >
         <div className="graph-column-header flex h-full items-center border-r border-[var(--border)] pl-3">
@@ -1304,7 +1304,7 @@ function GraphRowView({
       <div className="relative flex h-full min-w-0 items-center gap-2 pl-3 pr-3">
         {isWip ? (
           <>
-            <span className="shrink-0 text-[12px] font-semibold italic leading-4 text-[var(--text-2)]">
+            <span className="shrink-0 text-[13px] font-semibold italic leading-4 text-[var(--text-2)]">
               // WIP
             </span>
             {row.files.length > 0 ? <WipStatusCounts files={row.files} /> : null}
@@ -1322,7 +1322,7 @@ function GraphRowView({
         )}
       </div>
       {visibleColumns.author ? (
-        <span className="relative min-w-0 truncate border-l border-[var(--border)] px-3 text-[12px] text-[var(--text-2)]" title={row.author.email ?? row.author.name}>
+        <span className="relative min-w-0 truncate border-l border-[var(--border)] px-3 text-[13px] text-[var(--text-2)]" title={row.author.email ?? row.author.name}>
           {row.machineWip ? `${row.machineWip.name} · working directory` : isWip ? 'Working directory' : row.author.name || 'Unknown'}
         </span>
       ) : null}
@@ -1472,7 +1472,7 @@ function CommitSubjectLine({ subject, isMerge }: { subject: string; isMerge: boo
   const [primary, secondary] = splitCommitSubject(subject);
 
   return (
-    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[12px] font-medium leading-4">
+    <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[13px] font-medium leading-4">
       <span className={isMerge ? 'graph-subject min-w-0 truncate text-[var(--graph-text-muted)]' : 'graph-subject min-w-0 truncate text-[var(--graph-text)]'}>
         {primary}
       </span>

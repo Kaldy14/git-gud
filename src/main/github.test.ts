@@ -389,6 +389,55 @@ describe('GitHub Actions dashboards', () => {
     });
   });
 
+  it('connects every expanded matrix job to its prerequisites and dependents', () => {
+    const definitions = parseGitHubWorkflowJobGraph([
+      'jobs:',
+      '  verify:',
+      '    name: Verify release',
+      '  build-macos:',
+      '    name: Build macOS (${{ matrix.arch }})',
+      '    needs: verify',
+      '  build-windows:',
+      '    name: Build Windows (x64)',
+      '    needs: verify',
+      '  publish:',
+      '    name: Publish GitHub Release',
+      '    needs: [build-macos, build-windows]'
+    ].join('\n'));
+    const detail = parseGitHubWorkflowRunJobsResponse({
+      jobs: [
+        { id: 1, name: 'Verify release' },
+        { id: 2, name: 'Build macOS (arm64)' },
+        { id: 3, name: 'Build macOS (x64)' },
+        { id: 4, name: 'Build Windows (x64)' },
+        { id: 5, name: 'Publish GitHub Release' }
+      ].map((job) => ({ ...job, html_url: `https://github.com/acme/widgets/actions/runs/101/job/${job.id}`, status: 'completed', steps: [] }))
+    }, { profileId: 'profile-1', owner: 'acme', repository: 'widgets', runId: 101 }, definitions);
+
+    expect(detail.jobs.map(({ id, dependencyJobIds }) => ({ id, dependencyJobIds }))).toEqual([
+      { id: 1, dependencyJobIds: [] },
+      { id: 2, dependencyJobIds: [1] },
+      { id: 3, dependencyJobIds: [1] },
+      { id: 4, dependencyJobIds: [1] },
+      { id: 5, dependencyJobIds: [2, 3, 4] }
+    ]);
+  });
+
+  it('matches template literals exactly and does not guess expression-only job names', () => {
+    const detail = parseGitHubWorkflowRunJobsResponse({
+      jobs: [
+        { id: 1, name: 'Test C++ [linux] (debug)' },
+        { id: 2, name: 'Test CCC linux (debug)' },
+        { id: 3, name: 'Publish' }
+      ].map((job) => ({ ...job, html_url: `https://github.com/acme/widgets/actions/runs/101/job/${job.id}`, status: 'completed', steps: [] }))
+    }, { profileId: 'profile-1', owner: 'acme', repository: 'widgets', runId: 101 }, [
+      { id: 'test', name: 'Test C++ [${{ matrix.os }}] (${{ matrix.config }})', needs: [] },
+      { id: 'unknown', name: '${{ matrix.name }}', needs: [] },
+      { id: 'publish', name: 'Publish', needs: ['test', 'unknown'] }
+    ]);
+    expect(detail.jobs[2].dependencyJobIds).toEqual([1]);
+  });
+
   it('loads only failed-step logs for the selected run and GitHub host', () => {
     expect(
       gitHubWorkflowRunFailedLogArgs(

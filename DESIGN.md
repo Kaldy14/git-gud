@@ -108,3 +108,10 @@
 - Palette abbreviations match visible labels; metadata supports direct keyword matches. The footer states the number of loaded commits searched.
 - Empty repositories report branch/tag refs only and disable branch creation until the first commit exists.
 - Git failures lead with a short summary. Multiline command output remains available in an expandable details section.
+
+### Reading scale and run monitoring
+
+- History subjects use 13px type in 30px rows. Code uses 13px monospace with 21px line spacing; settings helpers use 12px. Inactive graph avatars use 0.42 opacity and restore full emphasis on selection, focus, or hover.
+- Dashboard run outcomes follow their titles, and one visible timestamp sits with the workflow and branch. Trigger and start timestamps remain in accessible names. Job names are neutral with colored status icons, and in-progress CI uses info blue.
+- Workflow names containing matrix expressions match their expanded runtime names without evaluating expressions, so dependency lines reflect the workflow definition.
+- Review navigation, including Viewed & next, remains visibly unavailable while a comment composer is open.
