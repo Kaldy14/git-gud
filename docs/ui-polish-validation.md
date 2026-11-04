@@ -2,6 +2,21 @@
 
 These are unmodified screenshots of the running Git Gud Electron application. They show real Git history, local staging, an empty repository, a failed local clone, and read-only views of GitHub PR #4 and its workflow runs. Settings and repositories used for validation are isolated from the normal desktop workspace.
 
+## Focus and branch-label corrections
+
+The keyboard ring around the commit identity now sits 2px outside the row, clearing the text while staying inside panel padding. Dashboard branch names use a truncating text child beside a fixed icon, with the full name retained in the native title tooltip.
+
+`pnpm build` including typecheck, scoped dashboard ESLint, and 30 existing commit/dashboard tests pass. Three focused actual-app checks pass with no renderer or console errors. The branch check uses real workflow history for `feature/multi-machine-repositories`: its 197px name truncates in a 163px text box at a 440×480 CSS viewport, using native Electron 200% zoom. This is a targeted narrow-row diagnostic, not certification of every app control at that width. The isolated tile's branch filter and the 1440×960, 100% window were restored afterward.
+
+```sh
+pnpm build
+pnpm exec eslint src/renderer/src/components/dashboard/DashboardView.tsx
+pnpm exec vitest run src/renderer/src/components/dashboard/DashboardView.test.tsx src/renderer/src/components/commit/CommitDetailPanel.test.tsx
+node /tmp/git-gud-polish-fixes-r13.mjs
+```
+
+[Outward keyboard focus ring](images/ui-polish-overhaul/identity-focus-outset.png) and [real long branch at narrow width](images/ui-polish-overhaul/dashboard-long-branch-narrow.png) are original running-app screenshots. Local reports and the retained script are under `artifacts/ui-polish/round-13/`. The 1,366-test full-suite result below predates these two small presentation fixes; their current-head CI is recorded separately. No remote write was performed.
+
 ## Bounded craft pass
 
 Round 12 preserves the established palette, type scale, graph and responsive workspace. The WIP heading now shows its file count without a duplicate clipped branch. Author name and identity source use 12px; the full name, email and source explanation appear in the existing Radix tooltip primitive, with keyboard focus, pointer hover, Escape dismissal and collision handling. Inline email appears when the identity row is at least 360px wide. The commit summary uses 13px in the existing 80px field.

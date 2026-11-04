@@ -853,6 +853,10 @@ code,
   line-height: 16px;
 }
 
+.commit-identity:focus-visible {
+  outline-offset: 2px;
+}
+
 .commit-identity-author {
   overflow: hidden;
   min-width: 0;

@@ -1874,9 +1874,9 @@ function WorkflowRunRow({
           <span>{run.name}</span>
           <span>#{run.runNumber}</span>
           {run.branch ? (
-            <span className="workflow-run-branch">
-              <GitBranch size={11} />
-              {run.branch}
+            <span className="workflow-run-branch" title={run.branch}>
+              <GitBranch size={11} className="shrink-0" />
+              <span className="min-w-0 truncate">{run.branch}</span>
             </span>
           ) : null}
           <time dateTime={displayedAt} title={formatAbsoluteTime(displayedAt)}>
