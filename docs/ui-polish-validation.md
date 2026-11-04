@@ -2,6 +2,44 @@
 
 These are unmodified screenshots of the running Git Gud Electron application. They show real Git history, local staging, an empty repository, a failed local clone, and read-only views of GitHub PR #4 and its workflow runs. Settings and repositories used for validation are isolated from the normal desktop workspace.
 
+## Current workbench pass
+
+The current eight primary captures show UI source `9d5886568fd5928f9af04e963b48eab7d9590a42` from round 13, at 1440×960 or 1100×760 and 1× density. They replace the primary gallery images only. Historical comparisons and the round-10 Retina set below retain their original provenance.
+
+System UI typography and a darker reading canvas give history and code more separation from their tools. Ordinary commits use lane-colored dots at rest, reveal author identity on hover or selection, and distinguish merges with hollow rings. Ref chips use a cloud for remote association. Time labels align with the graph's right edge. Sidebar leaves keep state icons and drop repeated branch/folder decoration.
+
+Settings uses a bounded 560px drawer with label/control rows, grouped fields and native checkboxes. Wide Actions tiles use 36px ledger rows at a 720px tile width; narrower tiles retain two lines. The review rail uses plain block numbers until viewed, marks the current file, and keeps its final action at the bottom of the footer, including while its explanation is open.
+
+| Verification | Result |
+| --- | --- |
+| `pnpm build`, including typecheck | Pass |
+| `pnpm lint` | Pass |
+| `TMPDIR=/private/tmp pnpm test` | 172 files, 1,366 passed, 4 skipped |
+| Focused review tests | 18 files, 115 passed |
+| Actual Electron core/integration flows | 21 and 17 checks pass |
+| New layout/interaction checks | 17 pass |
+| Type and selected-row contrast checks | 6 pass |
+
+```sh
+agent-browser --session git-gud-polish connect 9236
+node /tmp/git-gud-polish-workbench-core-v13.mjs
+node /tmp/git-gud-polish-workbench-broad-v13.mjs
+node /tmp/git-gud-polish-workbench-layout-v13.mjs
+node /tmp/git-gud-polish-workbench-type-v13.mjs
+```
+
+Tested renderer: `file:///Volumes/DevSSD/worktrees/git-gud/t3-8b4af8c3/out/renderer/index.html`. Reports, command logs, exact retained scripts and screenshot hashes are in `artifacts/ui-polish/round-13/final/` and `artifacts/ui-polish/fixed-comparison-v13/` in the task workspace.
+
+Layout checks verify hover/selection avatar reveal, hollow merge fill, settings accessible names and Cancel behavior, narrow settings containment, dashboard columns across 1440/1100/780/730px, the current file's 3px teal edge inside Pierre's shadow DOM, and the terminal review action at 760px, 600px and an effective 720×330 viewport at native 200% zoom. The ledger's title retains 180px at its boundary. Bulk muted text measures 5.28:1 on its selected background. Selected and resting commit subjects keep the same weight.
+
+[Selected merge](images/ui-polish-overhaul/workbench-graph-merge-selected.png), [narrow settings](images/ui-polish-overhaul/workbench-settings-narrow.png), [two-line dashboard](images/ui-polish-overhaul/workbench-dashboard-narrow.png), [compact dashboard](images/ui-polish-overhaul/workbench-dashboard-compact.png), and [expanded footer at 200%](images/ui-polish-overhaul/workbench-review-footer-660-zoom-2.png) are unmodified running-app captures.
+
+No unexpected renderer or console errors were recorded. The clone edge case intentionally uses a missing local source and Git exit 128. Browser request capture does not cover IPC/CLI network traffic. The test runner warns about a missing dependency source map; the suite completes successfully. The heuristic structure scan flags existing large source files and generated bundles and is not a correctness test. Screen-reader traversal, Windows/Linux rendering, a populated Guide, physical mouse-wheel routing and remote write flows remain untested. No app commit, remote push, review submission or conflict save was performed. Settings test drafts were cancelled and the window returned to 1440×960 at 100%.
+
+## Historical evidence
+
+Sections below describe their named earlier passes. Values and interaction claims there belong to those captures, not automatically to the current workbench.
+
 ## Focus and branch-label corrections
 
 The keyboard ring around the commit identity now sits 2px outside the row, clearing the text while staying inside panel padding. Dashboard branch names use a truncating text child beside a fixed icon, with the full name retained in the native title tooltip.
@@ -37,7 +75,7 @@ node /tmp/git-gud-polish-craft-r12.mjs
 
 [Focused identity at compact width](images/ui-polish-overhaul/commit-identity-focus-compact.png), [wide inline identity](images/ui-polish-overhaul/commit-identity-wide.png), [disabled PR action during composition](images/ui-polish-overhaul/pr-action-disabled-compact.png), and [compact dashboard](images/ui-polish-overhaul/dashboard-compact.png) are original running-app captures. Reports, scripts and capture hashes remain under `artifacts/ui-polish/round-12/` and `artifacts/ui-polish/fixed-comparison-v12/`. No unexpected renderer or console errors were recorded. Network capture does not certify IPC/CLI traffic. Screen readers, other OS chrome, populated Guide output and live remote write flows remain untested.
 
-The eight current primary gallery captures are from this craft pass. The matched round-6 versus round-11 gallery uses immutable round-11 image links; its historical evidence has not been replaced with newer images. Other gallery images retain their stated earlier provenance.
+The eight primary gallery captures at round 12 were from this craft pass. The matched round-6 versus round-11 gallery uses immutable round-11 image links; its historical evidence has not been replaced with newer images. Other gallery images retain their stated earlier provenance.
 
 ## Inbox badge follow-up
 
@@ -52,9 +90,9 @@ pnpm build
 node /tmp/git-gud-polish-inbox-badge-r12.mjs
 ```
 
-## Latest focused pass
+## Round 11 focused pass
 
-Round 11 keeps the existing visual direction and compares eight fixed views with round 6 at matching dimensions and 1× density. [Open the matched comparison](ui-polish-comparison.md). The eight current comparison images, working-copy image, selected-code images and short-footer images in this gallery are from this pass. Other gallery images retain their earlier provenance. The Retina set below is from round 10.
+Round 11 keeps the existing visual direction and compares eight fixed views with round 6 at matching dimensions and 1× density. [Open the matched comparison](ui-polish-comparison.md). The immutable round-11 comparison images and the named round-11 diagnostic images are from this pass. Other gallery images retain their earlier provenance. The Retina set below is from round 10.
 
 `pnpm lint`, `pnpm build` including typecheck, and `pnpm exec vitest run src/renderer` pass. The renderer run has 97 files and 630 passing tests. `TMPDIR=/private/tmp pnpm test` also passes on this source, with 172 files, 1,365 passing tests and 4 skipped.
 
