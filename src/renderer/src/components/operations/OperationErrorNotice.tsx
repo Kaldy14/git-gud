@@ -20,7 +20,7 @@ export function OperationErrorNotice({ message, children }: OperationErrorNotice
         {detail ? (
           <details className="mt-1.5 max-w-4xl text-xs text-[var(--text-2)]">
             <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]">Git details</summary>
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--danger-border)] bg-[var(--bg-field)] p-3 text-[11px] leading-5 [overflow-wrap:anywhere]">{detail}</pre>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap [scrollbar-gutter:stable] rounded-md border border-[var(--danger-border)] bg-[var(--bg-field)] p-3 text-xs leading-5 [overflow-wrap:anywhere]">{detail}</pre>
           </details>
         ) : null}
       </div>

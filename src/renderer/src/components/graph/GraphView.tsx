@@ -1734,7 +1734,7 @@ function RefChipView({
     ) : kind === 'stash' ? (
       <Archive size={10} />
     ) : kind === 'remote' || kind === 'machine' ? null : (
-      <Pencil size={10} />
+      <GitBranch size={10} />
     );
 
   const style = {

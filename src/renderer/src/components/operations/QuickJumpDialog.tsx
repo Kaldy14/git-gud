@@ -216,7 +216,7 @@ export function QuickJumpDialog({
       </div>
       <footer className="flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[var(--border)] px-3 py-1.5 text-[11px] text-[var(--text-3)]">
         <span>{filteredItems.length === 1 ? '1 result' : `${filteredItems.length} results`}</span>
-        {loadedCommitCount > 0 ? <span>Searched {loadedCommitCount} loaded commits</span> : null}
+        {loadedCommitCount > 0 ? <span>Searched {loadedCommitCount} loaded {loadedCommitCount === 1 ? 'commit' : 'commits'}</span> : null}
         {filteredItems.length > 0 ? <span>↑↓ Navigate · Enter Run</span> : null}
       </footer>
     </ModalSurface>

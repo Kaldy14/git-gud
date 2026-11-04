@@ -241,11 +241,9 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
                 <p className="px-3 py-5 text-center text-xs text-[var(--text-3)]">No stashable files.</p>
               )}
             </div>
-            {selectionSummary.excludedHint ? (
-              <p className="border-t border-[var(--border)] px-3 py-2 text-[11px] leading-4 text-[var(--text-2)]">
-                {selectionSummary.excludedHint}
-              </p>
-            ) : null}
+            <p className="flex min-h-12 items-center border-t border-[var(--border)] px-3 py-2 text-[11px] leading-4 text-[var(--text-2)]">
+              {selectionSummary.excludedHint ?? 'Unselected changes stay in your working copy.'}
+            </p>
           </div>
 
         </div>

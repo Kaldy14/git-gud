@@ -811,6 +811,11 @@ export function WorkspaceShell(): ReactElement {
   const usesCompactDetail = viewportWidth < 900;
   const usesCompactSidebar = viewportWidth < 700;
   const hasNoCommits = Boolean(repositoryQuery.data && !repositoryQuery.data.status.branch.oid);
+  const branchCreationUnavailableReason = !repositoryQuery.data ? 'Loading repository state'
+    : hasNoCommits ? 'Make the first commit before creating a branch'
+    : repositoryQuery.data.conflictState.isActive || conflictedPaths.length > 0
+      ? 'Finish or abort the current Git operation before creating a branch'
+      : undefined;
   const isCodeFocused = Boolean(activeTab?.selectedFile || activeReviewTarget || activeMachineFile);
   const { sidebar: sidebarWidthCap, detail: detailPanelWidthCap } = workspacePanelCaps(viewportWidth, isCodeFocused);
   const sidebarWidth = sidebarWidthDraft ?? workspace.sidebarWidth;
@@ -2745,14 +2750,14 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleCreateBranch(startPoint?: string): void {
-    if (!startPoint && hasNoCommits) return;
+    if (branchCreationUnavailableReason || isOperationBusy) return;
     openCommandDialog({
       title: startPoint ? 'Create branch here' : 'Create branch',
       icon: GitBranch,
       description: startPoint
         ? `Create a local branch at ${startPoint.slice(0, 8)}.`
         : 'Create a local branch from the current HEAD.',
-      confirmLabel: 'Create Branch',
+      confirmLabel: 'Create branch',
       fields: [
         {
           id: 'name',
@@ -3557,8 +3562,8 @@ export function WorkspaceShell(): ReactElement {
       category: 'Git',
       keywords: ['checkout', 'new branch'],
       icon: <GitBranch size={14} />,
-      disabled: !activeTab || isOperationBusy || hasNoCommits,
-      disabledReason: !activeTab ? 'Open a repository first' : hasNoCommits ? 'Make the first commit before creating a branch' : isOperationBusy ? 'A Git operation is running' : undefined,
+      disabled: !activeTab || isOperationBusy || Boolean(branchCreationUnavailableReason),
+      disabledReason: !activeTab ? 'Open a repository first' : branchCreationUnavailableReason ? branchCreationUnavailableReason : isOperationBusy ? 'A Git operation is running' : undefined,
       onSelect: () => handleCreateBranch()
     },
     {
@@ -4193,7 +4198,7 @@ export function WorkspaceShell(): ReactElement {
                   onReviewBranch={handleOpenBranchReview}
                   onDeleteBranch={handleDeleteBranch}
                   onCheckoutCommit={handleCheckoutCommit}
-                  onCreateBranchAtCommit={handleCreateBranch}
+                  onCreateBranchAtCommit={branchCreationUnavailableReason ? undefined : handleCreateBranch}
                   onCreateTagAtCommit={handleCreateAndPushTagAtCommit}
                   suggestedTagName={suggestedTagName}
                   tagPushRemote={tagPushRemote}

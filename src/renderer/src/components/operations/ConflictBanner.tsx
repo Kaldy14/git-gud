@@ -17,6 +17,7 @@ export function ConflictBanner({ conflictState, isBusy, onResolve, onSelectFile 
 
   const hasConflictedFiles = conflictState.files.length > 0;
   const operationLabel = conflictState.operation?.replace('-', ' ') ?? 'Git operation';
+  const heading = `${operationLabel[0]?.toUpperCase() ?? ''}${operationLabel.slice(1)} conflicts`;
 
   return (
     <div className="conflict-banner flex min-h-11 shrink-0 items-center gap-3 border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-1.5 text-xs" role="alert" aria-live="polite">
@@ -24,7 +25,7 @@ export function ConflictBanner({ conflictState, isBusy, onResolve, onSelectFile 
         <AlertTriangle size={14} />
       </span>
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span className="shrink-0 font-semibold capitalize text-[var(--text-1)]">{operationLabel} conflicts</span>
+        <span className="shrink-0 font-semibold text-[var(--text-1)]">{heading}</span>
         {hasConflictedFiles ? (
           <span className="badge-mini shrink-0 border-[var(--danger-border)] text-[var(--danger-text)]">
             {conflictState.files.length} unresolved
