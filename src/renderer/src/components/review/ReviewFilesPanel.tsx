@@ -65,6 +65,10 @@ export function ReviewFileTree({
         --trees-muted-fg-override: var(--text-3);
         --trees-bg-override: transparent;
         --trees-hover-bg-override: var(--bg-hover);
+        /* Use the diff's file-status colors instead of the tree's default cyan. */
+        --trees-git-modified-color-override: var(--accent-2);
+        --trees-git-added-color-override: var(--success-text);
+        --trees-git-deleted-color-override: var(--danger-text);
         --trees-padding-inline-override: 2px;
         --trees-item-padding-x-override: 4px;
         --trees-font-family-override: var(--font-ui);

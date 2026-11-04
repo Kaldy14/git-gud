@@ -528,13 +528,17 @@ describe('IPC argument validation', () => {
       }
     ]);
     expect(
-      validateIpcArgs('github:start-pull-request-review-guide', [
+      validateIpcArgs('github:start-pull-request-tour', [
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
-        'a'.repeat(64)
+        'a'.repeat(64),
+        'B'.repeat(40),
+        { body: 'Adds timeouts.', baseRefName: 'main', settledReview: '' }
       ])
     ).toEqual([
       { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
-      'a'.repeat(64)
+      'a'.repeat(64),
+      'b'.repeat(40),
+      { body: 'Adds timeouts.', baseRefName: 'main', settledReview: '' }
     ]);
     expect(
       validateIpcArgs('github:submit-pull-request-review', [

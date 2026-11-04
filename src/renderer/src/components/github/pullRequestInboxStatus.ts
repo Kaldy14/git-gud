@@ -1,9 +1,10 @@
 import type { GitHubPullRequestSummary } from '@shared/types';
 
+// pending = in progress (blue), warning = blocked on something, muted = no signal.
 export type PullRequestInboxStatus = {
   label: string;
-  tone: 'success' | 'danger' | 'pending';
-  icon: 'check' | 'dot' | 'warning';
+  tone: 'success' | 'danger' | 'pending' | 'warning' | 'muted' | 'merged';
+  icon: 'check' | 'dot' | 'warning' | 'merge';
 };
 
 export function hasPullRequestMergeConflicts(
@@ -16,13 +17,14 @@ export function pullRequestStatus(
   pullRequest: GitHubPullRequestSummary
 ): PullRequestInboxStatus {
   if (pullRequest.state === 'merged') {
-    return { label: 'Merged', tone: 'success', icon: 'check' };
+    // Merged is a fact, not a passing check, so it does not share the success tone.
+    return { label: 'Merged', tone: 'merged', icon: 'merge' };
   }
   if (pullRequest.state === 'closed') {
-    return { label: 'Closed', tone: 'danger', icon: 'warning' };
+    return { label: 'Closed', tone: 'muted', icon: 'dot' };
   }
   if (pullRequest.isDraft) {
-    return { label: 'Draft', tone: 'pending', icon: 'dot' };
+    return { label: 'Draft', tone: 'muted', icon: 'dot' };
   }
   if (hasPullRequestMergeConflicts(pullRequest)) {
     return { label: 'Merge conflicts', tone: 'danger', icon: 'warning' };
@@ -73,8 +75,18 @@ export function pullRequestReviewStatus(
   }
 
   if (pullRequest.mergeState === 'blocked') {
-    return { label: 'Blocked by branch rules', tone: 'pending', icon: 'dot' };
+    return { label: 'Blocked by branch rules', tone: 'warning', icon: 'warning' };
   }
 
-  return { label: 'Review status unknown', tone: 'pending', icon: 'dot' };
+  return { label: 'Review status unknown', tone: 'muted', icon: 'dot' };
+}
+
+// Unknown, expected, or absent checks are not "in progress"; keep them muted.
+export function pullRequestChecksTone(
+  checks: GitHubPullRequestSummary['checks']
+): 'success' | 'danger' | 'pending' | 'muted' {
+  if (checks.total === 0) return 'muted';
+  if (checks.state === 'success') return 'success';
+  if (checks.state === 'failure' || checks.state === 'error') return 'danger';
+  return checks.state === 'pending' ? 'pending' : 'muted';
 }

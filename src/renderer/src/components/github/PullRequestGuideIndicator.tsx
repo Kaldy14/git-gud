@@ -4,28 +4,25 @@ import { BookOpen } from 'lucide-react';
 import { Tooltip } from 'radix-ui';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
+import { pullRequestLocator, pullRequestTourQueryKey, startPullRequestTour } from './guide/pullRequestTourQuery';
 
 export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
   pullRequest: GitHubPullRequestSummary;
   onOpen: () => void;
 }): ReactElement {
-  const locator = {
-    profileId: pullRequest.profileId,
-    owner: pullRequest.owner,
-    repository: pullRequest.repository,
-    number: pullRequest.number
-  };
+  const locator = pullRequestLocator(pullRequest);
   const queryClient = useQueryClient();
-  const queryKey = ['pull-request-guide-status', locator];
-  const mutationKey = ['start-pull-request-guide', locator];
+  const queryKey = pullRequestTourQueryKey(locator);
+  const mutationKey = ['start-pull-request-tour', ...queryKey];
   const isStarting = useIsMutating({ mutationKey }) > 0;
+  // The same Guide the pull request's Guide tab shows; polled quickly only while it is being written.
   const query = useQuery({
     queryKey,
-    queryFn: () => window.api.getGitHubPullRequestGuideStatus(locator),
+    queryFn: () => window.api.getGitHubPullRequestTourState(locator),
     staleTime: 0,
     retry: false,
     refetchIntervalInBackground: true,
-    refetchInterval: (current) => current.state.data?.status === 'running' || isStarting ? 1_000 : 15_000
+    refetchInterval: (current) => current.state.data?.running || isStarting ? 3_000 : 15_000
   });
   const generation = useMutation({
     mutationKey,
@@ -33,24 +30,24 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
       // Load only the selected PR, and register its current plan before starting the job.
       const detail = await window.api.getGitHubPullRequestDetail(locator);
       const plan = await window.api.getGitHubPullRequestReviewPlan(locator, detail.headSha);
-      await window.api.startGitHubPullRequestReviewGuide(locator, plan.sourceFingerprint);
-      return window.api.getGitHubPullRequestGuideStatus(locator);
+      return startPullRequestTour(detail, plan.sourceFingerprint);
     },
-    onSuccess: (status) => queryClient.setQueryData(queryKey, status)
+    onSuccess: (state) => queryClient.setQueryData(queryKey, state)
   });
-  const isStale = query.data?.status !== 'idle' && query.data?.headSha &&
-    pullRequest.headSha && query.data.headSha !== pullRequest.headSha;
-  const status = isStarting ? 'running'
-    : generation.isError || query.isError ? 'failed'
-      : !query.data ? 'loading'
-        : isStale ? 'stale' : query.data.status;
-  const error = generation.error?.message ?? query.error?.message ?? query.data?.errorMessage;
-  const label = status === 'ready' ? 'AI guide ready. Open guide'
-    : status === 'running' ? 'AI guide generating in the background'
-      : status === 'loading' ? 'Checking AI guide status'
-        : status === 'stale' ? 'AI guide is outdated. Generate an update'
-          : status === 'failed' ? `${error || 'AI guide failed'}. Click to retry`
-            : 'No AI guide yet. Generate in the background';
+  const state = query.data;
+  // A failed rewrite must not hide an existing guide: report failure only when there is none.
+  const status = isStarting || state?.running ? 'running'
+    : query.isError ? 'failed'
+      : !state ? 'loading'
+        : !state.tour ? (generation.isError || state.errorMessage ? 'failed' : 'idle')
+          : pullRequest.headSha && state.tour.headSha !== pullRequest.headSha ? 'stale' : 'ready';
+  const error = generation.error?.message ?? query.error?.message ?? state?.errorMessage;
+  const label = status === 'ready' ? 'Review guide ready. Open guide'
+    : status === 'running' ? 'Writing a review guide in the background'
+      : status === 'loading' ? 'Checking review guide status'
+        : status === 'stale' ? 'Review guide was written before the latest push. Write an update'
+          : status === 'failed' ? `${error || 'The review guide could not be written'}. Click to retry`
+            : 'No review guide yet. Write one in the background';
 
   return (
     <Tooltip.Provider delayDuration={350}>

@@ -7,9 +7,50 @@ import type {
   GitHubPullRequestReviewComment
 } from '@shared/types';
 
-import { buildPullRequestTimeline } from './pullRequestTimeline';
+import { buildPullRequestTimeline, groupPullRequestActivity } from './pullRequestTimeline';
 
 describe('pull request timeline', () => {
+  it('collapses consecutive commits and can hide bot discussion', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [
+        commit({ sha: 'a1', committedAt: '2026-07-29T08:00:00Z' }),
+        commit({ sha: 'a2', committedAt: '2026-07-29T08:10:00Z' }),
+        commit({ sha: 'a3', committedAt: '2026-07-29T11:00:00Z' })
+      ],
+      conversationComments: [
+        conversationComment({ id: 1, createdAt: '2026-07-29T09:00:00Z' }),
+        conversationComment({ id: 2, author: 'coderabbitai[bot]', createdAt: '2026-07-29T10:00:00Z' })
+      ],
+      reviews: [],
+      reviewComments: []
+    });
+
+    expect(groupPullRequestActivity(timeline, { hideBots: false }).map((item) =>
+      item.kind === 'commits' ? `commits:${item.commits.length}` : item.entry.kind)
+    ).toEqual(['commits:2', 'conversation', 'conversation', 'commit']);
+    // Bot comments drop out; commits stay.
+    expect(groupPullRequestActivity(timeline, { hideBots: true }).map((item) =>
+      item.kind === 'commits' ? `commits:${item.commits.length}` : item.entry.kind)
+    ).toEqual(['commits:2', 'conversation', 'commit']);
+  });
+
+  it('keeps a bot-started thread when a person replied to it', () => {
+    const timeline = buildPullRequestTimeline({
+      commits: [],
+      conversationComments: [],
+      reviews: [],
+      reviewComments: [
+        reviewComment({ id: 30, author: 'coderabbitai[bot]', reviewId: undefined }),
+        reviewComment({ id: 31, author: 'teammate', inReplyToId: 30, reviewId: undefined, createdAt: '2026-07-29T09:05:00Z' }),
+        reviewComment({ id: 40, author: 'coderabbitai[bot]', reviewId: undefined, createdAt: '2026-07-29T10:00:00Z' })
+      ]
+    });
+
+    const kept = groupPullRequestActivity(timeline, { hideBots: true });
+    expect(kept.map((item) => item.kind === 'entry' && item.entry.kind === 'review-thread' ? item.entry.thread.root.id : undefined))
+      .toEqual([30]);
+  });
+
   it('sorts commits, comments, and reviews chronologically', () => {
     expect(
       buildPullRequestTimeline({

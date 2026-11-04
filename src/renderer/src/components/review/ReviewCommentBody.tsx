@@ -30,11 +30,17 @@ export function ReviewCommentBody({
   imageLoading = 'lazy',
   onOpenImage,
   onOpenFile,
+  resolveCodeReference,
+  fileLinkTarget,
   aiMessageTheme
 }: {
   body: string;
   aiMessageTheme?: DiffSyntaxTheme;
   onOpenFile?: (reference: CodeReference) => void;
+  // Maps a written reference (e.g. a bare `machines.ts`) to a real file; undefined keeps it as code.
+  resolveCodeReference?: (reference: CodeReference) => CodeReference | undefined;
+  // Where a file link opens, for its tooltip and accessible name.
+  fileLinkTarget?: string;
   compact?: boolean;
   imageUrls?: Record<string, string>;
   imageLoading?: 'eager' | 'lazy';
@@ -45,6 +51,8 @@ export function ReviewCommentBody({
     .replace(/<details>[\s\S]*?<\/details>/gu, '')
     .trim();
   const visibleBody = withoutMetadata || body.trim();
+  const resolveReference = (reference: CodeReference | undefined) =>
+    reference && resolveCodeReference ? resolveCodeReference(reference) : reference;
   const renderedBody = resolveReviewImageMarkdown(visibleBody, imageUrls);
   const images = getReviewImages(renderedBody);
 
@@ -62,13 +70,13 @@ export function ReviewCommentBody({
           skipHtml
           components={{
             a: ({ children, href }) => {
-              const reference = onOpenFile && href ? parseCodeReference(href) : undefined;
-              if (reference && onOpenFile) return <EvidenceFileLink reference={reference} onOpen={onOpenFile} />;
+              const reference = onOpenFile && href ? resolveReference(parseCodeReference(href)) : undefined;
+              if (reference && onOpenFile) return <EvidenceFileLink reference={reference} target={fileLinkTarget} onOpen={onOpenFile} />;
               return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
             },
             code: ({ children, className }) => {
-              const reference = onOpenFile && !className && typeof children === 'string' ? parseCodeReference(children) : undefined;
-              if (reference && onOpenFile) return <EvidenceFileLink reference={reference} onOpen={onOpenFile} />;
+              const reference = onOpenFile && !className && typeof children === 'string' ? resolveReference(parseCodeReference(children)) : undefined;
+              if (reference && onOpenFile) return <EvidenceFileLink reference={reference} target={fileLinkTarget} onOpen={onOpenFile} />;
               return <code className={className}>{children}</code>;
             },
             pre: MarkdownPre,

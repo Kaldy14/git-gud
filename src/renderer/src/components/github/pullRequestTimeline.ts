@@ -140,3 +140,51 @@ function findThreadRoot(
 
   return current;
 }
+
+export type PullRequestActivityItem =
+  | { kind: 'entry'; key: string; entry: PullRequestTimelineEntry }
+  | { kind: 'commits'; key: string; commits: Extract<PullRequestTimelineEntry, { kind: 'commit' }>[] };
+
+export function isBotAuthor(author: string): boolean {
+  return author.endsWith('[bot]');
+}
+
+function threadAuthors(thread: PullRequestReviewThread): string[] {
+  return [thread.root.author, ...thread.replies.map((reply) => reply.author)];
+}
+
+// Everyone who wrote in an entry, including replies in its threads.
+function entryAuthors(entry: Exclude<PullRequestTimelineEntry, { kind: 'commit' }>): string[] {
+  switch (entry.kind) {
+    case 'conversation': return [entry.comment.author];
+    case 'review': return [entry.review.author, ...entry.threads.flatMap(threadAuthors)];
+    case 'review-thread': return threadAuthors(entry.thread);
+  }
+}
+
+// Collapse runs of consecutive commits so pushes don't bury the discussion, and
+// optionally hide bot-only comments and reviews. An entry a person replied to stays whole,
+// bot root included, so the reply keeps its context. Bot commits stay visible.
+export function groupPullRequestActivity(
+  entries: readonly PullRequestTimelineEntry[],
+  options: { hideBots: boolean }
+): PullRequestActivityItem[] {
+  const items: PullRequestActivityItem[] = [];
+  for (const entry of entries) {
+    if (options.hideBots && entry.kind !== 'commit' && entryAuthors(entry).every(isBotAuthor)) continue;
+    const last = items.at(-1);
+    if (entry.kind === 'commit' && last?.kind === 'commits') {
+      last.commits.push(entry);
+    } else if (entry.kind === 'commit') {
+      items.push({ kind: 'commits', key: `commits:${entry.key}`, commits: [entry] });
+    } else {
+      items.push({ kind: 'entry', key: entry.key, entry });
+    }
+  }
+  // A single commit reads better as an ordinary entry.
+  return items.map((item) =>
+    item.kind === 'commits' && item.commits.length === 1
+      ? { kind: 'entry', key: item.commits[0]!.key, entry: item.commits[0]! }
+      : item
+  );
+}

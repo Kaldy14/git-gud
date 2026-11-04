@@ -164,11 +164,9 @@ const api: RendererApi = {
   openGitHubPullRequestInApplication: (repoPath, input) =>
     invoke('github:open-pull-request-in-application', repoPath, input),
   bugFinder: (request) => invoke('bug-finder:request', request),
-  getGitHubPullRequestGuideStatus: (locator) => invoke('github:pull-request-guide-status', locator),
-  getGitHubPullRequestReviewGuideState: (locator, sourceFingerprint) =>
-    invoke('github:pull-request-review-guide-state', locator, sourceFingerprint),
-  startGitHubPullRequestReviewGuide: (locator, sourceFingerprint) =>
-    invoke('github:start-pull-request-review-guide', locator, sourceFingerprint),
+  getGitHubPullRequestTourState: (locator) => invoke('github:pull-request-tour-state', locator),
+  startGitHubPullRequestTour: (locator, sourceFingerprint, headSha, context) =>
+    invoke('github:start-pull-request-tour', locator, sourceFingerprint, headSha, context),
   submitGitHubPullRequestReview: (input) => invoke('github:submit-pull-request-review', input),
   addGitHubPullRequestComment: (input) => invoke('github:add-pull-request-comment', input),
   updateGitHubPullRequestReviewComment: (input) =>

@@ -2198,6 +2198,10 @@ export function parseGitHubRepositoryMergeSettings(
   );
 
   if (allowedMethods.length === 0) {
+    // GitHub omits these fields for viewers without write access. Such viewers cannot merge
+    // (canMerge is false), so show the pull request with a nominal default instead of failing.
+    const reported = ['allow_squash_merge', 'allow_merge_commit', 'allow_rebase_merge'].some((key) => key in repository);
+    if (!reported) return { allowedMethods: ['merge'], defaultMethod: 'merge' };
     throw new Error('GitHub reports no enabled merge method for this repository.');
   }
 
