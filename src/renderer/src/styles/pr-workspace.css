@@ -370,7 +370,7 @@
 .review-block-explanation small {
   display: block;
   margin-bottom: 8px;
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 .review-block-position {
   display: flex;
@@ -1718,6 +1718,7 @@
     max-height: none;
     padding: 6px 8px;
   }
+  .review-navigation-footer:has(.review-block-explanation[open]) { max-height: 70%; }
   .review-navigation-footer .review-block-explanation,
   .review-navigation-footer .review-block-position { margin: 0; }
   .review-navigation-footer .review-block-position { justify-content: flex-end; gap: 8px; }

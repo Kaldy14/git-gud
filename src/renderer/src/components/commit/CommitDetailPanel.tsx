@@ -1576,13 +1576,13 @@ function WipCommitSection({
         ) : null}
       </div>
       <div className="flex items-center justify-between gap-2">
-        <label className="flex min-w-0 items-center gap-2 text-xs text-[var(--text-2)]">
+        <label className="flex min-w-0 items-center gap-2 whitespace-nowrap text-xs text-[var(--text-2)]">
           <input
             type="checkbox"
             checked={amend}
             onChange={(event) => onChangeAmend(event.target.checked)}
           />
-          Amend previous commit
+          Amend last commit
         </label>
         <button
           className="btn-primary h-8 text-xs"

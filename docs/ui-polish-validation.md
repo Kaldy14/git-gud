@@ -2,6 +2,30 @@
 
 These are unmodified screenshots of the running Git Gud Electron application. They show real Git history, local staging, an empty repository, a failed local clone, and read-only views of GitHub PR #4 and its workflow runs. Settings and repositories used for validation are isolated from the normal desktop workspace.
 
+## Latest focused pass
+
+Round 11 keeps the existing visual direction and compares eight fixed views with round 6 at matching dimensions and 1× density. [Open the matched comparison](ui-polish-comparison.md). The eight current comparison images, working-copy image, selected-code images and short-footer images in this gallery are from this pass. Other gallery images retain their earlier provenance. The Retina set below is from round 10.
+
+`pnpm lint`, `pnpm build` including typecheck, and `pnpm exec vitest run src/renderer` pass. The renderer run has 97 files and 630 passing tests. `TMPDIR=/private/tmp pnpm test` also passes on this source, with 172 files, 1,365 passing tests and 4 skipped.
+
+The actual Electron renderer at the URL below passes 21 core checks and 17 integration checks. Three additional stability checks distinguish an unavailable inbox from an empty one, restore the real count after recovery, and hold/release real full-file context with the first code row remaining at y194. The unavailable-inbox case deliberately rejects a local QA IPC request; it is not evidence of a real GitHub outage or a fabricated GitHub response.
+
+A real selected import row retains 11.91:1 keyword/string contrast. Its teal edge now sits inside the number cell, ending before the code, so it does not cover the addition/deletion sign. The short PR footer is 104px tall when closed. With its explanation open at an effective 720×330 viewport, the footer is capped at 134px inside a 193px navigation pane, scrolls to its final action, and leaves 22px for the block list. Explanation metadata uses 11px. The compact commit option reads “Amend last commit” on one line.
+
+Focused commands for this pass:
+
+```sh
+agent-browser --session git-gud-polish connect 9236
+node /tmp/git-gud-polish-stability-r11.mjs
+node /tmp/git-gud-polish-e2e-v11.mjs
+node /tmp/git-gud-polish-broad-r11.mjs
+node /tmp/git-gud-polish-selected-code-r11.mjs
+```
+
+[Unavailable inbox](images/ui-polish-overhaul/inbox-unavailable.png), [before context](images/ui-polish-overhaul/pr-before-context.png), [after context](images/ui-polish-overhaul/pr-after-context.png), [expanded short footer](images/ui-polish-overhaul/pr-explanation-short.png), and [its reachable final action](images/ui-polish-overhaul/pr-explanation-short-scrolled.png) are actual app captures. Reports and retained scripts are under `artifacts/ui-polish/round-11/`. No unexpected renderer or console errors were recorded. Browser network capture does not cover IPC or CLI traffic. Screen readers, other OS chrome, populated Guide output and remote write actions remain untested.
+
+## Earlier full matrix and Retina captures
+
 ## Representative screenshot set
 
 These seven captures come directly from the same running Electron build at device scale factor 2 and zoom 1. They are native 2880×1920 or 2200×1520 PNGs at unchanged 1440×960 or 1100×760 CSS viewports. Electron's `--force-device-scale-factor=2` enables the Retina-density run. They are not enlarged or resampled images. The complete 1× validation matrix remains linked below, including edge and error states.

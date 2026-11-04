@@ -73,7 +73,7 @@ type SidebarProps = {
   filterFocusSignal: number;
   onToggleCollapsed: () => void;
   onCloseFlyout?: () => void;
-  pullRequestCount: number;
+  pullRequestCount?: number;
   isPullRequestLoading: boolean;
   isPullRequestInboxActive: boolean;
   onTogglePullRequestInbox: () => void;
@@ -267,6 +267,11 @@ export function Sidebar({
     stashes: repositoryOverview?.stashes.length ?? 0,
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
+  const pullRequestLabel = isPullRequestLoading ? 'Pull request inbox, loading'
+    : pullRequestCount === undefined ? 'Pull request inbox, unavailable'
+      : `Pull request inbox, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`;
+  const pullRequestTitle = isPullRequestLoading ? 'Pull requests: loading'
+    : pullRequestCount === undefined ? 'Pull requests: unavailable' : `Pull requests: ${pullRequestCount}`;
   const viewingCount = counts.local + counts.remote + counts.tags;
   const visibilityFilterCount = branchVisibility.solo.length + branchVisibility.hidden.length;
 
@@ -545,12 +550,12 @@ export function Sidebar({
           type="button"
           data-active={isPullRequestInboxActive}
           onClick={onTogglePullRequestInbox}
-          aria-label={isPullRequestLoading ? 'Pull request inbox, loading' : `Pull request inbox, ${pullRequestCount} items`}
-          title={isPullRequestLoading ? 'Pull requests: loading' : `Pull requests: ${pullRequestCount}`}
+          aria-label={pullRequestLabel}
+          title={pullRequestTitle}
           aria-busy={isPullRequestLoading}
         >
           {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
-          <span>{isPullRequestLoading ? '\u00a0' : formatCollapsedCount(pullRequestCount)}</span>
+          <span>{isPullRequestLoading || pullRequestCount === undefined ? '\u00a0' : formatCollapsedCount(pullRequestCount)}</span>
         </button>
         {COLLAPSED_SECTIONS.map(renderCollapsedSection)}
       </div>
@@ -630,6 +635,9 @@ export function Sidebar({
           <div ref={treeRef} className="sidebar-tree min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Pull requests, branches, worktrees, stashes, and tags">
             <button
               className="sidebar-pr-destination"
+              aria-label={pullRequestLabel}
+              title={pullRequestTitle}
+              aria-busy={isPullRequestLoading}
               type="button"
               role="treeitem"
               aria-selected={isPullRequestInboxActive}

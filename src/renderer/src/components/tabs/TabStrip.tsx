@@ -66,7 +66,7 @@ export function TabStrip({
   dashboardUnreadCount = 0,
   dashboardRunningCount = 0,
   isPullRequestsTabActive = false,
-  pullRequestCount = 0,
+  pullRequestCount,
   isPullRequestLoading = false,
   profileState,
   activeRepoDirty = false,
@@ -462,14 +462,14 @@ export function TabStrip({
           <div
             className="no-drag repo-tab repo-tab--icon"
             data-active={isPullRequestsTabActive}
-            title={isPullRequestLoading ? 'Pull requests · loading' : `Pull requests · ${pullRequestCount}`}
+            title={isPullRequestLoading ? 'Pull requests · loading' : pullRequestCount === undefined ? 'Pull requests · unavailable' : `Pull requests · ${pullRequestCount}`}
           >
             <button
               id={tabDomId(PULL_REQUESTS_TAB_ID)}
               className="repo-tab-main"
               type="button"
               role="tab"
-              aria-label={isPullRequestLoading ? 'Pull requests, loading' : `Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
+              aria-label={isPullRequestLoading ? 'Pull requests, loading' : pullRequestCount === undefined ? 'Pull requests, unavailable' : `Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
               aria-busy={isPullRequestLoading}
               aria-selected={isPullRequestsTabActive}
               tabIndex={isPullRequestsTabActive ? 0 : -1}
@@ -487,7 +487,7 @@ export function TabStrip({
                 size={15}
                 className={isPullRequestsTabActive ? 'text-[var(--accent-2)]' : undefined}
               />
-              {!isPullRequestLoading && pullRequestCount > 0 ? (
+              {!isPullRequestLoading && pullRequestCount !== undefined && pullRequestCount > 0 ? (
                 <span className="pull-request-tab-count" aria-hidden="true">
                   {pullRequestCount > 99 ? '99+' : pullRequestCount}
                 </span>

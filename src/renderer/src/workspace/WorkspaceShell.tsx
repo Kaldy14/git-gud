@@ -3838,7 +3838,7 @@ export function WorkspaceShell(): ReactElement {
         isPullRequestsTabActive={
           gitHubWorkspaceView?.kind === 'inbox' || gitHubWorkspaceView?.kind === 'review'
         }
-        pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+        pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length}
         isPullRequestLoading={pullRequestInboxQuery.isLoading}
         onActivatePullRequestsTab={handleOpenPullRequestInbox}
         onOpenSettings={handleOpenSettings}
@@ -4044,7 +4044,7 @@ export function WorkspaceShell(): ReactElement {
                 filterFocusSignal={sidebarFilterFocusSignal}
                 onToggleCollapsed={handleToggleSidebar}
                 onCloseFlyout={() => setCompactSidebarOpen(false)}
-                pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+                pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length}
                 isPullRequestLoading={pullRequestInboxQuery.isLoading}
                 isPullRequestInboxActive={false}
                 onTogglePullRequestInbox={handleTogglePullRequestInbox}

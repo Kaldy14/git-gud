@@ -36,7 +36,8 @@ export type ChangedFileTreeNode =
 
 const DIFF_SEPARATOR_CSS = `
   [data-separator="line-info"] {
-    height: 24px;
+    height: 1lh;
+    margin-block: 0;
   }
 
   [data-separator="line-info"] [data-separator-content] {
@@ -60,7 +61,9 @@ const DIFF_SELECTION_CSS = `
   [data-line][data-selected-line] {
     --mix-selection-dark: 100%;
     --mix-selection-light: 100%;
-    box-shadow: inset 2px 0 var(--accent-2);
+  }
+  [data-column-number][data-selected-line] {
+    box-shadow: inset -2px 0 var(--accent-2);
   }
   [data-line][data-selected-line] span {
     color: var(--diffs-fg) !important;

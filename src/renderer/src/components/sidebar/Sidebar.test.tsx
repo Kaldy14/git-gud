@@ -24,6 +24,12 @@ describe('Sidebar remote section', () => {
 });
 
 describe('Sidebar compact modes', () => {
+  it('reports an unavailable count as unknown rather than zero', () => {
+    const rail = renderSidebar({ isCollapsed: true, pullRequestCount: undefined });
+    expect(rail).toContain('aria-label="Pull request inbox, unavailable"');
+    expect(rail).not.toContain('Pull request inbox, 0 items');
+  });
+
   it('does not announce a false zero while the inbox is loading', () => {
     const rail = renderSidebar({ isCollapsed: true, isPullRequestLoading: true });
 
