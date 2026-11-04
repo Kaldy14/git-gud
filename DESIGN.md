@@ -135,3 +135,9 @@
 - A loading PR count is unknown: show the spinner with a reserved blank count and announce loading.
 
 - On short PR panes the grouping explanation and position share a footer row, shortcut hints give way, and the block list keeps more height. Aggregate healthy status is neutral; current run/PR outcomes carry the status colour. Panel rails use matching open-panel icons.
+- Review is the one solid teal action in PR Code. Viewed & next is a subtle, semibold button with a teal icon that loses its colour when disabled; local review keeps its primary Viewed action.
+
+### Composer and dashboard edges
+
+- The WIP header shows the file count; the branch stays in its title and accessible text. The composer shows the author name and identity source at 12px, adds the email inline when the row is at least 360px wide, and gives the full identity and source explanation in a tooltip on hover and keyboard focus. Commit summaries use 13px type.
+- Dashboard tiles sit 15px from both window edges, counting the 11px scrollbar gutter on the right. Run times stay on the facts line, right-aligned beside the chevron.

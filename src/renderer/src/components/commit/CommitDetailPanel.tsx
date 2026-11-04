@@ -1,7 +1,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PointerEvent, ReactElement, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
+import { ContextMenu as ContextMenuPrimitive, Tooltip } from 'radix-ui';
 import {
   AlertTriangle,
   Archive,
@@ -820,15 +820,10 @@ function PanelHeader({
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {wipDetail ? (
-            <>
-              <span className="shrink-0 whitespace-nowrap font-semibold text-[var(--text-1)]">{formatFileChangeLabel(wipDetail.dirtyCount)} on</span>
-              <span
-                className="min-w-0 truncate rounded bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-1)]"
-                title={wipDetail.branch.head}
-              >
-                {wipDetail.branch.head}
-              </span>
-            </>
+            <span className="shrink-0 whitespace-nowrap font-semibold text-[var(--text-1)]" title={wipDetail.branch.head}>
+              {formatFileChangeLabel(wipDetail.dirtyCount)}
+              <span className="sr-only"> on {wipDetail.branch.head}</span>
+            </span>
           ) : (
             <span className="font-semibold text-[var(--text-1)]">File changes</span>
           )}
@@ -1510,6 +1505,9 @@ function WipCommitSection({
         source: 'profile' as const
       }
     : profileState?.effectiveIdentity;
+  const identityName = identity?.name || 'Unknown author';
+  const identityEmail = identity?.email ? `<${identity.email}>` : '';
+  const identitySource = identity?.source ?? 'unknown';
   const canCommit = Boolean(commitMessage.trim()) && (hasStagedFiles || amend) && !isCommitting;
   const summaryLength = commitMessage.split('\n', 1)[0]?.trim().length ?? 0;
   const commitHint = !hasStagedFiles && !amend
@@ -1520,14 +1518,32 @@ function WipCommitSection({
 
   return (
     <div className="shrink-0 space-y-2.5 border-t border-[var(--border)] px-4 py-3.5">
-      <div className="flex items-center justify-between gap-3 text-[11px] text-[var(--text-3)]">
-        <span className="min-w-0 truncate">
-          {identity?.name || 'Unknown author'} {identity?.email ? `<${identity.email}>` : ''}
-        </span>
-        <span className="shrink-0" title={identitySourceTitles[identity?.source ?? 'unknown']}>
-          {identitySourceLabels[identity?.source ?? 'unknown']}
-        </span>
-      </div>
+      <Tooltip.Provider delayDuration={350}>
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <div className="commit-identity" role="group" aria-label="Commit author" tabIndex={0}>
+              <span className="commit-identity-author">
+                <span className="commit-identity-name">{identityName}</span>{' '}
+                {identityEmail ? <span className="commit-identity-email">{identityEmail}</span> : null}
+              </span>
+              <span className="shrink-0">{identitySourceLabels[identitySource]}</span>
+            </div>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              className="commit-identity-tooltip"
+              side="top"
+              align="start"
+              sideOffset={7}
+              collisionPadding={12}
+              onEscapeKeyDown={(event) => event.stopPropagation()}
+            >
+              <span>{identityName} {identityEmail}</span>
+              <span>{identitySourceTitles[identitySource]}</span>
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </Tooltip.Provider>
       <div className="relative">
         <textarea
           ref={textareaRef}

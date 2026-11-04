@@ -383,6 +383,10 @@
 .review-viewed-next {
   width: 100%;
   justify-content: center;
+  font-weight: 600;
+}
+.review-viewed-next:not(:disabled) svg {
+  color: var(--accent-2);
 }
 .review-navigation-footer .review-toolbar {
   display: flex;

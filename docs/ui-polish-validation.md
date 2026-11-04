@@ -2,6 +2,28 @@
 
 These are unmodified screenshots of the running Git Gud Electron application. They show real Git history, local staging, an empty repository, a failed local clone, and read-only views of GitHub PR #4 and its workflow runs. Settings and repositories used for validation are isolated from the normal desktop workspace.
 
+## Bounded craft pass
+
+Round 12 preserves the established palette, type scale, graph and responsive workspace. The WIP heading now shows its file count without a duplicate clipped branch. Author name and identity source use 12px; the full name, email and source explanation appear in the existing Radix tooltip primitive, with keyboard focus, pointer hover, Escape dismissal and collision handling. Inline email appears when the identity row is at least 360px wide. The commit summary uses 13px in the existing 80px field.
+
+While reading PR Code, Review retains the filled header action and Viewed & next uses a subtle 32px button with an enabled teal icon. Its disabled state stays clear during composition. Local review retains its existing primary action. Dashboard tiles measure 15px from either window edge; the single run timestamp forms a right-aligned scan column. Settings gets a 56px header.
+
+`pnpm lint`, `pnpm build` including typecheck, and `pnpm exec vitest run src/renderer` pass, with 97 files and 631 renderer tests. `TMPDIR=/private/tmp pnpm test` passes with 172 files, 1,366 tests and 4 skipped. The heuristic structure scan reports existing large source files and generated bundles; it is not a correctness check.
+
+The actual Electron renderer passes 21 core checks, 17 integration checks and 17 focused craft checks. The focused pass verifies tooltip bounds, hover persistence, Escape dismissal, keyboard focus order, the editor node/text/caret through staging, draft retention through unstaging and Amend, inline email at a wider panel, disabled PR navigation, and balanced dashboard edges without horizontal overflow. Caret ranges are set with the DOM selection API for controlled insertion and cleanup; actual editing and staging use app controls. No commit or review was submitted. The wide-email diagnostic uses 1600×960 because a 1440px window's panel cap leaves the identity below its email breakpoint. The eight primary grading views remain 1440×960 or 1100×760 at 1× density.
+
+Focused commands:
+
+```sh
+node /tmp/git-gud-polish-e2e-v12.mjs
+node /tmp/git-gud-polish-broad-r12.mjs
+node /tmp/git-gud-polish-craft-r12.mjs
+```
+
+[Focused identity at compact width](images/ui-polish-overhaul/commit-identity-focus-compact.png), [wide inline identity](images/ui-polish-overhaul/commit-identity-wide.png), [disabled PR action during composition](images/ui-polish-overhaul/pr-action-disabled-compact.png), and [compact dashboard](images/ui-polish-overhaul/dashboard-compact.png) are original running-app captures. Reports, scripts and capture hashes remain under `artifacts/ui-polish/round-12/` and `artifacts/ui-polish/fixed-comparison-v12/`. No unexpected renderer or console errors were recorded. Network capture does not certify IPC/CLI traffic. Screen readers, other OS chrome, populated Guide output and live remote write flows remain untested.
+
+The eight current primary gallery captures are from this craft pass. The matched round-6 versus round-11 gallery uses immutable round-11 image links; its historical evidence has not been replaced with newer images. Other gallery images retain their stated earlier provenance.
+
 ## Inbox badge follow-up
 
 The round-11 review found an empty pill in the docked Pull requests row when no count was available. The badge now renders only for a known count; a genuine zero remains visible. Seven focused sidebar tests, scoped ESLint and the build including typecheck pass. Three actual-app checks verify the unavailable docked row, unavailable flyout row and recovered real count. The controlled local IPC failure uses the same isolated profile as the prior pass. No renderer or console errors were recorded.

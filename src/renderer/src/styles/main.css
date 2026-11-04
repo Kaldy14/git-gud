@@ -839,6 +839,67 @@ code,
   transform: translateY(0);
 }
 
+.commit-identity {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 4px;
+  color: var(--text-3);
+  container: commit-identity / inline-size;
+  font-size: var(--text-sm);
+  line-height: 16px;
+}
+
+.commit-identity-author {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-identity-name {
+  color: var(--text-2);
+}
+
+.commit-identity-email {
+  display: none;
+}
+
+@container commit-identity (min-width: 360px) {
+  .commit-identity-email {
+    display: inline;
+  }
+}
+
+/* Portalled so file lists and panel overflow cannot clip the identity. */
+.commit-identity-tooltip {
+  z-index: 60;
+  width: max-content;
+  max-width: min(var(--radix-tooltip-trigger-width), calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-popover);
+  color: var(--text-1);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--text-sm);
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.commit-identity-tooltip > span {
+  display: block;
+}
+
+.commit-identity-tooltip > span + span {
+  margin-top: 2px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
 /* --- Toolbar --------------------------------------------------------- */
 
 .app-toolbar {
@@ -2419,7 +2480,7 @@ button.ref-chip {
   display: block;
   height: 80px;
   padding: 8px 44px 8px 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: var(--leading-ui);
   resize: none;
 }
@@ -7012,7 +7073,7 @@ button.ref-chip {
   gap: 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-graph);
-  padding-right: 8px;
+  padding-right: 4px;
 }
 
 .dashboard-header-navigation {
@@ -7218,7 +7279,8 @@ button.ref-chip {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  /* 15px per side: the stable 11px scrollbar gutter plus 4px on the right. */
+  padding: 8px 4px 8px 15px;
 }
 
 .dashboard-grid-row {
@@ -7735,11 +7797,8 @@ button.ref-chip {
 
 .workflow-run-row-facts > time {
   flex-shrink: 0;
-}
-
-.workflow-run-row-facts > time::before {
-  margin-right: 8px;
-  content: '·';
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .workflow-run-branch {

@@ -2390,7 +2390,7 @@ function ReviewBody({
                   <span>{selectedUnit.skippedCount} hidden</span>
                 </div>
                 <button
-                  className="btn-primary btn-regular review-viewed-next"
+                  className="btn-subtle btn-regular review-viewed-next"
                   type="button"
                   disabled={isMutating || lineCollaboration?.selectedChunkId !== undefined}
                   onClick={onToggleViewed}

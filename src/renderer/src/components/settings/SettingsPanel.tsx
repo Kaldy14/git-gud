@@ -78,7 +78,7 @@ export function SettingsPanel({
         className="flex h-full w-full max-w-[460px] flex-col border-l border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
         onSubmit={handleSubmit}
       >
-        <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] px-5">
+        <header className="flex min-h-14 items-center gap-3 border-b border-[var(--border)] px-5">
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-[15px] font-semibold text-[var(--text-1)]">Settings</h2>
             <p id={descriptionId} className="mt-0.5 text-[12px] text-[var(--text-3)]">Local workflow defaults</p>
