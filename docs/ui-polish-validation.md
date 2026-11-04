@@ -8,17 +8,17 @@ These are unmodified screenshots of the running Git Gud Electron application. Th
 | --- | --- |
 | `pnpm typecheck` | Pass |
 | `pnpm lint` | Pass |
-| `TMPDIR=/private/tmp pnpm test` | 170 files, 1,339 tests passed, 4 skipped |
+| `TMPDIR=/private/tmp pnpm test` | 171 files, 1,342 tests passed, 4 skipped |
 | `pnpm build` | Pass |
 | `agent-browser --session git-gud-polish connect 9236` | Connected to the actual Electron renderer |
 
-Focused validation at 1440×960 and 1100×760 passes 18 core checks, including history, file diffs, staging and unstaging a real file, settings, palette results and search scope, invalid clone/create forms, stash eligibility, and the empty-repository branch guard.
+Focused validation at 1440×960 and 1100×760 passes 19 core checks, including history, file diffs, staging and unstaging a real file, settings, palette results and search scope, invalid clone/create forms, stash eligibility, and the empty-repository branch guard.
 
-Keyboard resizing fits a preferred graph width from 266px to 210px and restores 266px when the window widens. The stored preference stays unchanged. Double-click resets automatic lane sizing. Hover restores avatar emphasis; arrow keys change the palette selection, and Escape restores focus to Jump.
+Keyboard resizing fits a preferred graph width from 266px to 210px and restores 266px when the window widens. The stored preference stays unchanged. Double-click resets automatic lane sizing. Hover restores avatar emphasis; arrow keys change the palette selection, and Escape restores focus to Jump. Compact ref names reveal in full on hover. The stash checkbox keeps exactly the same position when inclusion changes.
 
-The integration checks load the actual PR Code view, open and cancel a file comment composer, save a local Actions dashboard, and display its workflow graph. A clone from a missing local source fails with Git exit 128, keeps the entered values, and can be retried. The error summary expands to the exact Git output. A separate disposable repository has a real merge conflict; its resolver opens without saving a resolution.
+The integration checks load the actual PR Code view, open and cancel a file comment composer, save a local Actions dashboard, and display its workflow graph. A clone from a missing local source fails with Git exit 128, keeps the entered values, and can be retried. The error summary expands to the exact Git output. A separate disposable repository has a real merge conflict between `hotfix/login` and `feature/login`; branch creation is disabled and the resolver exposes distinct A/B choices without saving a resolution. The real completed release graph shows four jobs with 12px names and 11px durations without card overflow. The PR comment composer clearly states that drafts remain local until review submission.
 
-No unexpected renderer exceptions, console errors, or captured HTTP 4xx/5xx responses were recorded. The expected Git failures above are part of the validation. Reports, exact local commands, and validation scripts remain in the ignored `artifacts/ui-polish/round-3/` folder in the task workspace.
+No unexpected renderer exceptions, console errors, or captured HTTP 4xx/5xx responses were recorded. The expected Git failures above are part of the validation. Reports, exact local commands, and validation scripts remain in the ignored `artifacts/ui-polish/round-4/` folder in the task workspace.
 
 ## Screenshots
 
@@ -46,7 +46,7 @@ No unexpected renderer exceptions, console errors, or captured HTTP 4xx/5xx resp
 
 ![Clone failure with expandable Git details](images/ui-polish-overhaul/clone-error.png)
 
-Other verified states: [settings](images/ui-polish-overhaul/settings.png), [stash](images/ui-polish-overhaul/stash.png), [PR Code](images/ui-polish-overhaul/pr-code.png), [Actions dashboard](images/ui-polish-overhaul/dashboard.png), and [conflict resolver](images/ui-polish-overhaul/conflict-resolver.png).
+Other verified states: [settings](images/ui-polish-overhaul/settings.png), [stash](images/ui-polish-overhaul/stash.png), [PR Code](images/ui-polish-overhaul/pr-code.png), [Actions dashboard](images/ui-polish-overhaul/dashboard.png), [release job graph](images/ui-polish-overhaul/workflow-release.png), [local PR draft composer](images/ui-polish-overhaul/pr-comment-draft.png), and [conflict resolver](images/ui-polish-overhaul/conflict-resolver.png).
 
 ## Scope and limits
 
