@@ -69,7 +69,7 @@ const GROUPS: Array<{
   {
     id: 'needs-action',
     title: 'Needs action',
-    description: 'Requested changes or failing checks need attention.'
+    description: 'Merge conflicts, requested changes, or failing checks need attention.'
   },
   {
     id: 'ready-to-merge',

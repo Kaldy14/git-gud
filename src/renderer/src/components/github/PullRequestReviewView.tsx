@@ -1820,6 +1820,13 @@ function mergeReadiness(detail: GitHubPullRequestSummary): { tone: 'success' | '
   }
 }
 
+// Skipped and neutral runs never finish, so they stay out of the passed/ran ratio.
+function checksHeaderLabel(checks: GitHubPullRequestSummary['checks']): string {
+  const ran = checks.passed + checks.failed + checks.pending;
+  const skipped = checks.total - ran;
+  return `${checks.passed}/${ran} checks passed${skipped > 0 ? ` · ${skipped} skipped` : ''}`;
+}
+
 function ReviewStatus({
   detail,
   areConflictsOpen,
@@ -1860,11 +1867,12 @@ function ReviewStatus({
           {reviewStatus.label}
         </span>
       )}
+      {hasMergeConflicts && onToggleConflicts && detail.isDraft ? (
+        <span data-tone="muted"><CircleDot size={11} />Draft</span>
+      ) : null}
       <span data-tone={checksTone}>
         {checksTone === 'success' ? <Check size={12} /> : checksTone === 'danger' ? <AlertTriangle size={12} /> : <CircleDot size={11} />}
-        {detail.checks.total > 0
-          ? `${detail.checks.passed}/${detail.checks.total} checks passed`
-          : 'No checks reported'}
+        {detail.checks.total > 0 ? checksHeaderLabel(detail.checks) : 'No checks reported'}
       </span>
     </>
   );

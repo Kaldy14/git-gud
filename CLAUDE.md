@@ -14,6 +14,11 @@
 - The Guide is the only AI layer in the PR view: pass its notes to `ReviewView` as `guideReferences` and do not pass `reviewGuideProvider` there (the AI brief is for local reviews). Pi is the default harness; fall back to the Claude Code CLI only when Pi is missing or signed out, never to hide real Pi failures.
 - Guide prose renders through `GuideProse`: inline code naming a changed file (full path or unique suffix such as `machines.ts`) becomes a borderless file link that opens Code; other inline code keeps the T3-style tinted code style.
 
+## Pull request status
+
+- Count only unfinished check runs (and PENDING/EXPECTED status contexts) as pending in `parseChecks`; skipped and neutral runs are derived as `total - passed - failed - pending` and never shown as pending.
+- Merge conflicts are actionable: `categorizePullRequest` files conflicting authored PRs under `needs-action`, and `pullRequestStatus` ranks conflicts above Draft so a label never hides them.
+
 ## PR visual tokens
 
 - Use the `:root` type, spacing, and tone tokens in `main.css` for PR surfaces; keep content text at 11px or larger (10px only for counts, pills, and eyebrows).

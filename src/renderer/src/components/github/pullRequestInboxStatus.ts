@@ -23,11 +23,13 @@ export function pullRequestStatus(
   if (pullRequest.state === 'closed') {
     return { label: 'Closed', tone: 'muted', icon: 'dot' };
   }
-  if (pullRequest.isDraft) {
-    return { label: 'Draft', tone: 'muted', icon: 'dot' };
-  }
+  // Conflicts outrank Draft: drafts are already grouped and chipped separately,
+  // while a hidden conflict is work the author does not know about.
   if (hasPullRequestMergeConflicts(pullRequest)) {
     return { label: 'Merge conflicts', tone: 'danger', icon: 'warning' };
+  }
+  if (pullRequest.isDraft) {
+    return { label: 'Draft', tone: 'muted', icon: 'dot' };
   }
   const reviewStatus = pullRequestReviewStatus(pullRequest);
   if (reviewStatus.tone === 'danger') {

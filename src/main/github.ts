@@ -2787,7 +2787,10 @@ export function categorizePullRequest(input: {
     return 'drafts';
   }
 
+  // Merge conflicts block the author, so they are actionable rather than waiting.
   const needsAction =
+    input.mergeable === 'conflicting' ||
+    input.mergeState === 'dirty' ||
     input.reviewDecision === 'changes-requested' ||
     input.reviewers.some((reviewer) => reviewer.state === 'changes-requested') ||
     input.checks.state === 'failure' ||
@@ -2841,6 +2844,7 @@ function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChe
   const total = contexts ? readNumber(contexts.totalCount, 'check count') : nodes.length;
   let passed = 0;
   let failed = 0;
+  let pending = 0;
 
   for (const node of nodes) {
     if (!isRecord(node)) {
@@ -2852,6 +2856,8 @@ function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChe
         passed += 1;
       } else if (node.state === 'FAILURE' || node.state === 'ERROR') {
         failed += 1;
+      } else if (node.state === 'PENDING' || node.state === 'EXPECTED') {
+        pending += 1;
       }
       continue;
     }
@@ -2867,16 +2873,22 @@ function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChe
         node.conclusion === 'STARTUP_FAILURE'
       ) {
         failed += 1;
+      } else if (node.status !== 'COMPLETED') {
+        pending += 1;
       }
     }
   }
+
+  // Skipped, neutral and stale runs are neither pending nor passed: the renderer
+  // derives them as total - passed - failed - pending. Contexts beyond the fetched
+  // page have an unknown state, so they stay pending.
 
   return {
     state: normalizeCheckState(readOptionalString(rollup.state)),
     total,
     passed,
     failed,
-    pending: Math.max(0, total - passed - failed)
+    pending: pending + Math.max(0, total - nodes.length)
   };
 }
 

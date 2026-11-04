@@ -134,6 +134,12 @@ describe('pull request inbox status', () => {
     });
   });
 
+  it('does not let a draft label hide merge conflicts', () => {
+    expect(
+      pullRequestStatus(pullRequestSummary({ isDraft: true, mergeable: 'conflicting' }))
+    ).toMatchObject({ label: 'Merge conflicts', tone: 'danger' });
+  });
+
   it('shows failing checks before approval state', () => {
     expect(
       pullRequestStatus(

@@ -808,7 +808,7 @@ describe('GitHub pull request inbox', () => {
       { id: 'direct', category: 'needs-your-review' },
       { id: 'team', category: 'needs-team-review' },
       { id: 'draft', category: 'drafts' },
-      { id: 'conflict', category: 'waiting' },
+      { id: 'conflict', category: 'needs-action' },
       { id: 'action', category: 'needs-action' },
       { id: 'ready', category: 'ready-to-merge' }
     ]);
@@ -842,7 +842,43 @@ describe('GitHub pull request inbox', () => {
       total: 3,
       passed: 2,
       failed: 0,
-      pending: 1
+      pending: 0
+    });
+  });
+
+  it('counts only unfinished checks as pending and leaves skipped runs out', () => {
+    const response = parseGitHubPullRequestResponse(
+      {
+        data: {
+          viewer: { login: 'octocat' },
+          repository: {
+            pullRequest: pullRequestNode({
+              statusCheckRollup: {
+                state: 'PENDING',
+                contexts: {
+                  totalCount: 5,
+                  nodes: [
+                    { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' },
+                    { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SKIPPED' },
+                    { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'NEUTRAL' },
+                    { __typename: 'CheckRun', status: 'IN_PROGRESS', conclusion: null },
+                    { __typename: 'StatusContext', state: 'PENDING' }
+                  ]
+                }
+              }
+            })
+          }
+        }
+      },
+      'work'
+    );
+
+    expect(response.pullRequest.checks).toEqual({
+      state: 'pending',
+      total: 5,
+      passed: 1,
+      failed: 0,
+      pending: 2
     });
   });
 
