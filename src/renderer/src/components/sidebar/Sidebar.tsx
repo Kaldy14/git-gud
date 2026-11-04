@@ -648,9 +648,9 @@ export function Sidebar({
               <span className="min-w-0 flex-1 text-left">Pull requests</span>
               {isPullRequestLoading ? (
                 <Loader2 size={12} className="animate-spin text-[var(--text-3)]" />
-              ) : (
+              ) : pullRequestCount !== undefined ? (
                 <span className="pr-count-badge">{pullRequestCount}</span>
-              )}
+              ) : null}
             </button>
             {SECTIONS.map((section) => {
               const isExpanded = expanded[section.id];

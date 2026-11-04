@@ -30,6 +30,15 @@ describe('Sidebar compact modes', () => {
     expect(rail).not.toContain('Pull request inbox, 0 items');
   });
 
+  it('omits the docked count badge when the inbox count is unavailable', () => {
+    const unavailable = renderSidebar({ pullRequestCount: undefined });
+    const empty = renderSidebar({ pullRequestCount: 0 });
+
+    expect(unavailable).toContain('aria-label="Pull request inbox, unavailable"');
+    expect(unavailable).not.toContain('pr-count-badge');
+    expect(empty).toContain('class="pr-count-badge">0</span>');
+  });
+
   it('does not announce a false zero while the inbox is loading', () => {
     const rail = renderSidebar({ isCollapsed: true, isPullRequestLoading: true });
 

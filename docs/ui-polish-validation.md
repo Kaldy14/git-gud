@@ -2,6 +2,19 @@
 
 These are unmodified screenshots of the running Git Gud Electron application. They show real Git history, local staging, an empty repository, a failed local clone, and read-only views of GitHub PR #4 and its workflow runs. Settings and repositories used for validation are isolated from the normal desktop workspace.
 
+## Inbox badge follow-up
+
+The round-11 review found an empty pill in the docked Pull requests row when no count was available. The badge now renders only for a known count; a genuine zero remains visible. Seven focused sidebar tests, scoped ESLint and the build including typecheck pass. Three actual-app checks verify the unavailable docked row, unavailable flyout row and recovered real count. The controlled local IPC failure uses the same isolated profile as the prior pass. No renderer or console errors were recorded.
+
+[Docked unavailable row](images/ui-polish-overhaul/inbox-unavailable-docked.png), [flyout unavailable row](images/ui-polish-overhaul/inbox-unavailable-flyout.png), and [recovered count](images/ui-polish-overhaul/inbox-recovered-docked.png).
+
+```sh
+pnpm exec vitest run src/renderer/src/components/sidebar/Sidebar.test.tsx
+pnpm exec eslint src/renderer/src/components/sidebar/Sidebar.tsx src/renderer/src/components/sidebar/Sidebar.test.tsx
+pnpm build
+node /tmp/git-gud-polish-inbox-badge-r12.mjs
+```
+
 ## Latest focused pass
 
 Round 11 keeps the existing visual direction and compares eight fixed views with round 6 at matching dimensions and 1× density. [Open the matched comparison](ui-polish-comparison.md). The eight current comparison images, working-copy image, selected-code images and short-footer images in this gallery are from this pass. Other gallery images retain their earlier provenance. The Retina set below is from round 10.
