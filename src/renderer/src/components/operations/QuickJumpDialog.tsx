@@ -104,7 +104,7 @@ export function QuickJumpDialog({
   const filteredItems = useMemo(() => filterQuickJumpItems(items, query, MAX_RESULTS), [items, query]);
   const activeItemIndex = nearestEnabledIndex(filteredItems, activeIndex, 1);
   const activeItem = filteredItems[activeItemIndex];
-  const loadedCommitCount = graphRows.filter((row) => row.node.kind === 'commit').length;
+  const loadedCommitCount = graphRows.filter((row) => row.node.kind === 'commit' || row.node.kind === 'merge').length;
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'ArrowDown') {
