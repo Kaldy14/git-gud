@@ -62,8 +62,8 @@
 - Workspace tiers: At 1240px and above, panels follow saved width and collapse preferences. From 900 to 1239px the sidebar is the 36px rail and commit details stay docked per the saved preference. Below 900px details also start as a rail. Width comes from CSS pixels, so 200% zoom uses the lower tiers.
 - Sidebar flyout: Below 1240px a rail click floats the full sidebar over the canvas at `min(saved width, 320px)`. The rail's 36px slot stays in the row, so the canvas does not reflow. It opens by click only, has no scrim, and stays open while comparing refs. It closes on Escape, its close button, an outside press, or navigation to another surface. Escape closes a context menu first. Escape and the button return focus to where it was; an outside press leaves focus alone. Rail sections open and scroll to that section, and active Solo or Hide filters always show a labelled rail count.
 - Compact panel state: Below 1240px, panel actions are session state and never write saved preferences. Resize handles are hidden. From 900 to 1239px history and code keep separate detail choices, so closing details for a diff leaves history's panel open; below 900px they share one choice. WIP entries open details. Widening to 1240px clears session choices and restores saved state.
-- PR chrome: At window height 880px or below, or width below 1240px, the title joins the repository/actions row and status, branch direction and diff counts share a metadata row. Metadata wraps when needed; secondary byline details give way at narrower widths. Tabs share one content edge. Scrolling condenses the metadata while retaining a visible heading.
-- Repository tabs shrink within their strip before scrolling; text truncates within each tab, overflow edges fade and selecting a tab brings it into view.
+- PR chrome: At every window size, the title joins the repository/actions row and status, branch direction and diff counts share a metadata row. Metadata wraps when needed; secondary byline details give way at narrower widths. Tabs share one content edge. Scrolling condenses the metadata while retaining a visible heading.
+- Repository tabs shrink within their strip before scrolling; text truncates within each tab, overflow edges fade and selecting a tab or resizing the strip brings the active tab into view. Active tabs have an inset teal edge; hover uses a quieter fill.
 - Toolbar context gets spare space below 1280px rather than reserving an equal empty column to centre actions.
 - Touch/hover differences: Primary actions remain visible; hover may reveal secondary file actions but keyboard focus must reveal them too.
 
@@ -130,6 +130,8 @@
 
 ### Review composition
 
-- A comment highlights its selected code line, while the annotation gutter stays neutral. Selected line numbers use the diff foreground for contrast. The comment field uses the shared visible focus ring.
+- A comment marks its selected code line with a teal edge while retaining the addition/deletion background. Selected syntax tokens temporarily use one readable foreground, and the annotation gutter stays neutral. Selected line numbers use the diff foreground for contrast. The comment field uses the shared visible focus ring.
 - File expansion choices use stable chunk identity so background context cannot reopen a collapsed card. Full context arriving mid-draft preserves the editor node, focus and caret.
 - A loading PR count is unknown: show the spinner with a reserved blank count and announce loading.
+
+- On short PR panes the grouping explanation and position share a footer row, shortcut hints give way, and the block list keeps more height. Aggregate healthy status is neutral; current run/PR outcomes carry the status colour. Panel rails use matching open-panel icons.

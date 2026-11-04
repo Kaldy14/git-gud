@@ -3839,6 +3839,7 @@ export function WorkspaceShell(): ReactElement {
           gitHubWorkspaceView?.kind === 'inbox' || gitHubWorkspaceView?.kind === 'review'
         }
         pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
+        isPullRequestLoading={pullRequestInboxQuery.isLoading}
         onActivatePullRequestsTab={handleOpenPullRequestInbox}
         onOpenSettings={handleOpenSettings}
         onActivateProfile={handleActivateProfile}

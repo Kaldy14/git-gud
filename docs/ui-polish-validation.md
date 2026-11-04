@@ -2,6 +2,14 @@
 
 These are unmodified screenshots of the running Git Gud Electron application. They show real Git history, local staging, an empty repository, a failed local clone, and read-only views of GitHub PR #4 and its workflow runs. Settings and repositories used for validation are isolated from the normal desktop workspace.
 
+## Representative screenshot set
+
+These seven captures come directly from the same running Electron build at device scale factor 2 and zoom 1. They are native 2880×1920 or 2200×1520 PNGs at unchanged 1440×960 or 1100×760 CSS viewports. Electron's `--force-device-scale-factor=2` enables the Retina-density run. They are not enlarged or resampled images. The complete 1× validation matrix remains linked below, including edge and error states.
+
+![History at Retina density](images/ui-polish-overhaul/history@2x.png)
+
+[Diff](images/ui-polish-overhaul/diff@2x.png), [compact working copy](images/ui-polish-overhaul/working-copy-compact@2x.png), [repository launcher](images/ui-polish-overhaul/start@2x.png), [compact PR Code](images/ui-polish-overhaul/pr-code-compact@2x.png), [local PR draft](images/ui-polish-overhaul/pr-comment-compact@2x.png), and [workflow dashboard](images/ui-polish-overhaul/dashboard@2x.png).
+
 ## Checks
 
 | Command | Result |
@@ -18,7 +26,7 @@ Keyboard resizing preserves a preferred 266px graph width at 1100px with the nav
 
 Seventeen integration checks load the actual PR Code view, open and cancel a file comment composer, save a local Actions dashboard, and display its workflow graph. A clone from a missing local source fails with Git exit 128, keeps the entered values, and can be retried. The error summary expands to the exact Git output. A separate disposable repository has a real merge conflict between `hotfix/login` and `feature/login`; branch creation is disabled and the resolver exposes distinct A/B choices without saving a resolution. The completed release graph shows the actual dependency diamond: Verify release feeds both builds, and Publish waits for both. Expanded matrix job names retain their dependencies. Four SVG edges and the corresponding runtime job IDs are checked, along with card fit at both window sizes. Names render at 13px and durations at 12px. Both file and line comment drafts survive Escape and V when focus moves outside the textarea. The labelled gutter button opens a line composer beneath its selected diff line, and new line targets stay unavailable until that composer closes. Validation types into both composers and explicitly cancels without submitting. The PR comment composer clearly states that drafts remain local until review submission. Viewed & next and other block navigation stay disabled during composition, with visibly dimmed unavailable rows.
 
-No unexpected renderer exceptions or console errors were recorded. The browser network log contains no captured requests, so it does not establish coverage of GitHub IPC or CLI traffic. The expected Git failures above are part of the validation. Reports, exact local commands, and validation scripts remain in the ignored `artifacts/ui-polish/round-9/` folder in the task workspace.
+No unexpected renderer exceptions or console errors were recorded. The browser network log contains no captured requests, so it does not establish coverage of GitHub IPC or CLI traffic. The expected Git failures above are part of the validation. Reports, exact local commands, and validation scripts remain in the ignored `artifacts/ui-polish/round-10/` folder in the task workspace.
 
 The final readability pass uses 13px commit subjects in 30px graph rows, 13px diff code with 21px line spacing, and 12px settings helpers. Dashboard run outcomes sit beside their titles, with one timestamp in the same group. In-progress CI uses info blue.
 
@@ -29,12 +37,17 @@ Muted metadata now uses `#a8afbb`, measuring 5.0:1 against the selected graph ro
 Nine line-comment checks verify the labelled action, UI typography, line placement, keyboard draft protection, compact fit and explicit cancellation. Five additional coverage checks verify compact diff, palette, PR Code, and grouped dashboard layouts. Summary, Guide, and Activity captures explicitly select their corresponding real panes. The Guide capture shows its initial empty state; no generation was invoked. Completed CI states are captured from real GitHub runs. The linked prior running sample is round 8, run 41889943591; the linked queued samples are round 7. These prior captures do not certify this pass’s title-strip layout or newly sampled queued jobs. Any new live sample is recorded separately. Those prior queued rows identify waiting time, and both waiting job cards show a dash instead of execution time.
 
 
-Sixteen compact-workspace checks and nine flyout interaction checks cover outside dismissal, Escape priority, dialog layering, keyboard focus, folder and filter retention, visible Solo filtering, Start navigation, and both open and collapsed saved preferences. The compact graph canvas measures 778px at 1100px. Six additional checks delay the real full-file GitHub response without changing its payload, collapse a file, type at a middle caret in another block, release context, and verify both the collapsed state and the same editor node, selection, focus and insertion point. Full context becomes available after cancellation. The gutter button and painted line number have separate, nonoverlapping bounds. Diff selection now uses teal.
+Sixteen compact-workspace checks and nine flyout interaction checks cover outside dismissal, Escape priority, dialog layering, keyboard focus, folder and filter retention, visible Solo filtering, Start navigation, and both open and collapsed saved preferences. The compact graph canvas measures 778px at 1100px. Seven additional checks delay the real full-file GitHub response without changing its payload, collapse a file, type at a middle caret in another block, release context, and verify both the collapsed state and the same editor node, selection, focus and insertion point. Full context becomes available after cancellation. The gutter button and painted line number have separate, nonoverlapping bounds. Diff selection now uses teal.
 
 
-The compact PR header now ends at y137, compared with y202 for the tall desktop header. All four tabs share this content edge. Six header checks cover compact, short wide, 850px and native 200% views. The metadata condenses while scrolling Activity and returns at the top. Nine appearance checks verify the neutral annotation gutter, a teal input focus border and outline, 5.37:1 selected-line-number contrast, overflow fades, horizontal strip scrolling and real keyboard tab activation. Selector-based scrolling was used because this agent-browser version routes the low-level wheel command to coordinate 0,0; physical wheel routing is not certified.
+The shared PR header now ends at y137 on both tall and compact desktops, compared with y202 before this refinement. All four tabs share this content edge. Seven header checks cover compact, short wide, 850px and native 200% views. The metadata condenses while scrolling Activity and returns at the top. Eleven appearance checks verify the neutral annotation gutter, a teal input focus border and outline, 5.37:1 selected-line-number contrast, overflow fades, horizontal strip scrolling and real keyboard tab activation. Selector-based scrolling was used because this agent-browser version routes the low-level wheel command to coordinate 0,0; physical wheel routing is not certified.
 
-A delayed real inbox response verifies that loading shows a reserved blank count, announces loading, and changes to the real count of two. The ref-hover check proves clipping at rest, 171px available for 201px of text, before revealing the full 201px. Four extra compact checks cover clone/create forms, stash and both conflict source choices without submitting or saving a resolution.
+A delayed real inbox response verifies that both the rail and title-bar control announce loading, reserve an unknown count, and change to the real count of two. The ref-hover check proves clipping at rest, 171px available for 201px of text, before revealing the full 201px. Four extra compact checks cover clone/create forms, stash and both conflict source choices without submitting or saving a resolution.
+
+
+Selected code retains addition/deletion backgrounds and inline change emphasis, carries a thin teal edge, and temporarily uses one readable foreground. An actual selected import row with keyword and string-literal tokens measures 11.91:1 against its row background; an added type/keyword row measures 11.36:1. This fixes the contrast loss caused by tinting syntax-coloured text. Normal syntax colors return when selection clears. The number remains at 5.37:1. This does not certify every unselected token in every syntax theme.
+
+The active repository tab is now revealed after strip resize as well as activation. The zoom check asserts its entire bounds, not just fade flags: New Tab spans x338.5–456.5 inside the scroller at x84–458.66 after zoom. Inactive hover remains distinct from its selected neighbour's teal edge. At a 480px CSS height the PR footer and content are both 104px high, with no overflow scrollbar. A matching open-panel icon replaces the sidebar's filled chevron; aggregate Healthy text recedes while individual run outcomes retain their status colours.
 
 Tested renderer URL: `file:///Volumes/DevSSD/worktrees/git-gud/t3-8b4af8c3/out/renderer/index.html`.
 
@@ -42,21 +55,23 @@ Focused commands:
 
 ```sh
 agent-browser --session git-gud-polish connect 9236
-node /tmp/git-gud-polish-e2e-v9.mjs
-node /tmp/git-gud-polish-layout-check-v9.mjs
-node /tmp/git-gud-polish-broad-r9.mjs
-node /tmp/git-gud-polish-interaction-r9.mjs
-node /tmp/git-gud-polish-ref-hover-r9.mjs
-node /tmp/git-gud-polish-release-r9.mjs
-node /tmp/git-gud-polish-coverage-r9.mjs
-node /tmp/git-gud-polish-line-comment-r9.mjs
-node /tmp/git-gud-polish-context-r9.mjs
-node /tmp/git-gud-polish-compact-r9.mjs
-node /tmp/git-gud-polish-flyout-r9.mjs
-node /tmp/git-gud-polish-header-r9.mjs
-node /tmp/git-gud-polish-appearance-r9.mjs
-node /tmp/git-gud-polish-loading-r9.mjs
-node /tmp/git-gud-polish-extra-compact-r9.mjs
+node /tmp/git-gud-polish-e2e-v10.mjs
+node /tmp/git-gud-polish-layout-check-v10.mjs
+node /tmp/git-gud-polish-broad-r10.mjs
+node /tmp/git-gud-polish-interaction-r10.mjs
+node /tmp/git-gud-polish-ref-hover-r10.mjs
+node /tmp/git-gud-polish-release-r10.mjs
+node /tmp/git-gud-polish-coverage-r10.mjs
+node /tmp/git-gud-polish-line-comment-r10.mjs
+node /tmp/git-gud-polish-context-r10.mjs
+node /tmp/git-gud-polish-compact-r10.mjs
+node /tmp/git-gud-polish-flyout-r10.mjs
+node /tmp/git-gud-polish-header-r10.mjs
+node /tmp/git-gud-polish-appearance-r10.mjs
+node /tmp/git-gud-polish-loading-r10.mjs
+node /tmp/git-gud-polish-extra-compact-r10.mjs
+node /tmp/git-gud-polish-selected-code-r10.mjs
+node /tmp/git-gud-polish-retina-r10.mjs
 ```
 
 Script copies and machine-readable reports are retained with the local screenshots.
@@ -108,6 +123,8 @@ Additional coverage: [PR Summary](images/ui-polish-overhaul/pr-summary.png), [Gu
 ![Focused comment with a neutral gutter](images/ui-polish-overhaul/pr-line-comment-focused-compact.png)
 
 [Compact Summary](images/ui-polish-overhaul/pr-summary-compact.png), [compact Activity](images/ui-polish-overhaul/pr-activity-compact.png), [PR Code at native 200% zoom](images/ui-polish-overhaul/pr-code-zoom-200.png), [overflowing tabs](images/ui-polish-overhaul/tabs-overflow-zoom-200.png), [unknown loading count](images/ui-polish-overhaul/sidebar-rail-loading.png), [compact clone](images/ui-polish-overhaul/clone-compact.png), and [compact conflict resolver](images/ui-polish-overhaul/conflict-resolver-compact.png).
+
+[Selected keyword and string row](images/ui-polish-overhaul/pr-selected-keyword-string.png), [short footer at native 200% zoom](images/ui-polish-overhaul/pr-code-short-footer-zoom-200.png), and [hovered versus selected tabs](images/ui-polish-overhaul/tabs-hover-distinction-zoom-200.png) are also retained.
 
 ## Scope and limits
 

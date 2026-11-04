@@ -482,11 +482,12 @@ code,
 
 .repo-tab:hover {
   color: var(--text-1);
-  background: rgb(255 255 255 / 0.045);
+  background: rgb(255 255 255 / 0.025);
 }
 
 /* The active tab shares the toolbar's surface, so the two read as one piece of chrome. */
 .repo-tab[data-active='true'] {
+  box-shadow: inset 0 2px 0 var(--accent-2);
   background: var(--bg-toolbar);
   color: var(--text-1);
 }
@@ -1157,20 +1158,6 @@ code,
 
 .sidebar-collapsed-toggle:hover {
   opacity: 0.78;
-}
-
-.sidebar-collapsed-toggle-mark {
-  display: grid;
-  width: 14px;
-  height: 14px;
-  place-items: center;
-  border-radius: 999px;
-  background: currentColor;
-}
-
-.sidebar-collapsed-toggle-mark > svg {
-  color: var(--collapsed-sidebar-bg);
-  transform: translateX(0.5px);
 }
 
 .sidebar-collapsed-items {
@@ -6023,7 +6010,7 @@ button.ref-chip {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--accent-2);
+  color: var(--text-1);
   font-size: 12px;
   font-weight: 650;
 }
@@ -7462,9 +7449,9 @@ button.ref-chip {
 }
 
 .actions-summary[data-tone='success'] {
-  border-color: var(--success-border);
-  background: var(--success-bg);
-  color: var(--success-text);
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-3);
 }
 
 .workflow-run-list {

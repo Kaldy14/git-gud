@@ -19,6 +19,7 @@ import {
   Loader2,
   MoreVertical,
   PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -26,7 +27,6 @@ import {
   Tag,
   Trash2,
   TreePine,
-  Trees,
   X
 } from 'lucide-react';
 
@@ -170,7 +170,7 @@ const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
 const COLLAPSED_SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
   { id: 'local', title: 'Local branches', icon: <Laptop size={16} /> },
   { id: 'remote', title: 'Remote branches', icon: <Cloud size={16} /> },
-  { id: 'worktrees', title: 'Worktrees', icon: <Trees size={16} /> },
+  { id: 'worktrees', title: 'Worktrees', icon: <FolderGit2 size={16} /> },
   { id: 'stashes', title: 'Stashes', icon: <Archive size={16} /> },
   { id: 'tags', title: 'Tags', icon: <Tag size={16} /> }
 ];
@@ -524,9 +524,7 @@ export function Sidebar({
         aria-label="Expand sidebar"
         title="Expand sidebar"
       >
-        <span className="sidebar-collapsed-toggle-mark" aria-hidden="true">
-          <ChevronRight size={11} strokeWidth={3.25} />
-        </span>
+        <PanelLeftOpen size={16} aria-hidden="true" />
       </button>
       <div className="sidebar-collapsed-items">
         {visibilityFilterCount > 0 ? (

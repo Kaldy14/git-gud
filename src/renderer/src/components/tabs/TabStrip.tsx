@@ -37,6 +37,7 @@ type TabStripProps = {
   dashboardRunningCount?: number;
   isPullRequestsTabActive?: boolean;
   pullRequestCount?: number;
+  isPullRequestLoading?: boolean;
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
@@ -66,6 +67,7 @@ export function TabStrip({
   dashboardRunningCount = 0,
   isPullRequestsTabActive = false,
   pullRequestCount = 0,
+  isPullRequestLoading = false,
   profileState,
   activeRepoDirty = false,
   onActivateTab,
@@ -106,25 +108,23 @@ export function TabStrip({
       scroller.dataset.overflowStart = String(scrollLeft > 1);
       scroller.dataset.overflowEnd = String(scrollLeft + clientWidth < scrollWidth - 1);
     };
-    const resizeObserver = new ResizeObserver(syncOverflow);
+    const revealActiveTab = (): void => {
+      if (activeScrollableTabId) {
+        document.getElementById(tabDomId(activeScrollableTabId))
+          ?.closest('.repo-tab')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+      syncOverflow();
+    };
+    const resizeObserver = new ResizeObserver(revealActiveTab);
 
     resizeObserver.observe(scroller);
     scroller.addEventListener('scroll', syncOverflow, { passive: true });
-    syncOverflow();
+    revealActiveTab();
 
     return () => {
       resizeObserver.disconnect();
       scroller.removeEventListener('scroll', syncOverflow);
     };
-  }, [scrollableTabCount]);
-
-  useEffect(() => {
-    if (activeScrollableTabId) {
-      document
-        .getElementById(tabDomId(activeScrollableTabId))
-        ?.closest('.repo-tab')
-        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
   }, [activeScrollableTabId, scrollableTabCount]);
 
   const navigationTabIds = [
@@ -462,14 +462,15 @@ export function TabStrip({
           <div
             className="no-drag repo-tab repo-tab--icon"
             data-active={isPullRequestsTabActive}
-            title={`Pull requests · ${pullRequestCount}`}
+            title={isPullRequestLoading ? 'Pull requests · loading' : `Pull requests · ${pullRequestCount}`}
           >
             <button
               id={tabDomId(PULL_REQUESTS_TAB_ID)}
               className="repo-tab-main"
               type="button"
               role="tab"
-              aria-label={`Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
+              aria-label={isPullRequestLoading ? 'Pull requests, loading' : `Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
+              aria-busy={isPullRequestLoading}
               aria-selected={isPullRequestsTabActive}
               tabIndex={isPullRequestsTabActive ? 0 : -1}
               onClick={onActivatePullRequestsTab}
@@ -486,7 +487,7 @@ export function TabStrip({
                 size={15}
                 className={isPullRequestsTabActive ? 'text-[var(--accent-2)]' : undefined}
               />
-              {pullRequestCount > 0 ? (
+              {!isPullRequestLoading && pullRequestCount > 0 ? (
                 <span className="pull-request-tab-count" aria-hidden="true">
                   {pullRequestCount > 99 ? '99+' : pullRequestCount}
                 </span>

@@ -54,6 +54,19 @@ const DIFF_SEPARATOR_CSS = `
   }
 `;
 
+// Keep selected code readable across syntax themes. The edge carries selection;
+// one foreground overrides the syntax renderer's inline token colours only while selected.
+const DIFF_SELECTION_CSS = `
+  [data-line][data-selected-line] {
+    --mix-selection-dark: 100%;
+    --mix-selection-light: 100%;
+    box-shadow: inset 2px 0 var(--accent-2);
+  }
+  [data-line][data-selected-line] span {
+    color: var(--diffs-fg) !important;
+  }
+`;
+
 export const DIFF_OPTIONS_BASE = {
   themeType: 'dark',
   diffIndicators: 'classic',
@@ -61,7 +74,7 @@ export const DIFF_OPTIONS_BASE = {
   lineDiffType: 'char',
   overflow: 'wrap',
   stickyHeader: true,
-  unsafeCSS: `${WHITESPACE_ONLY_DIFF_CSS}\n${DIFF_SEPARATOR_CSS}`
+  unsafeCSS: `${WHITESPACE_ONLY_DIFF_CSS}\n${DIFF_SEPARATOR_CSS}\n${DIFF_SELECTION_CSS}`
 } satisfies FileDiffOptions<undefined>;
 
 export function createDiffOptionsBase<LAnnotation = undefined>(
