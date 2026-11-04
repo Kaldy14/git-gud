@@ -547,11 +547,12 @@ export function Sidebar({
           type="button"
           data-active={isPullRequestInboxActive}
           onClick={onTogglePullRequestInbox}
-          aria-label={`Pull request inbox, ${pullRequestCount} items`}
-          title={`Pull requests: ${pullRequestCount}`}
+          aria-label={isPullRequestLoading ? 'Pull request inbox, loading' : `Pull request inbox, ${pullRequestCount} items`}
+          title={isPullRequestLoading ? 'Pull requests: loading' : `Pull requests: ${pullRequestCount}`}
+          aria-busy={isPullRequestLoading}
         >
           {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
-          <span>{formatCollapsedCount(pullRequestCount)}</span>
+          <span>{isPullRequestLoading ? '\u00a0' : formatCollapsedCount(pullRequestCount)}</span>
         </button>
         {COLLAPSED_SECTIONS.map(renderCollapsedSection)}
       </div>

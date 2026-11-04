@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactElement, type WheelEvent } from 'react';
 import { FilePlus2, FolderGit2, GitPullRequest, LayoutDashboard, Plus, X } from 'lucide-react';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 
@@ -89,6 +89,44 @@ export function TabStrip({
   const dragSessionRef = useRef<TabDragSession | undefined>(undefined);
   const dropTargetRef = useRef<TabDropTarget | undefined>(undefined);
   const suppressTabClickRef = useRef<string | undefined>(undefined);
+  const tabScrollerRef = useRef<HTMLDivElement>(null);
+  const activeScrollableTabId = isStartTabActive ? START_TAB_ID : activeTabId;
+  const scrollableTabCount = tabs.length + (isStartTabOpen ? 1 : 0);
+
+  useEffect(() => {
+    const scroller = tabScrollerRef.current;
+
+    if (!scroller) {
+      return;
+    }
+
+    const syncOverflow = (): void => {
+      // Fractional display scaling leaves up to a pixel between scrollLeft and the true end.
+      const { scrollLeft, scrollWidth, clientWidth } = scroller;
+      scroller.dataset.overflowStart = String(scrollLeft > 1);
+      scroller.dataset.overflowEnd = String(scrollLeft + clientWidth < scrollWidth - 1);
+    };
+    const resizeObserver = new ResizeObserver(syncOverflow);
+
+    resizeObserver.observe(scroller);
+    scroller.addEventListener('scroll', syncOverflow, { passive: true });
+    syncOverflow();
+
+    return () => {
+      resizeObserver.disconnect();
+      scroller.removeEventListener('scroll', syncOverflow);
+    };
+  }, [scrollableTabCount]);
+
+  useEffect(() => {
+    if (activeScrollableTabId) {
+      document
+        .getElementById(tabDomId(activeScrollableTabId))
+        ?.closest('.repo-tab')
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [activeScrollableTabId, scrollableTabCount]);
+
   const navigationTabIds = [
     ...tabs.map((tab) => tab.id),
     ...(isStartTabOpen ? [START_TAB_ID] : []),
@@ -220,7 +258,7 @@ export function TabStrip({
         role="tablist"
         aria-label="Workspace views"
       >
-        <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div ref={tabScrollerRef} className="repo-tab-scroller" onWheel={scrollTabStripWithWheel}>
           {tabs.map((tab, tabIndex) => {
             const isActive = tab.id === activeTabId;
 
@@ -468,6 +506,13 @@ export function TabStrip({
       </div>
     </div>
   );
+}
+
+// A mouse wheel only reports vertical movement, which would otherwise never reach this strip.
+function scrollTabStripWithWheel(event: WheelEvent<HTMLDivElement>): void {
+  if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+    event.currentTarget.scrollLeft += event.deltaY;
+  }
 }
 
 function dashboardsTabLabel(

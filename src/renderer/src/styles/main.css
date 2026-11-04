@@ -344,10 +344,41 @@ code,
 
 /* --- Title bar tabs -------------------------------------------------- */
 
+/* Tabs shrink to their minimum before the strip scrolls, so labels truncate inside their tab. */
+.repo-tab-scroller {
+  --tab-fade-start: 0px;
+  --tab-fade-end: 0px;
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  overflow-x: auto;
+  scroll-padding-inline: 28px;
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--tab-fade-start),
+    #000 calc(100% - var(--tab-fade-end)),
+    transparent
+  );
+}
+
+.repo-tab-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.repo-tab-scroller[data-overflow-start='true'] {
+  --tab-fade-start: 28px;
+}
+
+.repo-tab-scroller[data-overflow-end='true'] {
+  --tab-fade-end: 28px;
+}
+
 .repo-tab {
   position: relative;
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   align-self: flex-end;
   align-items: center;
   gap: 2px;
@@ -462,6 +493,7 @@ code,
 
 /* Global destinations are buttons in the strip, not document tabs. */
 .repo-tab--icon {
+  flex: none;
   align-self: center;
   width: 32px;
   min-width: 32px;
@@ -813,6 +845,14 @@ code,
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 8px;
   container: toolbar / inline-size;
+}
+
+/* Centring the Git actions costs branch text once the window narrows. A container cannot query
+   itself, so these tracks follow the window; Jump collapses to its icon just below this width. */
+@media (max-width: 1280px) {
+  .app-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
 }
 
 .tb-group {
@@ -5992,7 +6032,7 @@ button.ref-chip {
 .pr-action-dialog textarea,
 .pr-action-dialog select {
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: 5px;
   outline: none;
   background: var(--bg-field);
@@ -6030,7 +6070,14 @@ button.ref-chip {
 .review-inline-composer textarea:focus,
 .pr-action-dialog textarea:focus,
 .pr-action-dialog select:focus {
-  border-color: var(--select-border);
+  border-color: var(--focus-ring);
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+/* The input's wrapper clips for its resize handle, so this ring sits inside the border. */
+.review-inline-composer-input textarea:focus {
+  outline-offset: -2px;
 }
 
 .review-inline-comment-error {

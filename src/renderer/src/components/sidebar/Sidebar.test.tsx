@@ -24,6 +24,14 @@ describe('Sidebar remote section', () => {
 });
 
 describe('Sidebar compact modes', () => {
+  it('does not announce a false zero while the inbox is loading', () => {
+    const rail = renderSidebar({ isCollapsed: true, isPullRequestLoading: true });
+
+    expect(rail).toContain('aria-label="Pull request inbox, loading"');
+    expect(rail).toContain('title="Pull requests: loading"');
+    expect(rail).not.toContain('Pull request inbox, 0 items');
+  });
+
   it('keeps the resize handle only when docked', () => {
     expect(renderSidebar()).toContain('aria-label="Resize sidebar"');
     expect(renderSidebar()).not.toContain('workspace-sidebar-flyout-slot');

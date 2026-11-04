@@ -5,6 +5,17 @@ export const REVIEW_LINE_SELECTION_CSS = `
     padding-left: max(2ch, 24px);
   }
 
+  /* An annotation is not part of the selected code range. Keep the editor's
+     gutter neutral instead of extending the line highlight down its full height. */
+  [data-line-annotation][data-selected-line],
+  [data-gutter-buffer="annotation"][data-selected-line] {
+    --diffs-line-bg: var(--diffs-bg);
+  }
+
+  [data-column-number][data-selected-line] {
+    color: var(--diffs-fg);
+  }
+
   [data-gutter-utility-slot] {
     z-index: 2;
     left: 0;

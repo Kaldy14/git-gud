@@ -20,7 +20,9 @@ const LABELS: Record<PullRequestDetailTab, string> = {
 /**
  * T3 Code's detail header: a crumb row (repository and number) with the actions, then the title,
  * status line, and branch line. Once the active pane scrolls, the fold collapses and the crumb row
- * shows the number and title instead.
+ * shows the number and title instead. Short and compact windows keep the title in the crumb row
+ * and set the fold as one metadata row (pr-workspace.css). CSS shows one title at a time, so the
+ * crumb title carries the heading role whenever the h1 is hidden or inert.
  */
 export function PullRequestDetailHeader({ pullRequest, condensed = false, commits, status, actions, onBack }: {
   pullRequest: GitHubPullRequestSummary;
@@ -47,47 +49,43 @@ export function PullRequestDetailHeader({ pullRequest, condensed = false, commit
         <button className="icon-btn icon-btn-tertiary" type="button" onClick={onBack} aria-label="Back to pull requests" title="Back to pull requests">
           <ArrowLeft size={14} />
         </button>
-        {condensed ? (
-          <span className="pr-detail-crumb-path">
-            {number}
-            <span className="pr-detail-crumb-title" title={pullRequest.title}>{pullRequest.title}</span>
-          </span>
-        ) : (
-          <span className="pr-detail-crumb-path">
-            <span className="pr-detail-crumb-repo">{pullRequest.owner}/{pullRequest.repository}</span>
-            {number}
-          </span>
-        )}
+        <span className="pr-detail-crumb-path">
+          <span className="pr-detail-crumb-repo">{pullRequest.owner}/{pullRequest.repository}</span>
+          {number}
+          <span className="pr-detail-crumb-title" role="heading" aria-level={1} title={pullRequest.title}>{pullRequest.title}</span>
+        </span>
         <div className="pr-detail-actions">{actions}</div>
       </div>
       <div className="pr-detail-fold" inert={condensed}>
         <div>
           <h1 title={pullRequest.title}>{pullRequest.title}</h1>
-          <div className="pr-detail-line">
-            <span className="pr-detail-status">{status}</span>
-            <span className="pr-detail-divider" aria-hidden="true" />
-            <span className="pr-detail-byline">
-              <PullRequestAvatar author={pullRequest.author} authorAvatarUrl={pullRequest.authorAvatarUrl} size="small" />
-              <strong>{pullRequest.author}</strong>
-              <span>
-                updated <time dateTime={pullRequest.updatedAt} title={new Date(pullRequest.updatedAt).toLocaleString()}>{formatRelativeTime(pullRequest.updatedAt)}</time>
+          <div className="pr-detail-meta">
+            <div className="pr-detail-line">
+              <span className="pr-detail-status">{status}</span>
+              <span className="pr-detail-divider" aria-hidden="true" />
+              <span className="pr-detail-byline">
+                <PullRequestAvatar author={pullRequest.author} authorAvatarUrl={pullRequest.authorAvatarUrl} size="small" />
+                <strong>{pullRequest.author}</strong>
+                <span>
+                  updated <time dateTime={pullRequest.updatedAt} title={new Date(pullRequest.updatedAt).toLocaleString()}>{formatRelativeTime(pullRequest.updatedAt)}</time>
+                </span>
+                {commits !== undefined ? <span>{commits.toLocaleString()} {commits === 1 ? 'commit' : 'commits'}</span> : null}
               </span>
-              {commits !== undefined ? <span>{commits.toLocaleString()} {commits === 1 ? 'commit' : 'commits'}</span> : null}
-            </span>
-          </div>
-          <div className="pr-detail-line">
-            <code className="pr-detail-branches" title={`${headLabel} merges into ${pullRequest.baseRefName}`}>
-              <span>{pullRequest.baseRefName}</span>
-              <ArrowLeft size={12} aria-label="receives changes from" />
-              <span>{headLabel}</span>
-            </code>
-            <span className="pr-detail-diffstat">
-              <span>
-                <FileDiff size={12} aria-hidden="true" />
-                {pullRequest.changedFiles.toLocaleString()} {pullRequest.changedFiles === 1 ? 'file' : 'files'}
+            </div>
+            <div className="pr-detail-line">
+              <code className="pr-detail-branches" title={`${headLabel} merges into ${pullRequest.baseRefName}`}>
+                <span>{pullRequest.baseRefName}</span>
+                <ArrowLeft size={12} aria-label="receives changes from" />
+                <span>{headLabel}</span>
+              </code>
+              <span className="pr-detail-diffstat">
+                <span>
+                  <FileDiff size={12} aria-hidden="true" />
+                  {pullRequest.changedFiles.toLocaleString()} {pullRequest.changedFiles === 1 ? 'file' : 'files'}
+                </span>
+                <PullRequestLineStats additions={pullRequest.additions} deletions={pullRequest.deletions} />
               </span>
-              <PullRequestLineStats additions={pullRequest.additions} deletions={pullRequest.deletions} />
-            </span>
+            </div>
           </div>
         </div>
       </div>

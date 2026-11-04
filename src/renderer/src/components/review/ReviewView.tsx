@@ -146,7 +146,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewSections, getReviewFileIdentity, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
+import { createReviewSections, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
 import {
   createReviewViewState,
   getReviewScrollTopForNavigation,
@@ -2058,7 +2058,7 @@ function ReviewBody({
     const path = externalGuideLocation?.file.path;
     if (path) {
       const keys = new Set(allFileUnits.flatMap((unit) => unit.unit.chunks)
-        .filter((chunk) => chunk.path === path).map(getReviewFileIdentity));
+        .filter((chunk) => chunk.path === path).map((chunk) => chunk.id));
       setCollapsedFileKeys((current) => new Set([...current].filter((key) => !keys.has(key))));
     }
   }
@@ -2176,7 +2176,7 @@ function ReviewBody({
     setCollapsedFileKeys((current) => {
       const next = new Set(current);
       for (const item of groupReviewFiles(selectedUnit?.unit.chunks ?? [])) {
-        if (item.chunks[0].path === file.path) next.delete(item.key);
+        if (item.chunks[0].path === file.path) next.delete(item.chunks[0]!.id);
       }
       return next;
     });
@@ -2517,8 +2517,8 @@ function ReviewBody({
                           onSetAgentNoteHidden={onSetAgentNoteHidden}
                           typeDefinitionPaths={typeDefinitionPaths}
                           typeDefinitionInteraction={typeDefinitionInteraction}
-                          isCollapsed={collapsedFileKeys.has(file.key)}
-                          onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
+                          isCollapsed={collapsedFileKeys.has(file.chunks[0]!.id)}
+                          onToggleCollapsed={() => toggleFile(file.chunks[0]!.id, file.chunks)}
                         />
                       ))}
                     </section>
@@ -3502,7 +3502,7 @@ function ReviewInlineComposer({
             ? <Loader2 size={12} className="animate-spin" />
             : <Send size={12} />}
           Add to review
-          <kbd aria-hidden="true" className="text-[9px] text-current opacity-70">⌘↵</kbd>
+          <kbd aria-hidden="true" className="text-[11px] text-current">⌘↵</kbd>
         </button>
       </div>
     </form>
