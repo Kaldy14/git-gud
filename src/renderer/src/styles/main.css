@@ -62,7 +62,7 @@
   /* Dimmer than helper text so an empty field never reads as already filled in. */
   --text-placeholder: #828997;
   --graph-text: #d0d3d9;
-  --graph-text-muted: #9ba2af;
+  --graph-text-muted: var(--text-3);
   --graph-ref-text: #d3d8da;
   --machine: #f0a13f;
   --graph-separator: rgb(255 255 255 / 0.07);
@@ -1822,7 +1822,7 @@ code,
   border-radius: 3px;
   background: var(--bg-graph);
   color: var(--graph-text-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: 500;
   line-height: 14px;
   transform: translateY(-50%);
@@ -7479,17 +7479,17 @@ button.ref-chip {
 }
 
 .pull-request-workflow-summary[data-tone='running'],
-.pull-request-workflow-run > span[data-tone='running'] {
+.pull-request-workflow-run [data-tone='running'] {
   color: var(--info-text);
 }
 
 .pull-request-workflow-summary[data-tone='success'],
-.pull-request-workflow-run > span[data-tone='success'] {
+.pull-request-workflow-run [data-tone='success'] {
   color: var(--success-text);
 }
 
 .pull-request-workflow-summary[data-tone='danger'],
-.pull-request-workflow-run > span[data-tone='danger'] {
+.pull-request-workflow-run [data-tone='danger'] {
   color: var(--danger-text);
 }
 
@@ -7501,7 +7501,7 @@ button.ref-chip {
   display: grid;
   min-width: 0;
   min-height: 36px;
-  grid-template-columns: 16px minmax(0, 1fr) auto 11px;
+  grid-template-columns: 16px minmax(0, 1fr) 11px;
   align-items: center;
   gap: 5px;
   border-bottom: 1px solid rgb(59 65 76 / 0.58);
@@ -7526,7 +7526,14 @@ button.ref-chip {
   place-items: center;
 }
 
-.pull-request-workflow-run > strong {
+.pull-request-workflow-run-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pull-request-workflow-run-heading > strong {
   overflow: hidden;
   color: var(--text-2);
   font-size: 11px;
@@ -7535,7 +7542,8 @@ button.ref-chip {
   white-space: nowrap;
 }
 
-.pull-request-workflow-run > span:nth-child(3) {
+.pull-request-workflow-outcome {
+  flex-shrink: 0;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -9024,3 +9032,9 @@ button.ref-chip {
 .pr-row-state svg[data-tone='merged'],
 .pr-review-header-status > :is(span, button)[data-tone='merged'] > svg { color: var(--ai-text); }
 .pr-review-header-status > :is(span, button)[data-tone='merged'] { color: var(--text-1); }
+
+@media (max-width: 1180px) {
+  .side-row-meta[data-kind='hash'] {
+    display: none;
+  }
+}

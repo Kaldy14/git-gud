@@ -857,6 +857,7 @@ function SectionRows({
               icon={<Tag size={12} />}
               label={tag.name}
               meta={tag.sha.slice(0, 7)}
+              metaKind="hash"
               onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
             />
           ))}
@@ -991,6 +992,7 @@ function RemoteSectionRows({
                           icon={<GitBranch size={12} />}
                           label={label}
                           meta={branch.sha.slice(0, 7)}
+                          metaKind="hash"
                           visibilityMode={branchVisibilityModeForRef(branchVisibility, 'remote', branch.name)}
                           depth={depth}
                           isActionDisabled={isOperationBusy}
@@ -1191,6 +1193,7 @@ function SidebarRow({
   icon,
   label,
   meta,
+  metaKind,
   visibilityMode,
   depth = 0,
   isActive = false,
@@ -1204,6 +1207,7 @@ function SidebarRow({
   icon: ReactNode;
   label: string;
   meta?: string;
+  metaKind?: 'hash';
   visibilityMode?: BranchVisibilityMode;
   depth?: number;
   isActive?: boolean;
@@ -1217,7 +1221,7 @@ function SidebarRow({
       className={`side-row${className ? ` ${className}` : ''}`}
       style={{ paddingLeft: 34 + depth * 18 }}
       data-active={isActive}
-      title={title ?? label}
+      title={metaKind === 'hash' ? `${title ?? label} · ${meta}` : title ?? label}
       role="treeitem"
       aria-level={ariaLevel ?? depth + 2}
       aria-current={isActive ? 'page' : undefined}
@@ -1251,7 +1255,7 @@ function SidebarRow({
       <span className="side-row-icon">{isActive ? <Check size={12} /> : icon}</span>
       <span className="side-row-label">{label}</span>
       <BranchVisibilityIcon mode={visibilityMode} />
-      {meta ? <span className="side-row-meta">{meta}</span> : null}
+      {meta ? <span className="side-row-meta" data-kind={metaKind}>{meta}</span> : null}
     </div>
   );
 }

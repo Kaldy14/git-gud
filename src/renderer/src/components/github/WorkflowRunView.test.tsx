@@ -110,6 +110,27 @@ describe('WorkflowRunView', () => {
     expect(markup).not.toContain('Find jobs');
   });
 
+  it('does not present queued time as job execution duration', () => {
+    const queryClient = new QueryClient();
+    const input = { profileId: 'profile-1', owner: 'acme', repository: 'widgets', runId: 101 };
+    queryClient.setQueryData(gitHubWorkflowRunDetailQueryKey(input), {
+      ...input,
+      dependencyGraphAvailable: true,
+      totalJobCount: 1,
+      jobs: [{ ...workflowJob(1, 'waiting-build'), status: 'queued', conclusion: undefined, startedAt: '2026-07-27T10:00:00Z' }],
+      loadedAt: '2026-07-27T10:02:00Z'
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <WorkflowRunView profileId={input.profileId} owner={input.owner} repository={input.repository}
+          run={{ ...workflowRun(), status: 'queued', conclusion: undefined }} onBack={vi.fn()} />
+      </QueryClientProvider>
+    );
+    expect(markup).toContain('waiting-build');
+    expect(markup).toContain('Queued');
+    expect(markup).toContain('<small>–</small>');
+  });
+
   it('places jobs into dependency levels instead of arbitrary columns', () => {
     const jobs = [
       workflowJob(1, 'detect'),

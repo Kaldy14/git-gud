@@ -340,7 +340,7 @@ describe('DashboardView', () => {
       </QueryClientProvider>
     );
 
-    expect(markup).toContain('my open PRs · 1 PR');
+    expect(markup).toContain('My open PRs · 1 PR');
     expect(markup).toContain('#42');
     expect(markup).toContain('Group dashboard workflows');
     expect(markup).toContain('feature/group-workflows');
@@ -504,6 +504,19 @@ describe('DashboardView', () => {
     );
     expect(markup).toContain('aria-errormessage="dashboard-branch-filter-error"');
     expect(markup).toContain('id="dashboard-branch-filter-error"');
+  });
+
+  it('describes queued time without claiming the workflow has started', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-27T10:09:00Z'));
+    try {
+      const markup = renderActionsDashboard([workflowRun({ status: 'queued' })]);
+      expect(markup).toContain('Queued 9m ago');
+      expect(markup).not.toContain('Started');
+      expect(markup).not.toContain(', started');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('groups each run with one timestamp and retains trigger and start times in its accessible name', () => {

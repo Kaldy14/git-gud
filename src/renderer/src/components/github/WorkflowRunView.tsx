@@ -26,11 +26,12 @@ import {
   XCircle
 } from 'lucide-react';
 
-import { workflowRunPresentation } from '@renderer/components/dashboard/workflowRunPresentation';
+import { isQueuedWorkflowRun, workflowRunPresentation } from '@renderer/components/dashboard/workflowRunPresentation';
 import { useGitHubWorkflowRunDetail } from '@renderer/queries/github';
 import type {
   GitHubWorkflowJob,
   GitHubWorkflowRun,
+  GitHubWorkflowRunStatus,
   GitHubWorkflowStep
 } from '@shared/types';
 
@@ -378,7 +379,7 @@ function WorkflowRunSummary({
   onShowSkippedChange: (showSkipped: boolean) => void;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
-  const duration = formatDuration(run.startedAt, run.updatedAt, run.status !== 'completed');
+  const duration = formatDuration(run.startedAt, run.updatedAt, run.status);
 
   return (
     <div className="workflow-run-summary-page">
@@ -637,7 +638,7 @@ function WorkflowDependencyGraph({
                     {formatDuration(
                       job.startedAt,
                       job.completedAt,
-                      job.status !== 'completed'
+                      job.status
                     )}
                   </small>
                 </button>
@@ -819,7 +820,7 @@ function WorkflowJobDetail({ job }: { job: GitHubWorkflowJob }): ReactElement {
         </a>
       </header>
       <div className="workflow-job-meta">
-        <span>Duration <strong>{formatDuration(job.startedAt, job.completedAt, job.status !== 'completed')}</strong></span>
+        <span>Duration <strong>{formatDuration(job.startedAt, job.completedAt, job.status)}</strong></span>
         {job.runnerName ? <span>Runner <strong>{job.runnerName}</strong></span> : null}
         {job.labels.length > 0 ? <span>Labels <strong>{job.labels.join(', ')}</strong></span> : null}
       </div>
@@ -842,7 +843,7 @@ function WorkflowStepRow({ step }: { step: GitHubWorkflowStep }): ReactElement {
       <StatusIcon item={step} size={14} />
       <span>{step.name}</span>
       <small data-tone={presentation.tone}>{presentation.label}</small>
-      <time>{formatDuration(step.startedAt, step.completedAt, step.status !== 'completed')}</time>
+      <time>{formatDuration(step.startedAt, step.completedAt, step.status)}</time>
     </div>
   );
 }
@@ -874,13 +875,13 @@ function formatEvent(event: string): string {
 function formatDuration(
   startedAt: string | undefined,
   completedAt: string | undefined,
-  running: boolean
+  status: GitHubWorkflowRunStatus
 ): string {
-  if (!startedAt) {
+  if (!startedAt || isQueuedWorkflowRun({ status })) {
     return '–';
   }
   const start = Date.parse(startedAt);
-  const end = running ? Date.now() : completedAt ? Date.parse(completedAt) : start;
+  const end = status === 'in-progress' ? Date.now() : completedAt ? Date.parse(completedAt) : start;
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
     return '–';
   }

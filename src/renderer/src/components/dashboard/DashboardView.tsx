@@ -83,7 +83,7 @@ import {
   workflowRunBranchFilterError,
   workflowRunFilterSummary
 } from './workflowRunFilters';
-import { workflowRunPresentation } from './workflowRunPresentation';
+import { isQueuedWorkflowRun, workflowRunPresentation } from './workflowRunPresentation';
 import {
   copyWorkflowRunFailure,
   sendWorkflowRunFailureToCodex
@@ -1250,7 +1250,7 @@ function GitHubActionsTile({
   ).length;
   const tileSubtitle =
     tile.view === 'pull-requests'
-      ? `my open PRs${runsQuery.data ? ` · ${pullRequestCount} ${
+      ? `My open PRs${runsQuery.data ? ` · ${pullRequestCount} ${
           pullRequestCount === 1 ? 'PR' : 'PRs'
         }` : ''}`
       : filterSummary;
@@ -1597,8 +1597,10 @@ function PullRequestWorkflowRow({
       aria-label={`${run.name}, ${presentation.label}. Open workflow run in Git Gud`}
     >
       <span data-tone={presentation.tone}>{statusIcon}</span>
-      <strong title={run.name}>{run.name}</strong>
-      <span data-tone={presentation.tone}>{presentation.label}</span>
+      <span className="pull-request-workflow-run-heading">
+        <strong title={run.name}>{run.name}</strong>
+        <span className="pull-request-workflow-outcome" data-tone={presentation.tone}>{presentation.label}</span>
+      </span>
       <ChevronRight size={10} aria-hidden="true" />
     </button>
   );
@@ -1825,6 +1827,8 @@ function WorkflowRunRow({
   onOpenWorkflowRun: (run: GitHubWorkflowRun) => void;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
+  const isQueued = isQueuedWorkflowRun(run);
+  const displayedAt = isQueued ? run.createdAt : run.startedAt ?? run.createdAt;
   const triggeredRelativeTime = formatRelativeTime(run.createdAt);
   const startedRelativeTime = run.startedAt ? formatRelativeTime(run.startedAt) : undefined;
   const statusIcon =
@@ -1855,7 +1859,7 @@ function WorkflowRunRow({
         hasFailureActions ? openContextMenuFromKeyboard : undefined
       }
       aria-label={`${run.displayTitle}, ${presentation.label}, triggered ${triggeredRelativeTime}${
-        startedRelativeTime ? `, started ${startedRelativeTime}` : ''
+        !isQueued && startedRelativeTime ? `, started ${startedRelativeTime}` : ''
       }. Open workflow run in Git Gud`}
     >
       <span className="workflow-run-status" data-tone={presentation.tone} title={presentation.label}>
@@ -1875,8 +1879,8 @@ function WorkflowRunRow({
               {run.branch}
             </span>
           ) : null}
-          <time dateTime={run.startedAt ?? run.createdAt} title={formatAbsoluteTime(run.startedAt ?? run.createdAt)}>
-            {run.startedAt ? `Started ${startedRelativeTime}` : `Triggered ${triggeredRelativeTime}`}
+          <time dateTime={displayedAt} title={formatAbsoluteTime(displayedAt)}>
+            {isQueued ? `Queued ${triggeredRelativeTime}` : run.startedAt ? `Started ${startedRelativeTime}` : `Triggered ${triggeredRelativeTime}`}
           </time>
         </span>
       </span>

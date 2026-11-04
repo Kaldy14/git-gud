@@ -22,7 +22,7 @@ import type {
   FileDiffOptions,
   SelectedLineRange
 } from '@pierre/diffs';
-import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
+import { FileDiff, PatchDiff, useWorkerPool, type DiffBasePropsReact } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -976,7 +976,7 @@ export function ReviewView({
   }
 
   function markSelectedUnit(viewed: boolean): void {
-    if (!selectedUnit || progressMutation.isPending) {
+    if (!selectedUnit || progressMutation.isPending || selectedCommentTarget !== undefined || commentMutation.isPending) {
       return;
     }
 
@@ -1095,6 +1095,13 @@ export function ReviewView({
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
     // Portaled menus still bubble through React; their keys must not navigate or close the review.
     if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('[role="menu"]'))) return;
+    if (selectedCommentTarget !== undefined || commentMutation.isPending) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (
       (event.metaKey || event.ctrlKey) &&
       !event.altKey &&
@@ -2398,7 +2405,7 @@ function ReviewBody({
               </>
             ) : null}
             {navigationTools}
-            <span className="review-navigation-shortcuts">
+            <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
               J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
             </span>
           </footer>
@@ -3191,9 +3198,26 @@ function ReviewChunk({
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? createReviewLineSelectionOptions(
         contextualDiffOptions,
-        (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
+        (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range),
+        lineCollaboration.selectedChunkId !== undefined
       )
     : contextualDiffOptions;
+
+  const renderCommentUtility: DiffBasePropsReact<ReviewDiffAnnotation>['renderGutterUtility'] =
+    lineCollaboration && lineCollaboration.selectedChunkId === undefined
+      ? (getHoveredLine) => (
+          <button className="review-gutter-comment" type="button"
+            aria-label={`Comment on line in ${chunk.path}`} title="Comment on line"
+            onClick={() => {
+              const line = getHoveredLine();
+              if (line) lineCollaboration.onSelectLines(chunk.id, chunk.path, {
+                start: line.lineNumber, end: line.lineNumber, side: line.side
+              });
+            }}>
+            +
+          </button>
+        )
+      : undefined;
 
   return (
     <section className="review-chunk" data-review-chunk-id={chunk.id}>
@@ -3211,6 +3235,7 @@ function ReviewChunk({
             className="gg-diff"
             fileDiff={preparedDiff.fileDiff}
             options={interactiveDiffOptions}
+            renderGutterUtility={renderCommentUtility}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
             renderAnnotation={(annotation) => (
@@ -3240,6 +3265,7 @@ function ReviewChunk({
             className="gg-diff"
             patch={chunk.patch}
             options={interactiveDiffOptions}
+            renderGutterUtility={renderCommentUtility}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
             renderAnnotation={(annotation) => (

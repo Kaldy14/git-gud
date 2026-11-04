@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createReviewLineSelectionOptions,
-  normalizeReviewLineSelection,
-  REVIEW_LINE_SELECTION_CSS
+  normalizeReviewLineSelection
 } from './reviewLineSelection';
 
 describe('normalizeReviewLineSelection', () => {
@@ -45,7 +44,7 @@ describe('createReviewLineSelectionOptions', () => {
       enableLineSelection: true,
       controlledSelection: false,
       lineHoverHighlight: 'disabled',
-      enableGutterUtility: false
+      enableGutterUtility: true
     });
     expect(options.onGutterUtilityClick).toBeUndefined();
 
@@ -56,10 +55,10 @@ describe('createReviewLineSelectionOptions', () => {
     expect(onSelectLines).toHaveBeenCalledWith(range);
   });
 
-  it('renders the blue gutter action without a moving utility element', () => {
-    expect(REVIEW_LINE_SELECTION_CSS).toContain('background-color: #4c8dff');
-    expect(REVIEW_LINE_SELECTION_CSS).toContain('[data-column-number]:hover::after');
-    expect(REVIEW_LINE_SELECTION_CSS).toContain("content: '+'");
-    expect(REVIEW_LINE_SELECTION_CSS).toContain('pointer-events: none');
+  it('prevents a new selection from replacing an open comment target', () => {
+    const options = createReviewLineSelectionOptions({}, vi.fn(), true);
+    expect(options.enableLineSelection).toBe(false);
+    expect(options.enableGutterUtility).toBe(false);
+    expect(options.onLineSelected).toBeUndefined();
   });
 });

@@ -1073,7 +1073,7 @@
   font-weight: var(--weight-medium);
   transition: background-color 120ms ease, color 120ms ease;
 }
-.pr-detail-tabs [role='tab']:not(:disabled):hover { background: rgb(255 255 255 / 0.04); color: var(--text-1); }
+.pr-detail-tabs [role='tab']:not(:disabled):not([aria-selected='true']):hover { background: rgb(255 255 255 / 0.04); color: var(--text-1); }
 .pr-detail-tabs [role='tab'][aria-selected='true'] {
   background: var(--bg-surface);
   color: var(--accent-2);
@@ -1648,4 +1648,24 @@
   font-family: var(--font-mono);
   font-size: 0.85em;
   font-weight: var(--weight-medium);
+}
+
+.review-navigation-shortcuts[data-disabled='true'] {
+  opacity: 0.45;
+}
+
+.review-gutter-comment {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--info-text);
+  color: var(--bg-field);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
 }

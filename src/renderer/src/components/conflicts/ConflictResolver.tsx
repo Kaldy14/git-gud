@@ -245,7 +245,7 @@ export function ConflictResolver({
           <div className="conflict-output">
             <div className="conflict-output-toolbar">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--text-2)]">Output</span>
+                <span className="text-[11px] font-semibold text-[var(--text-2)]">Output</span>
                 {draft?.kind === 'text' ? (
                   <span className={markers.length > 0 ? 'text-[var(--danger-text)]' : 'text-[var(--success-text)]'}>
                     {markers.length > 0
