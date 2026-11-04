@@ -1,60 +1,15 @@
+import type { ComponentProps } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { BranchVisibilityTarget } from '@renderer/workspace/branchVisibility';
 import type { GitRepositoryOverview } from '@shared/types';
 
 import { Sidebar } from './Sidebar';
 
 describe('Sidebar remote section', () => {
   it('renders configured remotes with nested branches and management controls', () => {
-    const markup = renderToStaticMarkup(
-      <Sidebar
-        repositoryOverview={repositoryOverview}
-        isLoading={false}
-        isRefreshing={false}
-        isCollapsed={false}
-        width={280}
-        filterFocusSignal={0}
-        onToggleCollapsed={vi.fn()}
-        pullRequestCount={0}
-        isPullRequestLoading={false}
-        isPullRequestInboxActive={false}
-        onTogglePullRequestInbox={vi.fn()}
-        onResize={vi.fn()}
-        onResizeCommit={vi.fn()}
-        branchVisibility={{ solo: [], hidden: [] }}
-        onToggleBranchVisibility={vi.fn()}
-        onClearBranchVisibility={vi.fn()}
-        isOperationBusy={false}
-        onAddRemote={vi.fn()}
-        onFetchRemote={vi.fn()}
-        onEditRemote={vi.fn()}
-        onRemoveRemote={vi.fn()}
-        onCheckoutBranch={vi.fn()}
-        onCheckoutRemoteBranch={vi.fn()}
-        onCopyBranchName={vi.fn()}
-        onPullBranch={vi.fn()}
-        onPushBranch={vi.fn()}
-        onPushBranchWithTag={vi.fn()}
-        onSetBranchUpstream={vi.fn()}
-        onRenameBranch={vi.fn()}
-        onReviewBranch={vi.fn()}
-        onViewPullRequest={vi.fn()}
-        localPullRequestsByBranch={new Map()}
-        remotePullRequestsByBranch={new Map()}
-        onMergeBranch={vi.fn()}
-        onRebaseOntoBranch={vi.fn()}
-        onCreateTagAtCommit={vi.fn()}
-        onCreateSuggestedTagAtCommit={vi.fn(async () => true)}
-        onDeleteBranch={vi.fn()}
-        onDeleteRemoteBranch={vi.fn()}
-        onPushTag={vi.fn()}
-        onDeleteTag={vi.fn()}
-        onStashApply={vi.fn()}
-        onStashPop={vi.fn()}
-        onStashDrop={vi.fn()}
-      />
-    );
+    const markup = renderSidebar();
 
     expect(markup).toContain('aria-label="Add remote"');
     expect(markup).toContain('aria-label="origin remote"');
@@ -67,6 +22,92 @@ describe('Sidebar remote section', () => {
     expect(markup).toContain('>release</span>');
   });
 });
+
+describe('Sidebar compact modes', () => {
+  it('keeps the resize handle only when docked', () => {
+    expect(renderSidebar()).toContain('aria-label="Resize sidebar"');
+    expect(renderSidebar()).not.toContain('workspace-sidebar-flyout-slot');
+
+    const flyout = renderSidebar({ isFlyout: true });
+
+    expect(flyout).toContain('workspace-sidebar-flyout-slot');
+    expect(flyout).not.toContain('aria-label="Resize sidebar"');
+  });
+
+  it('shows active branch filters on the rail', () => {
+    const rail = renderSidebar({
+      isCollapsed: true,
+      branchVisibility: {
+        solo: [branchTarget('a'), branchTarget('b')],
+        hidden: [branchTarget('c')]
+      }
+    });
+
+    expect(rail).toContain('aria-label="2 solo, 1 hidden, open repository sidebar"');
+    expect(rail).toContain('<span>3</span>');
+  });
+
+  it('omits the filter item when no branch filters are active', () => {
+    expect(renderSidebar({ isCollapsed: true })).not.toContain('open repository sidebar');
+  });
+});
+
+function branchTarget(path: string): BranchVisibilityTarget {
+  return { scope: 'local', kind: 'branch', path };
+}
+
+function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}): string {
+  return renderToStaticMarkup(
+    <Sidebar
+      repositoryOverview={repositoryOverview}
+      isLoading={false}
+      isRefreshing={false}
+      isCollapsed={false}
+      width={280}
+      filterFocusSignal={0}
+      onToggleCollapsed={vi.fn()}
+      pullRequestCount={0}
+      isPullRequestLoading={false}
+      isPullRequestInboxActive={false}
+      onTogglePullRequestInbox={vi.fn()}
+      onResize={vi.fn()}
+      onResizeCommit={vi.fn()}
+      onResizeReset={vi.fn()}
+      branchVisibility={{ solo: [], hidden: [] }}
+      onToggleBranchVisibility={vi.fn()}
+      onClearBranchVisibility={vi.fn()}
+      isOperationBusy={false}
+      onAddRemote={vi.fn()}
+      onFetchRemote={vi.fn()}
+      onEditRemote={vi.fn()}
+      onRemoveRemote={vi.fn()}
+      onCheckoutBranch={vi.fn()}
+      onCheckoutRemoteBranch={vi.fn()}
+      onCopyBranchName={vi.fn()}
+      onPullBranch={vi.fn()}
+      onPushBranch={vi.fn()}
+      onPushBranchWithTag={vi.fn()}
+      onSetBranchUpstream={vi.fn()}
+      onRenameBranch={vi.fn()}
+      onReviewBranch={vi.fn()}
+      onViewPullRequest={vi.fn()}
+      localPullRequestsByBranch={new Map()}
+      remotePullRequestsByBranch={new Map()}
+      onMergeBranch={vi.fn()}
+      onRebaseOntoBranch={vi.fn()}
+      onCreateTagAtCommit={vi.fn()}
+      onCreateSuggestedTagAtCommit={vi.fn(async () => true)}
+      onDeleteBranch={vi.fn()}
+      onDeleteRemoteBranch={vi.fn()}
+      onPushTag={vi.fn()}
+      onDeleteTag={vi.fn()}
+      onStashApply={vi.fn()}
+      onStashPop={vi.fn()}
+      onStashDrop={vi.fn()}
+      {...props}
+    />
+  );
+}
 
 const repositoryOverview = {
   repoPath: '/repo',

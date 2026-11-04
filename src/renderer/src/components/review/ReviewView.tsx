@@ -46,6 +46,7 @@ import {
   PanelRightOpen,
   Pencil,
   Pilcrow,
+  Plus,
   Rows3,
   Search,
   Reply,
@@ -2499,7 +2500,7 @@ function ReviewBody({
                       ) : null}
                       {section.files.map((file) => (
                         <ReviewFile
-                          key={file.key}
+                          key={file.chunks[0]!.id}
                           file={file}
                           preparedDiffs={preparedDiffs}
                           diffOptions={diffOptions}
@@ -3097,7 +3098,15 @@ function ReviewChunk({
   hideLeadingExpansion?: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
 }): ReactElement {
-  const expandableDiff = preparedDiff?.expandable;
+  const isComposing = lineCollaboration?.selectedChunkId === chunk.id;
+  const [displayedDiff, setDisplayedDiff] = useState(preparedDiff);
+
+  // Keep the renderer and its annotation nodes stable while someone is typing.
+  if (!isComposing && displayedDiff !== preparedDiff) {
+    setDisplayedDiff(preparedDiff);
+  }
+
+  const expandableDiff = displayedDiff?.expandable;
   const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
     () => {
       const options = expandableDiff
@@ -3214,13 +3223,15 @@ function ReviewChunk({
                 start: line.lineNumber, end: line.lineNumber, side: line.side
               });
             }}>
-            +
+            <Plus size={14} aria-hidden="true" />
           </button>
         )
       : undefined;
 
   return (
-    <section className="review-chunk" data-review-chunk-id={chunk.id}>
+    <section className="review-chunk" data-review-chunk-id={chunk.id}
+      data-context-ready={preparedDiff?.expandable !== undefined}
+      data-context-renderer={displayedDiff?.expandable ? 'full' : 'patch'}>
       {chunk.omittedReason ? (
         <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
           {chunk.omittedReason === 'binary'
@@ -3230,10 +3241,10 @@ function ReviewChunk({
               : 'No textual diff is available for this change.'}
         </div>
       ) : (
-        preparedDiff ? (
+        displayedDiff ? (
           <FileDiff<ReviewDiffAnnotation>
             className="gg-diff"
-            fileDiff={preparedDiff.fileDiff}
+            fileDiff={displayedDiff.fileDiff}
             options={interactiveDiffOptions}
             renderGutterUtility={renderCommentUtility}
             lineAnnotations={lineAnnotations}
@@ -3408,7 +3419,10 @@ function ReviewInlineComposer({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      textareaRef.current?.focus({ preventScroll: true });
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     });
 
     return () => window.cancelAnimationFrame(frame);

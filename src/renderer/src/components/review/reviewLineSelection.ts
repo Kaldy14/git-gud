@@ -1,6 +1,17 @@
 import type { FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 
 export const REVIEW_LINE_SELECTION_CSS = `
+  [data-column-number] {
+    padding-left: max(2ch, 24px);
+  }
+
+  [data-gutter-utility-slot] {
+    z-index: 2;
+    left: 0;
+    right: auto;
+    justify-content: flex-start;
+  }
+
 @media (pointer: fine) {
   [data-interactive-line-numbers] [data-column-number] {
     cursor: pointer;

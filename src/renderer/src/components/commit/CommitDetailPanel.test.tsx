@@ -13,7 +13,7 @@ const conflictedFile: GitFileChangeDetail = {
   path: 'conflicted.ts', status: 'conflicted', staged: false, unstaged: true, conflicted: true
 };
 
-function renderWip(files: GitFileChangeDetail[], isOperationBusy = false): string {
+function renderWip(files: GitFileChangeDetail[], isOperationBusy = false, isResizable = true): string {
   const queryClient = new QueryClient();
   const row: CommitGraphRow = {
     sha: 'wip', parentShas: [], subject: 'Working changes',
@@ -33,6 +33,7 @@ function renderWip(files: GitFileChangeDetail[], isOperationBusy = false): strin
       <QueryClientProvider client={queryClient}>
         <CommitDetailPanel
           repoPath="/repo" row={row} commitFocusSignal={0} isOperationBusy={isOperationBusy}
+          isResizable={isResizable}
           onSelectCommit={vi.fn()} onSelectFile={vi.fn()} onSetReviewOpen={vi.fn()}
           onOpenWipChanges={vi.fn()} onDiscardAllWip={vi.fn()} onDiscardWipFile={vi.fn()}
           onIgnoreWipFile={vi.fn()} onInspectWipFile={vi.fn()} onCopyWipFilePath={vi.fn()}
@@ -92,6 +93,13 @@ describe('WIP empty-state staging', () => {
 
     expect(markup).toContain('Conflicts (1)');
     expect(markup).not.toContain('working tree clean');
+  });
+});
+
+describe('detail panel resizing', () => {
+  it('hides the resize handle when the workspace is compact', () => {
+    expect(renderWip([modifiedFile])).toContain('aria-label="Resize commit details"');
+    expect(renderWip([modifiedFile], false, false)).not.toContain('aria-label="Resize commit details"');
   });
 });
 

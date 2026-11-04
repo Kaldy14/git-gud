@@ -82,7 +82,14 @@ import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { StartPage } from '@renderer/components/start/StartPage';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { selectBackgroundOperationStatus } from '@renderer/components/statusbar/backgroundOperationStatus';
-import { workspacePanelCaps } from '@renderer/workspace/panelLayout';
+import {
+  COMPACT_WORKSPACE_WIDTH,
+  MAX_SIDEBAR_FLYOUT_WIDTH,
+  NO_COMPACT_DETAIL_CHOICE,
+  resolveWorkspacePanels,
+  workspacePanelCaps,
+  type CompactDetailChoice
+} from '@renderer/workspace/panelLayout';
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
@@ -193,6 +200,7 @@ import type {
   RemoteMachineRepository
 } from '@shared/types';
 import { createDefaultAppSettings } from '@shared/settings';
+import { DEFAULT_DETAIL_PANEL_WIDTH, DEFAULT_SIDEBAR_WIDTH } from '@shared/workspace';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import {
   appendPullRequestDeepLinkTarget,
@@ -413,7 +421,7 @@ export function WorkspaceShell(): ReactElement {
   const [detailPanelWidthDraft, setDetailPanelWidthDraft] = useState<number>();
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [compactSidebarOpen, setCompactSidebarOpen] = useState(false);
-  const [compactDetailOpen, setCompactDetailOpen] = useState(false);
+  const [compactDetail, setCompactDetail] = useState<CompactDetailChoice>(NO_COMPACT_DETAIL_CHOICE);
   const [sidebarFilterFocusSignal, setSidebarFilterFocusSignal] = useState(0);
   const [profileTransition, setProfileTransition] = useState<ProfileTransitionState>();
   const [gitHubWorkspaceView, setGitHubWorkspaceView] = useState<GitHubWorkspaceView>();
@@ -808,8 +816,6 @@ export function WorkspaceShell(): ReactElement {
         !activeRepositoryOperations[activeTab.path]?.background
     ) ||
     Boolean(pendingForegroundOperationForActiveRepo);
-  const usesCompactDetail = viewportWidth < 900;
-  const usesCompactSidebar = viewportWidth < 700;
   const hasNoCommits = Boolean(repositoryQuery.data && !repositoryQuery.data.status.branch.oid);
   const branchCreationUnavailableReason = !repositoryQuery.data ? 'Loading repository state'
     : hasNoCommits ? 'Make the first commit before creating a branch'
@@ -820,13 +826,24 @@ export function WorkspaceShell(): ReactElement {
   const { sidebar: sidebarWidthCap, detail: detailPanelWidthCap } = workspacePanelCaps(viewportWidth, isCodeFocused);
   const sidebarWidth = sidebarWidthDraft ?? workspace.sidebarWidth;
   const detailPanelWidth = detailPanelWidthDraft ?? workspace.detailPanelWidth;
-  const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarWidthCap);
+  const panels = resolveWorkspacePanels({
+    viewportWidth,
+    isCodeFocused,
+    sidebarCollapsed: workspace.sidebarCollapsed,
+    detailPanelCollapsed: workspace.detailPanelCollapsed,
+    sidebarFlyoutOpen: compactSidebarOpen,
+    compactDetail
+  });
+  const { isCompact: isCompactWorkspace, isDetailCollapsed: isDetailPanelCollapsed } = panels;
+  const isSidebarCollapsed = panels.sidebar === 'rail';
+  const isSidebarFlyout = panels.sidebar === 'flyout';
+  const effectiveSidebarWidth = Math.min(sidebarWidth, isSidebarFlyout ? MAX_SIDEBAR_FLYOUT_WIDTH : sidebarWidthCap);
   const effectiveDetailPanelWidth = Math.min(detailPanelWidth, detailPanelWidthCap);
-  const isDetailPanelCollapsed = workspace.detailPanelCollapsed || (usesCompactDetail && !compactDetailOpen);
-  const isSidebarCollapsed =
-    workspace.sidebarCollapsed ||
-    (usesCompactSidebar && !compactSidebarOpen) ||
-    (usesCompactDetail && compactDetailOpen);
+
+  // A flyout belongs to the current repository view, never to a later visit.
+  useEffect(() => {
+    setCompactSidebarOpen(false);
+  }, [activeTab?.id, isStartTabActive, gitHubWorkspaceView?.kind, interactiveRebaseDialog, isRecoveringRepository, repositoryUnavailable]);
 
   useRepositoryChangeInvalidation();
 
@@ -889,6 +906,11 @@ export function WorkspaceShell(): ReactElement {
   useEffect(() => {
     function handleResize(): void {
       setViewportWidth(window.innerWidth);
+
+      if (window.innerWidth >= COMPACT_WORKSPACE_WIDTH) {
+        setCompactSidebarOpen(false);
+        setCompactDetail(NO_COMPACT_DETAIL_CHOICE);
+      }
     }
 
     window.addEventListener('resize', handleResize);
@@ -1221,10 +1243,19 @@ export function WorkspaceShell(): ReactElement {
   const handleSidebarResizeCommit = useCallback(
     (width: number): void => {
       setSidebarWidthDraft(undefined);
-      void setSidebarWidth(Math.min(width, sidebarWidthCap));
+
+      if (!isCompactWorkspace) {
+        void setSidebarWidth(Math.min(width, sidebarWidthCap));
+      }
     },
-    [setSidebarWidth, sidebarWidthCap]
+    [isCompactWorkspace, setSidebarWidth, sidebarWidthCap]
   );
+
+  // Resets save the default itself: the viewport cap only limits what is drawn.
+  const handleSidebarResizeReset = useCallback((): void => {
+    setSidebarWidthDraft(undefined);
+    if (!isCompactWorkspace) void setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+  }, [isCompactWorkspace, setSidebarWidth]);
 
   const handleDetailPanelResize = useCallback(
     (width: number): void => {
@@ -1236,19 +1267,22 @@ export function WorkspaceShell(): ReactElement {
   const handleDetailPanelResizeCommit = useCallback(
     (width: number): void => {
       setDetailPanelWidthDraft(undefined);
-      void setDetailPanelWidth(Math.min(width, detailPanelWidthCap));
+
+      if (!isCompactWorkspace) {
+        void setDetailPanelWidth(Math.min(width, detailPanelWidthCap));
+      }
     },
-    [detailPanelWidthCap, setDetailPanelWidth]
+    [detailPanelWidthCap, isCompactWorkspace, setDetailPanelWidth]
   );
 
-  function handleToggleSidebar(): void {
-    if (usesCompactSidebar || compactDetailOpen) {
-      if (workspace.sidebarCollapsed) {
-        void setSidebarCollapsed(false);
-      }
+  const handleDetailPanelResizeReset = useCallback((): void => {
+    setDetailPanelWidthDraft(undefined);
+    if (!isCompactWorkspace) void setDetailPanelWidth(DEFAULT_DETAIL_PANEL_WIDTH);
+  }, [isCompactWorkspace, setDetailPanelWidth]);
 
-      setCompactSidebarOpen((value) => !value || compactDetailOpen);
-      setCompactDetailOpen(false);
+  function handleToggleSidebar(): void {
+    if (isCompactWorkspace) {
+      setCompactSidebarOpen((value) => !value);
       return;
     }
 
@@ -1258,7 +1292,6 @@ export function WorkspaceShell(): ReactElement {
   function handleOpenPullRequestInbox(): void {
     setIsStartTabActive(false);
     setGitHubWorkspaceView({ kind: 'inbox' });
-    setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
   }
 
@@ -1273,7 +1306,6 @@ export function WorkspaceShell(): ReactElement {
 
   function handleViewPullRequest(pullRequest: GitHubPullRequestSummary): void {
     setGitHubWorkspaceView({ kind: 'review', pullRequest });
-    setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
   }
 
@@ -1289,7 +1321,6 @@ export function WorkspaceShell(): ReactElement {
     delete reviewViewStateByTabRef.current[tab.id];
     setGitHubWorkspaceView(undefined);
     setIsStartTabActive(false);
-    setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
 
     if (workspace.activeTabId !== tab.id) {
@@ -1302,7 +1333,6 @@ export function WorkspaceShell(): ReactElement {
 
   function handleClosePullRequestWorkspace(): void {
     setGitHubWorkspaceView(undefined);
-    setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
 
     if (!workspace.activeTabId) {
@@ -1314,7 +1344,6 @@ export function WorkspaceShell(): ReactElement {
   function openDashboardSurface(dashboardId?: string): void {
     setIsStartTabActive(false);
     setGitHubWorkspaceView({ kind: 'dashboard', dashboardId });
-    setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
   }
 
@@ -1369,7 +1398,6 @@ export function WorkspaceShell(): ReactElement {
       profileId: connectedGitHubProfileId,
       ...input
     });
-    setCompactDetailOpen(false);
     setCompactSidebarOpen(false);
   }
 
@@ -1386,27 +1414,32 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleFocusSidebarFilter(): void {
-    if (workspace.sidebarCollapsed) {
+    if (isCompactWorkspace) {
+      setCompactSidebarOpen(true);
+    } else if (workspace.sidebarCollapsed) {
       void setSidebarCollapsed(false);
     }
 
-    setCompactDetailOpen(false);
-    setCompactSidebarOpen(true);
     setSidebarFilterFocusSignal((value) => value + 1);
   }
 
   function handleToggleDetailPanel(): void {
-    if (usesCompactDetail) {
-      if (workspace.detailPanelCollapsed) {
-        void setDetailPanelCollapsed(false);
-      }
-
-      setCompactDetailOpen((value) => !value);
+    if (isCompactWorkspace) {
+      setCompactDetail((value) => ({ ...value, [panels.detailChoiceKey]: isDetailPanelCollapsed }));
       setCompactSidebarOpen(false);
       return;
     }
 
     void setDetailPanelCollapsed(!workspace.detailPanelCollapsed);
+  }
+
+  /** WIP entries land in history, where only the detail panel shows the changes and composer. */
+  function openHistoryDetailPanel(): void {
+    if (isCompactWorkspace) {
+      setCompactDetail((value) => ({ ...value, history: true }));
+    } else if (workspace.detailPanelCollapsed) {
+      void setDetailPanelCollapsed(false);
+    }
   }
 
   function handleLoadMoreGraphRows(): void {
@@ -1607,7 +1640,6 @@ export function WorkspaceShell(): ReactElement {
 
       setIsStartTabActive(false);
       setGitHubWorkspaceView({ kind: 'review', pullRequest: match.pullRequest });
-      setCompactDetailOpen(false);
       setCompactSidebarOpen(false);
     })()
       .catch((error: unknown) => {
@@ -1974,6 +2006,7 @@ export function WorkspaceShell(): ReactElement {
     }
 
     setIsCommitSearchOpen(false);
+    setCompactSidebarOpen(false);
     handleBulkSelectionChange([]);
     void selectCommit(activeTab.id, sha);
     void selectFile(activeTab.id, undefined);
@@ -1994,6 +2027,7 @@ export function WorkspaceShell(): ReactElement {
     }
 
     handleBulkSelectionChange([]);
+    openHistoryDetailPanel();
     void selectCommit(activeTab.id, 'wip');
     setCommitComposerFocusByTab((value) => ({
       ...value,
@@ -2007,6 +2041,7 @@ export function WorkspaceShell(): ReactElement {
     }
 
     handleBulkSelectionChange([]);
+    openHistoryDetailPanel();
     void selectFile(activeTab.id, undefined);
     void selectCommit(activeTab.id, 'wip');
   }
@@ -4003,15 +4038,18 @@ export function WorkspaceShell(): ReactElement {
                 isRefreshing={repositoryQuery.isFetching && !repositoryQuery.isLoading}
                 errorMessage={repositoryError}
                 isCollapsed={isSidebarCollapsed}
+                isFlyout={isSidebarFlyout}
                 width={effectiveSidebarWidth}
                 filterFocusSignal={sidebarFilterFocusSignal}
                 onToggleCollapsed={handleToggleSidebar}
+                onCloseFlyout={() => setCompactSidebarOpen(false)}
                 pullRequestCount={pullRequestInboxQuery.data?.pullRequests.length ?? 0}
                 isPullRequestLoading={pullRequestInboxQuery.isLoading}
                 isPullRequestInboxActive={false}
                 onTogglePullRequestInbox={handleTogglePullRequestInbox}
                 onResize={handleSidebarResize}
                 onResizeCommit={handleSidebarResizeCommit}
+                onResizeReset={handleSidebarResizeReset}
                 branchVisibility={branchVisibility}
                 onToggleBranchVisibility={(mode, target) => {
                   if (!branchVisibilityRepositoryKey) {
@@ -4247,11 +4285,13 @@ export function WorkspaceShell(): ReactElement {
                   isOperationBusy={isOperationBusy}
                   width={effectiveDetailPanelWidth}
                   isCollapsed={isDetailPanelCollapsed}
+                  isResizable={!isCompactWorkspace}
                   remoteAvatars={settings.remoteAvatars}
                   isReviewOpen={isReviewOpen}
                   onToggleCollapsed={handleToggleDetailPanel}
                   onResize={handleDetailPanelResize}
                   onResizeCommit={handleDetailPanelResizeCommit}
+                  onResizeReset={handleDetailPanelResizeReset}
                   onSelectCommit={handleSelectRow}
                   onSelectFile={handleSelectFile}
                   onSetReviewOpen={handleSetReviewOpen}

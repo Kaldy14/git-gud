@@ -59,6 +59,9 @@
 ## Responsive behavior
 - Supported breakpoints/devices: The macOS desktop app must remain useful in constrained split panels and at 200% zoom.
 - Layout adaptations: Long paths truncate before controls; optional rename-source context may hide before primary file and diff actions; dashboard tiles collapse from two columns to one without horizontal scrolling.
+- Workspace tiers: At 1240px and above, panels follow saved width and collapse preferences. From 900 to 1239px the sidebar is the 36px rail and commit details stay docked per the saved preference. Below 900px details also start as a rail. Width comes from CSS pixels, so 200% zoom uses the lower tiers.
+- Sidebar flyout: Below 1240px a rail click floats the full sidebar over the canvas at `min(saved width, 320px)`. The rail's 36px slot stays in the row, so the canvas does not reflow. It opens by click only, has no scrim, and stays open while comparing refs. It closes on Escape, its close button, an outside press, or navigation to another surface. Escape closes a context menu first. Escape and the button return focus to where it was; an outside press leaves focus alone. Rail sections open and scroll to that section, and active Solo or Hide filters always show a labelled rail count.
+- Compact panel state: Below 1240px, panel actions are session state and never write saved preferences. Resize handles are hidden. From 900 to 1239px history and code keep separate detail choices, so closing details for a diff leaves history's panel open; below 900px they share one choice. WIP entries open details. Widening to 1240px clears session choices and restores saved state.
 - Touch/hover differences: Primary actions remain visible; hover may reveal secondary file actions but keyboard focus must reveal them too.
 
 ## Interaction states
@@ -100,7 +103,7 @@
 - Active repository tabs join the toolbar frame and retain a visible close action.
 - History selection spans the whole row with a visible leading edge. Repeated lane bands and message ticks are removed. Fallback nodes are muted, WIP uses a neutral dashed node, and current-ref text is chosen for contrast. The graph keeps its existing topology and keyboard interaction.
 - The repository launcher places Open, Clone, and Create beside searchable recents. Clone and Create use one-column forms with visible labels, path previews, and disabled invalid submissions.
-- Side-panel caps reserve more width for commit subjects and code without closing panels. Graph columns fit the visible lanes; fitted widths never overwrite user preferences on window resize.
+- Docked side panels are capped so commit subjects and code keep their width; below 1240px the sidebar gives way to a rail (see Responsive behavior). Graph columns fit the visible lanes; fitted widths never overwrite user preferences on window resize.
 - Added and deleted diff lines use distinct backgrounds, inline word emphasis, and explicit plus/minus glyphs. Collapsed unchanged context remains neutral.
 - Routine stage/unstage success stays in the changed-file list and live announcement; failures, conflicts, and slow operations retain operation cards.
 - Settings and operation dialogs reuse the shared form-input class. The refresh and save behavior, confirmations, and Git operation contracts are unchanged.
@@ -118,6 +121,6 @@
 
 - Muted metadata uses `#a8afbb`, with 5.0:1 contrast on selected graph rows. Palette footers use 12px; review scope and navigation hints use 11px. The PR-grouped Actions view uses at least 11px content type, and pending context loading stays info blue at every width.
 
-- At compact widths, ref hashes recede from sidebar rows and remain available in full row tooltips. Workflow outcomes sit beside their names in both dashboard modes. Selected PR tabs retain teal under hover.
+- When the sidebar is 240px or narrower, ref hashes recede from its rows and remain available in full row tooltips. Workflow outcomes sit beside their names in both dashboard modes. Selected PR tabs retain teal under hover.
 - Open comment composers keep their targets and typed text under Escape and review shortcuts. Gutter comment controls have accessible labels, and line composers stay beneath their selected line. Comment forms use UI type even inside code annotations.
 - Queued workflow time describes waiting, and queued jobs do not present waiting time as execution duration. Graph subject suffixes use the shared muted text token; conflict output headings use sentence case.

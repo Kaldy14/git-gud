@@ -1077,6 +1077,34 @@ code,
   padding-top: 6px;
 }
 
+/* Holds the rail's place in the row, so opening the flyout never reflows the canvas.
+   Above graph rows (z 40), below the profile overlay (z 45) and dialogs (z 50).
+   No transform or filter here: the context menu inside is position: fixed. */
+.workspace-sidebar-flyout-slot {
+  position: relative;
+  z-index: 44;
+  flex: 0 0 36px;
+  width: 36px;
+  background: var(--collapsed-sidebar-bg);
+}
+
+.workspace-sidebar-flyout-slot > .workspace-sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  box-shadow: var(--shadow-popover);
+  animation: sidebar-flyout-in 120ms ease;
+}
+
+@keyframes sidebar-flyout-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-sidebar-flyout-slot > .workspace-sidebar { animation: none; }
+}
+
 .sidebar-collapsed-toggle {
   display: grid;
   width: 30px;
@@ -3639,8 +3667,8 @@ button.ref-chip {
   /* Neutral on purpose: skipped context must stay quieter than the changes around it. */
   --diffs-bg-separator-override: #1f2227;
   --diffs-bg-hover-override: var(--bg-hover);
-  --diffs-bg-selection-override: #4c8dff;
-  --diffs-bg-selection-number-override: #4c8dff;
+  --diffs-bg-selection-override: var(--accent-2);
+  --diffs-bg-selection-number-override: var(--accent-2);
   --diffs-fg-number-override: var(--text-3);
   --diffs-fg-number-addition-override: var(--text-3);
   --diffs-fg-number-deletion-override: var(--text-3);
@@ -9036,7 +9064,12 @@ button.ref-chip {
 .pr-review-header-status > :is(span, button)[data-tone='merged'] > svg { color: var(--ai-text); }
 .pr-review-header-status > :is(span, button)[data-tone='merged'] { color: var(--text-1); }
 
-@media (max-width: 1180px) {
+/* Sits on the tree, not the aside: the sidebar's fixed context menu must stay window-relative. */
+.sidebar-tree {
+  container: sidebar / inline-size;
+}
+
+@container sidebar (max-width: 240px) {
   .side-row-meta[data-kind='hash'] {
     display: none;
   }

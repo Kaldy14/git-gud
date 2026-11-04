@@ -1660,12 +1660,16 @@
   height: 20px;
   place-items: center;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: var(--info-text);
-  color: var(--bg-field);
+  background: var(--bg-field);
+  color: var(--accent-2);
   font-size: 17px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
+}
+
+.review-inline-composer[data-subject-type='line'] {
+  margin-left: 16px;
 }

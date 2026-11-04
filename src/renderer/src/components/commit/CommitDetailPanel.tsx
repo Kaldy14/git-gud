@@ -58,7 +58,6 @@ import { AuthorAvatar } from '@renderer/components/avatar/AuthorAvatar';
 import { FILE_STATUS_COLORS } from '@shared/graph';
 import type { CommitGraphRow, GitCommitPerson, GitFileChangeDetail, GitIdentity, GitIgnoreInput, GitRepositoryDetail, GitStashRefInput, GitStatusCode, RepoProfileState } from '@shared/types';
 import {
-  DEFAULT_DETAIL_PANEL_WIDTH,
   MAX_DETAIL_PANEL_WIDTH,
   MIN_DETAIL_PANEL_WIDTH,
   normalizeDetailPanelWidth
@@ -79,11 +78,13 @@ type CommitDetailPanelProps = {
   isOperationBusy: boolean;
   width?: number;
   isCollapsed?: boolean;
+  isResizable?: boolean;
   remoteAvatars?: boolean;
   isReviewOpen?: boolean;
   onToggleCollapsed?: () => void;
   onResize?: (width: number) => void;
   onResizeCommit?: (width: number) => void;
+  onResizeReset?: () => void;
   onSelectCommit: (sha: string) => void;
   onSelectFile: (path: string | undefined) => void;
   onSetReviewOpen: (open: boolean) => void;
@@ -124,11 +125,13 @@ export function CommitDetailPanel({
   isOperationBusy,
   width = 382,
   isCollapsed = false,
+  isResizable = true,
   remoteAvatars = false,
   isReviewOpen = false,
   onToggleCollapsed,
   onResize,
   onResizeCommit,
+  onResizeReset,
   onSelectCommit,
   onSelectFile,
   onSetReviewOpen,
@@ -358,6 +361,17 @@ export function CommitDetailPanel({
     setIsResizing(true);
   }
 
+  const resizeHandle = isResizable ? (
+    <DetailResizeHandle
+      width={width}
+      isActive={isResizing}
+      onPointerDown={handleResizeStart}
+      onResize={onResize}
+      onResizeCommit={onResizeCommit}
+      onResizeReset={onResizeReset}
+    />
+  ) : null;
+
   if (isCollapsed) {
     return (
       <aside className="commit-detail-panel flex min-h-0 w-10 shrink-0 flex-col items-center overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)] py-2" aria-label="Commit details">
@@ -371,7 +385,7 @@ export function CommitDetailPanel({
   if (!row || !repoPath) {
     return (
       <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
-        <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
+        {resizeHandle}
         <div className="flex h-10 shrink-0 items-center justify-end border-b border-[var(--border)] px-2">
           <button className="icon-btn" type="button" onClick={onToggleCollapsed} aria-label="Collapse commit details" title="Collapse commit details">
             <PanelRightClose size={15} />
@@ -527,7 +541,7 @@ export function CommitDetailPanel({
 
   return (
     <aside className="commit-detail-panel relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--bg-sidebar)]" style={{ width: normalizeDetailPanelWidth(width) }} aria-label="Commit details">
-      <DetailResizeHandle width={width} isActive={isResizing} onPointerDown={handleResizeStart} onResize={onResize} onResizeCommit={onResizeCommit} />
+      {resizeHandle}
       {showWorkingDirectoryBanner ? (
         <WorkingDirectoryBanner
           dirtyCount={wipDirtyCount}
@@ -629,13 +643,15 @@ function DetailResizeHandle({
   isActive,
   onPointerDown,
   onResize,
-  onResizeCommit
+  onResizeCommit,
+  onResizeReset
 }: {
   width: number;
   isActive: boolean;
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onResize?: (width: number) => void;
   onResizeCommit?: (width: number) => void;
+  onResizeReset?: () => void;
 }): ReactElement {
   function commitWidth(nextWidth: number): void {
     const normalizedWidth = normalizeDetailPanelWidth(nextWidth);
@@ -656,7 +672,7 @@ function DetailResizeHandle({
       data-active={isActive ? 'true' : undefined}
       title="Drag to resize. Double-click to reset."
       onPointerDown={onPointerDown}
-      onDoubleClick={() => commitWidth(DEFAULT_DETAIL_PANEL_WIDTH)}
+      onDoubleClick={onResizeReset}
       onKeyDown={(event) => {
         const step = event.shiftKey ? 48 : 16;
 
@@ -674,7 +690,7 @@ function DetailResizeHandle({
           commitWidth(MAX_DETAIL_PANEL_WIDTH);
         } else if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          commitWidth(DEFAULT_DETAIL_PANEL_WIDTH);
+          onResizeReset?.();
         }
       }}
     />
