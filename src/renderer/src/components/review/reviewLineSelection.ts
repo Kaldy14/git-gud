@@ -5,8 +5,6 @@ export const REVIEW_LINE_SELECTION_CSS = `
   [data-interactive-line-numbers] [data-column-number] {
     cursor: pointer;
   }
-
-
 }
 `;
 

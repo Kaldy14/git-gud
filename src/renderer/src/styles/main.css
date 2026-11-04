@@ -5941,6 +5941,7 @@ button.ref-chip {
 
 .review-inline-composer {
   display: grid;
+  font-family: var(--font-ui);
   gap: 7px;
   margin: 6px 8px 8px 52px;
   border: 1px solid var(--select-border);
@@ -5955,7 +5956,7 @@ button.ref-chip {
   align-items: center;
   gap: 6px;
   color: var(--accent-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -5987,6 +5988,8 @@ button.ref-chip {
   inset: 0;
   height: 100%;
   resize: none;
+  font-size: 13px;
+  line-height: 19px;
 }
 
 .review-inline-composer-hint {

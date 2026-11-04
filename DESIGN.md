@@ -117,3 +117,7 @@
 - Review navigation, including Viewed & next, remains visibly unavailable while a comment composer is open.
 
 - Muted metadata uses `#a8afbb`, with 5.0:1 contrast on selected graph rows. Palette footers use 12px; review scope and navigation hints use 11px. The PR-grouped Actions view uses at least 11px content type, and pending context loading stays info blue at every width.
+
+- At compact widths, ref hashes recede from sidebar rows and remain available in full row tooltips. Workflow outcomes sit beside their names in both dashboard modes. Selected PR tabs retain teal under hover.
+- Open comment composers keep their targets and typed text under Escape and review shortcuts. Gutter comment controls have accessible labels, and line composers stay beneath their selected line. Comment forms use UI type even inside code annotations.
+- Queued workflow time describes waiting, and queued jobs do not present waiting time as execution duration. Graph subject suffixes use the shared muted text token; conflict output headings use sentence case.
