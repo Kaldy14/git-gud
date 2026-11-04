@@ -26,7 +26,7 @@ Compact sidebar rows hide hash metadata while keeping complete branch names and 
 
 Muted metadata now uses `#a8afbb`, measuring 5.0:1 against the selected graph row, up from 4.3:1. The palette footer and PR navigation hints are easier to read. Pending context-loading text stays info blue at compact widths. The PR-grouped Actions tile uses at least 11px content text.
 
-Five additional coverage checks verify compact diff, palette, PR Code, and grouped dashboard layouts. Summary, Guide, and Activity captures explicitly select their corresponding real panes. The Guide capture shows its initial empty state; no generation was invoked. Queued and completed CI states are captured from real GitHub runs.
+Eight line-comment checks verify the labelled action, UI typography, line placement, keyboard draft protection, compact fit and explicit cancellation. Five additional coverage checks verify compact diff, palette, PR Code, and grouped dashboard layouts. Summary, Guide, and Activity captures explicitly select their corresponding real panes. The Guide capture shows its initial empty state; no generation was invoked. Queued and completed CI states are captured from real GitHub runs. Queued rows identify waiting time, and both waiting job cards show a dash instead of execution time.
 
 Tested renderer URL: `file:///Volumes/DevSSD/worktrees/git-gud/t3-8b4af8c3/out/renderer/index.html`.
 
@@ -74,9 +74,9 @@ Script copies and machine-readable reports are retained with the local screensho
 
 Other verified states: [settings](images/ui-polish-overhaul/settings.png), [stash](images/ui-polish-overhaul/stash.png), [PR Code](images/ui-polish-overhaul/pr-code.png), [Actions dashboard](images/ui-polish-overhaul/dashboard.png), [release job graph](images/ui-polish-overhaul/workflow-release.png), [local PR draft composer](images/ui-polish-overhaul/pr-comment-draft.png), and [conflict resolver](images/ui-polish-overhaul/conflict-resolver.png).
 
-Additional coverage: [PR Summary](images/ui-polish-overhaul/pr-summary.png), [Guide empty state](images/ui-polish-overhaul/pr-guide.png), [Activity](images/ui-polish-overhaul/pr-activity.png), [PR-grouped Actions](images/ui-polish-overhaul/dashboard-pull-requests.png), [compact diff](images/ui-polish-overhaul/diff-compact.png), [compact palette](images/ui-polish-overhaul/palette-compact.png), [compact PR Code](images/ui-polish-overhaul/pr-code-compact.png), [queued CI](images/ui-polish-overhaul/workflow-queued.png), and [compact release graph](images/ui-polish-overhaul/workflow-release-compact.png).
+Additional coverage: [PR Summary](images/ui-polish-overhaul/pr-summary.png), [Guide empty state](images/ui-polish-overhaul/pr-guide.png), [Activity](images/ui-polish-overhaul/pr-activity.png), [PR-grouped Actions](images/ui-polish-overhaul/dashboard-pull-requests.png), [compact diff](images/ui-polish-overhaul/diff-compact.png), [compact palette](images/ui-polish-overhaul/palette-compact.png), [compact PR Code](images/ui-polish-overhaul/pr-code-compact.png), [queued dashboard](images/ui-polish-overhaul/dashboard-queued.png), [queued CI jobs](images/ui-polish-overhaul/workflow-queued.png), and [compact release graph](images/ui-polish-overhaul/workflow-release-compact.png).
 
-[Accessible line-comment action](images/ui-polish-overhaul/pr-line-comment-affordance.png) and [protected line draft](images/ui-polish-overhaul/pr-line-comment-draft.png) are also captured from the running app.
+[Accessible line-comment action](images/ui-polish-overhaul/pr-line-comment-affordance.png) and [protected line draft](images/ui-polish-overhaul/pr-line-comment-draft.png), and [compact line draft](images/ui-polish-overhaul/pr-line-comment-compact.png) are also captured from the running app.
 
 ## Scope and limits
 
