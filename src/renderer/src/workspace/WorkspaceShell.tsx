@@ -81,6 +81,7 @@ import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { StartPage } from '@renderer/components/start/StartPage';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { selectBackgroundOperationStatus } from '@renderer/components/statusbar/backgroundOperationStatus';
+import { workspacePanelCaps } from '@renderer/workspace/panelLayout';
 import { TabStrip } from '@renderer/components/tabs/TabStrip';
 import { Toolbar } from '@renderer/components/toolbar/Toolbar';
 import {
@@ -808,8 +809,9 @@ export function WorkspaceShell(): ReactElement {
     Boolean(pendingForegroundOperationForActiveRepo);
   const usesCompactDetail = viewportWidth < 900;
   const usesCompactSidebar = viewportWidth < 700;
-  const sidebarWidthCap = viewportWidth < 900 ? 230 : viewportWidth < 1200 ? 280 : 560;
-  const detailPanelWidthCap = viewportWidth < 1200 ? 320 : 620;
+  const hasNoCommits = Boolean(repositoryQuery.data && !repositoryQuery.data.status.branch.oid);
+  const isCodeFocused = Boolean(activeTab?.selectedFile || activeReviewTarget || activeMachineFile);
+  const { sidebar: sidebarWidthCap, detail: detailPanelWidthCap } = workspacePanelCaps(viewportWidth, isCodeFocused);
   const sidebarWidth = sidebarWidthDraft ?? workspace.sidebarWidth;
   const detailPanelWidth = detailPanelWidthDraft ?? workspace.detailPanelWidth;
   const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarWidthCap);
@@ -4208,6 +4210,7 @@ export function WorkspaceShell(): ReactElement {
                   checkoutTransition={checkoutTransition}
                   largeRepoMode={settings.largeRepoMode}
                   columns={settings.graphColumns}
+                  hasNoCommits={hasNoCommits}
                   remoteAvatars={settings.remoteAvatars}
                   scrollToTopSignal={graphScrollResetByTab[activeTab.id] ?? 0}
                   isSearchOpen={isCommitSearchOpen}
@@ -4226,6 +4229,7 @@ export function WorkspaceShell(): ReactElement {
                 <CommitDetailPanel
                   repoPath={activeTab.path}
                   row={selectedRow}
+                  hasNoCommits={hasNoCommits}
                   selectedShas={selectedCommitShas}
                   parentSha={parentSha}
                   headSha={repositoryQuery.data?.status.branch.oid}

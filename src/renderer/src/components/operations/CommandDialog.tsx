@@ -98,7 +98,7 @@ export function CommandDialog({ dialog, onClose }: CommandDialogProps): ReactEle
     <ModalSurface
       labelledBy={titleId}
       describedBy={dialog.description || dialog.detail || dialog.detailItems?.length ? descriptionId : undefined}
-      className="w-full max-w-[440px] rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
+      className="w-full max-w-[440px] overflow-hidden rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
       onClose={onClose}
     >
       <form
@@ -194,7 +194,7 @@ function DialogField({
       <span className="mb-1.5 block font-semibold text-[var(--text-1)]">{field.label}</span>
       {field.kind === 'text' ? (
         <input
-          className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+          className="form-input"
           value={field.value}
           placeholder={field.placeholder}
           autoFocus={field.autoFocus}
@@ -202,7 +202,7 @@ function DialogField({
         />
       ) : (
         <select
-          className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+          className="form-input"
           value={field.value}
           onChange={(event) => onChangeField({ ...field, value: event.target.value })}
         >

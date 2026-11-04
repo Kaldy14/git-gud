@@ -214,7 +214,7 @@ export function TabStrip({
   };
 
   return (
-    <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
+    <div className="drag-region flex h-10 shrink-0 items-stretch bg-[var(--bg-titlebar)] pl-[84px]">
       <div
         className="relative flex min-w-0 flex-1 items-stretch"
         role="tablist"
@@ -322,7 +322,7 @@ export function TabStrip({
           })}
           {isStartTabOpen ? (
             <div
-              className="no-drag repo-tab group"
+              className="no-drag repo-tab repo-tab--repository group"
               data-active={isStartTabActive}
               title="Open or create a repository"
             >
@@ -348,7 +348,7 @@ export function TabStrip({
                 <button
                   type="button"
                   aria-label="Close New Tab"
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-[var(--text-3)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] focus:opacity-100 group-hover:opacity-100 group-data-[active=true]:opacity-100"
+                  className="repo-tab-close"
                   onClick={onCloseStartTab}
                 >
                   <X size={11} />
@@ -359,7 +359,7 @@ export function TabStrip({
         </div>
 
         <button
-          className="no-drag grid w-10 shrink-0 place-items-center rounded-none text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+          className="no-drag ml-0.5 grid size-7 shrink-0 place-items-center self-center rounded-md text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
           type="button"
           aria-label="New tab"
           title="New tab"

@@ -94,6 +94,31 @@ export function buildStashPushInput(
   };
 }
 
+/** States what is selected and why any listed file cannot be, so a locked row never looks broken. */
+export function describeStashSelection(
+  files: GitFileChangeDetail[],
+  selection: StashSelection
+): { count: string; excludedHint?: string } {
+  const eligiblePaths = selectablePaths(files, selection.includeUntracked);
+  const selected = new Set(selection.selectedPaths);
+  const selectedCount = eligiblePaths.filter((path) => selected.has(path)).length;
+  const excludedCount = selectablePaths(files, true).length - eligiblePaths.length;
+
+  if (excludedCount === 0) {
+    return { count: `${selectedCount} of ${eligiblePaths.length} selected` };
+  }
+
+  const excludedFiles = `${excludedCount} untracked ${excludedCount === 1 ? 'file' : 'files'}`;
+
+  return {
+    count: eligiblePaths.length === 0 ? 'None selected' : `${selectedCount} of ${eligiblePaths.length} selected`,
+    excludedHint:
+      eligiblePaths.length === 0
+        ? `Only ${excludedFiles} changed. Turn on Include untracked files to stash ${excludedCount === 1 ? 'it' : 'them'}.`
+        : `${excludedFiles} left out. Turn on Include untracked files to choose ${excludedCount === 1 ? 'it' : 'them'}.`
+  };
+}
+
 export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClose, onSubmit }: StashDialogProps): ReactElement {
   const titleId = useId();
   const descriptionId = useId();
@@ -106,6 +131,7 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
   const selectedCount = eligiblePaths.filter((path) => selected.has(path)).length;
   const partiallySelected = selectedCount > 0 && !allSelected;
   const canSubmit = selectedCount > 0 && !isBusy;
+  const selectionSummary = describeStashSelection(files, selection);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -119,7 +145,7 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
     <ModalSurface
       labelledBy={titleId}
       describedBy={descriptionId}
-      className="w-full max-w-[560px] rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
+      className="w-full max-w-[560px] overflow-hidden rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
       onClose={onClose}
     >
       <form onSubmit={handleSubmit}>
@@ -140,7 +166,7 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
           <label className="block text-xs text-[var(--text-2)]">
             <span className="mb-1.5 block font-semibold text-[var(--text-1)]">Message</span>
             <input
-              className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+              className="form-input"
               type="text"
               value={message}
               disabled={isBusy}
@@ -149,6 +175,19 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
             />
           </label>
 
+          <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+            <input
+              className="mt-0.5"
+              type="checkbox"
+              checked={selection.includeUntracked}
+              disabled={isBusy}
+              onChange={(event) => setSelection((current) => setStashIncludeUntracked(files, current, event.target.checked))}
+            />
+            <span>
+              <span className="block font-semibold text-[var(--text-1)]">Include untracked files</span>
+              <span className="mt-1 block leading-5 text-[var(--text-3)]">New files Git does not track yet. They are left out of a stash unless you turn this on.</span>
+            </span>
+          </label>
           <div className="overflow-hidden rounded border border-[var(--border)] bg-[var(--bg-field)]">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2.5">
               <label className="flex items-center gap-2 text-xs font-semibold text-[var(--text-1)]">
@@ -168,7 +207,7 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
                 Select all
               </label>
               <span className="text-[11px] text-[var(--text-3)]">
-                {selectedCount} of {eligiblePaths.length} selected
+                {selectionSummary.count}
               </span>
             </div>
 
@@ -181,6 +220,7 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
                   <label
                     key={file.path}
                     className="flex items-center gap-2.5 border-b border-[var(--border)] px-3 py-2 text-xs last:border-b-0"
+                    title={isUntracked && !selection.includeUntracked ? 'Turn on Include untracked files to stash this file' : undefined}
                   >
                     <input
                       type="checkbox"
@@ -192,7 +232,7 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
                     <span className={disabled ? 'min-w-0 flex-1 truncate text-[var(--text-3)]' : 'min-w-0 flex-1 truncate text-[var(--text-1)]'}>
                       {file.path}
                     </span>
-                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--text-3)]">
+                    <span className="shrink-0 text-[11px] text-[var(--text-3)]">
                       {isUntracked ? 'untracked' : file.status}
                     </span>
                   </label>
@@ -201,21 +241,13 @@ export function StashDialog({ files, defaultMessage, initialPaths, isBusy, onClo
                 <p className="px-3 py-5 text-center text-xs text-[var(--text-3)]">No stashable files.</p>
               )}
             </div>
+            {selectionSummary.excludedHint ? (
+              <p className="border-t border-[var(--border)] px-3 py-2 text-[11px] leading-4 text-[var(--text-2)]">
+                {selectionSummary.excludedHint}
+              </p>
+            ) : null}
           </div>
 
-          <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
-            <input
-              className="mt-0.5"
-              type="checkbox"
-              checked={selection.includeUntracked}
-              disabled={isBusy}
-              onChange={(event) => setSelection((current) => setStashIncludeUntracked(files, current, event.target.checked))}
-            />
-            <span>
-              <span className="block font-semibold text-[var(--text-1)]">Include untracked files</span>
-              <span className="mt-1 block leading-5 text-[var(--text-3)]">Enable untracked files and add them to this stash.</span>
-            </span>
-          </label>
         </div>
 
         <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-4 py-3">

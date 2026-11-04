@@ -7,11 +7,11 @@ import {
   GitCommit,
   GitFork,
   Search,
-  TerminalSquare,
-  X
+  TerminalSquare
 } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
+import { filterQuickJumpItems, type QuickJumpSearchable } from '@renderer/components/operations/quickJumpSearch';
 import type { CommitGraphRow, GitRepositoryOverview, RepoTab } from '@shared/types';
 
 export type PaletteAction = {
@@ -41,12 +41,11 @@ export type QuickJumpDialogProps = {
   onOpenWorktree?: (worktreePath: string) => void;
 };
 
-type QuickJumpItem = {
+type QuickJumpItem = QuickJumpSearchable & {
   id: string;
   label: string;
   detail: string;
   category: string;
-  scoreTarget: string;
   icon: ReactNode;
   disabled: boolean;
   disabledReason?: string;
@@ -102,7 +101,7 @@ export function QuickJumpDialog({
       tabs
     ]
   );
-  const filteredItems = useMemo(() => filterItems(items, query), [items, query]);
+  const filteredItems = useMemo(() => filterQuickJumpItems(items, query, MAX_RESULTS), [items, query]);
   const activeItemIndex = nearestEnabledIndex(filteredItems, activeIndex, 1);
   const activeItem = filteredItems[activeItemIndex];
 
@@ -141,7 +140,7 @@ export function QuickJumpDialog({
   return (
     <ModalSurface
       labelledBy={titleId}
-      className="w-[min(680px,calc(100vw-2rem))] overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
+      className="w-[min(680px,calc(100vw-2rem))] overflow-hidden rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/60"
       backdropClassName="fixed inset-0 z-50 grid place-items-start justify-center bg-black/45 px-4 py-[10vh]"
       onClose={onClose}
     >
@@ -164,9 +163,14 @@ export function QuickJumpDialog({
           }}
           onKeyDown={handleKeyDown}
         />
-        <span className="hidden rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-3)] sm:inline">Esc</span>
-        <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close command palette">
-          <X size={14} />
+        <button
+          className="rounded border border-[var(--border-strong)] px-1.5 py-0.5 text-[10px] text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+          type="button"
+          onClick={onClose}
+          aria-label="Close command palette"
+          title="Close command palette"
+        >
+          Esc
         </button>
       </div>
       <div id={resultsId} className="max-h-[min(520px,68vh)] overflow-y-auto p-1.5" role="listbox" aria-label="Command palette results">
@@ -175,7 +179,7 @@ export function QuickJumpDialog({
             <button
               key={item.id}
               id={`${resultsId}-${safeDomId(item.id)}`}
-              className="menu-row"
+              className="menu-row command-palette-row"
               type="button"
               role="option"
               aria-selected={index === activeItemIndex}
@@ -183,7 +187,6 @@ export function QuickJumpDialog({
               tabIndex={-1}
               disabled={item.disabled}
               title={item.disabledReason ?? item.detail}
-              style={index === activeItemIndex ? { background: 'var(--select-bg)', color: 'var(--text-1)' } : undefined}
               onMouseEnter={() => {
                 if (!item.disabled) {
                   setActiveIndex(index);
@@ -199,7 +202,7 @@ export function QuickJumpDialog({
                 <span className="block truncate">{item.label}</span>
                 {item.detail ? <span className="mt-0.5 block truncate text-[11px] text-[var(--text-3)]">{item.detail}</span> : null}
               </span>
-              <span className="w-[104px] shrink-0 truncate text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
+              <span className="w-[104px] shrink-0 truncate text-right text-[11px] text-[var(--text-3)]">
                 {item.category}
               </span>
             </button>
@@ -211,8 +214,8 @@ export function QuickJumpDialog({
         )}
       </div>
       <footer className="flex h-8 items-center justify-between border-t border-[var(--border)] px-3 text-[10.5px] text-[var(--text-3)]">
-        <span>{filteredItems.length} results</span>
-        <span>↑↓ Navigate · Enter Run</span>
+        <span>{filteredItems.length === 1 ? '1 result' : `${filteredItems.length} results`}</span>
+        {filteredItems.length > 0 ? <span>↑↓ Navigate · Enter Run</span> : null}
       </footer>
     </ModalSurface>
   );
@@ -317,7 +320,14 @@ function buildItems({
         label: row.subject,
         detail: isStash ? (stashSelector ?? row.sha.slice(0, 7)) : `${row.sha.slice(0, 7)} · ${row.author.name} · ${row.dateLabel}`,
         category: isStash ? 'Stashes' : 'Commits',
-        scoreTarget: `${row.subject} ${row.sha} ${row.author.name} ${row.author.email ?? ''} ${stashSelector ?? ''}`,
+        scoreTarget: row.subject,
+        commit: {
+          subject: row.subject,
+          sha: row.sha,
+          authorName: row.author.name,
+          authorEmail: row.author.email,
+          stashSelector
+        },
         icon: isStash ? <Archive size={14} /> : <GitCommit size={14} />,
         disabled: !onSelectCommit,
         disabledReason: onSelectCommit ? undefined : 'No history selection action is connected',
@@ -327,51 +337,6 @@ function buildItems({
   });
 
   return [...actionItems, ...repoItems, ...branchItems, ...remoteItems, ...worktreeItems, ...historyItems];
-}
-
-function filterItems(items: QuickJumpItem[], query: string): QuickJumpItem[] {
-  const normalizedQuery = normalizeSearch(query);
-
-  if (!normalizedQuery) {
-    return items.slice(0, MAX_RESULTS);
-  }
-
-  return items
-    .map((item, index) => ({ item, index, score: fuzzyScore(normalizedQuery, normalizeSearch(item.scoreTarget)) }))
-    .filter((entry) => entry.score >= 0)
-    .sort((first, second) => second.score - first.score || first.index - second.index)
-    .slice(0, MAX_RESULTS)
-    .map((entry) => entry.item);
-}
-
-function fuzzyScore(query: string, target: string): number {
-  if (!query) {
-    return 0;
-  }
-
-  const directIndex = target.indexOf(query);
-
-  if (directIndex !== -1) {
-    return 100 - directIndex - target.length * 0.001;
-  }
-
-  let queryIndex = 0;
-  let score = 0;
-  let lastMatch = -2;
-
-  for (let index = 0; index < target.length && queryIndex < query.length; index += 1) {
-    if (target[index] !== query[queryIndex]) {
-      continue;
-    }
-
-    const boundaryBonus = index === 0 || /[\s/_-]/.test(target[index - 1] ?? '') ? 4 : 0;
-    const contiguousBonus = index === lastMatch + 1 ? 3 : 0;
-    score += 1 + boundaryBonus + contiguousBonus;
-    lastMatch = index;
-    queryIndex += 1;
-  }
-
-  return queryIndex === query.length ? score - target.length * 0.001 : -1;
 }
 
 function nextEnabledIndex(items: QuickJumpItem[], currentIndex: number, direction: 1 | -1): number {
@@ -418,10 +383,6 @@ function formatAheadBehind(ahead: number, behind: number): string {
   }
 
   return `${ahead} ahead · ${behind} behind`;
-}
-
-function normalizeSearch(value: string): string {
-  return value.trim().toLowerCase();
 }
 
 function safeDomId(value: string): string {

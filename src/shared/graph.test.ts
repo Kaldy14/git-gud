@@ -6,7 +6,6 @@ import {
   machineWipSha,
   mergeCommitGraphMachines,
   mergeCommitGraphWorktrees,
-  laneBandColor,
   laneColor,
   laneRefColor,
   relativeDateMarkerLabel,
@@ -210,15 +209,6 @@ describe('measured graph palette', () => {
       '#c72a70',
       '#bc271b',
       '#eccc54'
-    ]);
-    expect(Array.from({ length: 7 }, (_, lane) => laneBandColor(lane))).toEqual([
-      '#212b33',
-      '#1e2638',
-      '#261d33',
-      '#2c2031',
-      '#2d1f2b',
-      '#2c1f22',
-      '#313028'
     ]);
     expect(Array.from({ length: 7 }, (_, lane) => laneRefColor(lane))).toEqual([
       '#243e49',

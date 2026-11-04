@@ -449,11 +449,6 @@ export function Sidebar({
             <PanelLeftClose size={14} />
           </button>
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text-1)]">Repository</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-[var(--text-2)]">
-          <span>
-            Viewing <span className="font-semibold text-[var(--text-1)]">{viewingCount}</span>
-          </span>
           {visibilityFilterCount > 0 ? (
             <button
               className="side-visibility-summary"
@@ -468,17 +463,20 @@ export function Sidebar({
               <X size={11} aria-hidden="true" />
             </button>
           ) : isRefreshing ? (
-            <span className="flex items-center gap-1 text-[var(--text-3)]">
+            <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]">
               <Loader2 size={11} className="animate-spin" />
               Refreshing
             </span>
           ) : null}
+          <span className="shrink-0 text-[11px] text-[var(--text-3)]" title="Branches, worktrees, stashes, and tags">
+            {viewingCount} {viewingCount === 1 ? 'ref' : 'refs'}
+          </span>
         </div>
         <div className="relative mt-1.5 min-w-0 flex-1">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-3)]" />
           <input
             ref={filterInputRef}
-            className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] pl-7 pr-2 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
+            className="form-input form-input--compact form-input--with-icon"
             placeholder="Filter (⌘⌥F)"
             aria-label="Filter repository references"
             value={filter}
@@ -526,7 +524,7 @@ export function Sidebar({
                     <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
                   )}
                   <span className="shrink-0 text-[var(--text-3)]">{section.icon}</span>
-                  <span className="min-w-0 flex-1 truncate text-left uppercase">{section.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-left">{section.title}</span>
                   {typeof sectionCount === 'number' ? (
                     <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{sectionCount}</span>
                   ) : null}

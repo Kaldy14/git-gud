@@ -4,12 +4,10 @@ import {
   Bot,
   Check,
   Download,
-  Gauge,
   GitGraph,
   Monitor,
   RefreshCw,
   Rows3,
-  Settings,
   ShieldAlert,
   SplitSquareHorizontal,
   Trash2,
@@ -77,13 +75,12 @@ export function SettingsPanel({
       onClose={onClose}
     >
       <form
-        className="flex h-full w-full max-w-[460px] flex-col border-l border-[var(--border-strong)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
+        className="flex h-full w-full max-w-[460px] flex-col border-l border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl shadow-black/60"
         onSubmit={handleSubmit}
       >
-        <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
-          <Settings size={17} className="text-[var(--accent-2)]" />
+        <header className="flex min-h-12 items-center gap-3 border-b border-[var(--border)] px-5">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-sm font-semibold text-[var(--text-1)]">Settings</h2>
+            <h2 id={titleId} className="text-[15px] font-semibold text-[var(--text-1)]">Settings</h2>
             <p id={descriptionId} className="mt-0.5 text-[11px] text-[var(--text-3)]">Local workflow defaults</p>
           </div>
           <button className="icon-btn h-7 w-7" type="button" onClick={onClose} aria-label="Close settings">
@@ -91,12 +88,12 @@ export function SettingsPanel({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <section className="space-y-3 border-b border-[var(--border)] pb-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <section className="space-y-3 border-b border-[var(--border)] pb-5">
             <SettingHeading icon={<Rows3 size={15} />} label="Diffs" />
             <fieldset>
               <legend className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">Default layout</legend>
-              <div className="segmented">
+              <div className="segmented" role="group" aria-label="Default diff layout">
                 <button
                   type="button"
                   aria-pressed={draft.defaultDiffStyle === 'unified'}
@@ -143,12 +140,12 @@ export function SettingsPanel({
             </fieldset>
           </section>
 
-          <section className="space-y-3 border-b border-[var(--border)] py-4">
+          <section className="space-y-3 border-b border-[var(--border)] py-5">
             <SettingHeading icon={<GitGraph size={15} />} label="Graph" />
             <label className="block text-xs text-[var(--text-2)]">
               <span className="mb-1.5 block font-semibold text-[var(--text-1)]">History page size</span>
               <input
-                className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+                className="form-input form-input--number"
                 type="number"
                 min={MIN_GRAPH_PAGE_SIZE}
                 max={MAX_GRAPH_PAGE_SIZE}
@@ -162,7 +159,7 @@ export function SettingsPanel({
                 }
               />
               <span className="mt-1.5 block leading-5 text-[var(--text-3)]">
-                Show 50 commits first, then load older commits as you scroll.
+                History opens with the newest 50 commits, then loads up to this many at a time as you scroll.
               </span>
             </label>
             <label className="flex items-start gap-2 py-1 text-xs text-[var(--text-2)]">
@@ -206,14 +203,14 @@ export function SettingsPanel({
             </label>
           </section>
 
-          <section className="space-y-3 border-b border-[var(--border)] py-4">
+          <section className="space-y-3 border-b border-[var(--border)] py-5">
             <SettingHeading icon={<RefreshCw size={15} />} label="Repositories" />
             <label className="block text-xs text-[var(--text-2)]">
               <span className="mb-1.5 block font-semibold text-[var(--text-1)]">
                 Auto-fetch interval (minutes)
               </span>
               <input
-                className="h-9 w-full rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+                className="form-input form-input--number"
                 type="number"
                 min={MIN_AUTO_FETCH_INTERVAL_MINUTES}
                 max={MAX_AUTO_FETCH_INTERVAL_MINUTES}
@@ -236,11 +233,11 @@ export function SettingsPanel({
             </label>
           </section>
 
-          <MachineSettingsSection heading={<SettingHeading icon={<Monitor size={15} />} label="Machines" />} />
+          <MachineSettingsSection heading={<SettingHeading icon={<Monitor size={15} />} label="Machines" note="Changes here apply right away." />} />
 
-          <section className="space-y-3 border-b border-[var(--border)] py-4">
-            <SettingHeading icon={<Bot size={15} />} label="Codex" />
-            <div className="rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-3">
+          <section className="space-y-3 border-b border-[var(--border)] py-5">
+            <SettingHeading icon={<Bot size={15} />} label="Codex" note="Install and remove apply right away." />
+            <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-3">
               <div className="flex items-start justify-between gap-3">
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold text-[var(--text-1)]">Agent Notes skill</span>
@@ -305,9 +302,9 @@ export function SettingsPanel({
             </div>
           </section>
 
-          <section className="space-y-3 py-4">
+          <section className="space-y-3 py-5">
             <SettingHeading icon={<ShieldAlert size={15} />} label="Safety" />
-            <label className="flex items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
+            <label className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5 text-xs text-[var(--text-2)]">
               <input
                 className="mt-0.5"
                 type="checkbox"
@@ -326,13 +323,12 @@ export function SettingsPanel({
           {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
         </div>
 
-        <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-4">
+        <footer className="flex min-h-14 items-center justify-end gap-2 border-t border-[var(--border)] px-5">
           <button className="btn-subtle h-8 text-xs" type="button" onClick={onClose}>
             Cancel
           </button>
           <button className="btn-primary h-8 text-xs" type="submit" disabled={isSaving}>
-            <Gauge size={13} />
-            Save Settings
+            Save settings
           </button>
         </footer>
       </form>
@@ -352,7 +348,7 @@ function CodexSkillStatus({ state }: { state?: CodexAgentNotesSkillState }): Rea
 
   return (
     <span
-      className="shrink-0 rounded-full border border-[var(--border-strong)] bg-[var(--bg-panel)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]"
+      className="shrink-0 rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-2)]"
       data-status={state?.status ?? 'checking'}
     >
       {label}
@@ -381,7 +377,7 @@ function SyntaxThemeOption({
     <button
       type="button"
       aria-pressed={isSelected}
-      className={`min-w-0 rounded border px-3 py-2.5 text-left transition ${
+      className={`min-w-0 rounded-md border px-3 py-2.5 text-left transition ${
         isSelected
           ? 'border-[var(--select-border)] bg-[var(--select-bg)]'
           : 'border-[var(--border)] bg-[var(--bg-field)] hover:border-[var(--border-strong)]'
@@ -397,16 +393,17 @@ function SyntaxThemeOption({
         <span className="block truncate text-xs font-semibold text-[var(--text-1)]">{label}</span>
         {isSelected ? <Check size={13} className="shrink-0 text-[var(--accent-2)]" aria-hidden="true" /> : null}
       </span>
-      <span className="mt-1 block text-[10px] leading-4 text-[var(--text-3)]">{description}</span>
+      <span className="mt-1 block text-[11px] leading-4 text-[var(--text-3)]">{description}</span>
     </button>
   );
 }
 
-function SettingHeading({ icon, label }: { icon: ReactElement; label: string }): ReactElement {
+function SettingHeading({ icon, label, note }: { icon: ReactElement; label: string; note?: string }): ReactElement {
   return (
-    <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
-      {icon}
+    <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[var(--text-1)]">
+      <span className="text-[var(--text-3)]">{icon}</span>
       {label}
+      {note ? <span className="ml-auto text-[11px] font-normal text-[var(--text-3)]">{note}</span> : null}
     </h3>
   );
 }

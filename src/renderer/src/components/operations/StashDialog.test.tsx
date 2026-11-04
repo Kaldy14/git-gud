@@ -6,6 +6,7 @@ import type { GitFileChangeDetail } from '@shared/types';
 import {
   buildStashPushInput,
   createInitialStashSelection,
+  describeStashSelection,
   setStashIncludeUntracked,
   StashDialog,
   toggleAllStashPaths,
@@ -78,6 +79,36 @@ describe('StashDialog selection', () => {
   });
 });
 
+describe('stash selection summary', () => {
+  const untracked = [file('notes.txt', 'untracked'), file('draft.md', 'untracked')];
+
+  it('explains how to stash a working copy that is only untracked files', () => {
+    const summary = describeStashSelection(untracked, createInitialStashSelection(untracked));
+
+    expect(summary.count).toBe('None selected');
+    expect(summary.excludedHint).toBe('Only 2 untracked files changed. Turn on Include untracked files to stash them.');
+  });
+
+  it('counts tracked files and names the untracked ones left out', () => {
+    const summary = describeStashSelection(files, createInitialStashSelection(files));
+
+    expect(summary.count).toBe('2 of 2 selected');
+    expect(summary.excludedHint).toBe('1 untracked file left out. Turn on Include untracked files to choose it.');
+  });
+
+  it('drops the hint once untracked files are included', () => {
+    const selection = setStashIncludeUntracked(untracked, createInitialStashSelection(untracked), true);
+
+    expect(describeStashSelection(untracked, selection)).toEqual({ count: '2 of 2 selected' });
+  });
+
+  it('does not count conflicted files as excluded', () => {
+    const conflicted = [{ ...file('a.ts', 'conflicted'), conflicted: true }, file('b.ts', 'modified')];
+
+    expect(describeStashSelection(conflicted, createInitialStashSelection(conflicted)).excludedHint).toBeUndefined();
+  });
+});
+
 describe('StashDialog presentation', () => {
   it('renders accessible controls, disables untracked files, and omits conflicts', () => {
     const markup = renderToStaticMarkup(
@@ -111,6 +142,8 @@ describe('StashDialog presentation', () => {
 
     expect(markup).toContain('Stash selected</button>');
     expect(markup).toContain('type="submit" disabled=""');
+    expect(markup).toContain('Turn on Include untracked files to stash it.');
+    expect(markup).not.toContain('0 of 0');
   });
 
   it('announces a mixed select-all state for a single-file stash', () => {

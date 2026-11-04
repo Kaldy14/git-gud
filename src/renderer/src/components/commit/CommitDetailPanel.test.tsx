@@ -79,9 +79,9 @@ describe('WIP empty-state staging', () => {
   ])('respects the staging guard with $label', ({ files, busy, disabled }) => {
     const markup = renderWip(files, busy);
     const stageButtons = [...markup.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
-      .filter(([, , contents]) => /Stage all|Stage All Changes/.test(contents));
+      .filter(([, , contents]) => /Stage all/.test(contents));
 
-    expect(stageButtons).toHaveLength(2);
+    expect(stageButtons).toHaveLength(1);
     for (const [, attributes] of stageButtons) {
       expect(attributes.includes('disabled=""')).toBe(disabled);
     }
@@ -173,8 +173,8 @@ describe('changed files tree folder staging', () => {
 
     expect(order.every((index) => index > -1)).toBe(true);
     expect(order).toEqual([...order].sort((left, right) => left - right));
-    expect(textButton(markup, 'Stage All Changes')).toBeDefined();
-    expect(textButton(markup, 'Unstage All')).toBeDefined();
+    expect(textButton(markup, 'Stage all')).toBeDefined();
+    expect(textButton(markup, 'Unstage all')).toBeDefined();
     expect(markup).toContain('aria-label="Conflicted files"');
   });
 
@@ -218,14 +218,14 @@ describe('changed files tree folder staging', () => {
   ])('guards bulk and folder staging with $label', ({ files, busy, unstageDisabled }) => {
     const markup = renderTree(files, { isMutating: busy });
 
-    expect(textButton(markup, 'Stage All Changes')).toContain('disabled=""');
+    expect(textButton(markup, 'Stage all')).toContain('disabled=""');
     expect(labelledButton(markup, 'Stage Folder grafana')).toContain('disabled=""');
-    expect(textButton(markup, 'Unstage All')?.includes('disabled=""')).toBe(unstageDisabled);
+    expect(textButton(markup, 'Unstage all')?.includes('disabled=""')).toBe(unstageDisabled);
   });
 
   it.each([
-    { label: 'unstaged', files: [nestedStaged], empty: 'No unstaged changes.', missing: 'Stage All Changes' },
-    { label: 'staged', files: [nestedUnstaged], empty: 'No staged files.', missing: 'Unstage All' }
+    { label: 'unstaged', files: [nestedStaged], empty: 'No unstaged changes.', missing: 'Stage all' },
+    { label: 'staged', files: [nestedUnstaged], empty: 'No staged files.', missing: 'Unstage all' }
   ])('shows the $label empty state without its bulk action', ({ files, empty, missing }) => {
     const markup = renderTree(files);
 

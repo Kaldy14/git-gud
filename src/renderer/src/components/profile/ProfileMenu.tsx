@@ -332,17 +332,17 @@ export function ProfileMenu({
               ) : null}
             </div>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Name</span>
+              <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">Name</span>
               <input
-                className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
+                className="form-input form-input--compact"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Email</span>
+              <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">Email</span>
               <input
-                className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
+                className="form-input form-input--compact"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -352,7 +352,7 @@ export function ProfileMenu({
             <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] p-2">
               <div className="mb-1.5 flex items-center gap-1.5">
                 <Cloud size={13} className="text-[var(--text-2)]" />
-                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">GitHub account</span>
+                <span className="text-[11px] font-medium text-[var(--text-2)]">GitHub account</span>
                 {connectedGithubAccount ? <span className="ml-auto text-[10px] text-[var(--success-text)]">Connected</span> : null}
               </div>
 
@@ -425,9 +425,9 @@ export function ProfileMenu({
                 <ProfileTextField label="GH_CONFIG_DIR (manual)" value={ghConfigDir} placeholder="~/.config/gh-work" onChange={updateGhConfigDir} />
                 <ProfileTextField label="Signing key" value={signingKey} placeholder="GPG or SSH signing key" onChange={setSigningKey} />
                 <label className="block">
-                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Remote URL patterns</span>
+                  <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">Remote URL patterns</span>
                   <textarea
-                    className="h-16 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1.5 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
+                    className="form-input form-input--multiline"
                     value={remoteUrlPatterns}
                     placeholder={'github.com/work\ngitlab.example.com'}
                     onChange={(event) => setRemoteUrlPatterns(event.target.value)}
@@ -462,9 +462,9 @@ function ProfileTextField({
 }): ReactElement {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">{label}</span>
+      <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">{label}</span>
       <input
-        className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-panel)] px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--border-strong)]"
+        className="form-input form-input--compact"
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}

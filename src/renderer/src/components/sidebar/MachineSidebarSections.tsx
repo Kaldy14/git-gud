@@ -51,7 +51,7 @@ export function MachineSidebarSections({
                   <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
                 )}
                 <Monitor size={14} className="shrink-0 text-[var(--machine)]" aria-hidden="true" />
-                <span className="min-w-0 truncate text-left uppercase">{machine.name}</span>
+                <span className="min-w-0 truncate text-left">{machine.name}</span>
                 <span className="min-w-0 flex-1 truncate text-left text-[11px] font-normal normal-case text-[var(--text-3)]">
                   {state.label}
                 </span>

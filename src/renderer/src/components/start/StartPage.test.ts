@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   cloneDirectoryNameFromSource,
+  cloneMissingInputHint,
+  createMissingInputHint,
   filterRecentRepositories,
   githubCloneUrl
 } from './startPageHelpers';
@@ -44,5 +46,20 @@ describe('repository start page helpers', () => {
     );
     expect(cloneDirectoryNameFromSource('/tmp/local-source')).toBe('local-source');
     expect(cloneDirectoryNameFromSource(undefined)).toBe('');
+  });
+
+  it('names the next missing clone input', () => {
+    expect(cloneMissingInputHint('url', undefined, '', '/projects')).toBe('Enter a repository URL.');
+    expect(cloneMissingInputHint('github', undefined, '', '')).toBe('Enter a GitHub repository.');
+    expect(cloneMissingInputHint('github', undefined, 'not-a-repo', '')).toBe('Use owner/repository or a GitHub.com URL.');
+    expect(cloneMissingInputHint('url', 'https://example.com/a.git', 'https://example.com/a.git', ' ')).toBe('Choose a folder to clone into.');
+    expect(cloneMissingInputHint('url', 'https://example.com/a.git', 'https://example.com/a.git', '/projects')).toBeUndefined();
+  });
+
+  it('names the next missing create input', () => {
+    expect(createMissingInputHint('', '/projects', 'main')).toBe('Enter a repository name.');
+    expect(createMissingInputHint('demo', '', 'main')).toBe('Choose a location.');
+    expect(createMissingInputHint('demo', '/projects', ' ')).toBe('Enter a default branch.');
+    expect(createMissingInputHint('demo', '/projects', 'main')).toBeUndefined();
   });
 });

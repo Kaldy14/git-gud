@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OperationLog, type OperationLogEntry } from './OperationLog';
+import { operationEarnsCard } from './operationProgress';
 
 const entries: OperationLogEntry[] = [
   createEntry('pending'),
@@ -49,6 +50,47 @@ describe('OperationLog', () => {
     expect(markup).toContain('Push main');
     expect(markup).toContain('Push main: success');
     expect(markup).not.toContain('Auto-fetch');
+  });
+});
+
+describe('routine operation feedback', () => {
+  const stage = (status: OperationLogEntry['status']): OperationLogEntry => ({ ...createEntry(status), label: 'Stage file' });
+  const startedAt = Date.parse('2026-08-07T10:00:00.000Z');
+
+  it('announces a routine success without drawing a card', () => {
+    const markup = renderOperationLog([stage('success')]);
+
+    expect(markup).toContain('Stage file: success');
+    expect(markup).toContain('role="status"');
+    expect(markup).not.toContain('Dismiss Stage file');
+    expect(markup).not.toContain('Copy');
+  });
+
+  it('still shows routine failures and conflicts with their actions', () => {
+    for (const status of ['error', 'conflict', 'cancelled'] as const) {
+      const markup = renderOperationLog([{ ...stage(status), detail: 'index.lock exists', canRetry: true }]);
+
+      expect(markup).toContain('Dismiss Stage file');
+      expect(markup).toContain('index.lock exists');
+      expect(markup).toContain('Copy');
+    }
+  });
+
+  it('keeps a routine success that has something to say', () => {
+    expect(operationEarnsCard({ ...stage('success'), detail: 'Line endings normalized.' }, startedAt)).toBe(true);
+  });
+
+  it('reveals routine work only once it stalls', () => {
+    expect(operationEarnsCard(stage('pending'), startedAt + 500)).toBe(false);
+    expect(operationEarnsCard(stage('pending'), startedAt + 2_000)).toBe(true);
+  });
+
+  it('keeps a compact dismissible card for other successes without detail', () => {
+    const markup = renderOperationLog([{ ...createEntry('success'), label: 'Push main' }]);
+
+    expect(markup).toContain('Dismiss Push main');
+    expect(markup).not.toContain('Copy');
+    expect(markup).not.toContain('>success<');
   });
 });
 

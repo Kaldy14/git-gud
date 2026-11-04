@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   Archive,
   ArchiveRestore,
-  ArrowDownAZ,
   BookOpenCheck,
   Check,
   ChevronDown,
@@ -46,6 +45,7 @@ import {
   folderStagingActions,
   graphFileStatus,
   groupWipFiles,
+  reflowCommitBody,
   toggleFileTreePath,
   type ChangedFileTreeNode,
   type FileStatusCounts,
@@ -67,6 +67,7 @@ import {
 type CommitDetailPanelProps = {
   repoPath?: string;
   row?: CommitGraphRow;
+  hasNoCommits?: boolean;
   selectedShas?: string[];
   parentSha?: string;
   headSha?: string;
@@ -111,6 +112,7 @@ const MAX_COMMIT_MESSAGE_EDITOR_HEIGHT = 520;
 export function CommitDetailPanel({
   repoPath,
   row,
+  hasNoCommits = false,
   selectedShas = [],
   parentSha,
   headSha,
@@ -376,7 +378,9 @@ export function CommitDetailPanel({
           </button>
         </div>
         <div className="grid flex-1 place-items-center px-8 text-center text-xs leading-5 text-[var(--text-3)]">
-          Select a commit to inspect its message, author, and changed files.
+          {hasNoCommits
+            ? 'Changes you make in this folder appear here, ready to stage and commit.'
+            : 'Select a commit to inspect its message, author, and changed files.'}
         </div>
       </aside>
     );
@@ -422,7 +426,10 @@ export function CommitDetailPanel({
     }
 
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        style={isWip ? undefined : { minHeight: commitFilesSectionMinHeight(files.length) }}
+      >
         <FilesToolbar
           counts={counts}
           fileView={fileView}
@@ -688,10 +695,10 @@ function WorkingDirectoryBanner({
   }
 
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--select-border)] bg-[var(--worktree-banner-bg)] px-4 text-[13px] font-semibold text-[var(--text-1)]">
+    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--worktree-banner-bg)] px-4 text-[12.5px] font-semibold text-[var(--text-1)]">
       <span className="min-w-0 truncate">{formatFileChangeLabel(dirtyCount)} in working directory</span>
       <button
-        className="h-7 shrink-0 rounded border border-[var(--control-active-border)] bg-[var(--control-active-bg)] px-3 text-xs font-semibold text-[var(--text-1)] transition hover:bg-[var(--bg-hover)] disabled:opacity-65"
+        className="btn-subtle btn-compact shrink-0"
         type="button"
         disabled={isViewingWip}
         title={isViewingWip ? 'Already viewing working directory changes' : 'View working directory changes'}
@@ -800,7 +807,7 @@ function PanelHeader({
             <>
               <span className="shrink-0 whitespace-nowrap font-semibold text-[var(--text-1)]">{formatFileChangeLabel(wipDetail.dirtyCount)} on</span>
               <span
-                className="min-w-0 truncate rounded bg-[var(--accent)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--bg-field)]"
+                className="min-w-0 truncate rounded bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-1)]"
                 title={wipDetail.branch.head}
               >
                 {wipDetail.branch.head}
@@ -1159,7 +1166,7 @@ function SummarySection({
     const oldest = detail.commits.at(-1);
 
     return (
-      <div className="max-h-48 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-5 py-2.5">
+      <div className="max-h-48 shrink-0 overflow-x-hidden overflow-y-auto border-b border-[var(--border)] px-4 py-2.5">
         <h2 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">
           Combined changes
         </h2>
@@ -1218,18 +1225,18 @@ function CommitMessageSummary({
         {subject}
       </span>
       {body ? (
-        <span className="mt-3 block pr-2 text-[13px] leading-5 text-[var(--text-2)]">
-          <span className="block whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</span>
+        <span className="mt-2.5 block whitespace-pre-wrap pr-1 text-[13px] leading-[1.55] text-[var(--text-2)] [overflow-wrap:anywhere]">
+          {reflowCommitBody(body)}
         </span>
       ) : null}
     </>
   );
 
   return (
-    <div className="shrink-0 border-b border-[var(--border)] p-2.5">
+    <div className="flex min-h-[88px] shrink flex-col overflow-hidden border-b border-[var(--border)] px-1.5 py-2">
       {isEditable ? (
         <button
-          className="commit-message-summary max-h-40 w-full overflow-x-hidden overflow-y-auto text-left"
+          className="commit-message-summary min-h-0 w-full overflow-x-hidden overflow-y-auto text-left"
           type="button"
           disabled={isDisabled}
           aria-label="Amend commit message"
@@ -1239,7 +1246,7 @@ function CommitMessageSummary({
           {content}
         </button>
       ) : (
-        <div className="max-h-40 overflow-x-hidden overflow-y-auto px-2.5">{content}</div>
+        <div className="min-h-0 overflow-x-hidden overflow-y-auto px-2.5 py-2">{content}</div>
       )}
     </div>
   );
@@ -1255,19 +1262,13 @@ function CommitSignatureSection({
   remoteAvatars: boolean;
 }): ReactElement {
   return (
-    <div className="shrink-0 space-y-1.5 px-5 py-2.5">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <CommitAttributionRow
-          author={detail.author}
-          coAuthors={detail.coAuthors}
-          remoteAvatars={remoteAvatars}
-        />
-        {parentSha ? (
-          <p className="shrink-0 pt-1 text-right text-[11px] text-[var(--text-3)]">
-            parent: <span className="mono">{parentSha.slice(0, 8)}</span>
-          </p>
-        ) : null}
-      </div>
+    <div className="shrink-0 space-y-1.5 px-4 py-2.5">
+      <CommitAttributionRow
+        author={detail.author}
+        coAuthors={detail.coAuthors}
+        parentSha={parentSha}
+        remoteAvatars={remoteAvatars}
+      />
       {shouldShowCommitter(detail) ? (
         <SignatureRow
           person={detail.committer}
@@ -1282,10 +1283,12 @@ function CommitSignatureSection({
 function CommitAttributionRow({
   author,
   coAuthors,
+  parentSha,
   remoteAvatars
 }: {
   author: GitCommitPerson;
   coAuthors: GitCommitPerson[];
+  parentSha?: string;
   remoteAvatars: boolean;
 }): ReactElement {
   const people = [author, ...coAuthors];
@@ -1302,7 +1305,7 @@ function CommitAttributionRow({
             name={person.name}
             email={person.email}
             avatarUrl={remoteAvatars ? person.avatarUrl : undefined}
-            size={34}
+            size={30}
             className="commit-attribution-avatar"
           />
         ))}
@@ -1314,9 +1317,14 @@ function CommitAttributionRow({
         <p className="truncate text-[13px] font-medium text-[var(--text-1)]" title={title}>
           {commitAttribution(author, coAuthors)}
         </p>
-        <p className="truncate text-[12px] text-[var(--text-3)]">
+        <p className="text-[12px] text-[var(--text-3)]">
           authored {formatCommitDate(author.date)}
         </p>
+        {parentSha ? (
+          <p className="text-[11px] text-[var(--text-3)]">
+            parent <span className="mono">{parentSha.slice(0, 8)}</span>
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -1507,7 +1515,7 @@ function WipCommitSection({
       <div className="relative">
         <textarea
           ref={textareaRef}
-          className="h-20 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--bg-field)] py-2 pl-2.5 pr-11 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
+          className="form-input commit-message-input"
           placeholder={amend ? 'Amend commit message' : 'Commit summary'}
           value={commitMessage}
           disabled={isGeneratingMessage}
@@ -1609,7 +1617,7 @@ function FilesToolbar({
   }
 
   return (
-    <div className="shrink-0 space-y-1.5 border-b border-[var(--border)] px-5 pb-2 pt-1">
+    <div className="shrink-0 space-y-1.5 border-b border-[var(--border)] px-4 pb-2 pt-1">
       <div className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
         <StatusCount status="modified" count={counts.modified} />
         <StatusCount status="added" count={counts.added} />
@@ -1640,21 +1648,16 @@ function FileListControls({
 }): ReactElement {
   return (
     <div className="flex w-full shrink-0 items-center justify-between gap-3">
-      <span className="inline-flex h-7 items-center gap-1.5 text-[11px] font-semibold uppercase text-[var(--text-3)]" title="Sorted by path">
-        <ArrowDownAZ size={14} />
-      </span>
-      <div className="flex min-w-0 items-center gap-5">
-        <FileViewToggle fileView={fileView} onSetFileView={onSetFileView} />
-        <label className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-2)]">
-          <input
-            className="h-3 w-3 accent-[var(--accent-2)]"
-            type="checkbox"
-            checked={showAllFiles}
-            onChange={(event) => onSetShowAllFiles(event.target.checked)}
-          />
-          View all files
-        </label>
-      </div>
+      <FileViewToggle fileView={fileView} onSetFileView={onSetFileView} />
+      <label className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-2)]">
+        <input
+          className="h-3 w-3 accent-[var(--accent-2)]"
+          type="checkbox"
+          checked={showAllFiles}
+          onChange={(event) => onSetShowAllFiles(event.target.checked)}
+        />
+        View all files
+      </label>
     </div>
   );
 }
@@ -1667,12 +1670,12 @@ function FileViewToggle({
   onSetFileView: (view: FileViewMode) => void;
 }): ReactElement {
   return (
-    <div className="segmented shrink-0">
-      <button type="button" data-active={fileView === 'path'} onClick={() => onSetFileView('path')} title="Path list">
+    <div className="segmented shrink-0" role="group" aria-label="File list view">
+      <button type="button" aria-pressed={fileView === 'path'} data-active={fileView === 'path'} onClick={() => onSetFileView('path')} title="Path list">
         <List size={12} />
         Path
       </button>
-      <button type="button" data-active={fileView === 'tree'} onClick={() => onSetFileView('tree')} title="File tree">
+      <button type="button" aria-pressed={fileView === 'tree'} data-active={fileView === 'tree'} onClick={() => onSetFileView('tree')} title="File tree">
         <FolderTree size={12} />
         Tree
       </button>
@@ -1696,9 +1699,18 @@ function StatusCount({ status, count }: { status: 'modified' | 'added' | 'delete
   );
 }
 
+// Reserves room for short lists only, so the commit message takes whatever they leave free.
+function commitFilesSectionMinHeight(fileCount: number): number {
+  return Math.min(FILES_TOOLBAR_HEIGHT + Math.max(fileCount, 1) * FILE_ROW_HEIGHT, MAX_RESERVED_FILES_HEIGHT);
+}
+
 function formatFileChangeLabel(count: number): string {
   return `${count} file change${count === 1 ? '' : 's'}`;
 }
+
+const FILES_TOOLBAR_HEIGHT = 84;
+const FILE_ROW_HEIGHT = 36;
+const MAX_RESERVED_FILES_HEIGHT = 300;
 
 type PathFileRowsProps = {
   files: GitFileChangeDetail[];
@@ -1841,7 +1853,7 @@ function WipFileGroupSections({
               style={{ borderColor: 'var(--success-border)', color: 'var(--success-text)' }}
             >
               <Check size={12} />
-              Stage All Changes
+              Stage all
             </button>
           ) : undefined
         }
@@ -1858,7 +1870,7 @@ function WipFileGroupSections({
           stagedFiles.length > 0 ? (
             <button className="btn-subtle h-6 px-2 text-[11px]" type="button" disabled={isMutating} onClick={onUnstageAll}>
               <RotateCcw size={12} />
-              Unstage All
+              Unstage all
             </button>
           ) : undefined
         }
@@ -1866,10 +1878,7 @@ function WipFileGroupSections({
       {!collapsedGroups.has('staged')
         ? (stagedFiles.length > 0
           ? renderGroup('staged', stagedFiles)
-          : <StagedEmpty
-              isMutating={isMutating || conflictedFiles.length > 0}
-              onStageAll={unstagedFiles.length > 0 ? onStageAll : undefined}
-            />)
+          : <StagedEmpty />)
         : null}
     </>
   );
@@ -1986,14 +1995,9 @@ function FileRow({
         onClick={handleSelectClick}
       >
         <StatusIcon status={file.status} />
-        <span className="flex min-w-0 flex-1 items-center overflow-hidden">
-          {directory ? (
-            <>
-              <span className="min-w-0 truncate text-[var(--text-3)]">{directory}</span>
-              <span className="shrink-0 text-[var(--text-3)]">/</span>
-            </>
-          ) : null}
-          <span className="max-w-[72%] shrink-0 truncate text-[var(--text-2)]">{basename}</span>
+        <span className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
+          <span className="max-w-full shrink-0 truncate text-[var(--text-1)]">{basename}</span>
+          {directory ? <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-3)]">{directory}</span> : null}
         </span>
         {file.conflicted ? <span className="badge-mini border-[var(--danger-border)] text-[var(--danger-text)]">conflict</span> : null}
         {!isWip && file.staged ? <span className="badge-mini">staged</span> : null}
@@ -2641,27 +2645,10 @@ function UnstagedEmpty(): ReactElement {
   return <div className="px-2 py-3 text-xs text-[var(--text-3)]">No unstaged changes.</div>;
 }
 
-function StagedEmpty({
-  isMutating = false,
-  onStageAll
-}: {
-  isMutating?: boolean;
-  onStageAll?: () => void;
-}): ReactElement {
+function StagedEmpty(): ReactElement {
   return (
     <div className="px-2 py-3 text-xs text-[var(--text-3)]">
       <p>No staged files. Stage files to include them in the next commit.</p>
-      {onStageAll ? (
-        <button
-          className="btn-subtle mt-2 h-6 px-2 text-[11px]"
-          type="button"
-          disabled={isMutating}
-          onClick={onStageAll}
-        >
-          <Check size={12} />
-          Stage all
-        </button>
-      ) : null}
     </div>
   );
 }

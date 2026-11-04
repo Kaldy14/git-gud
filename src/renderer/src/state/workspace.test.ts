@@ -164,8 +164,8 @@ function createWorkspace(): WorkspaceState {
     activeTabId: 'repo-tab',
     recentRepos: [],
     sidebarCollapsed: false,
-    sidebarWidth: 382,
+    sidebarWidth: 264,
     detailPanelCollapsed: false,
-    detailPanelWidth: 382
+    detailPanelWidth: 340
   };
 }

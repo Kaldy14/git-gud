@@ -82,7 +82,7 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
   const isManualShown = isManualOpen || (status !== undefined && status.state !== 'running');
 
   return (
-    <section className="space-y-3 border-b border-[var(--border)] py-4" aria-label="Machines">
+    <section className="space-y-3 border-b border-[var(--border)] py-5" aria-label="Machines">
       {heading}
       <p className="text-[11px] leading-5 text-[var(--text-3)]">
         See another computer's branches and uncommitted changes in the graph. Git Gud looks for the same repository
@@ -101,7 +101,7 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
         />
       ))}
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-field)]" aria-label="Tailscale devices" role="group">
+      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)]" aria-label="Tailscale devices" role="group">
         <div className="flex h-9 items-center gap-2 border-b border-[var(--border)] px-3">
           <span className="text-xs font-semibold text-[var(--text-1)]">Add from Tailscale</span>
           {status?.state === 'running' && status.tailnet ? (
@@ -163,7 +163,7 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
               <label className="block text-[11px] text-[var(--text-3)]">
                 Name
                 <input
-                  className="mt-1 h-8 w-full rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+                  className="form-input form-input--compact mt-1"
                   value={name}
                   placeholder="omarchy"
                   maxLength={80}
@@ -174,7 +174,7 @@ export function MachineSettingsSection({ heading }: { heading: ReactNode }): Rea
               <label className="block text-[11px] text-[var(--text-3)]">
                 SSH host
                 <input
-                  className="mt-1 font-mono h-8 w-full rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--select-border)]"
+                  className="form-input form-input--compact mt-1 font-mono"
                   value={sshHost}
                   placeholder="omarchy or user@host"
                   maxLength={253}
@@ -300,7 +300,7 @@ function MachineRow({
   onRemove: () => void;
 }): ReactElement {
   return (
-    <div className="rounded border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5">
+    <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-3 py-2.5">
       <div className="flex items-center gap-2">
         <Monitor size={14} className="shrink-0 text-[var(--machine)]" aria-hidden="true" />
         <span className="min-w-0 flex-1">

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
 import { AlertCircle, Ban, CheckCircle2, Copy, GitPullRequest, Loader2, RefreshCcw, X } from 'lucide-react';
 
+import { operationEarnsCard } from '@renderer/components/operations/operationProgress';
 import type { GitOperationProgressEvent } from '@shared/types';
 
 const AUTO_DISMISS_MS = 5_000;
@@ -42,8 +43,9 @@ export function OperationLog({
   onCopyDetails
 }: OperationLogProps): ReactElement | null {
   // Automatic operations are summarized in the status bar; only manual actions earn a card.
-  const cardEntries = entries.filter((entry) => !entry.background);
-  const now = useOperationClock(cardEntries.some((entry) => entry.status === 'pending'));
+  const foregroundEntries = entries.filter((entry) => !entry.background);
+  const now = useOperationClock(foregroundEntries.some((entry) => entry.status === 'pending'));
+  const cardEntries = foregroundEntries.filter((entry) => operationEarnsCard(entry, now));
 
   // Expire every completed entry, including background ones the status bar shows briefly.
   useEffect(() => {
@@ -59,7 +61,7 @@ export function OperationLog({
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [entries, onDismiss]);
 
-  if (cardEntries.length === 0) {
+  if (foregroundEntries.length === 0) {
     return null;
   }
 
@@ -68,52 +70,58 @@ export function OperationLog({
       className="pointer-events-none fixed bottom-8 left-4 z-40 flex w-[340px] max-w-[calc(100vw-32px)] flex-col gap-2"
     >
       <span className="sr-only" role="status" aria-live="polite">
-        {cardEntries[0] ? operationAnnouncement(cardEntries[0]) : ''}
+        {foregroundEntries[0] ? operationAnnouncement(foregroundEntries[0]) : ''}
       </span>
-      {cardEntries.slice(0, 5).map((entry) => (
-        <div
-          key={entry.id}
-          className="pointer-events-auto relative overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] p-3 shadow-2xl shadow-black/40"
-        >
-          <span className={`absolute inset-y-0 left-0 w-1 ${operationStripeClass(entry.status)}`} aria-hidden="true" />
-          <div className="flex min-w-0 items-start gap-2.5">
-            <span className={operationIconClass(entry.status)}>{operationIcon(entry.status)}</span>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-xs font-semibold text-[var(--text-1)]">{entry.label}</p>
-                <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]" aria-hidden="true">
-                  {operationStatusLabel(entry, now)}
-                </span>
-              </div>
-              {entry.detail ? <p className="mt-1 max-h-12 overflow-hidden break-words text-[11px] leading-4 text-[var(--text-2)]">{entry.detail}</p> : null}
-              {entry.status !== 'pending' ? (
-                <div className="mt-2 flex flex-wrap items-center gap-1">
-                  {entry.canRetry && (entry.status === 'error' || entry.status === 'cancelled') ? (
-                    <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onRetry(entry)}>
-                      <RefreshCcw size={11} />
-                      Retry
-                    </button>
-                  ) : null}
-                  <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onCopyDetails(entry)}>
-                    <Copy size={11} />
-                    Copy
-                  </button>
+      {cardEntries.slice(0, 5).map((entry) => {
+        const isBriefSuccess = entry.status === 'success' && !entry.detail;
+
+        return (
+          <div
+            key={entry.id}
+            className={`pointer-events-auto relative overflow-hidden rounded-md border border-[var(--border-strong)] bg-[var(--bg-popover)] shadow-2xl shadow-black/40 ${isBriefSuccess ? 'px-3 py-1.5' : 'p-3'}`}
+          >
+            <span className={`absolute inset-y-0 left-0 w-1 ${operationStripeClass(entry.status)}`} aria-hidden="true" />
+            <div className={`flex min-w-0 gap-2.5 ${isBriefSuccess ? 'items-center' : 'items-start'}`}>
+              <span className={operationIconClass(entry.status)}>{operationIcon(entry.status)}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-xs font-semibold text-[var(--text-1)]">{entry.label}</p>
+                  {isBriefSuccess ? null : (
+                    <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]" aria-hidden="true">
+                      {operationStatusLabel(entry, now)}
+                    </span>
+                  )}
                 </div>
-              ) : entry.cancellable ? (
-                <button className="btn-subtle mt-2 h-6 px-2 text-[10px]" type="button" onClick={() => onCancel(entry)}>
-                  <Ban size={11} />
-                  Cancel
+                {entry.detail ? <p className="mt-1 max-h-12 overflow-hidden break-words text-[11px] leading-4 text-[var(--text-2)]">{entry.detail}</p> : null}
+                {isBriefSuccess ? null : entry.status !== 'pending' ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-1">
+                    {entry.canRetry && (entry.status === 'error' || entry.status === 'cancelled') ? (
+                      <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onRetry(entry)}>
+                        <RefreshCcw size={11} />
+                        Retry
+                      </button>
+                    ) : null}
+                    <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onCopyDetails(entry)}>
+                      <Copy size={11} />
+                      Copy
+                    </button>
+                  </div>
+                ) : entry.cancellable ? (
+                  <button className="btn-subtle mt-2 h-6 px-2 text-[10px]" type="button" onClick={() => onCancel(entry)}>
+                    <Ban size={11} />
+                    Cancel
+                  </button>
+                ) : null}
+              </div>
+              {entry.status !== 'pending' ? (
+                <button className="icon-btn h-6 w-6 shrink-0" type="button" onClick={() => onDismiss(entry.id)} aria-label={`Dismiss ${entry.label}`}>
+                  <X size={12} />
                 </button>
               ) : null}
             </div>
-            {entry.status !== 'pending' ? (
-              <button className="icon-btn h-6 w-6 shrink-0" type="button" onClick={() => onDismiss(entry.id)} aria-label={`Dismiss ${entry.label}`}>
-                <X size={12} />
-              </button>
-            ) : null}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -145,7 +153,7 @@ function operationIcon(status: OperationLogStatus): ReactElement {
 
 function operationIconClass(status: OperationLogStatus): string {
   if (status === 'success') {
-    return 'mt-0.5 shrink-0 text-[var(--success-text)]';
+    return 'shrink-0 text-[var(--success-text)]';
   }
 
   if (status === 'conflict') {

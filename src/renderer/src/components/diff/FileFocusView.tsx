@@ -229,20 +229,20 @@ export function FileFocusView({
 
           <div className="flex shrink-0 items-center gap-1.5">
             {isWip && selectedFileDetail?.staged && selectedFileDetail.unstaged ? (
-              <div className="segmented" aria-label="Working directory diff scope">
-                <button type="button" data-active={selectedWipScope === 'unstaged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'unstaged')}>
+              <div className="segmented" role="group" aria-label="Working directory diff scope">
+                <button type="button" aria-pressed={selectedWipScope === 'unstaged'} data-active={selectedWipScope === 'unstaged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'unstaged')}>
                   Worktree
                 </button>
-                <button type="button" data-active={selectedWipScope === 'staged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'staged')}>
+                <button type="button" aria-pressed={selectedWipScope === 'staged'} data-active={selectedWipScope === 'staged'} onClick={() => onChangeWipScope(selectedFileDetail.path, 'staged')}>
                   Staged
                 </button>
               </div>
             ) : null}
-            <div className="segmented" aria-label="Diff layout">
-              <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
+            <div className="segmented" role="group" aria-label="Diff layout">
+              <button type="button" aria-label="Unified diff" aria-pressed={diffStyle === 'unified'} data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
                 <Rows3 size={12} />
               </button>
-              <button type="button" data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
+              <button type="button" aria-label="Split diff" aria-pressed={diffStyle === 'split'} data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
                 <Columns2 size={12} />
               </button>
             </div>
@@ -497,7 +497,7 @@ function HunkStagingPanel({ config }: { config: HunkStagingConfig }): ReactEleme
   return (
     <div ref={panelRef} className="border-b border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
+        <span className="text-[11px] font-semibold text-[var(--text-2)]">
           {config.onDiscardHunk ? 'Stage or discard hunks' : `${actionLabel} hunks`}
         </span>
         <span className="text-[11px] text-[var(--text-3)]">{config.hunks.length} line group{config.hunks.length === 1 ? '' : 's'}</span>

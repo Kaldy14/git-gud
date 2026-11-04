@@ -19,6 +19,45 @@ export function graphFileStatusCountLabel(status: GraphFileStatus, count: number
   return `${count} ${status} file${count === 1 ? '' : 's'}`;
 }
 
+/** The main process tags working-copy rows with an error red. Uncommitted work is not an error. */
+const WORKING_COPY_TAG_COLOR = '#bc271b';
+const WORKING_COPY_COLOR = '#aeb4bf';
+const DARK_TEXT = '#101317';
+const LIGHT_TEXT = '#ffffff';
+
+export function graphOverrideColor(color: string | undefined): string | undefined {
+  return color === WORKING_COPY_TAG_COLOR ? WORKING_COPY_COLOR : color;
+}
+
+/** Picks whichever of the dark or light text colors contrasts more with a hex background. */
+export function readableTextOn(background: string): string {
+  const luminance = relativeLuminance(background);
+
+  if (luminance === undefined) {
+    return LIGHT_TEXT;
+  }
+
+  const onDark = (relativeLuminance(LIGHT_TEXT)! + 0.05) / (luminance + 0.05);
+  const onLight = (luminance + 0.05) / (relativeLuminance(DARK_TEXT)! + 0.05);
+
+  return onLight > onDark ? DARK_TEXT : LIGHT_TEXT;
+}
+
+function relativeLuminance(hex: string): number | undefined {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex.trim());
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [red, green, blue] = match.slice(1).map((channel) => {
+    const value = Number.parseInt(channel, 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
 export type GraphBranchCheckoutLocation = 'current' | 'linked-worktree';
 
 export function graphBranchCheckoutLocation(

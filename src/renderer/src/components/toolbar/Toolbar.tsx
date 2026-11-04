@@ -96,17 +96,17 @@ export function Toolbar({
   const hasNoRemotes = repositoryOverview ? repositoryOverview.remotes.length === 0 : false;
 
   return (
-    <div className="app-toolbar h-12 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
+    <div className="app-toolbar h-11 shrink-0 items-center border-b border-[var(--border)] bg-[var(--bg-toolbar)] px-2">
       <div className="tb-context flex h-full min-w-0 items-center">
         <button className="tb-select" type="button" disabled={!hasRepo} title={activeTab?.path} onClick={onOpenQuickJump}>
-          <span className="tb-select-label">repository</span>
+          <span className="sr-only">Repository</span>
           <span className="tb-select-value">
             <FolderGit2 size={13} className="shrink-0 text-[var(--text-3)]" />
             <span className="min-w-0 flex-1 truncate whitespace-nowrap">{activeTab?.name ?? 'No repository'}</span>
             <ChevronDown size={12} className="shrink-0 text-[var(--text-3)]" />
           </span>
         </button>
-        <ChevronRight size={14} className="mx-0.5 shrink-0 text-[var(--text-3)]" />
+        <ChevronRight size={13} className="shrink-0 text-[var(--text-3)] opacity-60" aria-hidden="true" />
         <button
           className="tb-select tb-select-branch"
           type="button"
@@ -114,7 +114,7 @@ export function Toolbar({
           title="Switch branch"
           onClick={onOpenQuickJump}
         >
-          <span className="tb-select-label">branch</span>
+          <span className="sr-only">Branch</span>
           <span className="tb-select-value">
             <GitBranch size={13} className="shrink-0 text-[var(--text-3)]" />
             <span
@@ -124,7 +124,7 @@ export function Toolbar({
               {branchLabel}
             </span>
             {dirtyCount > 0 ? (
-              <span className="shrink-0 rounded border border-[var(--border-strong)] px-1 text-[10px] text-[var(--accent-2)]">
+              <span className="tb-dirty-count" title={`${dirtyCount} changed ${dirtyCount === 1 ? 'file' : 'files'}`}>
                 {dirtyCount}
               </span>
             ) : null}
@@ -133,14 +133,15 @@ export function Toolbar({
         </button>
       </div>
 
-      <div className="flex h-full items-center justify-center">
+      <div className="tb-group justify-center">
         <ToolbarAction
           label="Undo"
-          icon={<Undo2 size={17} />}
+          icon={<Undo2 size={15} />}
           hint={undoTitle}
           disabled={!latestUndo || Boolean(latestUndo.staleReason) || isBusy}
           onClick={onUndo}
         />
+        <span className="tb-divider" aria-hidden="true" />
         <PrimarySyncAction
           operation={defaultSyncOperation}
           disabled={!hasRepo || isBusy || hasNoRemotes}
@@ -152,38 +153,37 @@ export function Toolbar({
         />
         <ToolbarAction
           label="Push"
-          icon={<ArrowUpFromLine size={17} />}
+          icon={<ArrowUpFromLine size={15} />}
           hint={hasNoRemotes ? noRemoteHint : aheadCount > 0 && upstream ? `Push ${formatCommitCount(aheadCount)} to ${upstream}` : 'Push current branch'}
           badge={aheadCount > 0 ? { count: aheadCount, description: `${formatCommitCount(aheadCount)} to push` } : undefined}
           disabled={!hasRepo || isBusy || hasNoRemotes}
           onClick={onPush}
-          emphasized={hasRepo}
         />
+        <span className="tb-divider" aria-hidden="true" />
         <ToolbarAction
           label="Branch"
-          icon={<GitBranch size={17} />}
+          icon={<GitBranch size={15} />}
           hint="Create branch"
           disabled={!hasRepo || isBusy}
           onClick={onCreateBranch}
-          emphasized={hasRepo}
         />
         <ToolbarAction
           label="Stash"
-          icon={<Archive size={17} />}
+          icon={<Archive size={15} />}
           hint={hasConflicts ? 'Resolve conflicts before stashing' : 'Choose files to stash'}
           disabled={!hasRepo || dirtyCount === 0 || hasConflicts || isBusy}
           onClick={onStashPush}
         />
         <ToolbarAction
           label="Pop"
-          icon={<ArchiveRestore size={17} />}
+          icon={<ArchiveRestore size={15} />}
           hint="Pop latest stash"
           disabled={!hasRepo || !hasStashes || isBusy}
           onClick={onStashPop}
         />
       </div>
 
-      <div className="flex h-full shrink-0 items-center justify-self-end">
+      <div className="tb-group shrink-0 justify-self-end">
         <OpenInApplicationAction
           disabled={!hasRepo || isBusy}
           applications={applications}
@@ -200,13 +200,18 @@ export function Toolbar({
           onTagSelected={onTagSelected}
           onOpenRepositoryMaintenance={onOpenRepositoryMaintenance}
         />
-        <ToolbarAction
-          label="Jump"
-          icon={<Search size={17} />}
-          hint="Jump to repository or branch"
+        <button
+          className="tb-jump"
+          type="button"
           disabled={!hasRepo}
+          title="Jump to a repository, branch, or command"
+          aria-label="Jump to a repository, branch, or command"
           onClick={onOpenQuickJump}
-        />
+        >
+          <Search size={13} className="shrink-0" aria-hidden="true" />
+          <span className="tb-jump-text">Jump to…</span>
+          <kbd>⌘P</kbd>
+        </button>
       </div>
     </div>
   );
@@ -264,8 +269,8 @@ function PrimarySyncAction({
   const selected = primarySyncOptions.find((option) => option.operation === operation) ?? primarySyncOptions[0];
   const behindDescription = `${formatCommitCount(behindCount)} to pull`;
   const icon = operation === 'fetch-all'
-    ? <ArrowDownToLine size={17} />
-    : <GitPullRequestArrow size={17} />;
+    ? <ArrowDownToLine size={15} />
+    : <GitPullRequestArrow size={15} />;
 
   return (
     <div className="tb-sync-control">
@@ -276,7 +281,6 @@ function PrimarySyncAction({
         badge={behindCount > 0 ? { count: behindCount, description: behindDescription } : undefined}
         disabled={disabled}
         onClick={onRun}
-        emphasized
         className="tb-sync-action"
       />
       <DropdownMenu>
@@ -291,7 +295,7 @@ function PrimarySyncAction({
             <ChevronDown size={11} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={-2} className="w-72" aria-label="Default sync operation">
+        <DropdownMenuContent align="start" className="w-72" aria-label="Default sync operation">
           <p className="px-2 py-1.5 text-[11px] leading-4 text-[var(--text-3)]">
             Choose what the main sync button does
           </p>
@@ -327,12 +331,11 @@ function OpenInApplicationAction({
     <div className="tb-sync-control">
       <ToolbarAction
         label="Open"
-        icon={selectedApplication ? <ApplicationIcon application={selectedApplication} size={18} /> : <MonitorUp size={17} />}
+        icon={selectedApplication ? <ApplicationIcon application={selectedApplication} size={16} /> : <MonitorUp size={15} />}
         hint={selectedApplication ? `Open repository in ${selectedApplication.name}` : 'No supported editor, terminal, or file manager was found'}
         ariaLabel={selectedApplication ? `Open repository in ${selectedApplication.name}` : 'Open repository'}
         disabled={unavailable}
         onClick={() => selectedApplication && onOpen(selectedApplication)}
-        emphasized
         className="tb-sync-action"
       />
       <DropdownMenu>
@@ -347,7 +350,7 @@ function OpenInApplicationAction({
             <ChevronDown size={11} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={-2} className="w-60" aria-label="Open repository in">
+        <DropdownMenuContent align="end" className="w-60" aria-label="Open repository in">
           <p className="px-2 py-1.5 text-[11px] leading-4 text-[var(--text-3)]">Open this repository in</p>
           <DropdownMenuSeparator className="mx-0 my-1" />
           {applications.map((application) => (
@@ -397,17 +400,17 @@ function ActionsMenu({
           className="tb-action"
           type="button"
           title="Git actions and repository maintenance"
+          aria-label="Actions"
           disabled={disabled}
         >
-          <span className="tb-action-label">Actions</span>
           <span className="tb-action-icon">
-            <MoreHorizontal size={17} />
+            <MoreHorizontal size={15} />
           </span>
+          <span className="tb-action-text">Actions</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        sideOffset={-2}
         className="w-64"
         aria-label="Git actions"
         onCloseAutoFocus={(event) => {
@@ -504,32 +507,28 @@ type ToolbarActionProps = {
   hint: string;
   ariaLabel?: string;
   badge?: { count: number; description: string };
-  emphasized?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   className?: string;
 };
 
-function ToolbarAction({ label, icon, hint, ariaLabel, badge, emphasized = false, disabled = true, onClick, className = '' }: ToolbarActionProps): ReactElement {
+function ToolbarAction({ label, icon, hint, ariaLabel, badge, disabled = true, onClick, className = '' }: ToolbarActionProps): ReactElement {
   return (
     <button
       className={`tb-action ${className}`.trim()}
       type="button"
       disabled={disabled}
       title={hint}
-      aria-label={ariaLabel ?? (badge ? `${label}, ${badge.description}` : undefined)}
+      aria-label={ariaLabel ?? (badge ? `${label}, ${badge.description}` : label)}
       onClick={onClick}
-      style={emphasized && !disabled ? { opacity: 1, color: 'var(--text-2)' } : undefined}
     >
-      <span className="tb-action-label">
-        {label}
-        {badge ? (
-          <span className="tb-action-badge" aria-hidden="true">
-            {badge.count > 99 ? '99+' : badge.count}
-          </span>
-        ) : null}
-      </span>
       <span className="tb-action-icon">{icon}</span>
+      <span className="tb-action-text">{label}</span>
+      {badge ? (
+        <span className="tb-action-badge" aria-hidden="true">
+          {badge.count > 99 ? '99+' : badge.count}
+        </span>
+      ) : null}
     </button>
   );
 }

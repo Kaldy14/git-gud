@@ -34,14 +34,34 @@ export type ChangedFileTreeNode =
       file: GitFileChangeDetail;
     };
 
+const DIFF_SEPARATOR_CSS = `
+  [data-separator="line-info"] {
+    height: 24px;
+  }
+
+  [data-separator="line-info"] [data-separator-content] {
+    color: var(--text-3);
+    font-family: var(--diffs-header-font-family);
+    font-size: 11px;
+  }
+
+  [data-separator="line-info"] [data-expand-button] {
+    color: var(--text-2);
+  }
+
+  [data-separator="line-info"] [data-expand-button]:hover {
+    color: var(--text-1);
+  }
+`;
+
 export const DIFF_OPTIONS_BASE = {
   themeType: 'dark',
-  diffIndicators: 'bars',
+  diffIndicators: 'classic',
   hunkSeparators: 'line-info',
   lineDiffType: 'char',
   overflow: 'wrap',
   stickyHeader: true,
-  unsafeCSS: WHITESPACE_ONLY_DIFF_CSS
+  unsafeCSS: `${WHITESPACE_ONLY_DIFF_CSS}\n${DIFF_SEPARATOR_CSS}`
 } satisfies FileDiffOptions<undefined>;
 
 export function createDiffOptionsBase<LAnnotation = undefined>(
@@ -356,4 +376,46 @@ function finalizeDirectoryChildren(directory: DirectoryBuilder): ChangedFileTree
 
       return left.name.localeCompare(right.name);
     });
+}
+
+const LIST_ITEM_PATTERN = /^\s*(?:[-*+]|\d+[.)])\s/;
+const FENCE_PATTERN = /^\s*(?:```|~~~)/;
+const TRAILER_PATTERN = /^[A-Za-z][\w-]*: \S/;
+const VERBATIM_LINE_PATTERN = /^(?: {4}|\t|\s*[>#|])/;
+
+/**
+ * Removes the 72-column hard wraps of a commit body so prose wraps to the panel once.
+ * Paragraph breaks, list items, code, quotes, and trailer blocks keep their line structure.
+ */
+export function reflowCommitBody(body: string): string {
+  const output: string[] = [];
+  let isInFence = false;
+  let canContinue = false;
+  let isInListItem = false;
+
+  for (const line of body.split('\n')) {
+    if (FENCE_PATTERN.test(line)) {
+      isInFence = !isInFence;
+      canContinue = false;
+      output.push(line);
+      continue;
+    }
+
+    const isBlank = line.trim().length === 0;
+    const isListItem = LIST_ITEM_PATTERN.test(line);
+    const isListContinuation: boolean = isInListItem && /^\s+\S/.test(line) && !isListItem;
+    const isStructural = isInFence || isBlank || isListItem || TRAILER_PATTERN.test(line) ||
+      (VERBATIM_LINE_PATTERN.test(line) && !isListContinuation);
+
+    if (canContinue && !isStructural) {
+      output[output.length - 1] = `${output.at(-1)} ${line.trim()}`;
+    } else {
+      output.push(line);
+    }
+
+    isInListItem = !isBlank && !isInFence && (isListItem || isListContinuation);
+    canContinue = !isInFence && !isBlank && (!isStructural || isListItem) && !line.trimEnd().endsWith(':');
+  }
+
+  return output.join('\n');
 }

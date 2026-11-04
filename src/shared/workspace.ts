@@ -2,12 +2,12 @@ import type { RecentRepository, RepoTab, RepositorySummary, WorkspaceState } fro
 
 const MAX_RECENT_REPOS = 12;
 const GIT_CONFIG_WORKSPACE_KEY = 'git-config';
-export const DEFAULT_SIDEBAR_WIDTH = 382;
-export const MIN_SIDEBAR_WIDTH = 220;
-export const MAX_SIDEBAR_WIDTH = 560;
-export const DEFAULT_DETAIL_PANEL_WIDTH = 382;
-export const MIN_DETAIL_PANEL_WIDTH = 300;
-export const MAX_DETAIL_PANEL_WIDTH = 620;
+export const DEFAULT_SIDEBAR_WIDTH = 264;
+export const MIN_SIDEBAR_WIDTH = 200;
+export const MAX_SIDEBAR_WIDTH = 420;
+export const DEFAULT_DETAIL_PANEL_WIDTH = 340;
+export const MIN_DETAIL_PANEL_WIDTH = 280;
+export const MAX_DETAIL_PANEL_WIDTH = 520;
 
 export type ProfileWorkspaceCollection = {
   activeProfileId?: string;

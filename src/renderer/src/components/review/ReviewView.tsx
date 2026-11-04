@@ -1502,11 +1502,11 @@ export function ReviewView({
 
         <div className="review-toolbar-actions">
           {layout === 'standard' ? guideControls : null}
-          <div className="segmented shrink-0">
-            <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
+          <div className="segmented shrink-0" role="group" aria-label="Diff layout">
+            <button type="button" aria-label="Unified diff" aria-pressed={diffStyle === 'unified'} data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
               <Rows3 size={12} />
             </button>
-            <button type="button" data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
+            <button type="button" aria-label="Split diff" aria-pressed={diffStyle === 'split'} data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
               <Columns2 size={12} />
             </button>
           </div>

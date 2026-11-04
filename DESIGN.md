@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-07-27
+- Last refreshed: 2026-11-04
 - Primary product surfaces: repository graph, commit and WIP details, changed-file lists, file diffs, contextual review, GitHub pull requests, persistent GitHub Actions and Portainer stack monitoring dashboards, and Git operation dialogs.
 - Evidence reviewed: `PRODUCT.md`, `PLAN.md`, `README.md`, `docs/images/git-gud-history.png`, `docs/images/git-gud-diff.png`, `docs/images/git-gud-dashboard.png`, `.omx/artifacts/visual-ralph/dashboard-navigation/current-layout.png`, `.omx/artifacts/visual-ralph/dashboard-navigation/dashboard-header.png`, the renderer workspace, sidebar, dashboard source and CSS, GitHub query/IPC/store layers, Portainer API research, and the shared theme tokens.
 
@@ -36,10 +36,10 @@
 - Tradeoffs: Prefer a compact persistent control row over explanatory chrome; use tooltips and accessible labels for icon-only actions.
 
 ## Visual language
-- Color: Use the existing dark theme and semantic status tokens; color supplements an icon or label and never carries meaning alone.
-- Typography: System sans-serif for chrome and UI; system monospace for code, hashes, and command content.
+- Color: A graphite frame (`#1e2126`) surrounds the inset history and diff canvas (`#191b20`). The title strip is darker (`#14161a`). Teal marks the current position and primary actions; blue marks in-progress states. Borders between panels stay quiet; field boundaries and focus indicators remain distinct. Color supplements an icon or label and never carries meaning alone.
+- Typography: Bundled Open Sans for UI, with sentence-case section headings and a compact 12–15px reading scale. System monospace is reserved for code, hashes, and command content. Secondary text must remain readable against raised and selected surfaces.
 - Spacing/layout rhythm: Dense 28–40px controls and headers, 4–8px internal gaps, minimal vertical chrome around primary content, and a responsive two-column tile grid that collapses at constrained widths. Dashboard-name tabs are compact, natural-width toolbar labels rather than boxed title-bar tabs.
-- Shape/radius/elevation: Small radii and restrained borders; elevation is reserved for menus, popovers, and dialogs.
+- Shape/radius/elevation: 5px rows, 7px containers, rounded repository tabs, and restrained panel borders. Elevation is reserved for menus, popovers, and dialogs. Segmented selections use a raised fill and a visible outline.
 - Motion: Short functional transitions only, disabled under reduced-motion preferences. Tile dragging uses border, opacity, and insertion feedback without decorative motion.
 - Imagery/iconography: Lucide icons, with distinct shapes for added, modified, renamed, and deleted file states.
 
@@ -47,7 +47,7 @@
 - Existing components to reuse: Shared buttons, segmented controls, toolbar typography and hover states, theme variables, `@pierre/diffs` renderers, file status colors, and modal/menu primitives.
 - New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs followed immediately by the create-dashboard control, dashboard editor dialogs, reusable external-service connection dialog, GitHub Actions tile, Portainer stack tile for Swarm and Compose workloads, workflow-run filter controls, workflow-run row, Portainer service row, and a shared tile drag handle. The tile dialog supports both add and edit flows with the same native form controls; editing preserves the tile ID and grid position. The add-tile form reuses native text and checkbox controls for comma-separated exact branch names, current tag runs, and pull requests authored by the connected GitHub user. The GitHub tile header summarizes active filters. Dashboard-wide actions remain right-aligned. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
 - Variants and states: Commit, multi-commit, WIP staged/unstaged, loading, empty, binary, too-large, error, unified/split diff layouts, dashboard with no tiles, tile loading/refresh/error/stale, unfiltered GitHub tile, filtered GitHub tile with no matching runs, queued/running/success/failure/cancelled workflow states, and healthy/updating/degraded/stopped/unavailable Portainer stack states. Image freshness uses up-to-date/update-available/checking/unknown states independently of workload health.
-- Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
+- Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; the repository launcher and clone/create form layout live in `src/renderer/src/styles/start-page.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
 
 ## Accessibility
 - Target standard: WCAG 2.2 AA.
@@ -94,3 +94,13 @@
 - Navigation: Blocks and their files share a left directory tree. Only the selected block expands; progress, grouping explanation, filters, diff style, and Viewed & next stay in its footer. The selected file follows code scrolling without moving the reader's position.
 - Context: Details, discussion, attached images, review submission, and merge confirmation open in a dismissible right panel. It docks from 1400px and overlays at narrower widths; code keeps its full vertical space. Closing a panel preserves its draft and restores focus.
 - Keep Git's commit and branch review layout separate from the PR layout. Review and merge still require explicit submission; navigation never publishes local drafts.
+
+## Repository UI polish
+- The 44px repository toolbar groups contextual navigation, Git actions, and app actions. Actions have icon-plus-label controls; the Jump field exposes the command shortcut. Labels collapse at constrained widths while accessible names remain.
+- Active repository tabs join the toolbar frame and retain a visible close action.
+- History selection spans the whole row with a visible leading edge. Repeated lane bands and message ticks are removed. Fallback nodes are muted, WIP uses a neutral dashed node, and current-ref text is chosen for contrast. The graph keeps its existing topology and keyboard interaction.
+- The repository launcher places Open, Clone, and Create beside searchable recents. Clone and Create use one-column forms with visible labels, path previews, and disabled invalid submissions.
+- Side-panel caps reserve more width for commit subjects and code without closing panels. Graph columns fit the visible lanes; fitted widths never overwrite user preferences on window resize.
+- Added and deleted diff lines use distinct backgrounds, inline word emphasis, and explicit plus/minus glyphs. Collapsed unchanged context remains neutral.
+- Routine stage/unstage success stays in the changed-file list and live announcement; failures, conflicts, and slow operations retain operation cards.
+- Settings and operation dialogs reuse the shared form-input class. The refresh and save behavior, confirmations, and Git operation contracts are unchanged.
