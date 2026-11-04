@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.2] - 2026-11-04
+
 ### Added
 
 - Pull requests open with Summary, Guide, Activity, and Code tabs. Summary shows author, branches, reviewers, a checks breakdown, merge readiness, and the description; Activity lists comments and reviews newest first, collapses runs of commits, and can hide bot comments; Code keeps the existing review sections.
