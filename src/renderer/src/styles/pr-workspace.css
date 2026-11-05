@@ -734,8 +734,8 @@
 .review-guide-ranked-files button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 5px; padding: 6px; border-radius: 3px; text-align: left; color: var(--text-2); font-size: var(--text-xs); }
 .review-guide-ranked-files button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-guide-ranked-files button:hover { background: var(--bg-hover); }
-.review-guide-ranked-files button[data-active='true'] { background: var(--select-bg); box-shadow: inset 3px 0 0 var(--accent-2); color: var(--accent-2); }
-.review-guide-inline-note { display: flex; align-items: baseline; gap: 10px; margin: 6px 12px; padding: 8px 12px; border-left: 2px solid var(--accent-2); background: var(--bg-panel); font-family: var(--font-ui); font-size: 11px; line-height: 1.7; }
+.review-guide-ranked-files button[data-active='true'] { background: var(--select-bg); color: var(--accent-2); }
+.review-guide-inline-note { display: flex; align-items: baseline; gap: 10px; margin: 6px 12px; padding: 8px 12px; border-radius: 6px; background: var(--bg-panel); font-family: var(--font-ui); font-size: 11px; line-height: 1.7; }
 .review-guide-inline-note > span { flex-shrink: 0; color: var(--accent-2); font-size: var(--text-xs); }
 .review-guide-inline-note p { margin: 0; color: var(--text-2); }
 .review-guide-inline-note button { flex-shrink: 0; margin-left: auto; color: var(--text-3); font-size: var(--text-xs); }
@@ -779,7 +779,7 @@
 .review-complexity-filter .segmented > button { height: 21px; padding: 0 6px; font-size: var(--text-2xs); text-transform: capitalize; }
 .review-brief-scroll { min-height: 0; flex: 1; overflow: auto; padding: 0 11px 12px; }
 .review-summary-card { margin-bottom: 7px; padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-field); }
-.review-summary-card[data-selected='true'] { border-color: var(--select-border); box-shadow: inset 2px 0 var(--accent-2); }
+.review-summary-card[data-selected='true'] { border-color: var(--select-border); }
 .review-summary-card summary { display: flex; align-items: center; gap: 7px; list-style: none; cursor: pointer; font-size: var(--text-xs); line-height: 1.55; }
 .review-summary-card summary::-webkit-details-marker { display: none; }
 .review-summary-card summary > svg { flex-shrink: 0; margin-left: auto; transform: rotate(-90deg); }
@@ -897,7 +897,7 @@
 .bug-finder-list nav button { font-size: var(--text-xs); padding: 4px 5px; color: var(--text-3); border-radius: 3px; }
 .bug-finder-list nav button[aria-pressed='true'] { color: var(--text-1); background: var(--select-bg); }
 .bug-finder-item { padding: 12px; border-bottom: 1px solid var(--border); }
-.bug-finder-item[data-active='true'] { background: var(--select-bg); box-shadow: inset 2px 0 var(--select-border); }
+.bug-finder-item[data-active='true'] { background: var(--select-bg); }
 .bug-finder-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--text-3); font-size: 11px; }
 .bug-finder-meta input { accent-color: var(--accent); }
 .bug-finder-badge { padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 3px; font-size: 10px; text-transform: capitalize; }
@@ -912,7 +912,7 @@
 .bug-finder-actions { margin-left: auto; display: flex; gap: 4px; }
 .bug-finder-code { margin: 18px 0; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-field); overflow: auto; }
 .bug-finder-code header { color: var(--text-3); font-size: 11px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-.bug-finder-evidence { background: var(--bg-panel); border-left: 2px solid var(--accent); padding: 10px 12px; }
+.bug-finder-evidence { background: var(--bg-panel); border-radius: 6px; padding: 10px 12px; }
 .bug-finder-evidence > strong { font-size: 11px; }
 .bug-finder-empty { padding: 20px 12px; color: var(--text-3); }
 .bug-finder-history,.bug-finder-coverage { margin-top: 18px; color: var(--text-3); font-size: 11px; }
@@ -1811,7 +1811,7 @@
 .pr-job-confirm { z-index: 60; width: 240px; border: 1px solid var(--border-strong); border-radius: var(--radius-container); background: var(--bg-popover); box-shadow: 0 10px 28px rgb(0 0 0 / 0.42); padding: var(--space-3); color: var(--text-1); font-size: var(--text-sm); }
 .pr-job-confirm > p { margin: var(--space-1) 0 var(--space-3); color: var(--text-2); font-size: var(--text-xs); line-height: 1.45; }
 .pr-job-confirm > div { display: flex; gap: var(--space-2); }
-.pr-inbox-results .pr-inbox-row:has(.pr-row-open:focus-visible) { background: var(--select-bg); box-shadow: inset 2px 0 0 var(--focus-ring); }
+.pr-inbox-results .pr-inbox-row:has(.pr-row-open:focus-visible) { background: var(--select-bg); box-shadow: inset 0 0 0 1px var(--focus-ring); }
 /* Drafts are not open for review yet, so their icon is not green. */
 .pr-row-icon[data-draft='true'] { color: var(--text-3); }
 .pr-tabs-status { gap: var(--space-3); margin-right: var(--space-2); font-size: var(--text-xs); }

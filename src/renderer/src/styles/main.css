@@ -1528,7 +1528,6 @@ code,
 
 .side-row[data-active='true'] {
   background: var(--control-active-bg);
-  box-shadow: inset 3px 0 0 var(--accent-2);
   color: var(--text-1);
 }
 
@@ -1536,12 +1535,6 @@ code,
 .side-folder-row:focus-visible {
   background: var(--bg-hover);
   box-shadow: inset 0 0 0 1px var(--select-border);
-}
-
-.side-row[data-active='true']:focus-visible {
-  box-shadow:
-    inset 3px 0 0 var(--accent-2),
-    inset 0 0 0 1px var(--select-border);
 }
 
 .side-row-icon {
@@ -1757,7 +1750,6 @@ code,
 
 .command-palette-row[aria-selected='true'] {
   background: var(--control-active-bg);
-  box-shadow: inset 2px 0 0 var(--accent-2);
   color: var(--text-1);
 }
 
@@ -1858,14 +1850,6 @@ code,
 }
 
 /* --- Working directory file list ------------------------------------ */
-
-.wip-file-row {
-  border-left: 2px solid transparent;
-}
-
-.wip-file-row[data-selected='true'] {
-  border-left-color: var(--select-border);
-}
 
 .wip-file-row-action {
   pointer-events: none;
@@ -3103,7 +3087,6 @@ button.ref-chip {
 
 .review-unit-row[data-active='true'] {
   background: var(--select-bg);
-  box-shadow: inset 3px 0 0 var(--accent-2);
 }
 
 /* A plain numeral until viewed, so the ring means something when it appears. */
@@ -3297,10 +3280,6 @@ button.ref-chip {
 
 .review-search-file + .review-search-file {
   border-top: 2px solid var(--border-strong);
-}
-
-.review-search-file[data-active='true'] {
-  box-shadow: inset 3px 0 0 var(--accent-2);
 }
 
 .review-search-file-context {
@@ -3815,7 +3794,6 @@ button.ref-chip {
   flex: 1;
   resize: none;
   border: 0;
-  border-left: 3px solid #a14eb5;
   border-radius: 0;
   outline: none;
   background: #15191f;
@@ -4070,7 +4048,6 @@ button.ref-chip {
 
 .sidebar-pr-destination[data-active='true'] {
   background: var(--control-active-bg);
-  box-shadow: inset 3px 0 0 var(--accent-2);
   color: var(--text-1);
 }
 
@@ -5765,8 +5742,6 @@ button.ref-chip {
 
 .pr-timeline-thread-message[data-reply='true'] {
   margin-left: 18px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  background: color-mix(in srgb, var(--accent) 3%, transparent);
 }
 
 .pr-timeline-thread-message > div {
@@ -6086,7 +6061,6 @@ button.ref-chip {
   gap: 6px;
   margin: 5px 8px 7px 52px;
   border: 1px solid var(--border);
-  border-left: 2px solid color-mix(in srgb, var(--ai-border) 55%, var(--border));
   border-radius: 6px;
   background: var(--bg-panel);
   padding: 0 8px;
@@ -6337,7 +6311,7 @@ button.ref-chip {
 }
 
 .review-line-comment-body blockquote {
-  border-left: 3px solid var(--select-border);
+  border-left: 2px solid var(--border);
   background: rgb(255 255 255 / 0.025);
   padding: 5px 9px;
   color: var(--text-3);
@@ -6354,7 +6328,6 @@ button.ref-chip {
 /* GitHub alerts (`> [!NOTE]` ...), marked by remarkGithubAlerts. */
 .review-line-comment-body blockquote[data-alert] {
   --alert-tone: var(--info-text);
-  border-left-color: var(--alert-tone);
   color: var(--text-2);
 }
 

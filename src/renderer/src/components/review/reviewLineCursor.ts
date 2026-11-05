@@ -17,8 +17,7 @@ export const REVIEW_LINE_CURSOR_ATTRIBUTE = 'data-gg-cursor';
 
 export const REVIEW_LINE_CURSOR_CSS = `
 [${REVIEW_LINE_CURSOR_ATTRIBUTE}] {
-  background-color: rgb(95 214 195 / 0.1);
-  box-shadow: inset 2px 0 0 var(--focus-ring, #5fd6c3);
+  background-color: rgb(95 214 195 / 0.14);
 }
 `;
 

@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- Remove the coloured side bars from selected sidebar, palette, file and review rows, diff line highlights and callouts; selection now shows through the row highlight alone.
+
 ### Fixed
 
 - Keep expanded graph references stable while hovering the overflow count, so tags do not flicker open and closed.

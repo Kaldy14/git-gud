@@ -2973,10 +2973,6 @@ function createReviewSearchHighlightCSS(
     ${selectors} {
       background-color: light-dark(rgb(214 159 34 / 0.24), rgb(235 182 60 / 0.2)) !important;
     }
-
-    ${[...lineSelectors].join(',\n')} {
-      box-shadow: inset 3px 0 0 var(--diffs-modified-base);
-    }
   `;
 }
 
@@ -3026,7 +3022,7 @@ function ReviewFile({
   const fileComposerId = useId();
   const guideDiffOptions = useMemo(() => guideLine ? {
     ...diffOptions,
-    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n${Array.from({ length: Math.min((guideEndLine ?? guideLine) - guideLine + 1, 1000) }, (_, index) => `[data-line="${guideLine + index}"][data-line-type="${guideSide === 'left' ? 'change-deletion' : 'change-addition'}"]`).join(',')} { box-shadow: inset 3px 0 #5fd6c3; }`
+    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n${Array.from({ length: Math.min((guideEndLine ?? guideLine) - guideLine + 1, 1000) }, (_, index) => `[data-line="${guideLine + index}"][data-line-type="${guideSide === 'left' ? 'change-deletion' : 'change-addition'}"]`).join(',')} { background-color: rgb(95 214 195 / 0.14) !important; }`
   } : diffOptions, [diffOptions, guideLine, guideSide, guideEndLine]);
   const firstChunk = file.chunks[0]!;
   const fileThreads = lineCollaboration?.threads.filter(
