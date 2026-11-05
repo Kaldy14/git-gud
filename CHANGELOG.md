@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep author avatars and initials visible on commit graph nodes without requiring hover or selection.
+
 ### Added
 
 - Pull request line counts are split into code, tests, docs, config, and generated files. Hover or focus the line totals in the inbox or a pull request for a table of files and lines per kind.

@@ -2129,7 +2129,6 @@ function GraphCommitNode({
   return (
     <g>
       <title>{title}</title>
-      <circle cx={cx} cy={cy} r={4} fill={color} />
       <g className="graph-commit-identity">
         <circle
           cx={cx}

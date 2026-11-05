@@ -2295,17 +2295,6 @@ button.ref-chip {
   background: transparent;
 }
 
-/* Hidden, not removed: the image stays loaded, so hovering swaps it in without a flash. */
-.graph-commit-identity {
-  visibility: hidden;
-}
-
-.graph-cell-viewport[data-selected='true'] .graph-commit-identity,
-.graph-row:hover .graph-commit-identity,
-.graph-row:focus-visible .graph-commit-identity {
-  visibility: visible;
-}
-
 .graph-cell-viewport svg {
   display: block;
   will-change: transform;
