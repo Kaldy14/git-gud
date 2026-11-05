@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-07-27
+- Last refreshed: 2026-11-04
 - Primary product surfaces: repository graph, commit and WIP details, changed-file lists, file diffs, contextual review, GitHub pull requests, persistent GitHub Actions and Portainer stack monitoring dashboards, and Git operation dialogs.
 - Evidence reviewed: `PRODUCT.md`, `PLAN.md`, `README.md`, `docs/images/git-gud-history.png`, `docs/images/git-gud-diff.png`, `docs/images/git-gud-dashboard.png`, `.omx/artifacts/visual-ralph/dashboard-navigation/current-layout.png`, `.omx/artifacts/visual-ralph/dashboard-navigation/dashboard-header.png`, the renderer workspace, sidebar, dashboard source and CSS, GitHub query/IPC/store layers, Portainer API research, and the shared theme tokens.
 
@@ -36,10 +36,12 @@
 - Tradeoffs: Prefer a compact persistent control row over explanatory chrome; use tooltips and accessible labels for icon-only actions.
 
 ## Visual language
-- Color: Use the existing dark theme and semantic status tokens; color supplements an icon or label and never carries meaning alone.
-- Typography: System sans-serif for chrome and UI; system monospace for code, hashes, and command content.
+- Color: One graphite frame (`#202329`) holds the toolbar, sidebar, and panels around the inset history and diff canvas (`#15171b`). The title strip is darker (`#111317`). Text uses three inks, with the middle ink `#bcc1cb` and the muted ink `#a0a7b3`. Teal marks the current position and primary actions; blue marks in-progress states. Borders between panels stay quiet; field boundaries and focus indicators remain distinct. Color supplements an icon or label and never carries meaning alone.
+- Typography: The system UI font (SF on macOS, Segoe UI on Windows), with Open Sans as the bundled fallback and sentence-case section headings. The roles are Title 17/24 at 600, Heading 13/18 at 600, Body 13/20 at 400, Control 12/16 at 500, Meta 12/16 at 400, and Micro 11/14 at 400. Repository tabs and primary actions are a deliberate exception to Control: they stay at 13px so the move to the system font did not shrink them. The working weights are 400, 500, and 600; Segoe UI has no 500, so hierarchy never rests on 500 alone. Selection never changes weight, because that would re-truncate rows while arrowing through them. System monospace is reserved for code, hashes, and command content. Secondary text must remain readable against raised and selected surfaces.
 - Spacing/layout rhythm: Dense 28–40px controls and headers, 4–8px internal gaps, minimal vertical chrome around primary content, and a responsive two-column tile grid that collapses at constrained widths. Dashboard-name tabs are compact, natural-width toolbar labels rather than boxed title-bar tabs.
-- Shape/radius/elevation: Small radii and restrained borders; elevation is reserved for menus, popovers, and dialogs.
+- Shape/radius/elevation: 5px rows, 7px containers, rounded repository tabs, and restrained panel borders. Elevation is reserved for menus, popovers, and dialogs; dashboard tiles separate by tone, without a shadow. Segmented selections use a raised fill and a visible outline.
+- Selection: The selected item in a list is a fill plus a 3px teal leading edge, with no box outline. History rows, sidebar rows, the palette, and local review blocks use it. In the nested PR queue the selected block takes a neutral fill and the current file carries the teal.
+- Terminal action: A panel's finishing action sits on its last row: Commit in the composer, Save settings in the drawer, Viewed & next in review.
 - Motion: Short functional transitions only, disabled under reduced-motion preferences. Tile dragging uses border, opacity, and insertion feedback without decorative motion.
 - Imagery/iconography: Lucide icons, with distinct shapes for added, modified, renamed, and deleted file states.
 
@@ -47,7 +49,7 @@
 - Existing components to reuse: Shared buttons, segmented controls, toolbar typography and hover states, theme variables, `@pierre/diffs` renderers, file status colors, and modal/menu primitives.
 - New/changed components: A fixed icon-only Dashboards title-bar tab, dashboard-name tabs followed immediately by the create-dashboard control, dashboard editor dialogs, reusable external-service connection dialog, GitHub Actions tile, Portainer stack tile for Swarm and Compose workloads, workflow-run filter controls, workflow-run row, Portainer service row, and a shared tile drag handle. The tile dialog supports both add and edit flows with the same native form controls; editing preserves the tile ID and grid position. The add-tile form reuses native text and checkbox controls for comma-separated exact branch names, current tag runs, and pull requests authored by the connected GitHub user. The GitHub tile header summarizes active filters. Dashboard-wide actions remain right-aligned. Dashboard content uses the full workspace width and does not render repository navigation. The selected-file diff header remains a single compact panel; standard diffs use the same reliable syntax-highlighting path as contextual review.
 - Variants and states: Commit, multi-commit, WIP staged/unstaged, loading, empty, binary, too-large, error, unified/split diff layouts, dashboard with no tiles, tile loading/refresh/error/stale, unfiltered GitHub tile, filtered GitHub tile with no matching runs, queued/running/success/failure/cancelled workflow states, and healthy/updating/degraded/stopped/unavailable Portainer stack states. Image freshness uses up-to-date/update-available/checking/unknown states independently of workload health.
-- Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
+- Token/component ownership: Shared CSS variables and component classes live in `src/renderer/src/styles/main.css`; the repository launcher and clone/create form layout live in `src/renderer/src/styles/start-page.css`; dashboard UI and presentation helpers live under `src/renderer/src/components/dashboard`; GitHub-backed queries remain under `src/renderer/src/queries`.
 
 ## Accessibility
 - Target standard: WCAG 2.2 AA.
@@ -59,6 +61,12 @@
 ## Responsive behavior
 - Supported breakpoints/devices: The macOS desktop app must remain useful in constrained split panels and at 200% zoom.
 - Layout adaptations: Long paths truncate before controls; optional rename-source context may hide before primary file and diff actions; dashboard tiles collapse from two columns to one without horizontal scrolling.
+- Workspace tiers: At 1240px and above, panels follow saved width and collapse preferences. From 900 to 1239px the sidebar is the 36px rail and commit details stay docked per the saved preference. Below 900px details also start as a rail. Width comes from CSS pixels, so 200% zoom uses the lower tiers.
+- Sidebar flyout: Below 1240px a rail click floats the full sidebar over the canvas at `min(saved width, 320px)`. The rail's 36px slot stays in the row, so the canvas does not reflow. It opens by click only, has no scrim, and stays open while comparing refs. It closes on Escape, its close button, an outside press, or navigation to another surface. Escape closes a context menu first. Escape and the button return focus to where it was; an outside press leaves focus alone. Rail sections open and scroll to that section, and active Solo or Hide filters always show a labelled rail count.
+- Compact panel state: Below 1240px, panel actions are session state and never write saved preferences. Resize handles are hidden. From 900 to 1239px history and code keep separate detail choices, so closing details for a diff leaves history's panel open; below 900px they share one choice. WIP entries open details. Widening to 1240px clears session choices and restores saved state.
+- PR chrome: At every window size, the title joins the repository/actions row and status, branch direction and diff counts share a metadata row. Metadata wraps when needed; secondary byline details give way at narrower widths. Tabs share one content edge. Scrolling condenses the metadata while retaining a visible heading.
+- Repository tabs shrink within their strip before scrolling; text truncates within each tab, overflow edges fade and selecting a tab or resizing the strip brings the active tab into view. Active tabs have an inset teal edge; hover uses a quieter fill.
+- Toolbar context gets spare space below 1280px rather than reserving an equal empty column to centre actions.
 - Touch/hover differences: Primary actions remain visible; hover may reveal secondary file actions but keyboard focus must reveal them too.
 
 ## Interaction states
@@ -94,3 +102,49 @@
 - Navigation: Blocks and their files share a left directory tree. Only the selected block expands; progress, grouping explanation, filters, diff style, and Viewed & next stay in its footer. The selected file follows code scrolling without moving the reader's position.
 - Context: Details, discussion, attached images, review submission, and merge confirmation open in a dismissible right panel. It docks from 1400px and overlays at narrower widths; code keeps its full vertical space. Closing a panel preserves its draft and restores focus.
 - Keep Git's commit and branch review layout separate from the PR layout. Review and merge still require explicit submission; navigation never publishes local drafts.
+
+## Repository UI polish
+- The 44px repository toolbar groups contextual navigation, Git actions, and app actions. Actions have icon-plus-label controls; the Jump field exposes the command shortcut. Labels collapse at constrained widths while accessible names remain.
+- Active repository tabs join the toolbar frame and retain a visible close action.
+- History selection spans the whole row with a visible leading edge. Repeated lane bands and message ticks are removed. Ordinary commits rest as 4px-radius dots in the lane color, merges are hollow 5px-radius rings, and WIP uses a neutral dashed node. Hollow nodes fill with `--graph-node-fill`, which follows the row's resting, hover, selected, bulk, and search-match background. Current-ref text is chosen for contrast. Ref chips use the cloud icon for a remote association, never the commit author's image. The graph keeps its existing topology and keyboard interaction.
+- Each date group's first row carries its relative date as right-aligned Meta in the subject cell, beneath the group's top hairline. The history list reserves its 11px scrollbar gutter and the column header pads by the same amount, so header and row edges line up.
+- Sidebar leaves are Body in the middle ink and section heads are Heading. Folders show only their chevron, and ordinary branch leaves have no icon. Chevrons and state icons (current, worktree, stash, tag) hang in the indent, so labels at one depth share an edge. Hashes are 11px monospace.
+- The repository launcher places Open, Clone, and Create beside searchable recents. Clone and Create use one-column forms with visible labels, path previews, and disabled invalid submissions.
+- Docked side panels are capped so commit subjects and code keep their width; below 1240px the sidebar gives way to a rail (see Responsive behavior). Graph columns fit the visible lanes; fitted widths never overwrite user preferences on window resize.
+- Added and deleted diff lines use distinct backgrounds, inline word emphasis, and explicit plus/minus glyphs. Collapsed unchanged context remains neutral.
+- Routine stage/unstage success stays in the changed-file list and live announcement; failures, conflicts, and slow operations retain operation cards.
+- Settings and operation dialogs reuse the shared form-input class. The refresh and save behavior, confirmations, and Git operation contracts are unchanged.
+- The Settings drawer is at most 560px wide. Each `.settings-group` is a heading above one bordered field surface whose `.settings-row` children are divided by hairlines: label and helper on the left (13px and 12px), control trailing, native checkboxes, and 96px right-aligned number fields. Syntax theme cards and the machine rows take the full row. Below a 420px group width, rows stack and checkboxes stay trailing.
+- Author images appear only on the selected, hovered, or focused commit; the node title and row label keep authorship available at rest. Ref names use spare wide-window space before truncating.
+- Palette abbreviations match visible labels; metadata supports direct keyword matches. The footer states the number of loaded commits searched.
+- Empty repositories report branch/tag refs only and disable branch creation until the first commit exists.
+- Git failures lead with a short summary. Multiline command output remains available in an expandable details section.
+
+### Reading scale and run monitoring
+
+- History subjects use 13px type in 30px rows. Code uses 13px monospace with 21px line spacing; settings helpers use 12px.
+- Dashboard tiles at least 720px wide show each run as a 36px ledger line, with a bounded title track keeping workflow and run metadata nearby and the branch using spare width: icon, outcome, title, workflow, run number, branch, time, chevron. The title keeps at least 180px, and that floor is what sets the breakpoint. Narrower tiles use two lines, with the outcome after the title and one visible timestamp with the workflow and branch; there the branch truncates before the workflow name or run number. Trigger and start timestamps remain in accessible names. Job names are neutral with colored status icons, and in-progress CI uses info blue.
+- Workflow names containing matrix expressions match their expanded runtime names without evaluating expressions, so dependency lines reflect the workflow definition.
+- Review navigation, including Viewed & next, remains visibly unavailable while a comment composer is open.
+
+- Muted metadata uses `#a0a7b3`, with 4.56:1 contrast on selected graph rows; bulk-selected rows raise it to `#bcc1cb` for 5.28:1. Palette footers use 12px; review scope and navigation hints use 11px. The PR-grouped Actions view uses at least 11px content type, and pending context loading stays info blue at every width.
+
+- When the sidebar is 240px or narrower, ref hashes recede from its rows and remain available in full row tooltips. Workflow outcomes sit beside their names in the two-line and PR-grouped views, and lead the row in the ledger. Selected PR tabs retain teal under hover.
+- Open comment composers keep their targets and typed text under Escape and review shortcuts. Gutter comment controls have accessible labels, and line composers stay beneath their selected line. Comment forms use UI type even inside code annotations.
+- Queued workflow time describes waiting, and queued jobs do not present waiting time as execution duration. Graph subject suffixes use the shared muted text token; conflict output headings use sentence case.
+
+### Review composition
+
+- A comment marks its selected code line with a teal edge while retaining the addition/deletion background. Selected syntax tokens temporarily use one readable foreground, and the annotation gutter stays neutral. Selected line numbers use the diff foreground for contrast. The comment field uses the shared visible focus ring.
+- File expansion choices use stable chunk identity so background context cannot reopen a collapsed card. Full context arriving mid-draft preserves the editor node, focus and caret.
+- A loading PR count is unknown: show the spinner with a reserved blank count and announce loading.
+
+- The review footer keeps its scrollable explanation and navigation controls separate from the fixed terminal action, so keyboard focus never falls under the action. Block position retains its right alignment when the explanation opens. The review footer runs in tab order: grouping explanation and position on one row, Filters and diff layout, shortcut hints, then Viewed & next and any error. On short panes the shortcut hints give way and the block list keeps more height. Unviewed blocks show a plain numeral; only viewed blocks show a tinted ring. File headers show the directory in muted ink and the basename in full ink, and the full path stays in the title and accessible name. Aggregate healthy status is neutral; current run/PR outcomes carry the status colour. Panel rails use matching open-panel icons.
+- Review is the one solid teal action in PR Code. Viewed & next is a subtle, semibold button with a teal icon that loses its colour when disabled, on the footer's last row; local review keeps its primary Viewed action.
+
+### Composer and dashboard edges
+
+- The WIP header shows the file count; the branch stays in its title and accessible text. The composer shows the author name and identity source at 12px, adds the email inline when the row is at least 360px wide, and gives the full identity and source explanation in a tooltip on hover and keyboard focus. Commit summaries use 13px type.
+- Dashboard tiles sit 15px from both window edges, counting the 11px scrollbar gutter on the right. Run times stay right-aligned beside the chevron, on the facts line in two-line rows and in their own column in the ledger.
+
+- The launcher home uses a bounded 880px measure, with its tall-window offset based on the unfiltered recent list so filtering does not move the search field. Stacked narrow layouts and Clone/Create keep their top-aligned form placement.

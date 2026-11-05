@@ -13,7 +13,7 @@ const conflictedFile: GitFileChangeDetail = {
   path: 'conflicted.ts', status: 'conflicted', staged: false, unstaged: true, conflicted: true
 };
 
-function renderWip(files: GitFileChangeDetail[], isOperationBusy = false): string {
+function renderWip(files: GitFileChangeDetail[], isOperationBusy = false, isResizable = true): string {
   const queryClient = new QueryClient();
   const row: CommitGraphRow = {
     sha: 'wip', parentShas: [], subject: 'Working changes',
@@ -33,6 +33,7 @@ function renderWip(files: GitFileChangeDetail[], isOperationBusy = false): strin
       <QueryClientProvider client={queryClient}>
         <CommitDetailPanel
           repoPath="/repo" row={row} commitFocusSignal={0} isOperationBusy={isOperationBusy}
+          isResizable={isResizable}
           onSelectCommit={vi.fn()} onSelectFile={vi.fn()} onSetReviewOpen={vi.fn()}
           onOpenWipChanges={vi.fn()} onDiscardAllWip={vi.fn()} onDiscardWipFile={vi.fn()}
           onIgnoreWipFile={vi.fn()} onInspectWipFile={vi.fn()} onCopyWipFilePath={vi.fn()}
@@ -79,9 +80,9 @@ describe('WIP empty-state staging', () => {
   ])('respects the staging guard with $label', ({ files, busy, disabled }) => {
     const markup = renderWip(files, busy);
     const stageButtons = [...markup.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
-      .filter(([, , contents]) => /Stage all|Stage All Changes/.test(contents));
+      .filter(([, , contents]) => /Stage all/.test(contents));
 
-    expect(stageButtons).toHaveLength(2);
+    expect(stageButtons).toHaveLength(1);
     for (const [, attributes] of stageButtons) {
       expect(attributes.includes('disabled=""')).toBe(disabled);
     }
@@ -92,6 +93,13 @@ describe('WIP empty-state staging', () => {
 
     expect(markup).toContain('Conflicts (1)');
     expect(markup).not.toContain('working tree clean');
+  });
+});
+
+describe('detail panel resizing', () => {
+  it('hides the resize handle when the workspace is compact', () => {
+    expect(renderWip([modifiedFile])).toContain('aria-label="Resize commit details"');
+    expect(renderWip([modifiedFile], false, false)).not.toContain('aria-label="Resize commit details"');
   });
 });
 
@@ -169,12 +177,12 @@ describe('changed files tree folder staging', () => {
 
   it('renders WIP trees in the Path view group order with counts and bulk actions', () => {
     const markup = renderTree([nestedUnstaged, nestedStaged, partiallyStaged, nestedConflict]);
-    const order = ['Conflicts (1)', 'Unstaged Files (2)', 'Staged Files (2)'].map((label) => markup.indexOf(label));
+    const order = ['Conflicts (1)', 'Unstaged files (2)', 'Staged files (2)'].map((label) => markup.indexOf(label));
 
     expect(order.every((index) => index > -1)).toBe(true);
     expect(order).toEqual([...order].sort((left, right) => left - right));
-    expect(textButton(markup, 'Stage All Changes')).toBeDefined();
-    expect(textButton(markup, 'Unstage All')).toBeDefined();
+    expect(textButton(markup, 'Stage all')).toBeDefined();
+    expect(textButton(markup, 'Unstage all')).toBeDefined();
     expect(markup).toContain('aria-label="Conflicted files"');
   });
 
@@ -218,14 +226,14 @@ describe('changed files tree folder staging', () => {
   ])('guards bulk and folder staging with $label', ({ files, busy, unstageDisabled }) => {
     const markup = renderTree(files, { isMutating: busy });
 
-    expect(textButton(markup, 'Stage All Changes')).toContain('disabled=""');
+    expect(textButton(markup, 'Stage all')).toContain('disabled=""');
     expect(labelledButton(markup, 'Stage Folder grafana')).toContain('disabled=""');
-    expect(textButton(markup, 'Unstage All')?.includes('disabled=""')).toBe(unstageDisabled);
+    expect(textButton(markup, 'Unstage all')?.includes('disabled=""')).toBe(unstageDisabled);
   });
 
   it.each([
-    { label: 'unstaged', files: [nestedStaged], empty: 'No unstaged changes.', missing: 'Stage All Changes' },
-    { label: 'staged', files: [nestedUnstaged], empty: 'No staged files.', missing: 'Unstage All' }
+    { label: 'unstaged', files: [nestedStaged], empty: 'No unstaged changes.', missing: 'Stage all' },
+    { label: 'staged', files: [nestedUnstaged], empty: 'No staged files.', missing: 'Unstage all' }
   ])('shows the $label empty state without its bulk action', ({ files, empty, missing }) => {
     const markup = renderTree(files);
 
@@ -237,7 +245,7 @@ describe('changed files tree folder staging', () => {
     const markup = renderTree([nestedUnstaged, partiallyStaged], { isWip: false });
 
     expect(markup).toContain('aria-label="Changed files"');
-    expect(markup).not.toContain('Unstaged Files');
+    expect(markup).not.toContain('Unstaged files');
     expect(markup).not.toContain('Stage Folder');
     expect(markup).not.toContain('wip-file-primary-action');
   });

@@ -83,7 +83,7 @@ import {
   workflowRunBranchFilterError,
   workflowRunFilterSummary
 } from './workflowRunFilters';
-import { workflowRunPresentation } from './workflowRunPresentation';
+import { isQueuedWorkflowRun, workflowRunPresentation } from './workflowRunPresentation';
 import {
   copyWorkflowRunFailure,
   sendWorkflowRunFailureToCodex
@@ -1250,7 +1250,7 @@ function GitHubActionsTile({
   ).length;
   const tileSubtitle =
     tile.view === 'pull-requests'
-      ? `my open PRs${runsQuery.data ? ` · ${pullRequestCount} ${
+      ? `My open PRs${runsQuery.data ? ` · ${pullRequestCount} ${
           pullRequestCount === 1 ? 'PR' : 'PRs'
         }` : ''}`
       : filterSummary;
@@ -1597,8 +1597,10 @@ function PullRequestWorkflowRow({
       aria-label={`${run.name}, ${presentation.label}. Open workflow run in Git Gud`}
     >
       <span data-tone={presentation.tone}>{statusIcon}</span>
-      <strong title={run.name}>{run.name}</strong>
-      <span data-tone={presentation.tone}>{presentation.label}</span>
+      <span className="pull-request-workflow-run-heading">
+        <strong title={run.name}>{run.name}</strong>
+        <span className="pull-request-workflow-outcome" data-tone={presentation.tone}>{presentation.label}</span>
+      </span>
       <ChevronRight size={10} aria-hidden="true" />
     </button>
   );
@@ -1825,6 +1827,8 @@ function WorkflowRunRow({
   onOpenWorkflowRun: (run: GitHubWorkflowRun) => void;
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
+  const isQueued = isQueuedWorkflowRun(run);
+  const displayedAt = isQueued ? run.createdAt : run.startedAt ?? run.createdAt;
   const triggeredRelativeTime = formatRelativeTime(run.createdAt);
   const startedRelativeTime = run.startedAt ? formatRelativeTime(run.startedAt) : undefined;
   const statusIcon =
@@ -1855,37 +1859,30 @@ function WorkflowRunRow({
         hasFailureActions ? openContextMenuFromKeyboard : undefined
       }
       aria-label={`${run.displayTitle}, ${presentation.label}, triggered ${triggeredRelativeTime}${
-        startedRelativeTime ? `, started ${startedRelativeTime}` : ''
+        !isQueued && startedRelativeTime ? `, started ${startedRelativeTime}` : ''
       }. Open workflow run in Git Gud`}
     >
       <span className="workflow-run-status" data-tone={presentation.tone} title={presentation.label}>
         {statusIcon}
       </span>
       <span className="workflow-run-copy">
-        <strong title={run.displayTitle}>{run.displayTitle}</strong>
-        <span>
-          <span>{run.name}</span>
-          <span>#{run.runNumber}</span>
+        <span className="workflow-run-heading">
+          <strong title={run.displayTitle}>{run.displayTitle}</strong>
+          <span className="workflow-run-outcome" data-tone={presentation.tone}>{presentation.label}</span>
+        </span>
+        <span className="workflow-run-row-facts">
+          <span className="workflow-run-name" title={run.name}>{run.name}</span>
+          <span className="workflow-run-number">#{run.runNumber}</span>
           {run.branch ? (
-            <span className="workflow-run-branch">
-              <GitBranch size={10} />
-              {run.branch}
+            <span className="workflow-run-branch" title={run.branch}>
+              <GitBranch size={11} className="shrink-0" />
+              <span className="min-w-0 truncate">{run.branch}</span>
             </span>
           ) : null}
-        </span>
-      </span>
-      <span className="workflow-run-meta">
-        <span data-tone={presentation.tone}>{presentation.label}</span>
-        <small className="workflow-run-times">
-          <time dateTime={run.createdAt} title={formatAbsoluteTime(run.createdAt)}>
-            Triggered {triggeredRelativeTime}
+          <time dateTime={displayedAt} title={formatAbsoluteTime(displayedAt)}>
+            {isQueued ? `Queued ${triggeredRelativeTime}` : run.startedAt ? `Started ${startedRelativeTime}` : `Triggered ${triggeredRelativeTime}`}
           </time>
-          {run.startedAt ? (
-            <time dateTime={run.startedAt} title={formatAbsoluteTime(run.startedAt)}>
-              Started {startedRelativeTime}
-            </time>
-          ) : null}
-        </small>
+        </span>
       </span>
       <ChevronRight size={12} className="workflow-run-external" aria-hidden="true" />
     </button>

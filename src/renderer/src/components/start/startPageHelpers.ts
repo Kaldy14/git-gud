@@ -49,3 +49,38 @@ export function cloneDirectoryNameFromSource(sourceUrl: string | undefined): str
   const withoutSuffix = sourceUrl.replace(/[\\/]+$/u, '').replace(/\.git$/u, '');
   return withoutSuffix.split(/[/:]/u).filter(Boolean).at(-1) ?? '';
 }
+
+/** Says what still blocks Clone, so a disabled button is never a dead end. */
+export function cloneMissingInputHint(
+  source: 'url' | 'github',
+  normalizedUrl: string | undefined,
+  rawSource: string,
+  parentDirectory: string
+): string | undefined {
+  if (!normalizedUrl) {
+    if (source === 'url') {
+      return 'Enter a repository URL.';
+    }
+
+    return rawSource.trim() ? 'Use owner/repository or a GitHub.com URL.' : 'Enter a GitHub repository.';
+  }
+
+  return parentDirectory.trim() ? undefined : 'Choose a folder to clone into.';
+}
+
+/** Says what still blocks Create, so a disabled button is never a dead end. */
+export function createMissingInputHint(
+  name: string,
+  parentDirectory: string,
+  defaultBranch: string
+): string | undefined {
+  if (!name.trim()) {
+    return 'Enter a repository name.';
+  }
+
+  if (!parentDirectory.trim()) {
+    return 'Choose a location.';
+  }
+
+  return defaultBranch.trim() ? undefined : 'Enter a default branch.';
+}

@@ -146,7 +146,7 @@ describe('TabStrip', () => {
   });
 
   it('renders a pull requests tab with a count badge only when there are pull requests', () => {
-    const renderStrip = (pullRequestCount: number): string =>
+    const renderStrip = (pullRequestCount: number | undefined, isPullRequestLoading = false): string =>
       renderToStaticMarkup(
         <TabStrip
           tabs={[repositoryTab]}
@@ -156,6 +156,7 @@ describe('TabStrip', () => {
           isDashboardsTabActive={false}
           isPullRequestsTabActive
           pullRequestCount={pullRequestCount}
+          isPullRequestLoading={isPullRequestLoading}
           onActivateTab={vi.fn()}
           onReorderTab={vi.fn()}
           onCloseTab={vi.fn()}
@@ -181,6 +182,14 @@ describe('TabStrip', () => {
     const withoutPullRequests = renderStrip(0);
     expect(withoutPullRequests).toContain('aria-label="Pull requests, 0 items"');
     expect(withoutPullRequests).not.toContain('pull-request-tab-count');
+
+    const loading = renderStrip(0, true);
+    expect(loading).toContain('aria-label="Pull requests, loading"');
+    expect(loading).toContain('title="Pull requests · loading"');
+    expect(loading).not.toContain('Pull requests, 0 items');
+    const unavailable = renderStrip(undefined);
+    expect(unavailable).toContain('aria-label="Pull requests, unavailable"');
+    expect(unavailable).not.toContain('Pull requests, 0 items');
   });
 
   it('marks repository tabs as reorderable when their order can change', () => {

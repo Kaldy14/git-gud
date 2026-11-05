@@ -1,6 +1,32 @@
 import type { OperationLogEntry } from './OperationLog';
 import type { GitOperationProgressEvent } from '@shared/types';
 
+const ROUTINE_PENDING_GRACE_MS = 2_000;
+// The moved file row is the feedback for these; a card would only add noise on every click.
+const ROUTINE_OPERATION_LABELS: ReadonlySet<string> = new Set([
+  'Stage file',
+  'Unstage file',
+  'Stage all files',
+  'Unstage all files'
+]);
+
+/** Routine work shows a card only when it fails, turns into a conflict, or stalls. */
+export function operationEarnsCard(entry: OperationLogEntry, now: number): boolean {
+  if (entry.background) {
+    return false;
+  }
+
+  if (!ROUTINE_OPERATION_LABELS.has(entry.label)) {
+    return true;
+  }
+
+  if (entry.status === 'pending') {
+    return now - Date.parse(entry.startedAt) >= ROUTINE_PENDING_GRACE_MS;
+  }
+
+  return entry.status !== 'success' || Boolean(entry.detail);
+}
+
 type OptimisticOperationInput = {
   id: string;
   repoPath: string;

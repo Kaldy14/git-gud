@@ -1,0 +1,314 @@
+/* The repository launcher: actions beside recently opened repositories. */
+
+/* Uses the toolbar surface so the active New Tab joins the page as a repository tab joins its toolbar. */
+.start-page {
+  min-width: 0;
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-toolbar);
+  padding: 0 32px 40px;
+}
+
+/* Sits slightly above the middle of the window. The height estimate uses the unfiltered recent
+   count, so searching never moves the field, and a full list rises to fit without scrolling.
+   Five rows is about the height of the actions column; 64px is the title and status bars. */
+.start-page-home {
+  --start-home-height: calc(96px + max(5, var(--start-recent-rows, 0)) * 50px);
+  display: grid;
+  width: 100%;
+  max-width: 880px;
+  margin: clamp(32px, calc((100vh - 64px - var(--start-home-height)) * 0.42), 280px) auto 0;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.start-title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+}
+
+.start-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.start-action {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.start-action:not(:disabled):hover {
+  border-color: var(--select-border);
+  background: var(--bg-surface-2);
+}
+
+.start-action:disabled {
+  opacity: 0.6;
+}
+
+.start-action-icon {
+  grid-row: span 2;
+  margin-top: 1px;
+  color: var(--accent-2);
+}
+
+.start-action-title {
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: var(--leading-heading);
+}
+
+.start-action-description {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: var(--leading-label);
+}
+
+.start-drop-hint {
+  margin: 20px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: var(--leading-label);
+}
+
+.start-recent-header {
+  display: flex;
+  min-height: 29px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.start-recent-title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+}
+
+.start-recent-count {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.start-search {
+  position: relative;
+  margin-top: 20px;
+}
+
+.start-search > svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: var(--text-3);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.start-search .form-input {
+  padding-left: 30px;
+}
+
+.start-recent-list {
+  margin-top: 10px;
+}
+
+.start-recent-row {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 7px;
+  text-align: left;
+  transition: background 120ms ease;
+}
+
+.start-recent-row:not(:disabled):hover {
+  background: var(--bg-hover-subtle);
+}
+
+.start-recent-row:disabled {
+  opacity: 0.6;
+}
+
+.start-recent-icon {
+  color: var(--text-3);
+  transition: color 120ms ease;
+}
+
+.start-recent-row:not(:disabled):hover .start-recent-icon {
+  color: var(--accent-2);
+}
+
+.start-recent-text {
+  min-width: 0;
+}
+
+.start-recent-name,
+.start-recent-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.start-recent-name {
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: var(--leading-heading);
+}
+
+.start-recent-path {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.start-recent-age {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.start-empty {
+  margin-top: 10px;
+  padding: 32px 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.start-empty-title {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.start-empty-hint {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* Clone and create forms */
+
+.start-form-view {
+  width: 100%;
+  max-width: 520px;
+  margin: clamp(32px, 9vh, 88px) auto 0;
+}
+
+.start-back {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.start-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.start-form-view .start-title {
+  margin-top: 16px;
+}
+
+.start-form-description {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: var(--leading-body);
+}
+
+.start-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.start-field {
+  display: grid;
+  gap: 6px;
+}
+
+.start-field-label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.start-field-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.start-directory-field {
+  display: flex;
+  gap: 8px;
+}
+
+.start-path-preview {
+  display: block;
+  min-height: 18px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.start-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.start-form-missing {
+  margin-right: auto;
+}
+
+@media (max-width: 820px) {
+  .start-page {
+    padding-inline: 20px;
+  }
+
+  .start-page-home {
+    margin-top: clamp(32px, 9vh, 88px);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+}

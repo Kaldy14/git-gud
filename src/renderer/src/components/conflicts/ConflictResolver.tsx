@@ -245,7 +245,7 @@ export function ConflictResolver({
           <div className="conflict-output">
             <div className="conflict-output-toolbar">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-[var(--text-2)]">Output</span>
+                <span className="text-[11px] font-semibold text-[var(--text-2)]">Output</span>
                 {draft?.kind === 'text' ? (
                   <span className={markers.length > 0 ? 'text-[var(--danger-text)]' : 'text-[var(--success-text)]'}>
                     {markers.length > 0
@@ -260,11 +260,11 @@ export function ConflictResolver({
               </div>
               {draft?.kind === 'text' && markers.length > 0 ? (
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={() => resolveCurrent('ours')}>
-                    Use {shortLabel(conflictFile.oursLabel)}
+                  <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={() => resolveCurrent('ours')} title={`Use A: ${conflictFile.oursLabel}`} aria-label={`Use A: ${conflictFile.oursLabel}`}>
+                    Use A
                   </button>
-                  <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={() => resolveCurrent('theirs')}>
-                    Use {shortLabel(conflictFile.theirsLabel)}
+                  <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={() => resolveCurrent('theirs')} title={`Use B: ${conflictFile.theirsLabel}`} aria-label={`Use B: ${conflictFile.theirsLabel}`}>
+                    Use B
                   </button>
                   <span className="ml-1 text-[10.5px] text-[var(--text-3)]">
                     {Math.min(currentConflictIndex + 1, markers.length)} of {markers.length}
@@ -350,7 +350,7 @@ function ConflictSource({
             </div>
           </div>
         </div>
-        <button className="btn-subtle h-7 shrink-0 px-2 text-[11px]" type="button" onClick={onUse}>
+        <button className="btn-subtle h-7 shrink-0 px-2 text-[11px]" type="button" onClick={onUse} aria-label={version ? `Use entire file from ${label}` : `Keep deletion from ${label}`} title={label}>
           {version ? <Check size={12} /> : <Trash2 size={12} />}
           {version ? 'Use this file' : 'Keep deleted'}
         </button>
@@ -412,9 +412,4 @@ function createPreview(content: string): string {
   }
 
   return `${lines.slice(0, 1200).join('\n')}\n\n… preview truncated after 1,200 lines …`;
-}
-
-function shortLabel(label: string): string {
-  const segments = label.split('/');
-  return segments.at(-1) ?? label;
 }

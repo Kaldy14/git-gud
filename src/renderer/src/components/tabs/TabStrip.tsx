@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactElement, type WheelEvent } from 'react';
 import { FilePlus2, FolderGit2, GitPullRequest, LayoutDashboard, Plus, X } from 'lucide-react';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 
@@ -37,6 +37,7 @@ type TabStripProps = {
   dashboardRunningCount?: number;
   isPullRequestsTabActive?: boolean;
   pullRequestCount?: number;
+  isPullRequestLoading?: boolean;
   profileState?: RepoProfileState;
   activeRepoDirty?: boolean;
   onActivateTab: (tabId: string) => void;
@@ -65,7 +66,8 @@ export function TabStrip({
   dashboardUnreadCount = 0,
   dashboardRunningCount = 0,
   isPullRequestsTabActive = false,
-  pullRequestCount = 0,
+  pullRequestCount,
+  isPullRequestLoading = false,
   profileState,
   activeRepoDirty = false,
   onActivateTab,
@@ -89,6 +91,42 @@ export function TabStrip({
   const dragSessionRef = useRef<TabDragSession | undefined>(undefined);
   const dropTargetRef = useRef<TabDropTarget | undefined>(undefined);
   const suppressTabClickRef = useRef<string | undefined>(undefined);
+  const tabScrollerRef = useRef<HTMLDivElement>(null);
+  const activeScrollableTabId = isStartTabActive ? START_TAB_ID : activeTabId;
+  const scrollableTabCount = tabs.length + (isStartTabOpen ? 1 : 0);
+
+  useEffect(() => {
+    const scroller = tabScrollerRef.current;
+
+    if (!scroller) {
+      return;
+    }
+
+    const syncOverflow = (): void => {
+      // Fractional display scaling leaves up to a pixel between scrollLeft and the true end.
+      const { scrollLeft, scrollWidth, clientWidth } = scroller;
+      scroller.dataset.overflowStart = String(scrollLeft > 1);
+      scroller.dataset.overflowEnd = String(scrollLeft + clientWidth < scrollWidth - 1);
+    };
+    const revealActiveTab = (): void => {
+      if (activeScrollableTabId) {
+        document.getElementById(tabDomId(activeScrollableTabId))
+          ?.closest('.repo-tab')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+      syncOverflow();
+    };
+    const resizeObserver = new ResizeObserver(revealActiveTab);
+
+    resizeObserver.observe(scroller);
+    scroller.addEventListener('scroll', syncOverflow, { passive: true });
+    revealActiveTab();
+
+    return () => {
+      resizeObserver.disconnect();
+      scroller.removeEventListener('scroll', syncOverflow);
+    };
+  }, [activeScrollableTabId, scrollableTabCount]);
+
   const navigationTabIds = [
     ...tabs.map((tab) => tab.id),
     ...(isStartTabOpen ? [START_TAB_ID] : []),
@@ -214,13 +252,13 @@ export function TabStrip({
   };
 
   return (
-    <div className="drag-region flex h-10 shrink-0 items-stretch border-b border-[var(--border)] bg-[var(--bg-titlebar)] pl-[84px]">
+    <div className="drag-region flex h-10 shrink-0 items-stretch bg-[var(--bg-titlebar)] pl-[84px]">
       <div
         className="relative flex min-w-0 flex-1 items-stretch"
         role="tablist"
         aria-label="Workspace views"
       >
-        <div className="flex min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div ref={tabScrollerRef} className="repo-tab-scroller" onWheel={scrollTabStripWithWheel}>
           {tabs.map((tab, tabIndex) => {
             const isActive = tab.id === activeTabId;
 
@@ -287,25 +325,25 @@ export function TabStrip({
                     aria-label={`Tab actions for ${tab.name}`}
                   >
                     <ContextMenuPrimitive.Item className="menu-row" onSelect={() => onCloseTab(tab.id)}>
-                      <span>Close Tab</span>
+                      <span>Close tab</span>
                     </ContextMenuPrimitive.Item>
                     <ContextMenuPrimitive.Item
                       className="menu-row"
                       disabled={tabs.length < 2}
                       onSelect={() => onCloseOtherTabs(tab.id)}
                     >
-                      <span>Close Other Tabs</span>
+                      <span>Close other tabs</span>
                     </ContextMenuPrimitive.Item>
                     <ContextMenuPrimitive.Item
                       className="menu-row"
                       disabled={tabIndex === tabs.length - 1}
                       onSelect={() => onCloseTabsToRight(tab.id)}
                     >
-                      <span>Close Tabs to the Right</span>
+                      <span>Close tabs to the right</span>
                     </ContextMenuPrimitive.Item>
                     <ContextMenuPrimitive.Separator className="context-menu-separator" />
                     <ContextMenuPrimitive.Item className="menu-row" onSelect={() => void navigator.clipboard.writeText(tab.path)}>
-                      <span>Copy Repository Path</span>
+                      <span>Copy repository path</span>
                     </ContextMenuPrimitive.Item>
                     {repositoryApplication ? (
                       <ContextMenuPrimitive.Item
@@ -322,7 +360,7 @@ export function TabStrip({
           })}
           {isStartTabOpen ? (
             <div
-              className="no-drag repo-tab group"
+              className="no-drag repo-tab repo-tab--repository group"
               data-active={isStartTabActive}
               title="Open or create a repository"
             >
@@ -348,7 +386,7 @@ export function TabStrip({
                 <button
                   type="button"
                   aria-label="Close New Tab"
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-[var(--text-3)] opacity-0 transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)] focus:opacity-100 group-hover:opacity-100 group-data-[active=true]:opacity-100"
+                  className="repo-tab-close"
                   onClick={onCloseStartTab}
                 >
                   <X size={11} />
@@ -359,7 +397,7 @@ export function TabStrip({
         </div>
 
         <button
-          className="no-drag grid w-10 shrink-0 place-items-center rounded-none text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
+          className="no-drag ml-0.5 grid size-7 shrink-0 place-items-center self-center rounded-md text-[var(--text-3)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-1)]"
           type="button"
           aria-label="New tab"
           title="New tab"
@@ -424,14 +462,15 @@ export function TabStrip({
           <div
             className="no-drag repo-tab repo-tab--icon"
             data-active={isPullRequestsTabActive}
-            title={`Pull requests · ${pullRequestCount}`}
+            title={isPullRequestLoading ? 'Pull requests · loading' : pullRequestCount === undefined ? 'Pull requests · unavailable' : `Pull requests · ${pullRequestCount}`}
           >
             <button
               id={tabDomId(PULL_REQUESTS_TAB_ID)}
               className="repo-tab-main"
               type="button"
               role="tab"
-              aria-label={`Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
+              aria-label={isPullRequestLoading ? 'Pull requests, loading' : pullRequestCount === undefined ? 'Pull requests, unavailable' : `Pull requests, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`}
+              aria-busy={isPullRequestLoading}
               aria-selected={isPullRequestsTabActive}
               tabIndex={isPullRequestsTabActive ? 0 : -1}
               onClick={onActivatePullRequestsTab}
@@ -448,7 +487,7 @@ export function TabStrip({
                 size={15}
                 className={isPullRequestsTabActive ? 'text-[var(--accent-2)]' : undefined}
               />
-              {pullRequestCount > 0 ? (
+              {!isPullRequestLoading && pullRequestCount !== undefined && pullRequestCount > 0 ? (
                 <span className="pull-request-tab-count" aria-hidden="true">
                   {pullRequestCount > 99 ? '99+' : pullRequestCount}
                 </span>
@@ -468,6 +507,13 @@ export function TabStrip({
       </div>
     </div>
   );
+}
+
+// A mouse wheel only reports vertical movement, which would otherwise never reach this strip.
+function scrollTabStripWithWheel(event: WheelEvent<HTMLDivElement>): void {
+  if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+    event.currentTarget.scrollLeft += event.deltaY;
+  }
 }
 
 function dashboardsTabLabel(

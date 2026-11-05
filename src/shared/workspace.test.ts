@@ -135,8 +135,8 @@ describe('workspace state', () => {
     const state = createDefaultWorkspaceState();
 
     expect(setSidebarWidth(state, 420).sidebarWidth).toBe(420);
-    expect(setSidebarWidth(state, 120).sidebarWidth).toBe(220);
-    expect(setSidebarWidth(state, 900).sidebarWidth).toBe(560);
+    expect(setSidebarWidth(state, 120).sidebarWidth).toBe(200);
+    expect(setSidebarWidth(state, 900).sidebarWidth).toBe(420);
   });
 
   it('persists a bounded detail panel layout', () => {
@@ -145,8 +145,8 @@ describe('workspace state', () => {
 
     expect(collapsed.detailPanelCollapsed).toBe(true);
     expect(setDetailPanelWidth(state, 440).detailPanelWidth).toBe(440);
-    expect(setDetailPanelWidth(state, 120).detailPanelWidth).toBe(300);
-    expect(setDetailPanelWidth(state, 900).detailPanelWidth).toBe(620);
+    expect(setDetailPanelWidth(state, 120).detailPanelWidth).toBe(280);
+    expect(setDetailPanelWidth(state, 900).detailPanelWidth).toBe(520);
   });
 
   it('repairs malformed persisted workspace values', () => {
@@ -164,9 +164,9 @@ describe('workspace state', () => {
     expect(normalized.activeTabId).toBeUndefined();
     expect(normalized.recentRepos).toHaveLength(1);
     expect(normalized.sidebarCollapsed).toBe(false);
-    expect(normalized.sidebarWidth).toBe(382);
+    expect(normalized.sidebarWidth).toBe(264);
     expect(normalized.detailPanelCollapsed).toBe(true);
-    expect(normalized.detailPanelWidth).toBe(620);
+    expect(normalized.detailPanelWidth).toBe(520);
   });
 
   it('partitions legacy tabs and recents into independent profile workspaces', () => {

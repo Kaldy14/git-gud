@@ -79,6 +79,7 @@ export function ReviewFileTree({
       [data-item-section="content"] { flex: 1 1 auto; }
       [data-item-section="spacing"], [data-item-section="git"] { flex-shrink: 0; }
       [data-item-section="git"] { margin-left: 6px; }
+      [data-item-selected] { box-shadow: inset 3px 0 0 var(--accent-2); }
       [data-item-section="decoration"]:empty { display: none; }
       [data-truncate-grid] { display: block; }
       [data-truncate-container] { height: auto; margin: 0; }

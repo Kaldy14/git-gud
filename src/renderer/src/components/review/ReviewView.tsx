@@ -22,7 +22,7 @@ import type {
   FileDiffOptions,
   SelectedLineRange
 } from '@pierre/diffs';
-import { FileDiff, PatchDiff, useWorkerPool } from '@pierre/diffs/react';
+import { FileDiff, PatchDiff, useWorkerPool, type DiffBasePropsReact } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -46,6 +46,7 @@ import {
   PanelRightOpen,
   Pencil,
   Pilcrow,
+  Plus,
   Rows3,
   Search,
   Reply,
@@ -60,7 +61,7 @@ import {
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { useReviewContinuity, type ReviewContinuityIdentity } from './useReviewContinuity';
-import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import { createDiffOptionsBase, splitPath, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -145,7 +146,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewSections, getReviewFileIdentity, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
+import { createReviewSections, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
 import {
   createReviewViewState,
   getReviewScrollTopForNavigation,
@@ -976,7 +977,7 @@ export function ReviewView({
   }
 
   function markSelectedUnit(viewed: boolean): void {
-    if (!selectedUnit || progressMutation.isPending) {
+    if (!selectedUnit || progressMutation.isPending || selectedCommentTarget !== undefined || commentMutation.isPending) {
       return;
     }
 
@@ -1095,6 +1096,13 @@ export function ReviewView({
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
     // Portaled menus still bubble through React; their keys must not navigate or close the review.
     if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('[role="menu"]'))) return;
+    if (selectedCommentTarget !== undefined || commentMutation.isPending) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (
       (event.metaKey || event.ctrlKey) &&
       !event.altKey &&
@@ -1502,11 +1510,11 @@ export function ReviewView({
 
         <div className="review-toolbar-actions">
           {layout === 'standard' ? guideControls : null}
-          <div className="segmented shrink-0">
-            <button type="button" data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
+          <div className="segmented shrink-0" role="group" aria-label="Diff layout">
+            <button type="button" aria-label="Unified diff" aria-pressed={diffStyle === 'unified'} data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
               <Rows3 size={12} />
             </button>
-            <button type="button" data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
+            <button type="button" aria-label="Split diff" aria-pressed={diffStyle === 'split'} data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
               <Columns2 size={12} />
             </button>
           </div>
@@ -2050,7 +2058,7 @@ function ReviewBody({
     const path = externalGuideLocation?.file.path;
     if (path) {
       const keys = new Set(allFileUnits.flatMap((unit) => unit.unit.chunks)
-        .filter((chunk) => chunk.path === path).map(getReviewFileIdentity));
+        .filter((chunk) => chunk.path === path).map((chunk) => chunk.id));
       setCollapsedFileKeys((current) => new Set([...current].filter((key) => !keys.has(key))));
     }
   }
@@ -2168,7 +2176,7 @@ function ReviewBody({
     setCollapsedFileKeys((current) => {
       const next = new Set(current);
       for (const item of groupReviewFiles(selectedUnit?.unit.chunks ?? [])) {
-        if (item.chunks[0].path === file.path) next.delete(item.key);
+        if (item.chunks[0].path === file.path) next.delete(item.chunks[0]!.id);
       }
       return next;
     });
@@ -2277,12 +2285,12 @@ function ReviewBody({
               </span>
               <span className="min-w-0 flex-1 text-left">
                 <span
-                  className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                  className="review-unit-title block truncate"
                   title={reviewSearch.query || 'Review search'}
                 >
                   Search · {compactReviewSearchQuery(reviewSearch.query)}
                 </span>
-                <span className="mt-0.5 block truncate text-[10.5px] text-[var(--text-3)]">
+                <span className="review-unit-meta block truncate">
                   {formatReviewSearchResultCount(reviewSearch.results.locationCount)}
                 </span>
               </span>
@@ -2315,18 +2323,18 @@ function ReviewBody({
                 </span>
                 <span className="min-w-0 flex-1 text-left">
                   <span
-                    className="block truncate text-xs font-semibold text-[var(--text-1)]"
+                    className="review-unit-title block truncate"
                     title={reviewGuide ? undefined : candidate.unit.explanation}
                   >
                     {compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title}
                   </span>
-                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                  <span className="flex min-w-0 items-center gap-1.5">
                     {reviewGuideUnits.get(candidate.unit.id) ? (
                       <ReviewGuidePriority
                         priority={reviewGuideUnits.get(candidate.unit.id)!.priority}
                       />
                     ) : null}
-                    <span className="min-w-0 truncate text-[10.5px] text-[var(--text-3)]">
+                    <span className="review-unit-meta min-w-0 truncate">
                       {compact
                         ? formatReviewBlockSize(candidate)
                         : candidate.unit.reason}
@@ -2364,27 +2372,37 @@ function ReviewBody({
         </div>
         {compact ? (
           <footer className="review-navigation-footer">
+            <div className="review-navigation-scroll">
+              {selectedUnit ? (
+                <>
+                  <details className="review-block-explanation">
+                    <summary>Why grouped?</summary>
+                    <p>{selectedUnit.unit.explanation}</p>
+                    <small>
+                      {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
+                      filters
+                    </small>
+                  </details>
+                  <div className="review-block-position">
+                    <span>
+                      {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
+                      {units.length}
+                    </span>
+                    <span>{selectedUnit.skippedCount} hidden</span>
+                  </div>
+                </>
+              ) : null}
+              {navigationTools}
+              <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
+                J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
+              </span>
+            </div>
             {selectedUnit ? (
-              <>
-                <details className="review-block-explanation">
-                  <summary>Why grouped?</summary>
-                  <p>{selectedUnit.unit.explanation}</p>
-                  <small>
-                    {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
-                    filters
-                  </small>
-                </details>
-                <div className="review-block-position">
-                  <span>
-                    {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
-                    {units.length}
-                  </span>
-                  <span>{selectedUnit.skippedCount} hidden</span>
-                </div>
+              <div className="review-navigation-terminal">
                 <button
-                  className="btn-primary btn-regular review-viewed-next"
+                  className="btn-subtle btn-regular review-viewed-next"
                   type="button"
-                  disabled={isMutating}
+                  disabled={isMutating || lineCollaboration?.selectedChunkId !== undefined}
                   onClick={onToggleViewed}
                 >
                   <CheckCheck size={13} />
@@ -2395,12 +2413,8 @@ function ReviewBody({
                     {mutationError}
                   </p>
                 ) : null}
-              </>
+              </div>
             ) : null}
-            {navigationTools}
-            <span className="review-navigation-shortcuts">
-              J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
-            </span>
           </footer>
         ) : null}
       </nav>
@@ -2442,7 +2456,7 @@ function ReviewBody({
                       selectedUnit.isViewed ? 'btn-subtle btn-compact' : 'btn-primary btn-compact'
                     }
                     type="button"
-                    disabled={isMutating}
+                    disabled={isMutating || lineCollaboration?.selectedChunkId !== undefined}
                     onClick={onToggleViewed}
                   >
                     {isMutating ? (
@@ -2492,7 +2506,7 @@ function ReviewBody({
                       ) : null}
                       {section.files.map((file) => (
                         <ReviewFile
-                          key={file.key}
+                          key={file.chunks[0]!.id}
                           file={file}
                           preparedDiffs={preparedDiffs}
                           diffOptions={diffOptions}
@@ -2509,8 +2523,8 @@ function ReviewBody({
                           onSetAgentNoteHidden={onSetAgentNoteHidden}
                           typeDefinitionPaths={typeDefinitionPaths}
                           typeDefinitionInteraction={typeDefinitionInteraction}
-                          isCollapsed={collapsedFileKeys.has(file.key)}
-                          onToggleCollapsed={() => toggleFile(file.key, file.chunks)}
+                          isCollapsed={collapsedFileKeys.has(file.chunks[0]!.id)}
+                          onToggleCollapsed={() => toggleFile(file.chunks[0]!.id, file.chunks)}
                         />
                       ))}
                     </section>
@@ -2959,6 +2973,7 @@ function ReviewFile({
   const isFileComposerOpen =
     lineCollaboration?.selectedChunkId === firstChunk.id &&
     lineCollaboration.selectedSubject === 'file';
+  const { directory, basename } = splitPath(firstChunk.path);
 
   return (
     <section
@@ -2981,11 +2996,9 @@ function ReviewFile({
               <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
             )}
             <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
-            <span
-              className="min-w-0 flex-1 truncate font-medium text-[var(--text-2)]"
-              title={firstChunk.path}
-            >
-              {firstChunk.path}
+            <span className="review-file-path" title={firstChunk.path}>
+              {directory ? <span className="review-file-directory">{directory}</span> : null}
+              <span className="review-file-basename">{basename}</span>
             </span>
             {guideFile ? <ReviewGuidePriority priority={guideFile.priority} reason={guideFile.reason} /> : null}
             <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>
@@ -3090,7 +3103,15 @@ function ReviewChunk({
   hideLeadingExpansion?: boolean;
   searchHighlights?: readonly ReviewSearchLine[];
 }): ReactElement {
-  const expandableDiff = preparedDiff?.expandable;
+  const isComposing = lineCollaboration?.selectedChunkId === chunk.id;
+  const [displayedDiff, setDisplayedDiff] = useState(preparedDiff);
+
+  // Keep the renderer and its annotation nodes stable while someone is typing.
+  if (!isComposing && displayedDiff !== preparedDiff) {
+    setDisplayedDiff(preparedDiff);
+  }
+
+  const expandableDiff = displayedDiff?.expandable;
   const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
     () => {
       const options = expandableDiff
@@ -3191,12 +3212,31 @@ function ReviewChunk({
   const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
     ? createReviewLineSelectionOptions(
         contextualDiffOptions,
-        (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range)
+        (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range),
+        lineCollaboration.selectedChunkId !== undefined
       )
     : contextualDiffOptions;
 
+  const renderCommentUtility: DiffBasePropsReact<ReviewDiffAnnotation>['renderGutterUtility'] =
+    lineCollaboration && lineCollaboration.selectedChunkId === undefined
+      ? (getHoveredLine) => (
+          <button className="review-gutter-comment" type="button"
+            aria-label={`Comment on line in ${chunk.path}`} title="Comment on line"
+            onClick={() => {
+              const line = getHoveredLine();
+              if (line) lineCollaboration.onSelectLines(chunk.id, chunk.path, {
+                start: line.lineNumber, end: line.lineNumber, side: line.side
+              });
+            }}>
+            <Plus size={14} aria-hidden="true" />
+          </button>
+        )
+      : undefined;
+
   return (
-    <section className="review-chunk" data-review-chunk-id={chunk.id}>
+    <section className="review-chunk" data-review-chunk-id={chunk.id}
+      data-context-ready={preparedDiff?.expandable !== undefined}
+      data-context-renderer={displayedDiff?.expandable ? 'full' : 'patch'}>
       {chunk.omittedReason ? (
         <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
           {chunk.omittedReason === 'binary'
@@ -3206,11 +3246,12 @@ function ReviewChunk({
               : 'No textual diff is available for this change.'}
         </div>
       ) : (
-        preparedDiff ? (
+        displayedDiff ? (
           <FileDiff<ReviewDiffAnnotation>
             className="gg-diff"
-            fileDiff={preparedDiff.fileDiff}
+            fileDiff={displayedDiff.fileDiff}
             options={interactiveDiffOptions}
+            renderGutterUtility={renderCommentUtility}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
             renderAnnotation={(annotation) => (
@@ -3240,6 +3281,7 @@ function ReviewChunk({
             className="gg-diff"
             patch={chunk.patch}
             options={interactiveDiffOptions}
+            renderGutterUtility={renderCommentUtility}
             lineAnnotations={lineAnnotations}
             selectedLines={selectedLines}
             renderAnnotation={(annotation) => (
@@ -3382,7 +3424,10 @@ function ReviewInlineComposer({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      textareaRef.current?.focus({ preventScroll: true });
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -3462,7 +3507,7 @@ function ReviewInlineComposer({
             ? <Loader2 size={12} className="animate-spin" />
             : <Send size={12} />}
           Add to review
-          <kbd aria-hidden="true" className="text-[9px] text-current opacity-70">⌘↵</kbd>
+          <kbd aria-hidden="true" className="text-[11px] text-current">⌘↵</kbd>
         </button>
       </div>
     </form>

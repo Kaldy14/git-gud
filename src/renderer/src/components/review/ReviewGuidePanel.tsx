@@ -108,7 +108,7 @@ export function ReviewGuidePanel({ repoPath, guide, units, selectedUnit, finding
       <button type="button" aria-pressed={tab === 'summaries'} onClick={() => onTabChange('summaries')}>Summaries <span>{summaries.length}</span></button>
       <button type="button" aria-pressed={tab === 'findings'} onClick={() => onTabChange('findings')}>Findings <span>{findings.length}</span></button>
     </div>
-    {tab === 'summaries' ? <div className="review-complexity-filter"><span>Complexity</span><div className="segmented">{(['all', 'high', 'medium', 'low'] as const).map((level) =>
+    {tab === 'summaries' ? <div className="review-complexity-filter"><span>Complexity</span><div className="segmented" role="group" aria-label="Complexity">{(['all', 'high', 'medium', 'low'] as const).map((level) =>
       <button type="button" key={level} aria-pressed={complexity === level} data-active={complexity === level} onClick={() => setComplexity(level)}>{level}</button>
     )}</div></div> : null}
     <div className="review-brief-scroll">

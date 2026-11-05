@@ -131,9 +131,10 @@ export function ReviewBenchmarkExplorer({
           </select>
         </label>
 
-        <div className="segmented shrink-0" aria-label="Benchmark plan mode">
+        <div className="segmented shrink-0" role="group" aria-label="Benchmark plan mode">
           <button
             type="button"
+            aria-pressed={mode === 'expected'}
             data-active={mode === 'expected'}
             onClick={() => setMode('expected')}
           >
@@ -141,6 +142,7 @@ export function ReviewBenchmarkExplorer({
           </button>
           <button
             type="button"
+            aria-pressed={mode === 'actual'}
             data-active={mode === 'actual'}
             onClick={() => setMode('actual')}
           >

@@ -12,6 +12,7 @@ import {
   findAdjacentFilePath,
   folderStagingActions,
   groupWipFiles,
+  reflowCommitBody,
   toggleFileTreePath
 } from './fileDetailUtils';
 import type { CommitGraphRow, GitFileChangeDetail } from '@shared/types';
@@ -306,3 +307,42 @@ function commitRow(sha: string): CommitGraphRow {
     files: []
   };
 }
+
+describe('diff presentation options', () => {
+  it('marks changes with +/- glyphs as well as color and computes word-level changes', () => {
+    const options = createDiffOptionsBase('git-gud-dark');
+
+    expect(options.diffIndicators).toBe('classic');
+    expect(options.lineDiffType).toBe('char');
+  });
+});
+
+describe('reflowCommitBody', () => {
+  it('joins hard-wrapped prose and keeps paragraph breaks', () => {
+    expect(reflowCommitBody('Skipped jobs start folded into one card per\ndependency level.\n\nSearch hits stay\nvisible.')).toBe(
+      'Skipped jobs start folded into one card per dependency level.\n\nSearch hits stay visible.'
+    );
+  });
+
+  it('keeps list items apart and folds their wrapped continuations', () => {
+    expect(reflowCommitBody('- first item wraps\n  onto a second line\n- second item\n1. numbered')).toBe(
+      '- first item wraps onto a second line\n- second item\n1. numbered'
+    );
+  });
+
+  it('leaves fenced and indented code untouched', () => {
+    const fenced = 'Run this:\n```\ngit log\n  --oneline\n```';
+    const indented = 'Example\n\n    const a = 1;\n    const b = 2;';
+
+    expect(reflowCommitBody(fenced)).toBe(fenced);
+    expect(reflowCommitBody(indented)).toBe(indented);
+  });
+
+  it('does not fold trailers, or a line introduced by a colon', () => {
+    const trailers = 'Signed-off-by: A <a@b.c>\nReviewed-by: B <b@b.c>';
+    const intro = 'Changes:\nrename the helper';
+
+    expect(reflowCommitBody(trailers)).toBe(trailers);
+    expect(reflowCommitBody(intro)).toBe(intro);
+  });
+});

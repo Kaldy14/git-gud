@@ -6,16 +6,16 @@ export type WorkflowRunPresentation = {
   icon: 'running' | 'success' | 'failure' | 'cancelled';
 };
 
+export function isQueuedWorkflowRun(run: Pick<GitHubWorkflowRun, 'status'>): boolean {
+  return run.status === 'queued' || run.status === 'requested' ||
+    run.status === 'waiting' || run.status === 'pending';
+}
+
 export function workflowRunPresentation(
   run: Pick<GitHubWorkflowRun, 'status' | 'conclusion'>
 ): WorkflowRunPresentation {
   if (run.status !== 'completed') {
-    if (
-      run.status === 'queued' ||
-      run.status === 'requested' ||
-      run.status === 'waiting' ||
-      run.status === 'pending'
-    ) {
+    if (isQueuedWorkflowRun(run)) {
       return {
         label: 'Queued',
         tone: 'running',

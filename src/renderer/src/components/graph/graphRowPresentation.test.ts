@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommitGraphRow } from '@shared/types';
 
-import { graphBranchCheckoutLocation, graphRowAriaLabel } from './graphRowPresentation';
+import { laneColor } from '@shared/graph';
+
+import { graphBranchCheckoutLocation, graphOverrideColor, graphRowAriaLabel, readableTextOn } from './graphRowPresentation';
 
 const baseRow: CommitGraphRow = {
   sha: 'a'.repeat(40),
@@ -14,6 +16,26 @@ const baseRow: CommitGraphRow = {
   rails: [],
   files: []
 };
+
+describe('graph ref and node colors', () => {
+  it('keeps current-branch text at AA contrast on every lane color', () => {
+    for (let lane = 0; lane < 7; lane += 1) {
+      const background = laneColor(lane);
+
+      expect(contrast(readableTextOn(background), background)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('falls back to light text for a background it cannot parse', () => {
+    expect(readableTextOn('var(--accent)')).toBe('#ffffff');
+  });
+
+  it('draws the working copy neutrally and keeps other override colors', () => {
+    expect(graphOverrideColor('#bc271b')).toBe('#aeb4bf');
+    expect(graphOverrideColor('#f0a13f')).toBe('#f0a13f');
+    expect(graphOverrideColor(undefined)).toBeUndefined();
+  });
+});
 
 describe('graph row accessible labels', () => {
   it('includes the non-zero WIP status breakdown', () => {
@@ -63,3 +85,18 @@ describe('graph branch checkout presentation', () => {
     ).toBeUndefined();
   });
 });
+
+function contrast(first: string, second: string): number {
+  const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a) as [number, number];
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function luminance(hex: string): number {
+  const channels = [1, 3, 5].map((start) => {
+    const value = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}

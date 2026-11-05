@@ -1035,7 +1035,7 @@ export function parseGitHubWorkflowJobGraph(
     const nameMatch = /^ {4}name:\s*(.+?)\s*$/.exec(line);
     if (nameMatch) {
       const name = parseYamlScalar(nameMatch[1]);
-      current.name = name.includes('${{') ? undefined : name;
+      current.name = name;
       readingNeeds = false;
       continue;
     }
@@ -1150,7 +1150,8 @@ export function parseGitHubWorkflowRunJobsResponse(
             expectedNames.some((expectedName) => {
               const actual = normalizeWorkflowJobName(job.name);
               const expected = normalizeWorkflowJobName(expectedName);
-              return actual.startsWith(`${expected} (`) || actual.startsWith(`${expected} / `);
+              return workflowJobTemplateMatches(actual, expected) ||
+                actual.startsWith(`${expected} (`) || actual.startsWith(`${expected} / `);
             })
           );
 
@@ -1188,6 +1189,17 @@ export function parseGitHubWorkflowRunJobsResponse(
     jobs,
     loadedAt: new Date().toISOString()
   };
+}
+
+// GitHub returns expanded matrix names, while workflow YAML retains expressions.
+// Match only literal text around expressions; never evaluate workflow code.
+function workflowJobTemplateMatches(actual: string, expected: string): boolean {
+  const parts = expected.split(/\$\{\{.*?\}\}/u);
+  if (parts.length < 2 || !parts.some((part) => part.trim())) {
+    return false;
+  }
+  const pattern = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+  return new RegExp(`^${pattern}$`, 'u').test(actual);
 }
 
 function normalizeWorkflowJobName(name: string): string {

@@ -1,45 +1,48 @@
 import type { FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 
 export const REVIEW_LINE_SELECTION_CSS = `
+  [data-column-number] {
+    padding-left: max(2ch, 24px);
+  }
+
+  /* An annotation is not part of the selected code range. Keep the editor's
+     gutter neutral instead of extending the line highlight down its full height. */
+  [data-line-annotation][data-selected-line],
+  [data-gutter-buffer="annotation"][data-selected-line] {
+    --diffs-line-bg: var(--diffs-bg);
+  }
+
+  [data-column-number][data-selected-line] {
+    color: var(--diffs-fg);
+  }
+
+  [data-gutter-utility-slot] {
+    z-index: 2;
+    left: 0;
+    right: auto;
+    justify-content: flex-start;
+  }
+
 @media (pointer: fine) {
   [data-interactive-line-numbers] [data-column-number] {
     cursor: pointer;
-  }
-
-  [data-interactive-line-numbers] [data-column-number]:hover::after {
-    content: '+';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 0;
-    display: grid;
-    width: 1lh;
-    height: 1lh;
-    place-items: center;
-    background-color: #4c8dff;
-    color: #fff;
-    border-radius: 4px;
-    font-family: system-ui, sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1;
-    pointer-events: none;
-    z-index: 4;
   }
 }
 `;
 
 export function createReviewLineSelectionOptions<TAnnotation>(
   options: FileDiffOptions<TAnnotation>,
-  onSelectLines: (range: SelectedLineRange | null) => void
+  onSelectLines: (range: SelectedLineRange | null) => void,
+  hasOpenComposer = false
 ): FileDiffOptions<TAnnotation> {
   return {
     ...options,
     unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_LINE_SELECTION_CSS}`,
-    enableLineSelection: true,
+    enableLineSelection: !hasOpenComposer,
     controlledSelection: false,
     lineHoverHighlight: 'disabled',
-    enableGutterUtility: false,
-    onLineSelected: onSelectLines
+    enableGutterUtility: !hasOpenComposer,
+    onLineSelected: hasOpenComposer ? undefined : onSelectLines
   };
 }
 

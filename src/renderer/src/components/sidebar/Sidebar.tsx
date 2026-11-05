@@ -9,7 +9,6 @@ import {
   Copy,
   Download,
   EyeOff,
-  Folder,
   FolderGit2,
   Focus,
   GitBranch,
@@ -19,6 +18,7 @@ import {
   Loader2,
   MoreVertical,
   PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -26,7 +26,6 @@ import {
   Tag,
   Trash2,
   TreePine,
-  Trees,
   X
 } from 'lucide-react';
 
@@ -56,10 +55,11 @@ import type {
   RemoteMachine,
   RemoteMachineRepository
 } from '@shared/types';
-import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
+import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, normalizeSidebarWidth } from '@shared/workspace';
 
 import { MachineSidebarSections } from './MachineSidebarSections';
 import { buildBranchTree, prioritizeWorktreeBranches, type BranchTreeNode } from './branchTree';
+import { flyoutReturnFocusTarget, isFlyoutEscape } from './sidebarFlyout';
 
 type SidebarProps = {
   repositoryOverview?: GitRepositoryOverview;
@@ -67,15 +67,18 @@ type SidebarProps = {
   isRefreshing: boolean;
   errorMessage?: string;
   isCollapsed: boolean;
+  isFlyout?: boolean;
   width: number;
   filterFocusSignal: number;
   onToggleCollapsed: () => void;
-  pullRequestCount: number;
+  onCloseFlyout?: () => void;
+  pullRequestCount?: number;
   isPullRequestLoading: boolean;
   isPullRequestInboxActive: boolean;
   onTogglePullRequestInbox: () => void;
   onResize: (width: number) => void;
   onResizeCommit: (width: number) => void;
+  onResizeReset: () => void;
   branchVisibility: BranchVisibilityState;
   onToggleBranchVisibility: (mode: BranchVisibilityMode, target: BranchVisibilityTarget) => void;
   onClearBranchVisibility: () => void;
@@ -166,7 +169,7 @@ const SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
 const COLLAPSED_SECTIONS: Array<{ id: SectionId; title: string; icon: ReactNode }> = [
   { id: 'local', title: 'Local branches', icon: <Laptop size={16} /> },
   { id: 'remote', title: 'Remote branches', icon: <Cloud size={16} /> },
-  { id: 'worktrees', title: 'Worktrees', icon: <Trees size={16} /> },
+  { id: 'worktrees', title: 'Worktrees', icon: <FolderGit2 size={16} /> },
   { id: 'stashes', title: 'Stashes', icon: <Archive size={16} /> },
   { id: 'tags', title: 'Tags', icon: <Tag size={16} /> }
 ];
@@ -183,15 +186,18 @@ export function Sidebar({
   isRefreshing,
   errorMessage,
   isCollapsed,
+  isFlyout = false,
   width,
   filterFocusSignal,
   onToggleCollapsed,
+  onCloseFlyout,
   pullRequestCount,
   isPullRequestLoading,
   isPullRequestInboxActive,
   onTogglePullRequestInbox,
   onResize,
   onResizeCommit,
+  onResizeReset,
   branchVisibility,
   onToggleBranchVisibility,
   onClearBranchVisibility,
@@ -243,6 +249,16 @@ export function Sidebar({
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState>();
   const [isResizing, setIsResizing] = useState(false);
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const handledFilterFocusSignalRef = useRef(filterFocusSignal);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const railToggleRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const pendingSectionRef = useRef<SectionId | undefined>(undefined);
+  const railPointerFocusRef = useRef<Element | null>(null);
+  const flyoutReturnFocusRef = useRef<Element | null>(null);
+  const shouldRestoreFlyoutFocusRef = useRef(false);
+  const hadDockedFocusRef = useRef(false);
   const counts = {
     local: repositoryOverview?.refs.localBranches.length ?? 0,
     remote: repositoryOverview?.refs.remoteBranches.length ?? 0,
@@ -250,14 +266,93 @@ export function Sidebar({
     stashes: repositoryOverview?.stashes.length ?? 0,
     tags: repositoryOverview?.refs.tags.length ?? 0
   };
-  const viewingCount = counts.local + counts.remote + counts.worktrees + counts.stashes + counts.tags;
+  const pullRequestLabel = isPullRequestLoading ? 'Pull request inbox, loading'
+    : pullRequestCount === undefined ? 'Pull request inbox, unavailable'
+      : `Pull request inbox, ${pullRequestCount} ${pullRequestCount === 1 ? 'item' : 'items'}`;
+  const pullRequestTitle = isPullRequestLoading ? 'Pull requests: loading'
+    : pullRequestCount === undefined ? 'Pull requests: unavailable' : `Pull requests: ${pullRequestCount}`;
+  const viewingCount = counts.local + counts.remote + counts.tags;
   const visibilityFilterCount = branchVisibility.solo.length + branchVisibility.hidden.length;
 
+  useLayoutEffect(() => {
+    if (isFlyout) {
+      flyoutReturnFocusRef.current ??= document.activeElement;
+      closeButtonRef.current?.focus({ preventScroll: true });
+      return;
+    }
+
+    if (shouldRestoreFlyoutFocusRef.current) {
+      const target = flyoutReturnFocusTarget(flyoutReturnFocusRef.current, document.body, railToggleRef.current);
+      (target as HTMLElement | null)?.focus({ preventScroll: true });
+    }
+
+    shouldRestoreFlyoutFocusRef.current = false;
+    flyoutReturnFocusRef.current = null;
+  }, [isFlyout]);
+
+  useLayoutEffect(() => {
+    if (isCollapsed) {
+      // Hiding navigation must leave keyboard focus on its visible rail.
+      if (hadDockedFocusRef.current && (
+        document.activeElement === document.body || sidebarRef.current?.contains(document.activeElement)
+      )) {
+        railToggleRef.current?.focus({ preventScroll: true });
+      }
+
+      hadDockedFocusRef.current = false;
+      return;
+    }
+
+    const sectionId = pendingSectionRef.current;
+    pendingSectionRef.current = undefined;
+
+    if (sectionId) {
+      const section = treeRef.current?.querySelector(`[data-sidebar-section="${sectionId}"]`);
+      section?.scrollIntoView({ block: 'start' });
+      section?.querySelector<HTMLElement>('[role="treeitem"]')?.focus({ preventScroll: true });
+    }
+  }, [isCollapsed]);
+
   useEffect(() => {
-    if (filterFocusSignal > 0 && !isCollapsed) {
+    if (filterFocusSignal !== handledFilterFocusSignalRef.current && !isCollapsed) {
+      handledFilterFocusSignalRef.current = filterFocusSignal;
       filterInputRef.current?.focus({ preventScroll: true });
     }
   }, [filterFocusSignal, isCollapsed]);
+
+  useEffect(() => {
+    if (!isFlyout) {
+      return;
+    }
+
+    // Capture phase: Escape must reach the flyout before the graph or diff beneath it.
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (isFlyoutEscape(event, Boolean(contextMenu))) {
+        event.preventDefault();
+        event.stopPropagation();
+        shouldRestoreFlyoutFocusRef.current = true;
+        onCloseFlyout?.();
+      }
+    }
+
+    function handlePointerDown(event: PointerEvent): void {
+      if (!sidebarRef.current?.contains(event.target as Node)) {
+        hadDockedFocusRef.current = false;
+        flyoutReturnFocusRef.current = null;
+        setContextMenu(undefined);
+        onCloseFlyout?.();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+    };
+  }, [contextMenu, isFlyout, onCloseFlyout]);
+
+  if (isCollapsed && contextMenu) setContextMenu(undefined);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -266,6 +361,8 @@ export function Sidebar({
 
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         setContextMenu(undefined);
         contextMenuReturnFocusRef.current?.focus({ preventScroll: true });
       }
@@ -275,10 +372,10 @@ export function Sidebar({
       setContextMenu(undefined);
     }
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('click', handleClick);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('click', handleClick);
     };
   }, [contextMenu]);
@@ -371,260 +468,312 @@ export function Sidebar({
     onResizeCommit(nextWidth);
   }
 
-  function handleResizeReset(): void {
-    onResize(DEFAULT_SIDEBAR_WIDTH);
-    onResizeCommit(DEFAULT_SIDEBAR_WIDTH);
+  function handleCollapseClick(): void {
+    setContextMenu(undefined);
+    if (isFlyout) {
+      shouldRestoreFlyoutFocusRef.current = true;
+      onCloseFlyout?.();
+    } else {
+      onToggleCollapsed();
+    }
   }
 
-  if (isCollapsed) {
-    const renderCollapsedSection = (section: (typeof COLLAPSED_SECTIONS)[number]): ReactElement => {
-      const count = counts[section.id];
+  function openFromRail(sectionId?: SectionId, fromPointer = false): void {
+    pendingSectionRef.current = sectionId;
+    flyoutReturnFocusRef.current = fromPointer ? railPointerFocusRef.current : document.activeElement;
+    railPointerFocusRef.current = null;
+    onToggleCollapsed();
+  }
 
-      return (
-        <button
-          key={section.id}
-          className="sidebar-collapsed-item"
-          type="button"
-          onClick={() => {
-            setExpanded((value) => ({ ...value, [section.id]: true }));
-            onToggleCollapsed();
-          }}
-          aria-label={`Expand sidebar to view ${section.title}, ${count} items`}
-          title={`${section.title}: ${count}`}
-        >
-          {section.icon}
-          <span>{formatCollapsedCount(count)}</span>
-        </button>
-      );
-    };
+  const renderCollapsedSection = (section: (typeof COLLAPSED_SECTIONS)[number]): ReactElement => {
+    const count = counts[section.id];
 
     return (
-      <aside className="workspace-sidebar workspace-sidebar--collapsed" aria-label="Repository navigation">
-        <button
-          className="sidebar-collapsed-toggle"
-          type="button"
-          onClick={onToggleCollapsed}
-          aria-label="Expand sidebar"
-          title="Expand sidebar"
-        >
-          <span className="sidebar-collapsed-toggle-mark" aria-hidden="true">
-            <ChevronRight size={11} strokeWidth={3.25} />
-          </span>
-        </button>
-        <div className="sidebar-collapsed-items">
+      <button
+        key={section.id}
+        className="sidebar-collapsed-item"
+        type="button"
+        onClick={(event) => {
+          setExpanded((value) => ({ ...value, [section.id]: true }));
+          openFromRail(section.id, event.detail > 0);
+        }}
+        aria-label={`Expand sidebar to view ${section.title}, ${count} items`}
+        title={`${section.title}: ${count}`}
+      >
+        {section.icon}
+        <span>{formatCollapsedCount(count)}</span>
+      </button>
+    );
+  };
+
+  const visibilitySummary = [
+    branchVisibility.solo.length > 0 ? `${branchVisibility.solo.length} solo` : undefined,
+    branchVisibility.hidden.length > 0 ? `${branchVisibility.hidden.length} hidden` : undefined
+  ].filter(Boolean).join(', ');
+
+  const rail = (
+    <aside
+      className="workspace-sidebar workspace-sidebar--collapsed"
+      aria-label="Repository navigation"
+      onPointerDownCapture={() => {
+        // Pressing a rail control moves focus here, so remember the canvas first.
+        railPointerFocusRef.current = document.activeElement;
+      }}
+    >
+      <button
+        ref={railToggleRef}
+        className="sidebar-collapsed-toggle"
+        type="button"
+        onClick={(event) => openFromRail(undefined, event.detail > 0)}
+        aria-label="Expand sidebar"
+        title="Expand sidebar"
+      >
+        <PanelLeftOpen size={16} aria-hidden="true" />
+      </button>
+      <div className="sidebar-collapsed-items">
+        {visibilityFilterCount > 0 ? (
           <button
             className="sidebar-collapsed-item"
             type="button"
-            data-active={isPullRequestInboxActive}
-            onClick={onTogglePullRequestInbox}
-            aria-label={`Pull request inbox, ${pullRequestCount} items`}
-            title={`Pull requests: ${pullRequestCount}`}
+            data-active="true"
+            onClick={(event) => openFromRail(undefined, event.detail > 0)}
+            aria-label={`${visibilitySummary}, open repository sidebar`}
+            title={`Branch filters: ${visibilitySummary}`}
           >
-            {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
-            <span>{formatCollapsedCount(pullRequestCount)}</span>
+            {branchVisibility.solo.length > 0 ? <Focus size={16} /> : <EyeOff size={16} />}
+            <span>{formatCollapsedCount(visibilityFilterCount)}</span>
           </button>
-          {COLLAPSED_SECTIONS.map(renderCollapsedSection)}
-        </div>
-      </aside>
-    );
-  }
-
-  return (
-    <aside
-      className="workspace-sidebar relative flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]"
-      style={{ width: normalizeSidebarWidth(width) }}
-      aria-label="Repository navigation"
-      aria-busy={isLoading || isRefreshing}
-    >
-      <SidebarResizeHandle
-        value={width}
-        isActive={isResizing}
-        onPointerDown={handleResizeStart}
-        onNudge={handleResizeNudge}
-        onReset={handleResizeReset}
-      />
-      <div className="border-b border-[var(--border)] px-3 pb-2 pt-2">
-        <div className="flex items-center gap-2">
-          <button className="icon-btn h-7 w-7" type="button" onClick={onToggleCollapsed} aria-label="Collapse sidebar">
-            <PanelLeftClose size={14} />
-          </button>
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text-1)]">Repository</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-[var(--text-2)]">
-          <span>
-            Viewing <span className="font-semibold text-[var(--text-1)]">{viewingCount}</span>
-          </span>
-          {visibilityFilterCount > 0 ? (
-            <button
-              className="side-visibility-summary"
-              type="button"
-              aria-label="Clear branch visibility filters"
-              title="Clear all Solo and Hide filters"
-              onClick={onClearBranchVisibility}
-            >
-              {branchVisibility.solo.length > 0 ? `${branchVisibility.solo.length} solo` : null}
-              {branchVisibility.solo.length > 0 && branchVisibility.hidden.length > 0 ? ' · ' : null}
-              {branchVisibility.hidden.length > 0 ? `${branchVisibility.hidden.length} hidden` : null}
-              <X size={11} aria-hidden="true" />
-            </button>
-          ) : isRefreshing ? (
-            <span className="flex items-center gap-1 text-[var(--text-3)]">
-              <Loader2 size={11} className="animate-spin" />
-              Refreshing
-            </span>
-          ) : null}
-        </div>
-        <div className="relative mt-1.5 min-w-0 flex-1">
-          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-3)]" />
-          <input
-            ref={filterInputRef}
-            className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--bg-field)] pl-7 pr-2 text-xs text-[var(--text-1)] placeholder-[var(--text-3)] outline-none transition focus:border-[var(--border-strong)]"
-            placeholder="Filter (⌘⌥F)"
-            aria-label="Filter repository references"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Pull requests, branches, worktrees, stashes, and tags">
+        ) : null}
         <button
-          className="sidebar-pr-destination"
+          className="sidebar-collapsed-item"
           type="button"
-          role="treeitem"
-          aria-selected={isPullRequestInboxActive}
           data-active={isPullRequestInboxActive}
           onClick={onTogglePullRequestInbox}
+          aria-label={pullRequestLabel}
+          title={pullRequestTitle}
+          aria-busy={isPullRequestLoading}
         >
-          <GitPullRequest size={14} />
-          <span className="min-w-0 flex-1 text-left">Pull requests</span>
-          {isPullRequestLoading ? (
-            <Loader2 size={12} className="animate-spin text-[var(--text-3)]" />
-          ) : (
-            <span className="pr-count-badge">{pullRequestCount}</span>
-          )}
+          {isPullRequestLoading ? <Loader2 size={16} className="animate-spin" /> : <GitPullRequest size={16} />}
+          <span>{isPullRequestLoading || pullRequestCount === undefined ? '\u00a0' : formatCollapsedCount(pullRequestCount)}</span>
         </button>
-        {SECTIONS.map((section) => {
-          const isExpanded = expanded[section.id];
-          const sectionCount = counts[section.id as keyof typeof counts];
-
-          return (
-            <section key={section.id} className="sidebar-section m-0" role="group">
-              <div className="side-section-header">
-                <button
-                  className={`side-section${section.id === 'remote' ? ' side-section--with-action' : ''}`}
-                  type="button"
-                  role="treeitem"
-                  aria-expanded={isExpanded}
-                  aria-level={1}
-                  onClick={() => setExpanded((value) => ({ ...value, [section.id]: !value[section.id] }))}
-                  onKeyDown={handleSidebarTreeKeyDown}
-                >
-                  {isExpanded ? (
-                    <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-                  ) : (
-                    <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
-                  )}
-                  <span className="shrink-0 text-[var(--text-3)]">{section.icon}</span>
-                  <span className="min-w-0 flex-1 truncate text-left uppercase">{section.title}</span>
-                  {typeof sectionCount === 'number' ? (
-                    <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{sectionCount}</span>
-                  ) : null}
-                </button>
-                {section.id === 'remote' ? (
-                  <button
-                    className="side-section-action"
-                    type="button"
-                    aria-label="Add remote"
-                    title="Add remote"
-                    disabled={isOperationBusy || !repositoryOverview}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onAddRemote();
-                    }}
-                  >
-                    <Plus size={14} />
-                  </button>
-                ) : null}
-              </div>
-              {isExpanded ? (
-                <SectionRows
-                  key={`${repositoryOverview?.repoPath ?? 'empty'}:${section.id}`}
-                  sectionId={section.id}
-                  repositoryOverview={repositoryOverview}
-                  filter={filter}
-                  isLoading={isLoading}
-                  isOperationBusy={isOperationBusy}
-                  errorMessage={errorMessage}
-                  onContextMenu={handleRowContextMenu}
-                  onCheckoutBranch={onCheckoutBranch}
-                  onCheckoutRemoteBranch={onCheckoutRemoteBranch}
-                  onRemoteActions={handleRemoteActions}
-                  branchVisibility={branchVisibility}
-                />
-              ) : null}
-            </section>
-          );
-        })}
-        {machines?.length && onSetMachineEnabled && onRevealCommit ? (
-          <MachineSidebarSections
-            machines={machines}
-            snapshots={machineSnapshots ?? []}
-            filter={filter}
-            onSetMachineEnabled={onSetMachineEnabled}
-            onRevealCommit={onRevealCommit}
-            onTreeKeyDown={handleSidebarTreeKeyDown}
-          />
-        ) : null}
+        {COLLAPSED_SECTIONS.map(renderCollapsedSection)}
       </div>
-
-      {contextMenu ? (
-        <SidebarContextMenu
-          state={contextMenu}
-          isOperationBusy={isOperationBusy}
-          currentBranchName={
-            repositoryOverview?.status.branch.isDetached
-              ? undefined
-              : repositoryOverview?.status.branch.head
-          }
-          canSetBranchUpstream={Boolean(repositoryOverview?.refs.remoteBranches.length)}
-          onClose={() => {
-            setContextMenu(undefined);
-            contextMenuReturnFocusRef.current?.focus({ preventScroll: true });
-          }}
-          onCheckoutBranch={onCheckoutBranch}
-          onCheckoutRemoteBranch={onCheckoutRemoteBranch}
-          onCopyBranchName={onCopyBranchName}
-          onPullBranch={onPullBranch}
-          onPushBranch={onPushBranch}
-          onPushBranchWithTag={onPushBranchWithTag}
-          onSetBranchUpstream={onSetBranchUpstream}
-          onRenameBranch={onRenameBranch}
-          onReviewBranch={onReviewBranch}
-          onViewPullRequest={onViewPullRequest}
-          localPullRequestsByBranch={localPullRequestsByBranch}
-          remotePullRequestsByBranch={remotePullRequestsByBranch}
-          onMergeBranch={onMergeBranch}
-          onRebaseOntoBranch={onRebaseOntoBranch}
-          onCreateTagAtCommit={onCreateTagAtCommit}
-          suggestedTagName={suggestedTagName}
-          onCreateSuggestedTagAtCommit={onCreateSuggestedTagAtCommit}
-          onDeleteBranch={onDeleteBranch}
-          onDeleteRemoteBranch={onDeleteRemoteBranch}
-          onFetchRemote={onFetchRemote}
-          onEditRemote={onEditRemote}
-          onRemoveRemote={onRemoveRemote}
-          tagPushRemote={tagPushRemote}
-          onPushTag={onPushTag}
-          onDeleteTag={onDeleteTag}
-          onStashApply={onStashApply}
-          onStashPop={onStashPop}
-          onStashDrop={onStashDrop}
-          branchVisibility={branchVisibility}
-          onToggleBranchVisibility={onToggleBranchVisibility}
-        />
-      ) : null}
     </aside>
+  );
+
+  return (
+    <>
+      {isCollapsed ? rail : null}
+      <div className={isCollapsed ? 'hidden' : isFlyout ? 'workspace-sidebar-flyout-slot' : 'contents'}>
+        <aside
+          ref={sidebarRef}
+          className="workspace-sidebar relative flex shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]"
+          style={{ width: normalizeSidebarWidth(width) }}
+          aria-label="Repository navigation"
+          aria-busy={isLoading || isRefreshing}
+          onFocus={() => {
+            hadDockedFocusRef.current = true;
+          }}
+          onBlur={(event) => {
+            if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) {
+              hadDockedFocusRef.current = false;
+            }
+          }}
+        >
+          {isFlyout || isCollapsed ? null : (
+            <SidebarResizeHandle
+              value={width}
+              isActive={isResizing}
+              onPointerDown={handleResizeStart}
+              onNudge={handleResizeNudge}
+              onReset={onResizeReset}
+            />
+          )}
+          <div className="border-b border-[var(--border)] px-3 pb-2 pt-2">
+            <div className="flex items-center gap-2">
+              <button ref={closeButtonRef} className="icon-btn h-7 w-7" type="button" onClick={handleCollapseClick} aria-label="Collapse sidebar">
+                <PanelLeftClose size={14} />
+              </button>
+              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text-1)]">Repository</span>
+              {visibilityFilterCount > 0 ? (
+                <button
+                  className="side-visibility-summary"
+                  type="button"
+                  aria-label="Clear branch visibility filters"
+                  title="Clear all Solo and Hide filters"
+                  onClick={onClearBranchVisibility}
+                >
+                  {branchVisibility.solo.length > 0 ? `${branchVisibility.solo.length} solo` : null}
+                  {branchVisibility.solo.length > 0 && branchVisibility.hidden.length > 0 ? ' · ' : null}
+                  {branchVisibility.hidden.length > 0 ? `${branchVisibility.hidden.length} hidden` : null}
+                  <X size={11} aria-hidden="true" />
+                </button>
+              ) : isRefreshing ? (
+                <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]">
+                  <Loader2 size={11} className="animate-spin" />
+                  Refreshing
+                </span>
+              ) : null}
+              <span className="shrink-0 text-[11px] text-[var(--text-3)]" title="Local branches, remote branches, and tags">
+                {viewingCount} {viewingCount === 1 ? 'ref' : 'refs'}
+              </span>
+            </div>
+            <div className="relative mt-1.5 min-w-0 flex-1">
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-3)]" />
+              <input
+                ref={filterInputRef}
+                className="form-input form-input--compact form-input--with-icon"
+                placeholder="Filter (⌘⌥F)"
+                aria-label="Filter repository references"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div ref={treeRef} className="sidebar-tree min-h-0 flex-1 overflow-y-auto" role="tree" aria-label="Pull requests, branches, worktrees, stashes, and tags">
+            <button
+              className="sidebar-pr-destination"
+              aria-label={pullRequestLabel}
+              title={pullRequestTitle}
+              aria-busy={isPullRequestLoading}
+              type="button"
+              role="treeitem"
+              aria-selected={isPullRequestInboxActive}
+              data-active={isPullRequestInboxActive}
+              onClick={onTogglePullRequestInbox}
+            >
+              <GitPullRequest size={14} />
+              <span className="min-w-0 flex-1 text-left">Pull requests</span>
+              {isPullRequestLoading ? (
+                <Loader2 size={12} className="animate-spin text-[var(--text-3)]" />
+              ) : pullRequestCount !== undefined ? (
+                <span className="pr-count-badge">{pullRequestCount}</span>
+              ) : null}
+            </button>
+            {SECTIONS.map((section) => {
+              const isExpanded = expanded[section.id];
+              const sectionCount = counts[section.id as keyof typeof counts];
+
+              return (
+                <section key={section.id} className="sidebar-section m-0" role="group" data-sidebar-section={section.id}>
+                  <div className="side-section-header">
+                    <button
+                      className={`side-section${section.id === 'remote' ? ' side-section--with-action' : ''}`}
+                      type="button"
+                      role="treeitem"
+                      aria-expanded={isExpanded}
+                      aria-level={1}
+                      onClick={() => setExpanded((value) => ({ ...value, [section.id]: !value[section.id] }))}
+                      onKeyDown={handleSidebarTreeKeyDown}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
+                      ) : (
+                        <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
+                      )}
+                      <span className="shrink-0 text-[var(--text-3)]">{section.icon}</span>
+                      <span className="min-w-0 flex-1 truncate text-left">{section.title}</span>
+                      {typeof sectionCount === 'number' ? (
+                        <span className="shrink-0 text-[11px] font-normal text-[var(--text-3)]">{sectionCount}</span>
+                      ) : null}
+                    </button>
+                    {section.id === 'remote' ? (
+                      <button
+                        className="side-section-action"
+                        type="button"
+                        aria-label="Add remote"
+                        title="Add remote"
+                        disabled={isOperationBusy || !repositoryOverview}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onAddRemote();
+                        }}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                  {isExpanded ? (
+                    <SectionRows
+                      key={`${repositoryOverview?.repoPath ?? 'empty'}:${section.id}`}
+                      sectionId={section.id}
+                      repositoryOverview={repositoryOverview}
+                      filter={filter}
+                      isLoading={isLoading}
+                      isOperationBusy={isOperationBusy}
+                      errorMessage={errorMessage}
+                      onContextMenu={handleRowContextMenu}
+                      onCheckoutBranch={onCheckoutBranch}
+                      onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+                      onRemoteActions={handleRemoteActions}
+                      branchVisibility={branchVisibility}
+                    />
+                  ) : null}
+                </section>
+              );
+            })}
+            {machines?.length && onSetMachineEnabled && onRevealCommit ? (
+              <MachineSidebarSections
+                machines={machines}
+                snapshots={machineSnapshots ?? []}
+                filter={filter}
+                onSetMachineEnabled={onSetMachineEnabled}
+                onRevealCommit={onRevealCommit}
+                onTreeKeyDown={handleSidebarTreeKeyDown}
+              />
+            ) : null}
+          </div>
+
+          {contextMenu ? (
+            <SidebarContextMenu
+              state={contextMenu}
+              isOperationBusy={isOperationBusy}
+              currentBranchName={
+                repositoryOverview?.status.branch.isDetached
+                  ? undefined
+                  : repositoryOverview?.status.branch.head
+              }
+              canSetBranchUpstream={Boolean(repositoryOverview?.refs.remoteBranches.length)}
+              onClose={() => {
+                setContextMenu(undefined);
+                contextMenuReturnFocusRef.current?.focus({ preventScroll: true });
+              }}
+              onCheckoutBranch={onCheckoutBranch}
+              onCheckoutRemoteBranch={onCheckoutRemoteBranch}
+              onCopyBranchName={onCopyBranchName}
+              onPullBranch={onPullBranch}
+              onPushBranch={onPushBranch}
+              onPushBranchWithTag={onPushBranchWithTag}
+              onSetBranchUpstream={onSetBranchUpstream}
+              onRenameBranch={onRenameBranch}
+              onReviewBranch={onReviewBranch}
+              onViewPullRequest={onViewPullRequest}
+              localPullRequestsByBranch={localPullRequestsByBranch}
+              remotePullRequestsByBranch={remotePullRequestsByBranch}
+              onMergeBranch={onMergeBranch}
+              onRebaseOntoBranch={onRebaseOntoBranch}
+              onCreateTagAtCommit={onCreateTagAtCommit}
+              suggestedTagName={suggestedTagName}
+              onCreateSuggestedTagAtCommit={onCreateSuggestedTagAtCommit}
+              onDeleteBranch={onDeleteBranch}
+              onDeleteRemoteBranch={onDeleteRemoteBranch}
+              onFetchRemote={onFetchRemote}
+              onEditRemote={onEditRemote}
+              onRemoveRemote={onRemoveRemote}
+              tagPushRemote={tagPushRemote}
+              onPushTag={onPushTag}
+              onDeleteTag={onDeleteTag}
+              onStashApply={onStashApply}
+              onStashPop={onStashPop}
+              onStashDrop={onStashDrop}
+              branchVisibility={branchVisibility}
+              onToggleBranchVisibility={onToggleBranchVisibility}
+            />
+          ) : null}
+        </aside>
+      </div>
+    </>
   );
 }
 
@@ -760,7 +909,7 @@ function SectionRows({
           renderBranch={(branch, label, depth) => (
             <SidebarRow
               key={branch.fullName}
-              icon={linkedWorktreeBranches.has(branch.name) ? <TreePine size={12} /> : <GitBranch size={12} />}
+              icon={linkedWorktreeBranches.has(branch.name) ? <TreePine size={12} /> : undefined}
               label={label}
               meta={formatAheadBehind(branch.ahead, branch.behind)}
               visibilityMode={branchVisibilityModeForRef(branchVisibility, 'local', branch.name)}
@@ -859,6 +1008,7 @@ function SectionRows({
               icon={<Tag size={12} />}
               label={tag.name}
               meta={tag.sha.slice(0, 7)}
+              metaKind="hash"
               onContextMenu={(event) => onContextMenu(event, { kind: 'tag', tag })}
             />
           ))}
@@ -990,9 +1140,9 @@ function RemoteSectionRows({
                         <SidebarRow
                           key={branch.fullName}
                           className="side-row--remote-branch"
-                          icon={<GitBranch size={12} />}
                           label={label}
                           meta={branch.sha.slice(0, 7)}
+                          metaKind="hash"
                           visibilityMode={branchVisibilityModeForRef(branchVisibility, 'remote', branch.name)}
                           depth={depth}
                           isActionDisabled={isOperationBusy}
@@ -1174,7 +1324,6 @@ function BranchTreeRows<Item>({
             onKeyDown={handleSidebarTreeKeyDown}
           >
             {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <Folder size={12} />
             <span className="side-row-label">{node.name}</span>
             <BranchVisibilityIcon mode={visibilityMode} />
           </button>
@@ -1193,6 +1342,7 @@ function SidebarRow({
   icon,
   label,
   meta,
+  metaKind,
   visibilityMode,
   depth = 0,
   isActive = false,
@@ -1203,9 +1353,10 @@ function SidebarRow({
 }: {
   className?: string;
   ariaLevel?: number;
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   meta?: string;
+  metaKind?: 'hash';
   visibilityMode?: BranchVisibilityMode;
   depth?: number;
   isActive?: boolean;
@@ -1214,12 +1365,14 @@ function SidebarRow({
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: () => void;
 }): ReactElement {
+  const leadingIcon = isActive ? <Check size={12} /> : icon;
+
   return (
     <div
       className={`side-row${className ? ` ${className}` : ''}`}
       style={{ paddingLeft: 34 + depth * 18 }}
       data-active={isActive}
-      title={title ?? label}
+      title={metaKind === 'hash' ? `${title ?? label} · ${meta}` : title ?? label}
       role="treeitem"
       aria-level={ariaLevel ?? depth + 2}
       aria-current={isActive ? 'page' : undefined}
@@ -1250,10 +1403,10 @@ function SidebarRow({
         }
       }}
     >
-      <span className="side-row-icon">{isActive ? <Check size={12} /> : icon}</span>
+      {leadingIcon ? <span className="side-row-icon">{leadingIcon}</span> : null}
       <span className="side-row-label">{label}</span>
       <BranchVisibilityIcon mode={visibilityMode} />
-      {meta ? <span className="side-row-meta">{meta}</span> : null}
+      {meta ? <span className="side-row-meta" data-kind={metaKind}>{meta}</span> : null}
     </div>
   );
 }
