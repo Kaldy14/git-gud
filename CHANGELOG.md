@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.5] - 2026-11-05
+
+### Changed
+
+- Inbox rows show review guide and bug-scan state as compact icons with status dots again; the word labels made the columns wide and uneven. Starting either job still asks first.
+
 ## [2026.11.4] - 2026-11-05
 
 ### Fixed
@@ -15,9 +21,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Keep author avatars and initials visible on commit graph nodes without requiring hover or selection.
 - Remove decorative cyan stripes from active repository tabs and selected commit rows; use the tab surface and row highlight to show selection.
 - Increase selected commit-row contrast with a neutral highlight, brighter metadata and dark branch pills with light labels.
+- Count only unfinished checks as pending, list merge conflicts under Needs action, and show them ahead of the Draft label.
+- Escape no longer closes a pull request; closing a comment returns focus to the review. The Code tab opens with the header folded and keeps the checks status beside the tabs.
+- Raise small pull request text to 11px, show running jobs in blue instead of amber, and stop deleted branches from raising the inbox warning.
 
 ### Added
 
+- Summary lists what blocks a merge (conflicts, failing or running checks, draft, behind base), each with its fix: conflicting files and Resolve on GitHub, View checks, or Ready for review.
+- Comment on pull request lines from the keyboard: arrow keys move a line cursor, Shift extends it, C opens the composer and Escape clears it.
+- Files hidden by review filters stay in the Code tree, dimmed; open one to reveal it. The footer shows file coverage, one Show menu holds scope and filters, and blocks take Guide stop titles.
+- Starting a review guide or bug scan from the inbox asks first. J/K move between inbox rows, and GitHub alert blocks (`[!NOTE]`, `[!WARNING]`…) render as callouts.
 - Pull request line counts are split into code, tests, docs, config, and generated files. Hover or focus the line totals in the inbox or a pull request for a table of files and lines per kind.
 
 ## [2026.11.3] - 2026-11-05
