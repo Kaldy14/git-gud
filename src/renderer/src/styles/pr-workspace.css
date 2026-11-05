@@ -1826,3 +1826,7 @@
 .pr-row-icon[data-draft='true'] { color: var(--text-3); }
 .pr-row-guide:has(.pr-row-job-label) .pr-row-guide-dot { display: none; }
 .pr-tabs-status { gap: var(--space-3); margin-right: var(--space-2); font-size: var(--text-xs); }
+/* Code sidebar: file coverage across the whole pull request, hidden files included. */
+.review-coverage { display: grid; gap: var(--space-1); color: var(--text-3); font-size: var(--text-xs); }
+.review-coverage-bar { display: block; height: 3px; overflow: hidden; border-radius: 2px; background: var(--bg-surface-2); }
+.review-coverage-bar > i { display: block; height: 100%; background: var(--accent); }

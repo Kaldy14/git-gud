@@ -13,6 +13,8 @@ export type ReviewPreferences = {
 export type VisibleReviewUnit = {
   unit: GitReviewUnit;
   visibleChunks: GitReviewChunk[];
+  // Chunks the filters (or review continuity) hide; the tree still lists their files.
+  skippedChunks?: GitReviewChunk[];
   skippedCount: number;
   isViewed: boolean;
 };
@@ -23,6 +25,10 @@ export type ReviewPresentation = {
   viewedCount: number;
   skippedCount: number;
   pendingCount: number;
+  // File-level coverage across the whole plan: a hidden file is never counted as viewed.
+  fileCount: number;
+  viewedFileCount: number;
+  hiddenFileCount: number;
 };
 
 export const DEFAULT_REVIEW_PREFERENCES: ReviewPreferences = {
@@ -55,23 +61,31 @@ export function createReviewPresentation(
     ? preferences.filePatterns.map(compileReviewFilePattern).filter((matcher) => matcher !== undefined)
     : [];
 
+  const fileChunks = new Map<string, { visible: number; viewed: number; total: number }>();
   for (const unit of plan.units) {
     const visibleChunks: GitReviewChunk[] = [];
+    const skippedChunks: GitReviewChunk[] = [];
     let unitSkippedCount = 0;
 
     for (const chunk of unit.chunks) {
       totalCount += 1;
+      const file = fileChunks.get(chunk.path) ?? { visible: 0, viewed: 0, total: 0 };
+      fileChunks.set(chunk.path, file);
+      file.total += 1;
 
       if (chunk.path !== revealedFilePath && (previouslySeenIds?.has(chunk.id) || isChunkSkipped(chunk, preferences, filePatternMatchers))) {
         skippedCount += 1;
         unitSkippedCount += 1;
+        skippedChunks.push(chunk);
         continue;
       }
 
       visibleChunks.push(chunk);
+      file.visible += 1;
 
       if (reviewedChunkIds.has(chunk.id)) {
         viewedCount += 1;
+        file.viewed += 1;
       } else {
         pendingCount += 1;
       }
@@ -81,18 +95,23 @@ export function createReviewPresentation(
       units.push({
         unit,
         visibleChunks,
+        skippedChunks,
         skippedCount: unitSkippedCount,
         isViewed: visibleChunks.every((chunk) => reviewedChunkIds.has(chunk.id))
       });
     }
   }
 
+  const files = [...fileChunks.values()];
   return {
     units,
     totalCount,
     viewedCount,
     skippedCount,
-    pendingCount
+    pendingCount,
+    fileCount: files.length,
+    viewedFileCount: files.filter((file) => file.viewed === file.total).length,
+    hiddenFileCount: files.filter((file) => file.visible === 0).length
   };
 }
 

@@ -40,10 +40,15 @@ export function createReviewFileTreeEntries(
     }
   }
 
-  return [...chunksByPath].map(([path, chunks]) => ({
+  const visible = [...chunksByPath].map(([path, chunks]) => ({
     path,
     status: reviewFileTreeStatus(chunks)
   }));
+  // Files the filters hide stay in the tree, dimmed, so coverage gaps are visible.
+  const hidden = [...new Set(units.flatMap((unit) => (unit.skippedChunks ?? []).map((chunk) => chunk.path)))]
+    .filter((path) => !chunksByPath.has(path))
+    .map((path) => ({ path, status: 'ignored' as const }));
+  return [...visible, ...hidden];
 }
 
 function reviewFileTreeStatus(

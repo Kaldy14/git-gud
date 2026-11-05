@@ -453,6 +453,7 @@ function PullRequestReviewContent({
     queryFn: () => window.api.getGitHubPullRequestTourState(pullRequestLocator(detail))
   });
   const currentTour = tourQuery.data?.tour?.headSha === detail.headSha ? tourQuery.data.tour : undefined;
+  const guideStops = useMemo(() => currentTour?.stops.map((stop) => ({ title: stop.title, paths: stop.files.map((file) => file.path) })), [currentTour]);
   const guideReferences = useMemo<ReviewInlineGuideNote[]>(() => currentTour?.stops.flatMap((stop, index) =>
     letterTourNotes(stop).flatMap(({ marker, note }) => {
       // Code annotations sit on new-side lines; notes on removed code stay in the Guide.
@@ -1178,6 +1179,7 @@ function PullRequestReviewContent({
               target={detail.reviewPlan.target}
               plan={detail.reviewPlan}
               guideReferences={guideReferences}
+              guideStops={guideStops}
               sidebarActions={<BugFinderButton pullRequest={detail} inReview iconOnly active={bugFinderOpen} onOpen={() => setBugFinderOpen(true)} />}
               reviewProgressKey={detail.reviewPlan.targetKey}
               lineComments={displayedLineComments}

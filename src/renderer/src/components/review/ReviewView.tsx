@@ -93,11 +93,13 @@ import {
   resolveAgentNotes,
   saveHiddenAgentNoteIds
 } from './agentNotes';
+import { guideUnitTitles } from './reviewUnitTitles';
 import {
   createReviewPresentation,
   loadReviewPreferences,
   saveReviewPreferences,
   type ReviewPreferences,
+  type ReviewPresentation,
   type VisibleReviewUnit
 } from './reviewFilters';
 import {
@@ -193,6 +195,8 @@ type ReviewViewProps = {
   navigationRequest?: { path: string; line?: number; endLine?: number; side?: 'left' | 'right'; signal: number };
   // Notes from the pull-request Guide, shown inline at their lines with a link back to their stop.
   guideReferences?: readonly ReviewInlineGuideNote[];
+  // A pull request's Guide stops; a block mostly made of one stop's files takes its title.
+  guideStops?: ReadonlyArray<{ title: string; paths: readonly string[] }>;
 };
 
 export type ReviewLineComment = {
@@ -378,7 +382,8 @@ export function ReviewView({
   initialViewState,
   onViewStateChange,
   navigationRequest,
-  guideReferences = NO_GUIDE_NOTES
+  guideReferences = NO_GUIDE_NOTES,
+  guideStops
 }: ReviewViewProps): ReactElement {
   const sectionRef = useRef<HTMLElement>(null);
   const viewStateRef = useRef(createReviewViewState(initialViewState));
@@ -524,6 +529,7 @@ export function ReviewView({
       visibleChunks: rankReviewChunksByGuide(unit.visibleChunks, reviewGuideUnits.get(unit.unit.id))
     })) };
   }, [basePresentation, guidePlan, reviewGuide, preferences, reviewedChunkIds, revealedFilePath, reviewGuideUnits, continuityHiddenIds]);
+  const unitTitles = useMemo(() => guideUnitTitles(reviewPlan?.units ?? [], guideStops), [reviewPlan, guideStops]);
   const activeFilterCount = [
     continuity.hideSeen && continuity.hiddenIds.size > 0,
     preferences.skipTests,
@@ -1007,6 +1013,13 @@ export function ReviewView({
     setRequestedFilePath(path);
 
     if (!path) {
+      return;
+    }
+
+    // A file the filters hide is listed dimmed; opening it reveals just that file.
+    const isVisible = presentation?.units.some((unit) => unit.visibleChunks.some((chunk) => chunk.path === path));
+    if (!isVisible) {
+      selectAllFile(path, selectedUnit?.skippedChunks?.some((chunk) => chunk.path === path) ? selectedUnit.unit.id : undefined);
       return;
     }
 
@@ -1566,8 +1579,8 @@ export function ReviewView({
         compact={layout === 'pull-request'}
         navigationTools={toolbar}
         navigationHeader={<>
-          {continuity.enabled ? <ReviewScopeControl continuity={continuity} disabled={selectedCommentTarget !== undefined} /> :
-            <strong className="review-sidebar-heading">{reviewGuide ? 'AI layers' : 'Blocks'}</strong>}
+          {/* Scope (whole PR vs since last review) lives in the Show menu with the other filters. */}
+          <strong className="review-sidebar-heading">{reviewGuide ? 'AI layers' : 'Blocks'}</strong>
           {fileTreePanel ? <ReviewToolTooltip content="All files. Browse every changed file in this PR, including files hidden by review filters.">
             <button type="button" className="icon-btn review-sidebar-tool" aria-label="All files"
               aria-expanded={fileTreePanel.open} aria-pressed={fileTreePanel.open} onClick={fileTreePanel.onToggle}>
@@ -1606,6 +1619,8 @@ export function ReviewView({
         diffOptions={diffOptions}
         isMutating={progressMutation.isPending}
         mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
+        coverage={presentation}
+        unitTitles={unitTitles}
         lineCollaboration={lineCollaboration}
         agentNotes={agentNotes}
         hiddenAgentNoteIds={hiddenAgentNoteIds}
@@ -1739,36 +1754,8 @@ function ReviewToolTooltip({ content, children }: { content: ReactNode; children
   </Tooltip.Root></Tooltip.Provider>;
 }
 
-function ReviewScopeControl({ continuity, disabled }: {
-  continuity: ReturnType<typeof useReviewContinuity>;
-  disabled: boolean;
-}): ReactElement {
-  const canResume = continuity.hasSavedCheckpoint && !continuity.baseChanged;
-  const changesOnly = canResume && continuity.hideSeen;
-  return <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <button type="button" className="btn-subtle review-scope-control" disabled={disabled}
-        aria-label={`Review scope: ${changesOnly ? 'Changes since review' : 'Full PR'}`}>
-        <span>{changesOnly ? 'Changes since review' : 'Full PR'}</span><ChevronDown size={12} />
-      </button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" className="w-64" aria-label="Review scope">
-      <DropdownMenuLabel>Show</DropdownMenuLabel>
-      <DropdownMenuItem role="menuitemradio" aria-checked={changesOnly} disabled={!canResume}
-        onSelect={() => continuity.setHideSeen(true)}>
-        <Check size={13} className={changesOnly ? 'shrink-0' : 'invisible shrink-0'} />
-        <span>Changes since review<small className="block text-[10px] text-[var(--text-3)]">
-          {continuity.baseChanged ? 'Comparison base changed; all code stays visible' : !canResume ?
-            'Available after reviewing half the changed lines' : 'Hide previously seen, unchanged code'}
-        </small></span>
-      </DropdownMenuItem>
-      <DropdownMenuItem role="menuitemradio" aria-checked={!changesOnly} onSelect={() => continuity.setHideSeen(false)}>
-        <Check size={13} className={!changesOnly ? 'shrink-0' : 'invisible shrink-0'} />
-        <span>Full PR<small className="block text-[10px] text-[var(--text-3)]">Include previously reviewed code</small></span>
-      </DropdownMenuItem>
-      <p className="px-2.5 py-1 text-[10px] text-[var(--text-3)]">Other review filters still apply.</p>
-    </DropdownMenuContent>
-  </DropdownMenu>;
+function canResumeContinuity(continuity: ReturnType<typeof useReviewContinuity>): boolean {
+  return continuity.hasSavedCheckpoint && !continuity.baseChanged;
 }
 
 function ReviewGuideControl({ state, open, onStart, onToggle, compact = false }: {
@@ -1834,27 +1821,39 @@ function ReviewFilterMenu({
         <button className="btn-subtle btn-compact" type="button" disabled={disabled}
           title={continuity.enabled ? `${continuity.hideSeen ? continuity.hiddenIds.size : 0} previously seen chunks hidden; ${continuity.previousChanges.length} previous changes to inspect` : undefined}>
           {continuity.previousChanges.length > 0 ? <Clock3 size={12} className="text-[var(--warning-text)]" /> : <Settings2 size={12} />}
-          Filters
-          {activeCount > 0 ? <span className="badge-mini">{activeCount}</span> : null}
+          Show
+          {activeCount > 0 ? <span className="badge-mini" aria-label={`${activeCount} filters on`}>{activeCount}</span> : null}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64" aria-label="Review filters">
         {continuity.enabled ? <>
-          <DropdownMenuLabel>Review continuity</DropdownMenuLabel>
+          <DropdownMenuLabel>Changes</DropdownMenuLabel>
+          <DropdownMenuItem role="menuitemradio" aria-checked={!continuity.hideSeen || !canResumeContinuity(continuity)}
+            onSelect={() => continuity.setHideSeen(false)}>
+            <Check size={13} className={!continuity.hideSeen || !canResumeContinuity(continuity) ? 'shrink-0' : 'invisible shrink-0'} />
+            <span>Whole pull request</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem role="menuitemradio" aria-checked={continuity.hideSeen && canResumeContinuity(continuity)}
+            disabled={!canResumeContinuity(continuity)} onSelect={() => continuity.setHideSeen(true)}>
+            <Check size={13} className={continuity.hideSeen && canResumeContinuity(continuity) ? 'shrink-0' : 'invisible shrink-0'} />
+            <span>Since my last review{canResumeContinuity(continuity) ? ` (${continuity.hiddenIds.size} seen hidden)` : ''}
+              <small className="block text-[var(--text-3)]">
+                {continuity.baseChanged ? 'The comparison base changed; all code stays visible' : !continuity.hasSavedCheckpoint
+                  ? 'Available after you have seen half the changed lines' : 'Hides code you saw that has not changed since'}
+              </small>
+            </span>
+          </DropdownMenuItem>
           {continuity.hasSavedCheckpoint ? <>
-            <ReviewFilterMenuItem checked={continuity.hideSeen} icon={<EyeOff size={13} />}
-              label={`Seen and unchanged (${continuity.hiddenIds.size})`}
-              onChange={continuity.setHideSeen} />
             {continuity.previousChanges.length > 0 ? <DropdownMenuItem onSelect={onInspectPrevious}>
               Inspect previous changes ({continuity.previousChanges.length})
             </DropdownMenuItem> : null}
             <DropdownMenuItem onSelect={continuity.reset}>Reset saved review</DropdownMenuItem>
             {continuity.baseChanged ? <p className="px-2 py-1 text-xs text-[var(--text-3)]">The comparison base changed. All current code stays visible.</p> : null}
-          </> : <p className="px-2 py-1 text-xs text-[var(--text-3)]">A checkpoint is saved after you see half the changed lines included by your filters.</p>}
+          </> : null}
           {continuity.error ? <p role="alert" className="px-2 py-1 text-xs text-[var(--danger-text)]">{continuity.error}</p> : null}
           <DropdownMenuSeparator />
         </> : null}
-        <DropdownMenuLabel>Skip from review</DropdownMenuLabel>
+        <DropdownMenuLabel>Hide from review</DropdownMenuLabel>
         <ReviewFilterMenuItem
           checked={preferences.skipTests}
           icon={<TestTube2 size={13} />}
@@ -1951,6 +1950,8 @@ function ReviewBody({
   continuityEmpty,
   resumePosition,
   units,
+  coverage,
+  unitTitles,
   selectedUnit,
   preparedDiffs,
   diffOptions,
@@ -1996,6 +1997,8 @@ function ReviewBody({
   continuityEmpty?: ReactNode;
   resumePosition?: { chunkId: string; path: string; offset: number };
   units: VisibleReviewUnit[];
+  coverage?: Pick<ReviewPresentation, 'fileCount' | 'viewedFileCount' | 'hiddenFileCount'>;
+  unitTitles?: ReadonlyMap<string, string>;
   selectedUnit?: VisibleReviewUnit;
   preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
@@ -2333,7 +2336,7 @@ function ReviewBody({
                     className="review-unit-title block truncate"
                     title={reviewGuide ? undefined : candidate.unit.explanation}
                   >
-                    {compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title}
+                    {unitTitles?.get(candidate.unit.id) ?? (compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title)}
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">
                     {reviewGuideUnits.get(candidate.unit.id) ? (
@@ -2386,8 +2389,8 @@ function ReviewBody({
                     <summary>Why grouped?</summary>
                     <p>{selectedUnit.unit.explanation}</p>
                     <small>
-                      {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
-                      filters
+                      {REVIEW_CONFIDENCE_LABELS[selectedUnit.unit.confidence] ?? selectedUnit.unit.confidence}
+                      {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} ${selectedUnit.skippedCount === 1 ? 'change' : 'changes'} hidden by filters` : ''}
                     </small>
                   </details>
                   <div className="review-block-position">
@@ -2395,8 +2398,18 @@ function ReviewBody({
                       {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
                       {units.length}
                     </span>
-                    <span>{selectedUnit.skippedCount} hidden</span>
                   </div>
+                  {coverage ? (
+                    <div className="review-coverage" title="Hidden files never count as viewed. Open a dimmed file to review it.">
+                      <span className="review-coverage-bar" aria-hidden="true">
+                        <i style={{ width: `${coverage.fileCount ? (coverage.viewedFileCount / coverage.fileCount) * 100 : 0}%` }} />
+                      </span>
+                      <span>
+                        {coverage.viewedFileCount} of {coverage.fileCount} files viewed
+                        {coverage.hiddenFileCount > 0 ? ` · ${coverage.hiddenFileCount} hidden by filters` : ''}
+                      </span>
+                    </div>
+                  ) : null}
                 </>
               ) : null}
               {navigationTools}
@@ -3008,7 +3021,7 @@ function ReviewFile({
               <span className="review-file-basename">{basename}</span>
             </span>
             {guideFile ? <ReviewGuidePriority priority={guideFile.priority} reason={guideFile.reason} /> : null}
-            <span className="badge-mini" title={firstChunk.relationship}>{firstChunk.role}</span>
+            <span className="badge-mini" title={firstChunk.relationship}>{REVIEW_ROLE_LABELS[firstChunk.role] ?? firstChunk.role}</span>
             {firstChunk.source !== 'commit' ? <span className="badge-mini">{firstChunk.source}</span> : null}
             <span className="text-[var(--success-text)]">+{file.additions}</span>
             <span className="text-[var(--danger-text)]">-{file.deletions}</span>
@@ -4115,6 +4128,10 @@ function formatReviewSearchResultCount(count: number): string {
 function readSelectedReviewText(): string {
   return readReviewSearchSelection(window.getSelection());
 }
+
+// Plain words for the grouping engine's internal values.
+const REVIEW_CONFIDENCE_LABELS: Record<string, string> = { exact: 'Exact match', strong: 'Strong link', context: 'Nearby context' };
+const REVIEW_ROLE_LABELS: Record<string, string> = { anchor: 'Changed here', usage: 'Uses it', related: 'Related' };
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
