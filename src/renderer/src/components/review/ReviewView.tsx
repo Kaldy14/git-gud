@@ -94,6 +94,7 @@ import {
   saveHiddenAgentNoteIds
 } from './agentNotes';
 import { guideUnitTitles } from './reviewUnitTitles';
+import { moveReviewLineCursor, paintReviewLineCursor, reviewChunkElements, reviewLineCursorRange, type ReviewLineCursor } from './reviewLineCursor';
 import {
   createReviewPresentation,
   loadReviewPreferences,
@@ -399,6 +400,8 @@ export function ReviewView({
   const previousReviewTitleId = useId();
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
   const [revealedFilePath, setRevealedFilePath] = useState<string>();
+  // Keyboard line cursor (PR layout): ↑/↓ move, Shift extends, C comments.
+  const [lineCursor, setLineCursor] = useState<ReviewLineCursor>();
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
@@ -687,6 +690,28 @@ export function ReviewView({
   useEffect(() => {
     sectionRef.current?.focus({ preventScroll: true });
   }, []);
+
+  useEffect(() => {
+    if (sectionRef.current) paintReviewLineCursor(sectionRef.current, lineCursor);
+  }, [lineCursor]);
+
+  // The first chunk at least partly on screen, where a fresh cursor starts.
+  function firstVisibleChunkId(): string | undefined {
+    const section = sectionRef.current;
+    if (!section) return undefined;
+    const top = section.getBoundingClientRect().top;
+    return reviewChunkElements(section).find((chunk) => chunk.getBoundingClientRect().bottom > top + 80)?.dataset.reviewChunkId;
+  }
+
+  function commentOnLineCursor(): void {
+    const section = sectionRef.current;
+    if (!section || !lineCursor) return;
+    const range = reviewLineCursorRange(section, lineCursor);
+    const path = allFileUnits.flatMap((unit) => unit.visibleChunks).find((chunk) => chunk.id === lineCursor.chunkId)?.path;
+    if (!range || !path) return;
+    setLineCursor(undefined);
+    handleSelectCommentLines(lineCursor.chunkId, path, range);
+  }
 
   useEffect(() => {
     if (!selectedUnit) {
@@ -1151,14 +1176,31 @@ export function ReviewView({
       return;
     }
 
+    const isPlainTarget = !isEditableTarget(event.target) && !isReviewFileTreeTarget(event.target);
+    if (
+      layout === 'pull-request' && isPlainTarget && !event.metaKey && !event.ctrlKey && !event.altKey &&
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp') && sectionRef.current
+    ) {
+      event.preventDefault();
+      const section = sectionRef.current;
+      setLineCursor((current) => moveReviewLineCursor(section, current, event.key === 'ArrowDown' ? 1 : -1, event.shiftKey, firstVisibleChunkId()));
+      return;
+    }
+
     if (
       event.metaKey ||
       event.ctrlKey ||
       event.altKey ||
       event.shiftKey ||
-      isEditableTarget(event.target) ||
-      isReviewFileTreeTarget(event.target)
+      !isPlainTarget
     ) {
+      return;
+    }
+
+    if (layout === 'pull-request' && lineCursor && (event.key === 'c' || event.key === 'Escape')) {
+      event.preventDefault();
+      if (event.key === 'c') commentOnLineCursor();
+      else setLineCursor(undefined);
       return;
     }
 
@@ -2414,7 +2456,7 @@ function ReviewBody({
               ) : null}
               {navigationTools}
               <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
-                J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
+                J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed{compact ? ' · ↑ / ↓ lines · C comment' : ''}
               </span>
             </div>
             {selectedUnit ? (

@@ -1,5 +1,7 @@
 import type { FileDiffOptions, SelectedLineRange } from '@pierre/diffs';
 
+import { REVIEW_LINE_CURSOR_CSS } from './reviewLineCursor';
+
 export const REVIEW_LINE_SELECTION_CSS = `
   [data-column-number] {
     padding-left: max(2ch, 24px);
@@ -37,7 +39,7 @@ export function createReviewLineSelectionOptions<TAnnotation>(
 ): FileDiffOptions<TAnnotation> {
   return {
     ...options,
-    unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_LINE_SELECTION_CSS}`,
+    unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_LINE_SELECTION_CSS}\n${REVIEW_LINE_CURSOR_CSS}`,
     enableLineSelection: !hasOpenComposer,
     controlledSelection: false,
     lineHoverHighlight: 'disabled',

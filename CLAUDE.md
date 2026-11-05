@@ -48,7 +48,7 @@
 
 - Keep new line and file comments local until the user submits the review.
 - Render line composers and threads beneath their diff line; do not move active commenting UI above the diff.
-- Keep Pierre's gutter utility enabled when no composer is open so hovering a diff line reveals an accessibly labelled `+` comment affordance.
+- Pierre's gutter utility stays off for large-review hover performance (6489996); hovering a line number shows a CSS `+` and selecting lines opens the composer. Keyboard users get the line cursor in `reviewLineCursor.ts` (PR layout): ↑/↓ move, Shift extends within one chunk, C opens the composer for the range, Escape clears it. J/K still move between blocks.
 - Normalize dragged line ranges into ascending GitHub API order regardless of drag direction.
 - Keep review-unit and filter navigation disabled while a comment composer is open so typed text cannot be orphaned.
 - In the pull-request layout Escape never closes the PR: it dismisses an empty composer (typed text needs Cancel). Closing or adding a comment returns focus to the review so J/K/V keep working.
