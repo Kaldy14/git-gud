@@ -70,7 +70,6 @@ export function BugFinderButton({
             : status === 'failed'
               ? state?.status === 'failed' ? 'Bug scan failed. Open bug finder to see why and retry' : `${activation.error?.message ?? query.error?.message ?? 'Bug scan failed'}. Retry`
               : 'No bug scan yet. Run in the background';
-  const shortLabel = status === 'ready' ? (count ? `${count} ${count === 1 ? 'bug' : 'bugs'}` : 'No bugs') : status === 'running' ? 'Scanning' : status === 'stale' ? 'Outdated' : status === 'failed' ? 'Failed' : '';
   const activate = () => activation.mutate(undefined, {
     onSuccess: (open) => {
       if (open) onOpen();
@@ -106,7 +105,6 @@ export function BugFinderButton({
             }}
           >
             <Bug size={14} aria-hidden="true" />
-            {!inReview && shortLabel ? <span className="pr-row-job-label" aria-hidden="true">{shortLabel}</span> : null}
             {inReview && !iconOnly ? <span>Bug finder</span> : null}
             <span className={iconOnly ? 'review-sidebar-tool-dot' : 'pr-row-guide-dot'} aria-hidden="true" />
           </button>

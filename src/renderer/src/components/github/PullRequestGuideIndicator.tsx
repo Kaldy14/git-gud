@@ -52,8 +52,6 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
         : status === 'stale' ? 'Review guide was written before the latest push. Write an update'
           : status === 'failed' ? `${error || 'The review guide could not be written'}. Retry`
             : 'No review guide yet. Write one in the background';
-  // Visible state beside the icon; idle stays icon-only so quiet rows stay quiet.
-  const shortLabel = status === 'ready' ? 'Guide' : status === 'running' ? 'Writing' : status === 'stale' ? 'Outdated' : status === 'failed' ? 'Failed' : '';
   const start = () => {
     generation.mutate();
     announce(`Writing a review guide for #${pullRequest.number}`);
@@ -88,7 +86,6 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
             }}
           >
             <BookOpen size={14} aria-hidden="true" />
-            {shortLabel ? <span className="pr-row-job-label" aria-hidden="true">{shortLabel}</span> : null}
             <span
               className="pr-row-guide-dot"
               aria-hidden="true"

@@ -32,7 +32,7 @@
 
 ## PR accessibility
 
-- AI jobs (review guide, bug scan) never start from a single click: idle or outdated jobs open `BackgroundJobConfirm` first, and inbox rows show the job state as a word (Guide, Writing, Outdated, Failed, N bugs) instead of a dot alone.
+- AI jobs (review guide, bug scan) never start from a single click: idle or outdated jobs open `BackgroundJobConfirm` first. Inbox rows keep the job state icon-only (icon plus status dot, details in the tooltip); words beside the icons were tried and read as clutter.
 - Inbox J/K move focus between rows (Enter opens) while focus is in the list or nowhere.
 - Busy controls (refresh, Write guide, reviewer options) use `aria-disabled` plus a guarded click instead of `disabled`, so keyboard focus stays put.
 - Announce background status changes (guide ready/failed, refresh failed, new activity) through `src/renderer/src/lib/announce.ts`, the single polite live region.
