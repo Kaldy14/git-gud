@@ -2013,11 +2013,10 @@ code,
   --graph-node-fill: color-mix(in srgb, white 3.5%, var(--graph-row-fill));
 }
 
-/* Selection spans the whole row and carries an edge, so it still reads without color. */
+/* Selection uses the whole-row fill and brighter subject text, without a decorative edge. */
 .graph-row[aria-selected='true'] {
   --graph-row-fill: var(--graph-row-selected);
   background: var(--graph-row-fill);
-  box-shadow: inset 3px 0 0 var(--accent-2);
 }
 
 .graph-row[aria-selected='true'] .graph-subject {
