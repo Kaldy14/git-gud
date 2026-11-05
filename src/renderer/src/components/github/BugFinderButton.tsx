@@ -1,7 +1,10 @@
 import { Bug } from 'lucide-react';
+import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Tooltip } from 'radix-ui';
 import { useBugFinder } from './useBugFinder';
+import { BackgroundJobConfirm } from './BackgroundJobConfirm';
+import { announce } from '../../lib/announce';
 import type { GitHubPullRequestLocator } from '@shared/types';
 
 export function BugFinderButton({
@@ -18,6 +21,7 @@ export function BugFinderButton({
   active?: boolean;
 }) {
   const { state, query, mutation } = useBugFinder(pullRequest);
+  const [isConfirming, setIsConfirming] = useState(false);
   const activation = useMutation({
     // Resolves to true when the view should open: a finished report or a failure to explain.
     // Starting a scan stays in the background; the view only opens once there is something to show.
@@ -66,7 +70,23 @@ export function BugFinderButton({
             : status === 'failed'
               ? state?.status === 'failed' ? 'Bug scan failed. Open bug finder to see why and retry' : `${activation.error?.message ?? query.error?.message ?? 'Bug scan failed'}. Retry`
               : 'No bug scan yet. Run in the background';
+  const shortLabel = status === 'ready' ? (count ? `${count} ${count === 1 ? 'bug' : 'bugs'}` : 'No bugs') : status === 'running' ? 'Scanning' : status === 'stale' ? 'Outdated' : status === 'failed' ? 'Failed' : '';
+  const activate = () => activation.mutate(undefined, {
+    onSuccess: (open) => {
+      if (open) onOpen();
+      else announce(`Bug scan started for #${pullRequest.number}`);
+    }
+  });
   return (
+    <BackgroundJobConfirm
+      open={isConfirming}
+      onOpenChange={setIsConfirming}
+      title={status === 'stale' ? 'Rescan for bugs?' : 'Scan for bugs?'}
+      detail="Reviews the change with AI and lists likely bugs. Takes a few minutes and runs in the background."
+      actionLabel={status === 'stale' ? 'Rescan' : 'Run scan'}
+      onConfirm={activate}
+    >
+    <span className="pr-row-job">
     <Tooltip.Provider delayDuration={350}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
@@ -80,10 +100,13 @@ export function BugFinderButton({
             onClick={(event) => {
               event.stopPropagation();
               if (activation.isPending || status === 'loading' || status === 'running') return;
-              activation.mutate(undefined, { onSuccess: (open) => { if (open) onOpen(); } });
+              // Starting a scan asks first; a finished or failed scan opens straight away.
+              if (status === 'idle' || status === 'stale') setIsConfirming(true);
+              else activate();
             }}
           >
             <Bug size={14} aria-hidden="true" />
+            {!inReview && shortLabel ? <span className="pr-row-job-label" aria-hidden="true">{shortLabel}</span> : null}
             {inReview && !iconOnly ? <span>Bug finder</span> : null}
             <span className={iconOnly ? 'review-sidebar-tool-dot' : 'pr-row-guide-dot'} aria-hidden="true" />
           </button>
@@ -100,5 +123,7 @@ export function BugFinderButton({
         </Tooltip.Portal>
       </Tooltip.Root>
     </Tooltip.Provider>
+    </span>
+    </BackgroundJobConfirm>
   );
 }

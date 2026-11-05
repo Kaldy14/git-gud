@@ -129,7 +129,7 @@
 }
 .pr-inbox-results .pr-inbox-row {
   min-height: 54px;
-  grid-template-columns: 18px minmax(0, 1fr) 180px 64px 28px 28px 44px;
+  grid-template-columns: 18px minmax(0, 1fr) 180px 64px 92px 92px 44px;
   gap: 12px;
   border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
@@ -582,7 +582,7 @@
     display: none;
   }
   .pr-inbox-results .pr-inbox-row {
-    grid-template-columns: 16px minmax(0, 1fr) 125px 48px 28px 28px 44px;
+    grid-template-columns: 16px minmax(0, 1fr) 125px 56px 84px 84px 44px;
     gap: 8px;
   }
   .pr-side-panel {
@@ -606,6 +606,9 @@
     grid-column: 2;
   }
   .pr-inbox-results .pr-row-checks {
+    display: none;
+  }
+  .pr-inbox-results .pr-row-job-label {
     display: none;
   }
   .pr-review-actions-persistent .btn-regular {
@@ -1805,3 +1808,20 @@
 .pr-inbox-scope-note { margin: 0; padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); color: var(--text-3); font-size: var(--text-xs); }
 .pr-inline-warning > span { flex: 1; min-width: 0; }
 .pr-merge-checklist-files small { display: flex; align-items: center; gap: var(--space-1); font-size: inherit; }
+
+/* Guide and bug-scan state as words beside the icon; idle rows stay icon-only. */
+.pr-row-job { display: inline-flex; min-width: 0; }
+.pr-inbox-row .pr-row-guide { width: auto; min-width: 28px; max-width: 100%; gap: 5px; padding: 0 6px; justify-content: flex-start; }
+.pr-row-job-label { overflow: hidden; font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.pr-row-guide[data-status='ready'] .pr-row-job-label { color: var(--success-text); }
+.pr-row-guide[data-status='running'] .pr-row-job-label { color: var(--info-text); }
+.pr-row-guide[data-status='stale'] .pr-row-job-label { color: var(--warning-text); }
+.pr-row-guide[data-status='failed'] .pr-row-job-label { color: var(--danger-text); }
+.pr-bug-finder-button[data-status='ready'] .pr-row-job-label { color: var(--text-2); }
+.pr-job-confirm { z-index: 60; width: 240px; border: 1px solid var(--border-strong); border-radius: var(--radius-container); background: var(--bg-popover); box-shadow: 0 10px 28px rgb(0 0 0 / 0.42); padding: var(--space-3); color: var(--text-1); font-size: var(--text-sm); }
+.pr-job-confirm > p { margin: var(--space-1) 0 var(--space-3); color: var(--text-2); font-size: var(--text-xs); line-height: 1.45; }
+.pr-job-confirm > div { display: flex; gap: var(--space-2); }
+.pr-inbox-results .pr-inbox-row:has(.pr-row-open:focus-visible) { background: var(--select-bg); box-shadow: inset 2px 0 0 var(--focus-ring); }
+/* Drafts are not open for review yet, so their icon is not green. */
+.pr-row-icon[data-draft='true'] { color: var(--text-3); }
+.pr-row-guide:has(.pr-row-job-label) .pr-row-guide-dot { display: none; }

@@ -1,10 +1,13 @@
 import type { ReactElement } from 'react';
+import { useState } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen } from 'lucide-react';
 import { Tooltip } from 'radix-ui';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
 import { pullRequestLocator, pullRequestTourQueryKey, startPullRequestTour } from './guide/pullRequestTourQuery';
+import { BackgroundJobConfirm } from './BackgroundJobConfirm';
+import { announce } from '../../lib/announce';
 
 export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
   pullRequest: GitHubPullRequestSummary;
@@ -34,6 +37,7 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
     },
     onSuccess: (state) => queryClient.setQueryData(queryKey, state)
   });
+  const [isConfirming, setIsConfirming] = useState(false);
   const state = query.data;
   // A failed rewrite must not hide an existing guide: report failure only when there is none.
   const status = isStarting || state?.running ? 'running'
@@ -46,10 +50,25 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
     : status === 'running' ? 'Writing a review guide in the background'
       : status === 'loading' ? 'Checking review guide status'
         : status === 'stale' ? 'Review guide was written before the latest push. Write an update'
-          : status === 'failed' ? `${error || 'The review guide could not be written'}. Click to retry`
+          : status === 'failed' ? `${error || 'The review guide could not be written'}. Retry`
             : 'No review guide yet. Write one in the background';
+  // Visible state beside the icon; idle stays icon-only so quiet rows stay quiet.
+  const shortLabel = status === 'ready' ? 'Guide' : status === 'running' ? 'Writing' : status === 'stale' ? 'Outdated' : status === 'failed' ? 'Failed' : '';
+  const start = () => {
+    generation.mutate();
+    announce(`Writing a review guide for #${pullRequest.number}`);
+  };
 
   return (
+    <BackgroundJobConfirm
+      open={isConfirming}
+      onOpenChange={setIsConfirming}
+      title={status === 'stale' ? 'Update the review guide?' : status === 'failed' ? 'Retry the review guide?' : 'Write a review guide?'}
+      detail="Reads the change with AI and writes a tour of it. Takes a few minutes and runs in the background."
+      actionLabel={status === 'idle' ? 'Write guide' : 'Rewrite guide'}
+      onConfirm={start}
+    >
+    <span className="pr-row-job">
     <Tooltip.Provider delayDuration={350}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
@@ -65,10 +84,11 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
               if (status === 'running' || status === 'loading') return;
               if (status === 'ready') onOpen();
               else if (query.isError) void query.refetch();
-              else generation.mutate();
+              else setIsConfirming(true);
             }}
           >
             <BookOpen size={14} aria-hidden="true" />
+            {shortLabel ? <span className="pr-row-job-label" aria-hidden="true">{shortLabel}</span> : null}
             <span
               className="pr-row-guide-dot"
               aria-hidden="true"
@@ -88,5 +108,7 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
         </Tooltip.Portal>
       </Tooltip.Root>
     </Tooltip.Provider>
+    </span>
+    </BackgroundJobConfirm>
   );
 }

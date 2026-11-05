@@ -125,6 +125,27 @@ export function PullRequestInboxView({
     Partial<Record<GitHubPullRequestCategory, boolean>>
   >(remembered?.expandedGroups ?? {});
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // J/K move between pull request rows (Enter opens), while focus is in the list or nowhere.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const results = resultsRef.current;
+      if (!results || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.key !== 'j' && event.key !== 'k') return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && target !== document.body && !results.contains(target)) return;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const rows = [...results.querySelectorAll<HTMLButtonElement>('.pr-row-open')];
+      if (rows.length === 0) return;
+      event.preventDefault();
+      const current = rows.findIndex((row) => row.parentElement?.contains(document.activeElement));
+      const next = current === -1 ? 0 : Math.max(0, Math.min(rows.length - 1, current + (event.key === 'j' ? 1 : -1)));
+      rows[next].focus();
+      rows[next].parentElement?.scrollIntoView({ block: 'nearest' });
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
   const scrollTopRef = useRef(remembered?.scrollTop ?? 0);
   useEffect(() => {
     inboxViewMemory.set(memoryKey, { search, scope, repository, updatedRange, expandedGroups, scrollTop: scrollTopRef.current });
@@ -503,7 +524,7 @@ function PullRequestRow({
     <div className="pr-inbox-row" onClick={onSelect}>
       <button className="pr-row-open" type="button" aria-label={`Open pull request ${pullRequest.title}`} />
       <span className="pr-row-accent" data-category={pullRequest.category} />
-      <GitPullRequest size={16} className="pr-row-icon" />
+      <GitPullRequest size={16} className="pr-row-icon" data-draft={pullRequest.isDraft || undefined} />
       <span className="pr-row-copy">
         <span className="pr-row-title" title={pullRequest.title}>{pullRequest.title}</span>
         <span className="pr-row-meta">
