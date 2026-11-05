@@ -7980,14 +7980,15 @@ button.ref-chip {
 }
 
 /* Wide tiles read as a ledger. The title's 180px floor is what sets this breakpoint: every other
-   track at its minimum, plus gaps and padding, comes to 702px. The cqi caps stop the workflow and
-   branch tracks filling to their maximums before the title gets any of the remaining width. */
+   track at its minimum, plus gaps and padding, comes to 702px. The title and workflow tracks are
+   capped so they stay beside the run number; the branch takes the leftover width, where long
+   names can use it, and time holds the right edge. */
 @container actions-tile (min-width: 720px) {
   .workflow-run-row {
     min-height: 36px;
     grid-template-columns:
-      22px 72px minmax(180px, 1fr) minmax(56px, min(120px, 10cqi)) 56px
-      minmax(96px, min(220px, 18cqi)) 112px 14px;
+      22px 72px minmax(180px, min(360px, 30cqi)) minmax(56px, min(120px, 10cqi)) 56px
+      minmax(96px, 1fr) 112px 14px;
     padding-block: 0;
   }
 

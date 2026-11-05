@@ -1,4 +1,4 @@
-import type { FormEvent, ReactElement } from 'react';
+import type { CSSProperties, FormEvent, ReactElement } from 'react';
 import { useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -132,7 +132,10 @@ export function StartPage({
   return (
     <section className="start-page" data-testid="repository-start-page">
       {mode === 'home' ? (
-        <div className="start-page-home">
+        <div
+          className="start-page-home"
+          style={{ '--start-recent-rows': recentRepos.length } as CSSProperties}
+        >
           <div>
             <h1 className="start-title">Repositories</h1>
             <div className="start-actions">

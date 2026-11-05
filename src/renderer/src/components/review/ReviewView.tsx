@@ -2372,29 +2372,31 @@ function ReviewBody({
         </div>
         {compact ? (
           <footer className="review-navigation-footer">
-            {selectedUnit ? (
-              <>
-                <details className="review-block-explanation">
-                  <summary>Why grouped?</summary>
-                  <p>{selectedUnit.unit.explanation}</p>
-                  <small>
-                    {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
-                    filters
-                  </small>
-                </details>
-                <div className="review-block-position">
-                  <span>
-                    {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
-                    {units.length}
-                  </span>
-                  <span>{selectedUnit.skippedCount} hidden</span>
-                </div>
-              </>
-            ) : null}
-            {navigationTools}
-            <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
-              J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
-            </span>
+            <div className="review-navigation-scroll">
+              {selectedUnit ? (
+                <>
+                  <details className="review-block-explanation">
+                    <summary>Why grouped?</summary>
+                    <p>{selectedUnit.unit.explanation}</p>
+                    <small>
+                      {selectedUnit.unit.confidence} · {selectedUnit.skippedCount} changes hidden by
+                      filters
+                    </small>
+                  </details>
+                  <div className="review-block-position">
+                    <span>
+                      {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
+                      {units.length}
+                    </span>
+                    <span>{selectedUnit.skippedCount} hidden</span>
+                  </div>
+                </>
+              ) : null}
+              {navigationTools}
+              <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
+                J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed
+              </span>
+            </div>
             {selectedUnit ? (
               <div className="review-navigation-terminal">
                 <button

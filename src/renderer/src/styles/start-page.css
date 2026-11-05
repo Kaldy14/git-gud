@@ -6,16 +6,20 @@
   flex: 1;
   overflow-y: auto;
   background: var(--bg-toolbar);
-  padding: clamp(32px, 9vh, 88px) 32px 40px;
+  padding: 0 32px 40px;
 }
 
+/* Sits slightly above the middle of the window. The height estimate uses the unfiltered recent
+   count, so searching never moves the field, and a full list rises to fit without scrolling.
+   Five rows is about the height of the actions column; 64px is the title and status bars. */
 .start-page-home {
+  --start-home-height: calc(96px + max(5, var(--start-recent-rows, 0)) * 50px);
   display: grid;
   width: 100%;
-  max-width: 920px;
-  margin: 0 auto;
+  max-width: 880px;
+  margin: clamp(32px, calc((100vh - 64px - var(--start-home-height)) * 0.42), 280px) auto 0;
   grid-template-columns: 264px minmax(0, 1fr);
-  gap: 56px;
+  gap: 48px;
   align-items: start;
 }
 
@@ -214,7 +218,7 @@
 .start-form-view {
   width: 100%;
   max-width: 520px;
-  margin: 0 auto;
+  margin: clamp(32px, 9vh, 88px) auto 0;
 }
 
 .start-back {
@@ -303,6 +307,7 @@
   }
 
   .start-page-home {
+    margin-top: clamp(32px, 9vh, 88px);
     grid-template-columns: minmax(0, 1fr);
     gap: 28px;
   }

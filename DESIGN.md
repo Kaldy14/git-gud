@@ -123,7 +123,7 @@
 ### Reading scale and run monitoring
 
 - History subjects use 13px type in 30px rows. Code uses 13px monospace with 21px line spacing; settings helpers use 12px.
-- Dashboard tiles at least 720px wide show each run as a 36px ledger line: icon, outcome, title, workflow, run number, branch, time, chevron. The title keeps at least 180px, and that floor is what sets the breakpoint. Narrower tiles use two lines, with the outcome after the title and one visible timestamp with the workflow and branch; there the branch truncates before the workflow name or run number. Trigger and start timestamps remain in accessible names. Job names are neutral with colored status icons, and in-progress CI uses info blue.
+- Dashboard tiles at least 720px wide show each run as a 36px ledger line, with a bounded title track keeping workflow and run metadata nearby and the branch using spare width: icon, outcome, title, workflow, run number, branch, time, chevron. The title keeps at least 180px, and that floor is what sets the breakpoint. Narrower tiles use two lines, with the outcome after the title and one visible timestamp with the workflow and branch; there the branch truncates before the workflow name or run number. Trigger and start timestamps remain in accessible names. Job names are neutral with colored status icons, and in-progress CI uses info blue.
 - Workflow names containing matrix expressions match their expanded runtime names without evaluating expressions, so dependency lines reflect the workflow definition.
 - Review navigation, including Viewed & next, remains visibly unavailable while a comment composer is open.
 
@@ -139,10 +139,12 @@
 - File expansion choices use stable chunk identity so background context cannot reopen a collapsed card. Full context arriving mid-draft preserves the editor node, focus and caret.
 - A loading PR count is unknown: show the spinner with a reserved blank count and announce loading.
 
-- The review footer runs in tab order: grouping explanation and position on one row, Filters and diff layout, shortcut hints, then Viewed & next and any error. On short panes the shortcut hints give way and the block list keeps more height. Unviewed blocks show a plain numeral; only viewed blocks show a tinted ring. File headers show the directory in muted ink and the basename in full ink, and the full path stays in the title and accessible name. Aggregate healthy status is neutral; current run/PR outcomes carry the status colour. Panel rails use matching open-panel icons.
+- The review footer keeps its scrollable explanation and navigation controls separate from the fixed terminal action, so keyboard focus never falls under the action. Block position retains its right alignment when the explanation opens. The review footer runs in tab order: grouping explanation and position on one row, Filters and diff layout, shortcut hints, then Viewed & next and any error. On short panes the shortcut hints give way and the block list keeps more height. Unviewed blocks show a plain numeral; only viewed blocks show a tinted ring. File headers show the directory in muted ink and the basename in full ink, and the full path stays in the title and accessible name. Aggregate healthy status is neutral; current run/PR outcomes carry the status colour. Panel rails use matching open-panel icons.
 - Review is the one solid teal action in PR Code. Viewed & next is a subtle, semibold button with a teal icon that loses its colour when disabled, on the footer's last row; local review keeps its primary Viewed action.
 
 ### Composer and dashboard edges
 
 - The WIP header shows the file count; the branch stays in its title and accessible text. The composer shows the author name and identity source at 12px, adds the email inline when the row is at least 360px wide, and gives the full identity and source explanation in a tooltip on hover and keyboard focus. Commit summaries use 13px type.
 - Dashboard tiles sit 15px from both window edges, counting the 11px scrollbar gutter on the right. Run times stay right-aligned beside the chevron, on the facts line in two-line rows and in their own column in the ledger.
+
+- The launcher home uses a bounded 880px measure, with its tall-window offset based on the unfiltered recent list so filtering does not move the search field. Stacked narrow layouts and Clone/Create keep their top-aligned form placement.

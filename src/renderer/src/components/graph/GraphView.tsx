@@ -1320,7 +1320,7 @@ function GraphRowView({
           </>
         )}
         {dateSeparatorLabel ? (
-          <span className="graph-row-date" aria-hidden="true">{dateSeparatorLabel}</span>
+          <span className="graph-row-date" style={row.machineWip ? { marginLeft: 0 } : undefined} aria-hidden="true">{dateSeparatorLabel}</span>
         ) : null}
       </div>
       {visibleColumns.author ? (

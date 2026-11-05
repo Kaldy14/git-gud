@@ -347,21 +347,32 @@
 /* The explanation and position share the first row. Everything after it spans the footer, and the
    finishing action comes last so it keeps its place when the explanation opens. */
 .review-navigation-footer {
-  display: grid;
+  display: flex;
   flex: 0 0 auto;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px 8px;
+  flex-direction: column;
+  gap: 6px;
   max-height: 45%;
-  overflow: auto;
+  overflow: hidden;
   padding: 8px;
   border-top: 1px solid var(--border);
 }
-.review-navigation-footer > * {
+.review-navigation-scroll {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 8px;
+  overflow: auto;
+}
+.review-navigation-scroll > * {
   grid-column: 1 / -1;
 }
-.review-navigation-footer > .review-block-explanation:not([open]),
-.review-navigation-footer > .review-block-position {
+.review-navigation-scroll > .review-block-explanation:not([open]),
+.review-navigation-scroll > .review-block-position {
   grid-column: auto;
+}
+.review-navigation-scroll > .review-block-explanation[open] + .review-block-position {
+  grid-column: 1 / -1;
 }
 .review-block-explanation {
   color: var(--text-3);
@@ -369,6 +380,11 @@
 }
 .review-block-explanation summary {
   cursor: pointer;
+}
+.review-block-explanation summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-row);
 }
 .review-block-explanation p {
   margin: 8px 0;
@@ -393,13 +409,9 @@
   font-weight: 600;
 }
 .review-navigation-terminal {
-  position: sticky;
-  z-index: 1;
-  bottom: 0;
   display: grid;
+  flex: none;
   gap: 6px;
-  background: var(--bg-sidebar);
-  box-shadow: 0 -6px 0 var(--bg-sidebar);
 }
 .review-viewed-next:not(:disabled) svg {
   color: var(--accent-2);
