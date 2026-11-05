@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.4] - 2026-11-05
+
 ### Fixed
 
 - Restore compact dashboard workflow rows with consistently aligned status and time, keeping more runs visible across multiple tiles.
