@@ -2107,10 +2107,12 @@ code,
   z-index: 40;
 }
 
+/* Hover lives on this box because it stays hit-testable while the summary is
+   hidden. Fit it to the summary so blank cell space does not reveal the stack. */
 .ref-stack {
   position: relative;
   display: flex;
-  width: 100%;
+  width: fit-content;
   min-width: 0;
   max-width: 100%;
   justify-content: flex-start;
@@ -2153,11 +2155,11 @@ code,
   top: 1px;
 }
 
-.ref-stack:has(.ref-chip:hover, .ref-overflow:hover, .ref-chip:focus-visible) .ref-stack-summary {
+.ref-stack:is(:hover, :has(.ref-chip:focus-visible)) .ref-stack-summary {
   visibility: hidden;
 }
 
-.ref-stack:has(.ref-chip:hover, .ref-overflow:hover, .ref-chip:focus-visible) .ref-stack-expanded {
+.ref-stack:is(:hover, :has(.ref-chip:focus-visible)) .ref-stack-expanded {
   max-width: calc(100vw - 24px);
   pointer-events: auto;
   visibility: visible;
