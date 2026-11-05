@@ -25,6 +25,12 @@
 - The inbox gets at most 100 files per pull request from GraphQL; show the remainder as `Unlisted` rather than dropping it. The detail header uses the detail's full `files` list.
 - Inbox rows and the detail header show it in the same hover/focus table on the `+/−` totals (`PullRequestLineStats` with `breakdown`); don't add an always-visible split line, it was too cluttered.
 
+## PR accessibility
+
+- Busy controls (refresh, Write guide, reviewer options) use `aria-disabled` plus a guarded click instead of `disabled`, so keyboard focus stays put.
+- Announce background status changes (guide ready/failed, refresh failed, new activity) through `src/renderer/src/lib/announce.ts`, the single polite live region.
+- Single-key shortcuts (Guide J/K) only act inside their pane or with nothing focused.
+
 ## PR visual tokens
 
 - Use the `:root` type, spacing, and tone tokens in `main.css` for PR surfaces; keep content text at 11px or larger (10px only for counts, pills, and eyebrows).
@@ -38,6 +44,7 @@
 - Keep Pierre's gutter utility enabled when no composer is open so hovering a diff line reveals an accessibly labelled `+` comment affordance.
 - Normalize dragged line ranges into ascending GitHub API order regardless of drag direction.
 - Keep review-unit and filter navigation disabled while a comment composer is open so typed text cannot be orphaned.
+- In the pull-request layout Escape never closes the PR: it dismisses an empty composer (typed text needs Cancel). Closing or adding a comment returns focus to the review so J/K/V keep working.
 - Use `btn-regular` for 32px review/header actions, `btn-compact` for 28px composer actions, and `review-comment-action` for 24px tertiary comment controls.
 - Publish whole-file comments with GitHub's `subject_type: file` API and omit line fields.
 - Only expose published-comment editing for comments authored by the active GitHub viewer. GitHub remains the authorization source of truth.

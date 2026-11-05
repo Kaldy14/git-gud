@@ -8,6 +8,7 @@ import type { DiffStyle } from '../../commit/fileDetailUtils';
 import type { GuideCodeLocation } from './GuideExcerpt';
 import { GuideTour } from './GuideTour';
 import { pullRequestTourQueryKey, startPullRequestTour } from './pullRequestTourQuery';
+import { useAnnounceOnChange } from '../../../lib/announce';
 
 
 export function PullRequestGuideTab({ detail, active, diffStyle, diffSyntaxTheme, onOpenFile, onFinishReview, stopRequest }: {
@@ -39,8 +40,10 @@ export function PullRequestGuideTab({ detail, active, diffStyle, diffSyntaxTheme
   const running = Boolean(state?.running) || write.isPending;
   const failure = state?.errorMessage ?? (write.error instanceof Error ? write.error.message : undefined);
   const stale = tour !== null && tour.headSha !== detail.headSha;
+  const guidePhase = running ? 'running' : failure ? 'failed' : tour ? `ready:${tour.headSha}` : 'empty';
+  useAnnounceOnChange(guidePhase, running ? 'Writing the review guide' : failure ? `Review guide failed. ${failure}` : tour ? 'Review guide ready' : undefined);
   const writeButton = (label: string) => (
-    <button type="button" className="btn-subtle btn-regular" disabled={running} onClick={() => write.mutate()}>
+    <button type="button" className="btn-subtle btn-regular" aria-disabled={running || undefined} onClick={() => { if (!running) write.mutate(); }}>
       {running ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
       {running ? 'Reading the change…' : label}
     </button>

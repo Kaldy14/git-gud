@@ -167,9 +167,9 @@ export function PullRequestReviewerPicker({
                     type="button"
                     role="option"
                     aria-selected={requested}
-                    disabled={mutation.isPending}
+                    aria-disabled={mutation.isPending || undefined}
                     key={candidate.id}
-                    onClick={() => mutation.mutate({ candidate, requested: !requested })}
+                    onClick={() => { if (!mutation.isPending) mutation.mutate({ candidate, requested: !requested }); }}
                   >
                     <ReviewerCandidateAvatar candidate={candidate} />
                     <span>

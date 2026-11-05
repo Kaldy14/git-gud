@@ -493,7 +493,7 @@ function PullRequestRow({
       <span className="pr-row-accent" data-category={pullRequest.category} />
       <GitPullRequest size={16} className="pr-row-icon" />
       <span className="pr-row-copy">
-        <span className="pr-row-title">{pullRequest.title}</span>
+        <span className="pr-row-title" title={pullRequest.title}>{pullRequest.title}</span>
         <span className="pr-row-meta">
           {pullRequest.owner}/{pullRequest.repository}#{pullRequest.number}
           <span>·</span>
@@ -514,10 +514,10 @@ function PullRequestRow({
                 {pullRequest.author.slice(0, 1).toUpperCase()}
               </span>
             )}
-            {pullRequest.author}
+            <span className="pr-row-author-name">{pullRequest.author}</span>
           </span>
           <span>·</span>
-          Updated {formatRelativeTime(pullRequest.updatedAt)}
+          <span className="pr-row-updated">Updated {formatRelativeTime(pullRequest.updatedAt)}</span>
         </span>
       </span>
       <span className="pr-row-state">

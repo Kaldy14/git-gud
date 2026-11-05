@@ -673,6 +673,8 @@ export function ReviewView({
     onSuccess: () => {
       setSelectedCommentTarget(undefined);
       lineCommentBody.clear();
+      // The composer unmounts; return focus so J/K/V keep working.
+      sectionRef.current?.focus({ preventScroll: true });
     }
   });
 
@@ -851,6 +853,7 @@ export function ReviewView({
     setSelectedCommentTarget(undefined);
     lineCommentBody.clear();
     commentMutation.reset();
+    sectionRef.current?.focus({ preventScroll: true });
   }
 
   function selectReviewUnit(
@@ -1100,6 +1103,8 @@ export function ReviewView({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
+        // Escape dismisses an empty composer; typed text needs an explicit Cancel.
+        if (!commentMutation.isPending && !lineCommentBody.get().trim()) cancelCommentComposer();
       }
       return;
     }
@@ -1145,6 +1150,8 @@ export function ReviewView({
     }
 
     if (event.key === 'Escape') {
+      // A pull request closes from its header; Escape must not discard the reviewer's place.
+      if (layout === 'pull-request') return;
       event.preventDefault();
       onClose();
     } else if (event.key === 'j' || event.key === 'ArrowDown') {

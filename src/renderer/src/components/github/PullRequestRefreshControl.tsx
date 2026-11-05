@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useAnnounceOnChange } from '../../lib/announce';
 
 type PullRequestRefreshControlProps = {
   lastRefreshedAt?: string;
@@ -26,6 +27,7 @@ export function PullRequestRefreshControl({
         ? 'activity'
         : 'live';
   const stateLabel = errorMessage ? 'Update failed' : hasNewActivity ? 'New activity' : 'Live';
+  useAnnounceOnChange(state === 'refreshing' ? 'live' : state, errorMessage ? `Pull request update failed. ${errorMessage}` : hasNewActivity ? 'New pull request activity' : undefined);
   const checkedLabel = lastRefreshedAt
     ? `Checked ${formatRefreshTime(lastRefreshedAt)}`
     : 'Waiting for first update';
@@ -47,8 +49,9 @@ export function PullRequestRefreshControl({
       <button
         className={compact ? 'icon-btn icon-btn-regular shrink-0' : 'btn-subtle h-8 shrink-0 text-xs'}
         type="button"
-        onClick={onRefresh}
-        disabled={isRefreshing}
+        // aria-disabled keeps focus on the button while it is busy.
+        onClick={() => { if (!isRefreshing) onRefresh(); }}
+        aria-disabled={isRefreshing || undefined}
         aria-label={isRefreshing ? 'Refreshing pull requests' : 'Refresh pull requests now'}
         title={isRefreshing ? 'Refreshing pull requests' : 'Refresh now'}
       >

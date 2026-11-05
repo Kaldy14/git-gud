@@ -7,6 +7,7 @@ import type { ComponentProps, ReactElement } from 'react';
 import { createContext, useContext, useState } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { remarkGithubAlerts } from './remarkGithubAlerts';
 
 import type { ReviewImageGallerySelection } from './ReviewImageGalleryDialog';
 import { getReviewImages, resolveReviewImageMarkdown } from './reviewImages';
@@ -60,7 +61,7 @@ export function ReviewCommentBody({
     <ReviewImagePreviewContext.Provider value={{ imageLoading, images, onOpenImage, aiMessageTheme }}>
       <div className={`review-line-comment-body${aiMessageTheme ? ' ai-message-body' : ''}`} data-compact={compact}>
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkGfm, remarkGithubAlerts]}
           urlTransform={(url, key, node) =>
             node.tagName === 'img' && key === 'src' &&
             /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/]+={0,2}$/u.test(url)

@@ -156,6 +156,10 @@ export function GuideTour({ tour, plan, progressKey, banner, active, diffStyle, 
   const stepFromKey = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     if ((event.key !== 'j' && event.key !== 'k') || isEditable(event.target)) return;
+    // Single-key shortcuts only apply inside the Guide pane (or with nothing focused),
+    // so J/K pressed in the header, menus, or the review panel stay untouched (WCAG 2.1.4).
+    const pane = scrollRef.current?.closest('[role="tabpanel"]') ?? scrollRef.current;
+    if (event.target !== document.body && !(event.target instanceof Node && pane?.contains(event.target))) return;
     event.preventDefault();
     step(event.key === 'j' ? 1 : -1);
   });

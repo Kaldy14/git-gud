@@ -56,7 +56,7 @@ export function BugFinderButton({
     ).length ?? 0;
   const label =
     status === 'ready'
-      ? `Bug finder ready. ${count} findings. Open bug finder`
+      ? `Bug finder ready. ${count} ${count === 1 ? 'finding' : 'findings'}. Open bug finder`
       : status === 'running'
         ? 'Bug finder scanning in the background. The report opens from here when ready'
         : status === 'loading'
@@ -64,7 +64,7 @@ export function BugFinderButton({
           : status === 'stale'
             ? 'Bug finder is outdated. Run an update'
             : status === 'failed'
-              ? state?.status === 'failed' ? 'Bug scan failed. Open bug finder to see why and retry' : `${activation.error?.message ?? query.error?.message ?? 'Bug scan failed'}. Click to retry`
+              ? state?.status === 'failed' ? 'Bug scan failed. Open bug finder to see why and retry' : `${activation.error?.message ?? query.error?.message ?? 'Bug scan failed'}. Retry`
               : 'No bug scan yet. Run in the background';
   return (
     <Tooltip.Provider delayDuration={350}>
@@ -74,7 +74,7 @@ export function BugFinderButton({
             type="button"
             className={`pr-row-guide pr-bug-finder-button${inReview && !iconOnly ? ' pr-bug-finder-button-labelled' : ''}${iconOnly ? ' review-sidebar-tool' : ''}`}
             data-status={status}
-            aria-label={inReview ? 'Bug finder' : label}
+            aria-label={inReview ? `Bug finder. ${label}` : label}
             aria-pressed={inReview ? active : undefined}
             aria-busy={status === 'running'}
             onClick={(event) => {
