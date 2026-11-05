@@ -1559,8 +1559,8 @@ function WorktreeChipView({
     <span
       className="ref-chip"
       style={{
-        background: color,
-        color: 'var(--graph-ref-text)'
+        background: `var(--graph-selected-ref-background, ${color})`,
+        color: 'var(--graph-selected-text, var(--graph-ref-text))'
       }}
       title={`${chip.location}: ${worktree.path}`}
       aria-label={`${chip.label}, ${chip.location.toLowerCase()}, has uncommitted changes`}
@@ -1655,7 +1655,7 @@ function RefChipStack({
         {hasOverflowRefs ? (
           <span
             className="ref-overflow"
-            style={{ background: color, color: 'var(--graph-ref-text)' }}
+            style={{ background: `var(--graph-selected-ref-background, ${color})`, color: 'var(--graph-selected-text, var(--graph-ref-text))' }}
             title={title}
           >
             +{overflowRefs.length}
@@ -1724,8 +1724,8 @@ function RefChipView({
     );
 
   const style = {
-    background: isCurrentBranch ? currentColor : color,
-    color: isCurrentBranch ? readableTextOn(currentColor) : 'var(--graph-ref-text)'
+    background: `var(--graph-selected-ref-background, ${isCurrentBranch ? currentColor : color})`,
+    color: `var(--graph-selected-text, ${isCurrentBranch ? readableTextOn(currentColor) : 'var(--graph-ref-text)'})`
   };
   const content = (
     <>
@@ -2129,7 +2129,6 @@ function GraphCommitNode({
   return (
     <g>
       <title>{title}</title>
-      <circle cx={cx} cy={cy} r={4} fill={color} />
       <g className="graph-commit-identity">
         <circle
           cx={cx}

@@ -37,7 +37,7 @@ function WipStatusCount({
 
   return (
     <span className="flex items-center gap-1" aria-label={label} title={label}>
-      <Icon size={12} aria-hidden="true" style={{ color: FILE_STATUS_COLORS[status] }} />
+      <Icon size={12} aria-hidden="true" style={{ color: `var(--graph-selected-text, ${FILE_STATUS_COLORS[status]})` }} />
       <span className="text-[var(--text-1)]">{count}</span>
     </span>
   );

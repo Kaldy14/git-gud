@@ -1866,10 +1866,7 @@ function WorkflowRunRow({
         {statusIcon}
       </span>
       <span className="workflow-run-copy">
-        <span className="workflow-run-heading">
-          <strong title={run.displayTitle}>{run.displayTitle}</strong>
-          <span className="workflow-run-outcome" data-tone={presentation.tone}>{presentation.label}</span>
-        </span>
+        <strong title={run.displayTitle}>{run.displayTitle}</strong>
         <span className="workflow-run-row-facts">
           <span className="workflow-run-name" title={run.name}>{run.name}</span>
           <span className="workflow-run-number">#{run.runNumber}</span>
@@ -1879,10 +1876,13 @@ function WorkflowRunRow({
               <span className="min-w-0 truncate">{run.branch}</span>
             </span>
           ) : null}
-          <time dateTime={displayedAt} title={formatAbsoluteTime(displayedAt)}>
-            {isQueued ? `Queued ${triggeredRelativeTime}` : run.startedAt ? `Started ${startedRelativeTime}` : `Triggered ${triggeredRelativeTime}`}
-          </time>
         </span>
+      </span>
+      <span className="workflow-run-meta">
+        <span className="workflow-run-outcome" data-tone={presentation.tone}>{presentation.label}</span>
+        <time dateTime={displayedAt} title={formatAbsoluteTime(displayedAt)}>
+          {isQueued ? `Queued ${triggeredRelativeTime}` : run.startedAt ? `Started ${startedRelativeTime}` : `Triggered ${triggeredRelativeTime}`}
+        </time>
       </span>
       <ChevronRight size={12} className="workflow-run-external" aria-hidden="true" />
     </button>

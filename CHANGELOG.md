@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.4] - 2026-11-05
+
+### Fixed
+
+- Restore compact dashboard workflow rows with consistently aligned status and time, keeping more runs visible across multiple tiles.
+- Let repository tabs show their full project names when the strip has room instead of imposing a fixed width cap.
+- Keep author avatars and initials visible on commit graph nodes without requiring hover or selection.
+- Remove decorative cyan stripes from active repository tabs and selected commit rows; use the tab surface and row highlight to show selection.
+- Increase selected commit-row contrast with a neutral highlight, brighter metadata and dark branch pills with light labels.
+
 ### Added
 
 - Pull request line counts are split into code, tests, docs, config, and generated files. Hover or focus the line totals in the inbox or a pull request for a table of files and lines per kind.
