@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Keep author avatars and initials visible on commit graph nodes without requiring hover or selection.
 - Remove decorative cyan stripes from active repository tabs and selected commit rows; use the tab surface and row highlight to show selection.
+- Increase selected commit-row contrast with a neutral highlight, brighter metadata and dark branch pills with light labels.
 
 ### Added
 

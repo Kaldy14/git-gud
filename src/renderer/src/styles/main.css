@@ -72,13 +72,13 @@
   --accent: #26b8a2;
   --accent-2: #5fd6c3;
 
-  /* Selection. Teal means "you are here"; blue is reserved for in-progress states. */
+  /* Selected controls use teal; history uses a neutral highlight. Blue marks in-progress states. */
   --select-bg: rgb(95 214 195 / 0.1);
   --select-border: rgb(95 214 195 / 0.4);
   --control-active-bg: rgb(95 214 195 / 0.13);
   --control-active-border: rgb(95 214 195 / 0.3);
-  --graph-row-selected: #2c3f44;
-  --graph-row-bulk: #33494e;
+  --graph-row-selected: #5b6572;
+  --graph-row-bulk: #626b77;
   --graph-row-search-match: color-mix(in srgb, var(--accent-2) 8%, var(--bg-graph));
 
   /* Scrollbars */
@@ -2015,8 +2015,18 @@ code,
 
 /* Selection uses the whole-row fill and brighter subject text, without a decorative edge. */
 .graph-row[aria-selected='true'] {
+  --text-1: #ffffff;
+  --text-2: #f1f3f5;
+  --text-3: #e4e8ee;
+  --graph-text-muted: var(--text-3);
+  --graph-selected-ref-background: var(--bg-graph);
+  --graph-selected-text: #ffffff;
   --graph-row-fill: var(--graph-row-selected);
   background: var(--graph-row-fill);
+}
+
+.graph-row[aria-selected='true'] :is(.machine-wip-chip, .machine-badge) {
+  background: var(--bg-graph);
 }
 
 .graph-row[aria-selected='true'] .graph-subject {
