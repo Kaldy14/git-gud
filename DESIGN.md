@@ -115,7 +115,7 @@
 - Routine stage/unstage success stays in the changed-file list and live announcement; failures, conflicts, and slow operations retain operation cards.
 - Settings and operation dialogs reuse the shared form-input class. The refresh and save behavior, confirmations, and Git operation contracts are unchanged.
 - The Settings drawer is at most 560px wide. Each `.settings-group` is a heading above one bordered field surface whose `.settings-row` children are divided by hairlines: label and helper on the left (13px and 12px), control trailing, native checkboxes, and 96px right-aligned number fields. Syntax theme cards and the machine rows take the full row. Below a 420px group width, rows stack and checkboxes stay trailing.
-- Author images appear only on the selected, hovered, or focused commit; the node title and row label keep authorship available at rest. Ref names use spare wide-window space before truncating.
+- Ref names use spare wide-window space before truncating.
 - Palette abbreviations match visible labels; metadata supports direct keyword matches. The footer states the number of loaded commits searched.
 - Empty repositories report branch/tag refs only and disable branch creation until the first commit exists.
 - Git failures lead with a short summary. Multiline command output remains available in an expandable details section.
