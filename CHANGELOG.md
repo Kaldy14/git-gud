@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.3] - 2026-11-05
+
+### Changed
+
+- Refresh the desktop workspace with native typography, a graphite frame, clearer selection and quieter commit graph nodes. Author avatars appear on hover or selection, and hollow rings distinguish merges.
+- Adapt compact windows with a navigation rail and floating sidebar while preserving saved panel widths. Group settings into aligned rows and make workflow runs easier to compare in a compact ledger.
+- Give code more room through a compact pull request header, readable diff changes, and clearer file and review navigation.
+
+### Fixed
+
+- Preserve comment drafts, focus and caret position while full-file context loads, and keep review navigation disabled while composing.
+- Keep footer controls reachable by keyboard at 200% zoom, reveal active repository tabs after resizing, and retain graph width preferences when the window narrows.
+- Explain clone failures and stash eligibility, avoid false inbox counts, and disable unavailable branch actions for empty repositories and unfinished operations.
+- Render the full dependency graph for workflow jobs with matrix-expanded names.
+
 ## [2026.11.2] - 2026-11-04
 
 ### Added
