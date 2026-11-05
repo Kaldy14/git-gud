@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Pull request line counts are split into code, tests, docs, config, and generated files. Hover or focus the line totals in the inbox or a pull request for a table of files and lines per kind.
+
 ## [2026.11.3] - 2026-11-05
 
 ### Changed

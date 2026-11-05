@@ -38,6 +38,7 @@ import type {
   GitReviewPlan,
   GitStatusCode
 } from '@shared/types';
+import type { FileLineStat } from '@shared/lineBreakdown';
 
 import { findGhExecutable, listProfiles } from './profiles';
 import { buildReviewPlan, type ReviewPatchInput } from './git/reviewPlan';
@@ -159,6 +160,7 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
         repository { nameWithOwner }
         headRepository { nameWithOwner }
         totalCommentsCount
+        files(first: 100) { nodes { path additions deletions } }
         latestReviews(first: 20) {
           nodes {
             state
@@ -198,6 +200,7 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
         repository { nameWithOwner }
         headRepository { nameWithOwner }
         totalCommentsCount
+        files(first: 100) { nodes { path additions deletions } }
         latestReviews(first: 20) {
           nodes {
             state
@@ -241,6 +244,7 @@ query GitGudPullRequest($owner: String!, $repository: String!, $number: Int!) {
       repository { nameWithOwner }
       headRepository { nameWithOwner }
       totalCommentsCount
+      files(first: 100) { nodes { path additions deletions } }
       latestReviews(first: 20) {
         nodes {
           state
@@ -2754,6 +2758,7 @@ function parsePullRequestSummary(
     changedFiles: readNumber(pullRequest.changedFiles, 'pull request changed files'),
     additions: readNumber(pullRequest.additions, 'pull request additions'),
     deletions: readNumber(pullRequest.deletions, 'pull request deletions'),
+    fileLineStats: parseFileLineStats(pullRequest.files),
     headRefName: readString(pullRequest.headRefName, 'pull request head branch'),
     headRepositoryOwner: headRepository?.owner,
     headRepository: headRepository?.repository,
@@ -2902,6 +2907,16 @@ function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChe
     failed,
     pending: pending + Math.max(0, total - nodes.length)
   };
+}
+
+// Optional: an older cached response or a GitHub error on `files` must not break the inbox.
+function parseFileLineStats(value: unknown): FileLineStat[] | undefined {
+  const nodes = isRecord(value) && Array.isArray(value.nodes) ? value.nodes : undefined;
+  return nodes?.flatMap((node): FileLineStat[] =>
+    isRecord(node) && typeof node.path === 'string' && typeof node.additions === 'number' && typeof node.deletions === 'number'
+      ? [{ path: node.path, additions: node.additions, deletions: node.deletions }]
+      : []
+  );
 }
 
 function parsePullRequestFile(value: unknown): GitHubPullRequestFile {

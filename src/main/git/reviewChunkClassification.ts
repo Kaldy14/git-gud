@@ -5,30 +5,6 @@ type HunkSideLine = {
   changed: boolean;
 };
 
-export function categorizeReviewPath(filePath: string): GitReviewChunk['category'] {
-  const normalized = filePath.replaceAll('\\', '/').toLowerCase();
-  const segments = normalized.split('/');
-  const basename = segments.at(-1) ?? '';
-
-  if (
-    segments.some((segment) => segment === 'test' || segment === 'tests' || segment === '__tests__') ||
-    /(?:^|[._])tests?(?:[._])/.test(basename)
-  ) {
-    return 'test';
-  }
-
-  if (
-    segments.some(
-      (segment) => segment === 'spec' || segment === 'specs' || segment === '__specs__'
-    ) ||
-    /(?:^|[._])specs?(?:[._])/.test(basename)
-  ) {
-    return 'spec';
-  }
-
-  return 'source';
-}
-
 export function classifyReviewChangeType(
   status: GitStatusCode,
   additions: number,

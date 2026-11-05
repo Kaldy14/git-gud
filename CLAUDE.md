@@ -19,6 +19,12 @@
 - Count only unfinished check runs (and PENDING/EXPECTED status contexts) as pending in `parseChecks`; skipped and neutral runs are derived as `total - passed - failed - pending` and never shown as pending.
 - Merge conflicts are actionable: `categorizePullRequest` files conflicting authored PRs under `needs-action`, and `pullRequestStatus` ranks conflicts above Draft so a label never hides them.
 
+## Line breakdown
+
+- Classify changed lines by path only in `src/shared/lineBreakdown.ts`; the Code tab's `categorizeReviewPath` and `isGeneratedReviewPath` live there too, so both views agree.
+- The inbox gets at most 100 files per pull request from GraphQL; show the remainder as `Unlisted` rather than dropping it. The detail header uses the detail's full `files` list.
+- Inbox rows and the detail header show it in the same hover/focus table on the `+/−` totals (`PullRequestLineStats` with `breakdown`); don't add an always-visible split line, it was too cluttered.
+
 ## PR visual tokens
 
 - Use the `:root` type, spacing, and tone tokens in `main.css` for PR surfaces; keep content text at 11px or larger (10px only for counts, pills, and eyebrows).

@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 const ignoredIdentifiers = new Set([
   'async',
   'await',
@@ -316,19 +314,6 @@ export function extractReviewPathConcepts(filePath: string): Set<string> {
   }
 
   return concepts;
-}
-
-export function isGeneratedReviewPath(filePath: string): boolean {
-  const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
-  const basename = path.posix.basename(normalizedPath);
-
-  return (
-    normalizedPath.split('/').some((segment) => segment === 'generated' || segment === '__generated__') ||
-    /(?:^|[._-])generated(?:[._-]|$)/.test(basename) ||
-    /\/(?:gql|graphql)\/sdk\.[^/]+$/.test(normalizedPath) ||
-    /\/migrations\/meta\/\d+_snapshot\.json$/.test(normalizedPath) ||
-    basename === 'schema.generated.graphql'
-  );
 }
 
 function addStorySignals(signals: Set<string>, words: string[]): void {

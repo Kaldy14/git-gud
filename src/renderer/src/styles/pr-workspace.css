@@ -1749,3 +1749,35 @@
   .review-navigation-footer:has(.review-block-explanation[open]) { max-height: 70%; }
   .review-navigation-footer .review-navigation-shortcuts { display: none; }
 }
+
+/* Line breakdown: lines per kind (code, tests, docs, config, generated), from src/shared/lineBreakdown.ts. */
+.pr-line-stats-trigger {
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  cursor: inherit;
+}
+.pr-line-stats-trigger > span {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.pr-line-stats-trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.pr-line-breakdown {
+  z-index: 100;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-container);
+  background: var(--bg-panel);
+  color: var(--text-2);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--text-xs);
+}
+.pr-line-breakdown table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pr-line-breakdown th { padding: 3px var(--space-4) 3px 0; color: var(--text-1); font-weight: var(--weight-medium); text-align: left; }
+.pr-line-breakdown td { padding: 3px 0 3px var(--space-3); font-family: var(--font-mono); text-align: right; white-space: nowrap; }
+.pr-line-breakdown td.pr-line-breakdown-files { color: var(--text-3); font-family: inherit; }
+.pr-line-breakdown tfoot tr { border-top: 1px solid var(--border); }
+.pr-line-breakdown tfoot th,
+.pr-line-breakdown tfoot td { padding-top: 6px; font-weight: var(--weight-semibold); }

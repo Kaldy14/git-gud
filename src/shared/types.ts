@@ -1,3 +1,5 @@
+import type { FileLineStat } from './lineBreakdown';
+
 export type RepositorySummary = {
   path: string;
   name: string;
@@ -1473,6 +1475,8 @@ export type GitHubPullRequestSummary = GitHubPullRequestLocator & {
   changedFiles: number;
   additions: number;
   deletions: number;
+  /** Per-file line counts for the line breakdown; GitHub returns at most the first 100 files here. */
+  fileLineStats?: FileLineStat[];
   headRefName: string;
   headRepositoryOwner?: string;
   headRepository?: string;

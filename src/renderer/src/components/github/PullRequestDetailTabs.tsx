@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import { ArrowLeft, ChevronRight, ExternalLink, FileDiff } from 'lucide-react';
 
+import { pullRequestLineBreakdown, type FileLineStat } from '@shared/lineBreakdown';
 import type { GitHubPullRequestSummary } from '@shared/types';
 import { PullRequestLineStats } from './PullRequestLineStats';
 import {
@@ -25,7 +26,8 @@ const LABELS: Record<PullRequestDetailTab, string> = {
  * crumb title carries the heading role whenever the h1 is hidden or inert.
  */
 export function PullRequestDetailHeader({ pullRequest, condensed = false, commits, status, actions, onBack }: {
-  pullRequest: GitHubPullRequestSummary;
+  /** The loaded view passes the detail, whose full `files` list makes the breakdown exact. */
+  pullRequest: GitHubPullRequestSummary & { files?: readonly FileLineStat[] };
   condensed?: boolean;
   commits?: number;
   status: ReactNode;
@@ -83,7 +85,7 @@ export function PullRequestDetailHeader({ pullRequest, condensed = false, commit
                   <FileDiff size={12} aria-hidden="true" />
                   {pullRequest.changedFiles.toLocaleString()} {pullRequest.changedFiles === 1 ? 'file' : 'files'}
                 </span>
-                <PullRequestLineStats additions={pullRequest.additions} deletions={pullRequest.deletions} />
+                <PullRequestLineStats additions={pullRequest.additions} deletions={pullRequest.deletions} breakdown={pullRequestLineBreakdown(pullRequest)} />
               </span>
             </div>
           </div>

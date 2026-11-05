@@ -27,6 +27,7 @@ import type {
 } from '@shared/types';
 
 import { PullRequestGuideIndicator } from './PullRequestGuideIndicator';
+import { pullRequestLineBreakdown } from '@shared/lineBreakdown';
 import { PullRequestLineStats } from './PullRequestLineStats';
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
@@ -496,7 +497,7 @@ function PullRequestRow({
         <span className="pr-row-meta">
           {pullRequest.owner}/{pullRequest.repository}#{pullRequest.number}
           <span>·</span>
-          <PullRequestLineStats additions={pullRequest.additions} deletions={pullRequest.deletions} />
+          <PullRequestLineStats additions={pullRequest.additions} deletions={pullRequest.deletions} breakdown={pullRequestLineBreakdown(pullRequest)} />
           <span>·</span>
           <span className="pr-row-author">
             {pullRequest.authorAvatarUrl && !didAvatarFail ? (

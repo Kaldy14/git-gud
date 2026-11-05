@@ -11,8 +11,9 @@ import type {
   GitStatusCode
 } from '@shared/types';
 
+import { categorizeReviewPath, isGeneratedReviewPath } from '@shared/lineBreakdown';
+
 import {
-  categorizeReviewPath,
   classifyReviewChangeType,
   classifyReviewContent
 } from './reviewChunkClassification';
@@ -36,7 +37,6 @@ import {
   extractReviewRenameCandidates,
   extractReviewStorySignals,
   extractStructuredLiteralStorySignals,
-  isGeneratedReviewPath,
   normalizeReviewSymbol,
   reviewSymbolWords,
   type ReviewRenameCandidate
