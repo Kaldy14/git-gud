@@ -613,6 +613,10 @@ export type IpcChannelMap = {
     args: [profileId: string];
     result: GitHubPullRequestInbox;
   };
+  'github:retry-pull-request-suggestions': {
+    args: [profileId: string];
+    result: void;
+  };
   'github:pull-request-detail': {
     args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestDetail;
@@ -660,6 +664,10 @@ export type IpcChannelMap = {
   };
   'github:merge-pull-request': {
     args: [input: GitHubPullRequestMergeInput];
+    result: GitHubPullRequestActionResult;
+  };
+  'github:mark-pull-request-ready': {
+    args: [locator: GitHubPullRequestLocator];
     result: GitHubPullRequestActionResult;
   };
   'profiles:save': {
@@ -836,6 +844,7 @@ export type RendererApi = {
   ) => Promise<GitHubWorkflowRunDetail>;
   getGitHubWorkflowRunFailedLog: (input: GitHubWorkflowRunFailureInput) => Promise<string>;
   getGitHubPullRequestInbox: (profileId: string) => Promise<GitHubPullRequestInbox>;
+  retryGitHubPullRequestSuggestions: (profileId: string) => Promise<void>;
   getGitHubPullRequestDetail: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestDetail>;
   getGitHubPullRequestReviewerCandidates: (
     locator: GitHubPullRequestLocator
@@ -867,6 +876,7 @@ export type RendererApi = {
   addGitHubPullRequestComment: (input: GitHubPullRequestCommentInput) => Promise<GitHubPullRequestActionResult>;
   updateGitHubPullRequestReviewComment: (input: GitHubPullRequestReviewCommentUpdateInput) => Promise<GitHubPullRequestActionResult>;
   mergeGitHubPullRequest: (input: GitHubPullRequestMergeInput) => Promise<GitHubPullRequestActionResult>;
+  markGitHubPullRequestReady: (locator: GitHubPullRequestLocator) => Promise<GitHubPullRequestActionResult>;
   saveProfile: (profile: GitProfile) => Promise<GitProfile[]>;
   activateProfile: (profileId: string | undefined) => Promise<WorkspaceState>;
   assignProfile: (repoPath: string, profileId: string | undefined) => Promise<WorkspaceState>;

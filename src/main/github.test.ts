@@ -11,6 +11,7 @@ import {
   buildGitHubPullRequestReviewPlan,
   canReuseGitHubPullRequestInbox,
   categorizePullRequest,
+  isPermanentGitHubLookupFailure,
   createGitHubFileReviewCommentPayload,
   createGitHubReviewerRequestPayload,
   filterGitHubActionsRuns,
@@ -1483,3 +1484,12 @@ function pushEvent({
     }
   };
 }
+
+describe('recently pushed branch lookups', () => {
+  it('treats deleted or uncomparable branches as permanent, not as GitHub outages', () => {
+    expect(isPermanentGitHubLookupFailure(new Error('gh: Not Found (HTTP 404)'))).toBe(true);
+    expect(isPermanentGitHubLookupFailure(new Error('gh: No commit found for SHA (HTTP 422)'))).toBe(true);
+    expect(isPermanentGitHubLookupFailure(new Error('connect ETIMEDOUT'))).toBe(false);
+    expect(isPermanentGitHubLookupFailure(new Error('gh: Server Error (HTTP 502)'))).toBe(false);
+  });
+});

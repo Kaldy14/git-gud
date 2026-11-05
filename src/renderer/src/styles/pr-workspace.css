@@ -1782,3 +1782,26 @@
 .pr-line-breakdown tfoot tr { border-top: 1px solid var(--border); }
 .pr-line-breakdown tfoot th,
 .pr-line-breakdown tfoot td { padding-top: 6px; font-weight: var(--weight-semibold); }
+
+/* Summary: every merge blocker with the action that clears it. */
+.pr-merge-checklist { margin: var(--space-2) 0 var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-container); overflow: hidden; }
+.pr-merge-checklist > h2 { margin: 0; padding: var(--space-2) var(--space-3); background: var(--bg-panel); color: var(--text-1); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.pr-merge-checklist > ul { margin: 0; padding: 0; list-style: none; }
+.pr-merge-checklist li { --blocker-tone: var(--text-3); border-top: 1px solid var(--border); }
+.pr-merge-checklist li[data-tone='danger'] { --blocker-tone: var(--danger-text); }
+.pr-merge-checklist li[data-tone='warning'] { --blocker-tone: var(--warning-text); }
+.pr-merge-checklist li[data-tone='pending'] { --blocker-tone: var(--info-text); }
+.pr-merge-checklist-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); }
+.pr-merge-checklist-row > i { width: 8px; height: 8px; border-radius: 50%; background: var(--blocker-tone); }
+.pr-merge-checklist-row > span:nth-child(2) { display: grid; min-width: 0; }
+.pr-merge-checklist-row strong { color: var(--blocker-tone); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.pr-merge-checklist li[data-tone='muted'] .pr-merge-checklist-row strong { color: var(--text-1); }
+.pr-merge-checklist-row small { color: var(--text-3); font-size: var(--text-xs); }
+.pr-merge-checklist-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1); }
+.pr-merge-checklist-actions svg[data-open='true'] { transform: rotate(90deg); }
+.pr-merge-checklist-files { padding: 0 var(--space-3) var(--space-2) calc(8px + var(--space-3) * 2); color: var(--text-2); font-size: var(--text-xs); }
+.pr-merge-checklist-files ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.pr-merge-checklist-files code { font-family: var(--font-mono); font-size: var(--text-xs); }
+.pr-inbox-scope-note { margin: 0; padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); color: var(--text-3); font-size: var(--text-xs); }
+.pr-inline-warning > span { flex: 1; min-width: 0; }
+.pr-merge-checklist-files small { display: flex; align-items: center; gap: var(--space-1); font-size: inherit; }

@@ -152,6 +152,7 @@ const api: RendererApi = {
   getGitHubWorkflowRunFailedLog: (input) =>
     invoke('github:workflow-run-failed-log', input),
   getGitHubPullRequestInbox: (profileId) => invoke('github:pull-request-inbox', profileId),
+  retryGitHubPullRequestSuggestions: (profileId) => invoke('github:retry-pull-request-suggestions', profileId),
   getGitHubPullRequestDetail: (locator) => invoke('github:pull-request-detail', locator),
   getGitHubPullRequestReviewerCandidates: (locator) =>
     invoke('github:pull-request-reviewer-candidates', locator),
@@ -172,6 +173,7 @@ const api: RendererApi = {
   updateGitHubPullRequestReviewComment: (input) =>
     invoke('github:update-pull-request-review-comment', input),
   mergeGitHubPullRequest: (input) => invoke('github:merge-pull-request', input),
+  markGitHubPullRequestReady: (locator) => invoke('github:mark-pull-request-ready', locator),
   saveProfile: (profile) => invoke('profiles:save', profile),
   activateProfile: (profileId) => invoke('profiles:activate', profileId),
   assignProfile: (repoPath, profileId) => invoke('repo:assign-profile', repoPath, profileId),

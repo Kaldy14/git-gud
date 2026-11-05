@@ -300,6 +300,8 @@ const validators = {
     ),
   'github:pull-request-inbox': (args) =>
     readOnlyArg(args, 'github:pull-request-inbox', 'profileId', readNonEmptyString),
+  'github:retry-pull-request-suggestions': (args) =>
+    readOnlyArg(args, 'github:retry-pull-request-suggestions', 'profileId', readNonEmptyString),
   'github:pull-request-detail': (args) =>
     readOnlyArg(args, 'github:pull-request-detail', 'locator', readGitHubPullRequestLocator),
   'github:pull-request-reviewer-candidates': (args) =>
@@ -347,6 +349,8 @@ const validators = {
     ),
   'github:merge-pull-request': (args) =>
     readOnlyArg(args, 'github:merge-pull-request', 'input', readGitHubPullRequestMergeInput),
+  'github:mark-pull-request-ready': (args) =>
+    readOnlyArg(args, 'github:mark-pull-request-ready', 'locator', readGitHubPullRequestLocator),
   'profiles:save': (args) => readOnlyArg(args, 'profiles:save', 'profile', readProfile),
   'profiles:activate': (args) => readOnlyArg(args, 'profiles:activate', 'profileId', readOptionalString),
   'repo:assign-profile': (args) => readStringWithOptionalString(args, 'repo:assign-profile', 'repoPath', 'profileId')

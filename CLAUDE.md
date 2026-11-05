@@ -18,6 +18,8 @@
 
 - Count only unfinished check runs (and PENDING/EXPECTED status contexts) as pending in `parseChecks`; skipped and neutral runs are derived as `total - passed - failed - pending` and never shown as pending.
 - Merge conflicts are actionable: `categorizePullRequest` files conflicting authored PRs under `needs-action`, and `pullRequestStatus` ranks conflicts above Draft so a label never hides them.
+- Summary lists merge blockers (conflicts, failing or running checks, draft, behind, branch rules) in `PullRequestMergeChecklist`, each with the action that clears it (`pullRequestMergeBlockers.ts`); the plain Merge row only shows when nothing blocks. "Ready for review" calls `gh pr ready` and must never run without the user's click.
+- Recently pushed branch lookups that fail with 403/404/410/422 are permanent and never raise the inbox warning; Retry clears the suggestion cache first. The inbox states what it includes and how many matches GitHub left out (`omittedCount`).
 
 ## Line breakdown
 

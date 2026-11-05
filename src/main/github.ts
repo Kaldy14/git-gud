@@ -152,6 +152,7 @@ const INBOX_QUERY = `
 query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
   viewer { login }
   review: search(type: ISSUE, query: $reviewQuery, first: 50) {
+    issueCount
     nodes {
       ... on PullRequest {
         id number title url updatedAt isDraft state reviewDecision mergeStateStatus mergeable
@@ -192,6 +193,7 @@ query GitGudPullRequestInbox($reviewQuery: String!, $authoredQuery: String!) {
     }
   }
   authored: search(type: ISSUE, query: $authoredQuery, first: 50) {
+    issueCount
     nodes {
       ... on PullRequest {
         id number title url updatedAt isDraft state reviewDecision mergeStateStatus mergeable
@@ -634,7 +636,7 @@ async function loadGitHubPullRequestSuggestions(
   ).slice(0, GITHUB_RECENT_PUSH_CANDIDATE_LIMIT);
   const repositoryMetadata = new Map<string, Promise<unknown>>();
   const suggestions: GitHubPullRequestSuggestion[] = [];
-  let hadCandidateFailure = false;
+  let failedCandidates = 0;
 
   for (
     let offset = 0;
@@ -650,8 +652,10 @@ async function loadGitHubPullRequestSuggestions(
             candidate,
             repositoryMetadata
           );
-        } catch {
-          hadCandidateFailure = true;
+        } catch (error) {
+          // A branch deleted after merge (404) or with nothing to compare (422) has no
+          // pull request to suggest; only transient failures are worth reporting.
+          if (!isPermanentGitHubLookupFailure(error)) failedCandidates += 1;
           return undefined;
         }
       })
@@ -663,8 +667,9 @@ async function loadGitHubPullRequestSuggestions(
     );
   }
 
+  const hadCandidateFailure = failedCandidates > 0;
   const errorMessage = hadCandidateFailure
-    ? 'Some recently pushed branches could not be checked. GitHub may be temporarily unavailable.'
+    ? `Couldn't check ${failedCandidates} recently pushed ${failedCandidates === 1 ? 'branch' : 'branches'} for pull requests.`
     : undefined;
   gitHubPullRequestSuggestionCache.set(cacheKey, {
     expiresAt: Date.now() + (
@@ -2536,6 +2541,31 @@ export async function mergeGitHubPullRequest(
   };
 }
 
+/** Drops cached branch suggestions for a profile so an explicit Retry checks GitHub again. */
+export function clearGitHubPullRequestSuggestionCache(profileId: string): void {
+  for (const key of gitHubPullRequestSuggestionCache.keys()) {
+    if (key.startsWith(`${profileId}\n`)) gitHubPullRequestSuggestionCache.delete(key);
+  }
+}
+
+export function isPermanentGitHubLookupFailure(error: unknown): boolean {
+  return error instanceof Error && /HTTP 40[34]|HTTP 410|HTTP 422|Not Found|No commit found/iu.test(error.message);
+}
+
+export async function markGitHubPullRequestReady(
+  locator: GitHubPullRequestLocator
+): Promise<GitHubPullRequestActionResult> {
+  const context = await getGitHubContext(locator.profileId);
+  await runGitHubText(context, [
+    'pr',
+    'ready',
+    String(locator.number),
+    '--repo',
+    `${context.host}/${locator.owner}/${locator.repository}`
+  ]);
+  return { message: 'Marked ready for review. Reviewers can now see it.' };
+}
+
 export function parseGitHubInboxResponse(
   value: unknown,
   profileId: string,
@@ -2562,6 +2592,10 @@ export function parseGitHubInboxResponse(
     }
   }
 
+  // Each search returns at most 50; report what GitHub left out so the inbox can say so.
+  const omitted =
+    Math.max(0, searchIssueCount(data.review) - reviewNodes.length) +
+    Math.max(0, searchIssueCount(data.authored) - authoredNodes.length);
   const categoryIndex = new Map(CATEGORY_ORDER.map((category, index) => [category, index]));
   const pullRequests = [...deduplicated.values()].sort((first, second) => {
     const byCategory =
@@ -2575,6 +2609,7 @@ export function parseGitHubInboxResponse(
     viewerLogin,
     host,
     pullRequests,
+    ...(omitted > 0 ? { omittedCount: omitted } : {}),
     suggestions: [],
     loadedAt: new Date().toISOString()
   };
@@ -3458,6 +3493,10 @@ function repositoryEndpoint(locator: GitHubPullRequestLocator): string {
 
 function gitHubRepositoryEndpoint(owner: string, repository: string): string {
   return `repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`;
+}
+
+function searchIssueCount(value: unknown): number {
+  return isRecord(value) && typeof value.issueCount === 'number' ? value.issueCount : 0;
 }
 
 function readSearchNodes(value: unknown, label: string): unknown[] {

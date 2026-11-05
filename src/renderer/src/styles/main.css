@@ -5457,114 +5457,6 @@ button.ref-chip {
   white-space: nowrap;
 }
 
-.pr-review-conflict-panel {
-  border-top: 1px solid color-mix(in srgb, var(--danger-text) 22%, var(--border));
-  border-bottom: 1px solid color-mix(in srgb, var(--danger-text) 22%, var(--border));
-  background: color-mix(in srgb, var(--danger-text) 7%, var(--bg-graph-header));
-  color: var(--danger-text);
-}
-
-.pr-review-conflict-summary {
-  display: grid;
-  width: 100%;
-  min-height: 41px;
-  grid-template-columns: 15px minmax(0, 1fr) 13px;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  background: transparent;
-  padding: 7px 14px 7px 50px;
-  color: inherit;
-  text-align: left;
-}
-
-.pr-review-conflict-summary:hover {
-  background: color-mix(in srgb, var(--danger-text) 5%, transparent);
-}
-
-.pr-review-conflict-summary > span {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.pr-review-conflict-summary strong {
-  color: var(--text-1);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.pr-review-conflict-summary small {
-  overflow: hidden;
-  color: var(--text-3);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pr-review-conflict-summary > svg:last-child {
-  color: var(--text-3);
-  transition: transform 120ms ease;
-}
-
-.pr-review-conflict-panel[data-open='true'] .pr-review-conflict-summary > svg:last-child {
-  transform: rotate(90deg);
-}
-
-.pr-review-conflict-details {
-  padding: 0 14px 10px 74px;
-}
-
-.pr-review-conflict-details p {
-  margin: 3px 0 0;
-  color: var(--text-2);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-
-.pr-review-conflict-details small {
-  display: block;
-  margin-top: 5px;
-  color: var(--text-3);
-  font-size: var(--text-xs);
-  line-height: 1.4;
-}
-
-.pr-review-conflict-loading {
-  display: flex !important;
-  align-items: center;
-  gap: 5px;
-}
-
-.pr-review-conflict-details ul {
-  display: grid;
-  max-height: 108px;
-  gap: 3px;
-  margin: 7px 0 0;
-  overflow-y: auto;
-  padding: 0;
-  list-style: none;
-}
-
-.pr-review-conflict-details li {
-  min-width: 0;
-}
-
-.pr-review-conflict-details code {
-  display: block;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--danger-text) 18%, var(--border));
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--bg-field) 86%, transparent);
-  padding: 4px 7px;
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .pr-review-overview-stats {
   display: flex;
   margin-left: auto;
@@ -9336,7 +9228,6 @@ button.ref-chip {
   }
 }
 
-
 /* Inline file references follow the surrounding font and the active app theme. */
 .review-line-comment-body a.evidence-file-chip,
 .bug-finder-code header a.evidence-file-chip {
@@ -9362,7 +9253,6 @@ button.ref-chip {
 .review-line-comment-body a.evidence-file-chip:hover,
 .bug-finder-code header a.evidence-file-chip:hover { background: var(--bg-hover); border-color: var(--accent-2); }
 .evidence-file-chip:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
-
 
 .review-line-comment-body.ai-message-body { max-height: none; overflow: visible; padding: 0; font-size: 13px; line-height: 1.65; color: var(--text-2); overflow-wrap: anywhere; }
 .ai-message-body :is(h1,h2,h3,h4,h5,h6) { margin: 1.25em 0 0.5em; font-weight: 600; line-height: 1.3; color: var(--text-1); }

@@ -92,10 +92,12 @@ import {
   loadGitHubWorkflowRunFailedLog,
   loadGitHubPullRequestDetail,
   loadGitHubPullRequestInbox,
+  clearGitHubPullRequestSuggestionCache,
   loadGitHubPullRequestReviewerCandidates,
   loadGitHubPullRequestReviewPlan,
   loadGitHubRepositories,
   mergeGitHubPullRequest,
+  markGitHubPullRequestReady,
   submitGitHubPullRequestReview,
   updateGitHubPullRequestReviewer,
   addGitHubPullRequestComment,
@@ -866,6 +868,7 @@ export function registerIpcHandlers(
     loadGitHubWorkflowRunFailedLog(input)
   );
   handle('github:pull-request-inbox', (_event, profileId) => loadGitHubPullRequestInbox(profileId));
+  handle('github:retry-pull-request-suggestions', (_event, profileId) => clearGitHubPullRequestSuggestionCache(profileId));
   handle('github:pull-request-detail', (_event, locator) => loadGitHubPullRequestDetail(locator));
   handle('github:pull-request-reviewer-candidates', (_event, locator) =>
     loadGitHubPullRequestReviewerCandidates(locator)
@@ -894,6 +897,7 @@ export function registerIpcHandlers(
     updateGitHubPullRequestReviewComment(input)
   );
   handle('github:merge-pull-request', (_event, input) => mergeGitHubPullRequest(input));
+  handle('github:mark-pull-request-ready', (_event, locator) => markGitHubPullRequestReady(locator));
   handle('profiles:save', (_event, profile) => saveProfile(profile));
   handle('profiles:activate', (_event, profileId) => {
     if (profileId && !listProfiles().some((profile) => profile.id === profileId)) {

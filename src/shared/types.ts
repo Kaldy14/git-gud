@@ -1501,6 +1501,8 @@ export type GitHubPullRequestInbox = {
   viewerLogin: string;
   host: string;
   pullRequests: GitHubPullRequestSummary[];
+  // Open pull requests GitHub matched beyond the 50 fetched per search.
+  omittedCount?: number;
   suggestions: GitHubPullRequestSuggestion[];
   suggestionsError?: string;
   loadedAt: string;

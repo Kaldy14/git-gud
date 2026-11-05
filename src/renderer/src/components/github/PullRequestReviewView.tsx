@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 
 import { PullRequestPanel } from './PullRequestPanel';
+import { PullRequestMergeChecklist } from './PullRequestMergeChecklist';
+import { pullRequestMergeBlockers } from './pullRequestMergeBlockers';
 import { getReviewImages } from '@renderer/components/review/reviewImages';
 import type { DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
@@ -566,6 +568,7 @@ function PullRequestReviewContent({
   }
 
   const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
+  const mergeBlockers = pullRequestMergeBlockers(detail);
   const conflictDetailsQuery = useQuery({
     queryKey: [
       'github-pull-request-conflicts',
@@ -715,6 +718,16 @@ function PullRequestReviewContent({
           'Review prompt copied. Your draft comments are still local and were not posted to GitHub.'
       });
       setIsReviewDialogOpen(false);
+    }
+  });
+  const markReadyMutation = useMutation({
+    mutationFn: () => window.api.markGitHubPullRequestReady(locator),
+    onSuccess: async (result) => {
+      setNotice({ tone: 'success', message: result.message });
+      onRefresh();
+    },
+    onError: (error) => {
+      setNotice({ tone: 'danger', message: error instanceof Error ? error.message : 'Could not mark the pull request ready for review.' });
     }
   });
   const mergeMutation = useMutation({
@@ -1020,7 +1033,7 @@ function PullRequestReviewContent({
               <PullRequestMetaRow icon={<CircleDot size={13} />} label="Checks">
                 <PullRequestChecksBreakdown checks={detail.checks} />
               </PullRequestMetaRow>
-              {detail.state === 'open' || detail.state === undefined ? (
+              {(detail.state === 'open' || detail.state === undefined) && mergeBlockers.length === 0 ? (
                 <PullRequestMetaRow icon={<GitMerge size={13} />} label="Merge">
                   <span className="pr-summary-tone" data-tone={mergeReadiness(detail).tone}>{mergeReadiness(detail).label}</span>
                 </PullRequestMetaRow>
@@ -1036,22 +1049,20 @@ function PullRequestReviewContent({
               </PullRequestMetaRow>
             </div>
 
-            {hasMergeConflicts ? (
-              <PullRequestConflictPanel
-                baseRefName={detail.baseRefName}
-                headRefName={detail.headRefName}
-                hasLocalCheckout={Boolean(codexRepoPath)}
-                details={conflictDetailsQuery.data}
-                isLoading={conflictDetailsQuery.isLoading}
-                errorMessage={
-                  conflictDetailsQuery.error instanceof Error
-                    ? conflictDetailsQuery.error.message
-                    : undefined
-                }
-                isOpen={isConflictPanelOpen}
-                onToggle={() => setIsConflictPanelOpen((current) => !current)}
-              />
-            ) : null}
+            <PullRequestMergeChecklist
+              detail={detail}
+              blockers={mergeBlockers}
+              conflicts={{
+                hasLocalCheckout: Boolean(codexRepoPath),
+                details: conflictDetailsQuery.data,
+                isLoading: conflictDetailsQuery.isLoading,
+                errorMessage: conflictDetailsQuery.error instanceof Error ? conflictDetailsQuery.error.message : undefined,
+                isOpen: isConflictPanelOpen,
+                onToggle: () => setIsConflictPanelOpen((current) => !current)
+              }}
+              isMarkingReady={markReadyMutation.isPending}
+              onMarkReady={() => markReadyMutation.mutate()}
+            />
 
             <PullRequestSection title="Description">
               <ReviewCommentBody
@@ -1809,8 +1820,7 @@ function PullRequestChecksBreakdown({ checks }: { checks: GitHubPullRequestSumma
 }
 
 function mergeReadiness(detail: GitHubPullRequestSummary): { tone: 'success' | 'danger' | 'warning' | 'muted'; label: string } {
-  if (detail.isDraft) return { tone: 'muted', label: 'Draft — mark ready for review to merge' };
-  if (hasPullRequestMergeConflicts(detail)) return { tone: 'danger', label: 'Merge conflicts with the base branch' };
+  // Drafts, conflicts, and unfinished checks are listed by the merge checklist instead.
   switch (detail.mergeState) {
     case 'clean': return { tone: 'success', label: 'Ready to merge' };
     case 'behind': return { tone: 'warning', label: 'Branch is behind the base branch' };
@@ -1875,95 +1885,6 @@ function ReviewStatus({
         {detail.checks.total > 0 ? checksHeaderLabel(detail.checks) : 'No checks reported'}
       </span>
     </>
-  );
-}
-
-function PullRequestConflictPanel({
-  baseRefName,
-  headRefName,
-  hasLocalCheckout,
-  details,
-  isLoading,
-  errorMessage,
-  isOpen,
-  onToggle
-}: {
-  baseRefName: string;
-  headRefName: string;
-  hasLocalCheckout: boolean;
-  details?: GitHubPullRequestConflictDetails;
-  isLoading: boolean;
-  errorMessage?: string;
-  isOpen: boolean;
-  onToggle: () => void;
-}): ReactElement {
-  const conflictFiles = details?.files ?? [];
-  const fileCount = conflictFiles.length;
-  const summary = !hasLocalCheckout
-    ? 'Local checkout unavailable'
-    : isLoading
-      ? 'Inspecting local checkout…'
-      : errorMessage || details?.unavailableReason
-        ? 'File details unavailable'
-        : fileCount > 0
-          ? `${fileCount} conflicting ${fileCount === 1 ? 'file' : 'files'}`
-          : 'Local revisions merge cleanly';
-
-  return (
-    <section
-      className="pr-review-conflict-panel"
-      id="pr-review-conflict-panel"
-      aria-labelledby="pr-review-conflict-heading"
-      data-open={isOpen}
-    >
-      <button
-        className="pr-review-conflict-summary"
-        type="button"
-        aria-expanded={isOpen}
-        aria-controls="pr-review-conflict-details"
-        onClick={onToggle}
-      >
-        <AlertTriangle size={15} aria-hidden="true" />
-        <span>
-          <strong id="pr-review-conflict-heading">Resolve merge conflicts before merging</strong>
-          <small>{summary}</small>
-        </span>
-        <ChevronRight size={13} aria-hidden="true" />
-      </button>
-      {isOpen ? (
-        <div className="pr-review-conflict-details" id="pr-review-conflict-details">
-          <p>
-            <strong>{headRefName}</strong> and <strong>{baseRefName}</strong> contain overlapping
-            changes that GitHub cannot combine automatically.
-          </p>
-          {!hasLocalCheckout ? (
-            <small>Open this repository locally to inspect the affected files.</small>
-          ) : isLoading ? (
-            <small className="pr-review-conflict-loading">
-              <Loader2 size={11} className="animate-spin" />
-              Inspecting the local checkout…
-            </small>
-          ) : errorMessage ? (
-            <small>Could not inspect the conflicting files: {errorMessage}</small>
-          ) : details?.unavailableReason ? (
-            <small>
-              {details.unavailableReason} Fetch both branches locally, then reopen this overview.
-            </small>
-          ) : fileCount > 0 ? (
-            <ul aria-label="Conflicting files">
-              {conflictFiles.map((path) => (
-                <li key={path}><code>{path}</code></li>
-              ))}
-            </ul>
-          ) : (
-            <small>
-              These local revisions merge cleanly. Refresh the pull request to update GitHub’s
-              conflict status.
-            </small>
-          )}
-        </div>
-      ) : null}
-    </section>
   );
 }
 

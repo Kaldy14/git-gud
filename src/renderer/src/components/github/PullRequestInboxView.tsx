@@ -335,6 +335,12 @@ export function PullRequestInboxView({
             <div className="pr-inline-warning" role="status">
               <AlertTriangle size={13} />
               <span>{inbox.suggestionsError}</span>
+              <button className="btn-subtle btn-compact" type="button" aria-disabled={isRefreshing || undefined} onClick={() => {
+                if (isRefreshing || !profile) return;
+                void window.api.retryGitHubPullRequestSuggestions(profile.id).then(onRefresh);
+              }}>
+                Retry
+              </button>
             </div>
           ) : null}
 
@@ -421,6 +427,12 @@ export function PullRequestInboxView({
                 </button>
               )}
             </div>
+          ) : null}
+          {inbox ? (
+            <p className="pr-inbox-scope-note">
+              Showing review requests and pull requests you opened.
+              {inbox.omittedCount ? ` ${inbox.omittedCount} older ${inbox.omittedCount === 1 ? 'match is' : 'matches are'} not loaded; GitHub returns the latest 50 per list.` : ''}
+            </p>
           ) : null}
           {visibleSuggestions.length ? (
             <section className="pr-create-suggestions" aria-label="Recently pushed branches">
