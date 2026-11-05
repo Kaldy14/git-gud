@@ -487,6 +487,8 @@ export type GitCommitInput = {
 };
 
 export type GitPullInput = {
+  /** Save all local changes in Stashes before pulling; requires expectedBranch. */
+  stashChanges?: boolean;
   mode: 'ff' | 'ff-only' | 'rebase';
   expectedBranch?: string;
 };
@@ -579,6 +581,8 @@ export type GitCheckoutTarget =
       kind: 'remote-reset';
       name: string;
       localName: string;
+      /** Save current localName changes in Stashes before resetting. */
+      stashChanges?: boolean;
     }
   | {
       kind: 'commit';

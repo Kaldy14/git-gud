@@ -108,6 +108,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}): str
       onCheckoutRemoteBranch={vi.fn()}
       onCopyBranchName={vi.fn()}
       onPullBranch={vi.fn()}
+      onResetBranchToUpstream={vi.fn()}
       onPushBranch={vi.fn()}
       onPushBranchWithTag={vi.fn()}
       onSetBranchUpstream={vi.fn()}

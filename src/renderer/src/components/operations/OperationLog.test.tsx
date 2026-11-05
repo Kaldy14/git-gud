@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OperationLog, type OperationLogEntry } from './OperationLog';
-import { operationEarnsCard } from './operationProgress';
+import { applyOperationFailure, applyOperationProgress, operationAutoDismisses, operationEarnsCard } from './operationProgress';
 
 const entries: OperationLogEntry[] = [
   createEntry('pending'),
@@ -94,6 +94,95 @@ describe('routine operation feedback', () => {
   });
 });
 
+describe('pull recovery card', () => {
+  const rawError = 'error: Your local changes to the following files would be overwritten by merge:\n\tsrc/app.ts\nAborting';
+  const recovery = { repoPath: '/repo', repoName: 'repo', branchName: 'main', upstream: 'origin/main', mode: 'ff-only' as const };
+  const blockedPull: OperationLogEntry = {
+    ...createEntry('error'),
+    label: 'Pull main',
+    detail: rawError,
+    summary: 'main in repo was not updated. Local changes to src/app.ts would be overwritten.',
+    persistent: true,
+    recovery
+  };
+
+  it('offers every recovery with the raw error behind details and Copy', () => {
+    const markup = renderOperationLog([blockedPull]);
+
+    expect(markup).toContain('Review changes');
+    expect(markup).toContain('Stash and retry pull');
+    expect(markup).toContain('Reset local main to origin/main');
+    expect(markup).toContain('<details');
+    expect(markup).toContain('Error details');
+    expect(markup).toContain('Copy');
+    expect(markup).toContain('src/app.ts');
+    expect(markup).not.toContain('max-h-12');
+  });
+
+  it('leaves reset out when the branch has no upstream', () => {
+    const markup = renderOperationLog([{ ...blockedPull, recovery: { ...recovery, upstream: undefined } }]);
+
+    expect(markup).toContain('Stash and retry pull');
+    expect(markup).not.toContain('Reset local');
+  });
+
+  it('gives an unrelated error no recovery actions', () => {
+    const markup = renderOperationLog([{ ...createEntry('error'), label: 'Pull main', detail: 'fatal: unable to access remote' }]);
+
+    expect(markup).toContain('Copy');
+    expect(markup).not.toContain('Stash and retry pull');
+    expect(markup).not.toContain('Review changes');
+    expect(markup).not.toContain('Reset local');
+  });
+
+  it('disables recovery for the card repository while keeping Copy and dismiss', () => {
+    const isUnavailable = vi.fn((repoPath: string) => repoPath === '/repo');
+    const markup = renderOperationLog([blockedPull], isUnavailable);
+
+    expect(isUnavailable).toHaveBeenCalledWith('/repo');
+    expect(markup.match(/<button[^>]*disabled=""/g)).toHaveLength(3);
+    expect(markup).toContain('Dismiss Pull main');
+  });
+
+  it('keeps a persistent card past the auto-dismiss window', () => {
+    expect(operationAutoDismisses(blockedPull)).toBe(false);
+    expect(operationAutoDismisses({ ...createEntry('error'), detail: 'fatal: nope' })).toBe(true);
+    expect(operationAutoDismisses(createEntry('success'))).toBe(true);
+    expect(operationAutoDismisses(createEntry('pending'))).toBe(false);
+  });
+
+  it('stores the failure state and keeps it through a late progress event', () => {
+    const failed = applyOperationFailure(
+      [{ ...createEntry('pending'), operationId: 'op' }],
+      'pending',
+      rawError,
+      '2026-08-07T10:00:02.000Z',
+      { summary: 'Blocked.', persistent: true, recovery }
+    );
+    const [entry] = applyOperationProgress(failed, {
+      operationId: 'op',
+      repoPath: '/repo',
+      label: 'Pull main',
+      phase: 'failed',
+      message: rawError,
+      happenedAt: '2026-08-07T10:00:03.000Z',
+      elapsedMs: 10,
+      cancellable: false
+    } as never);
+
+    expect(entry).toMatchObject({ status: 'error', summary: 'Blocked.', persistent: true, recovery });
+  });
+
+  it('does not turn a cancelled pull into a recovery', () => {
+    const [entry] = applyOperationFailure([createEntry('cancelled')], 'cancelled', rawError, 'now', {
+      persistent: true,
+      recovery
+    });
+
+    expect(entry?.recovery).toBeUndefined();
+  });
+});
+
 function createEntry(status: OperationLogEntry['status']): OperationLogEntry {
   return {
     id: status,
@@ -105,7 +194,10 @@ function createEntry(status: OperationLogEntry['status']): OperationLogEntry {
   };
 }
 
-function renderOperationLog(operationEntries: OperationLogEntry[]): string {
+function renderOperationLog(
+  operationEntries: OperationLogEntry[],
+  isRecoveryUnavailable: (repoPath: string) => boolean = () => false
+): string {
   return renderToStaticMarkup(
     <OperationLog
       entries={operationEntries}
@@ -113,6 +205,10 @@ function renderOperationLog(operationEntries: OperationLogEntry[]): string {
       onCancel={vi.fn()}
       onRetry={vi.fn()}
       onCopyDetails={vi.fn()}
+      onReviewChanges={vi.fn()}
+      onStashAndRetryPull={vi.fn()}
+      onResetLocalBranch={vi.fn()}
+      isRecoveryUnavailable={isRecoveryUnavailable}
     />
   );
 }

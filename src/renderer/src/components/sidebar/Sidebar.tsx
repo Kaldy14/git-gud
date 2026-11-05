@@ -91,6 +91,7 @@ type SidebarProps = {
   onCheckoutRemoteBranch: (name: string) => void;
   onCopyBranchName: (name: string) => void;
   onPullBranch: (name: string) => void;
+  onResetBranchToUpstream: (name: string, upstream: string) => void;
   onPushBranch: (name: string) => void;
   onPushBranchWithTag: (branchName: string, tagName: string) => void;
   onSetBranchUpstream: (name: string) => void;
@@ -210,6 +211,7 @@ export function Sidebar({
   onCheckoutRemoteBranch,
   onCopyBranchName,
   onPullBranch,
+  onResetBranchToUpstream,
   onPushBranch,
   onPushBranchWithTag,
   onSetBranchUpstream,
@@ -743,6 +745,7 @@ export function Sidebar({
               onCheckoutRemoteBranch={onCheckoutRemoteBranch}
               onCopyBranchName={onCopyBranchName}
               onPullBranch={onPullBranch}
+              onResetBranchToUpstream={onResetBranchToUpstream}
               onPushBranch={onPushBranch}
               onPushBranchWithTag={onPushBranchWithTag}
               onSetBranchUpstream={onSetBranchUpstream}
@@ -1469,6 +1472,7 @@ function SidebarContextMenu({
   onCheckoutRemoteBranch,
   onCopyBranchName,
   onPullBranch,
+  onResetBranchToUpstream,
   onPushBranch,
   onPushBranchWithTag,
   onSetBranchUpstream,
@@ -1505,6 +1509,7 @@ function SidebarContextMenu({
   onCheckoutRemoteBranch: (name: string) => void;
   onCopyBranchName: (name: string) => void;
   onPullBranch: (name: string) => void;
+  onResetBranchToUpstream: (name: string, upstream: string) => void;
   onPushBranch: (name: string) => void;
   onPushBranchWithTag: (branchName: string, tagName: string) => void;
   onSetBranchUpstream: (name: string) => void;
@@ -1664,7 +1669,7 @@ function SidebarContextMenu({
           targetSha={state.branch.sha}
           currentBranchName={currentBranchName}
           isCurrentBranch={state.branch.current}
-          hasUpstream={Boolean(state.branch.upstream)}
+          upstream={state.branch.upstream}
           canSetBranchUpstream={canSetBranchUpstream}
           suggestedTagName={suggestedTagName}
           pullRequest={pullRequest}
@@ -1673,6 +1678,7 @@ function SidebarContextMenu({
           onPushBranch={onPushBranch}
           onPushBranchWithTag={onPushBranchWithTag}
           onPullBranch={onPullBranch}
+          onResetBranchToUpstream={onResetBranchToUpstream}
           onSetBranchUpstream={onSetBranchUpstream}
           onReviewBranch={onReviewBranch}
           onViewPullRequest={onViewPullRequest}

@@ -608,6 +608,128 @@ describe('git operations', () => {
     }
   });
 
+  it.each(['ff-only', 'rebase'] as const)('stashes staged, unstaged and untracked work before a %s pull and leaves it saved', async (mode) => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-pull-recovery-'));
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(remoteWriterPath, 'conflict.txt', 'upstream\n', 'upstream change');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      await writeRepoFile(repoPath, 'conflict.txt', 'staged local\n');
+      await git(repoPath, ['add', 'conflict.txt']);
+      await writeRepoFile(repoPath, 'conflict.txt', 'unstaged local\n');
+      await writeRepoFile(repoPath, 'draft.txt', 'untracked draft\n');
+      await expect(pullRepository(tab, { mode, expectedBranch: 'main' })).rejects.toThrow();
+
+      const result = await pullRepository(tab, { mode, expectedBranch: 'main', stashChanges: true });
+
+      expect(result.operation?.message).toContain('saved in Stashes');
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout.trim()).toBe('');
+      expect(await readFile(join(repoPath, 'conflict.txt'), 'utf8')).toBe('upstream\n');
+      expect((await git(repoPath, ['show', 'stash@{0}:conflict.txt'])).stdout).toBe('unstaged local\n');
+      expect((await git(repoPath, ['show', 'stash@{0}^2:conflict.txt'])).stdout).toBe('staged local\n');
+      expect((await git(repoPath, ['show', 'stash@{0}^3:draft.txt'])).stdout).toBe('untracked draft\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('handles stash-and-pull after the working tree has already been cleaned', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-pull-recovery-'));
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const result = await pullRepository({ path: repoPath, assignedProfileId: undefined }, {
+        mode: 'ff-only', expectedBranch: 'main', stashChanges: true
+      });
+      expect(result.operation?.status).toBe('completed');
+      expect(result.operation?.message).toBeUndefined();
+      expect((await git(repoPath, ['stash', 'list'])).stdout).toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('does not stash when the branch changed, upstream is missing, or fast-forward is impossible', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-pull-recovery-'));
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await writeRepoFile(repoPath, 'draft.txt', 'keep me\n');
+      await expect(pullRepository(tab, { mode: 'ff-only', stashChanges: true })).rejects.toThrow('expected branch is required');
+      await git(repoPath, ['checkout', '-b', 'other']);
+      await expect(pullRepository(tab, { mode: 'ff-only', expectedBranch: 'main', stashChanges: true })).rejects.toThrow('Branch changed before the operation started');
+      await expect(pullRepository(tab, { mode: 'ff-only', expectedBranch: 'other', stashChanges: true })).rejects.toThrow();
+      await git(repoPath, ['checkout', 'main']);
+      await commitFile(repoPath, 'local.txt', 'local\n', 'local commit');
+      await commitFile(remoteWriterPath, 'remote.txt', 'remote\n', 'remote commit');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      await expect(pullRepository(tab, { mode: 'ff-only', expectedBranch: 'main', stashChanges: true })).rejects.toThrow('diverged');
+      expect((await git(repoPath, ['stash', 'list'])).stdout).toBe('');
+      expect(await readFile(join(repoPath, 'draft.txt'), 'utf8')).toBe('keep me\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('reports the saved stash when the pull fails after stashing', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-pull-recovery-'));
+    try {
+      const { repoPath, remoteWriterPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await commitFile(remoteWriterPath, 'remote.txt', 'remote\n', 'remote commit');
+      await git(remoteWriterPath, ['push', 'origin', 'main']);
+      await writeRepoFile(repoPath, 'draft.txt', 'keep me\n');
+      const run = gitExecutor.run.bind(gitExecutor);
+      vi.spyOn(gitExecutor, 'run').mockImplementation((args, options) => {
+        if (args[0] === 'merge') throw new Error('Merge failed after saving work');
+        return run(args, options);
+      });
+      await expect(pullRepository(tab, { mode: 'ff-only', expectedBranch: 'main', stashChanges: true })).rejects.toThrow('saved in Stashes and have not been reapplied');
+      expect((await git(repoPath, ['show', 'stash@{0}^3:draft.txt'])).stdout).toBe('keep me\n');
+    } finally {
+      vi.restoreAllMocks();
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('stashes dirty main before resetting to its remote and preserves the old tip for undo', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-reset-recovery-'));
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      const remoteHead = (await git(repoPath, ['rev-parse', 'origin/main'])).stdout.trim();
+      await commitFile(repoPath, 'local.txt', 'local commit\n', 'local-only commit');
+      const localHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await writeRepoFile(repoPath, 'conflict.txt', 'dirty tracked\n');
+      await writeRepoFile(repoPath, 'draft.txt', 'untracked\n');
+      const result = await checkoutRef(tab, { kind: 'remote-reset', name: 'origin/main', localName: 'main', stashChanges: true });
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(remoteHead);
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout).toBe('');
+      expect(result.operation?.message).toContain('saved in Stashes');
+      expect(result.undoEntry?.headBefore).toBe(localHead);
+      expect((await git(repoPath, ['show', 'stash@{0}:conflict.txt'])).stdout).toBe('dirty tracked\n');
+      expect((await git(repoPath, ['show', 'stash@{0}^3:draft.txt'])).stdout).toBe('untracked\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('does not stash another branch or stash before validating the reset target', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-reset-recovery-'));
+    try {
+      const { repoPath } = await createPullRepositoryPair(rootPath);
+      const tab = { path: repoPath, assignedProfileId: undefined };
+      await writeRepoFile(repoPath, 'draft.txt', 'keep me\n');
+      await expect(checkoutRef(tab, { kind: 'remote-reset', name: 'origin/missing', localName: 'main', stashChanges: true })).rejects.toThrow();
+      await git(repoPath, ['checkout', '-b', 'other']);
+      await expect(checkoutRef(tab, { kind: 'remote-reset', name: 'origin/main', localName: 'main', stashChanges: true })).rejects.toThrow('Branch changed before the operation started');
+      expect((await git(repoPath, ['stash', 'list'])).stdout).toBe('');
+      expect(await readFile(join(repoPath, 'draft.txt'), 'utf8')).toBe('keep me\n');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
   it('blocks a fast-forward pull before an ignored path can be overwritten', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-operations-'));
 

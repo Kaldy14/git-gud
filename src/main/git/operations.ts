@@ -194,6 +194,9 @@ export async function pullRepository(
   const env = createProfileCommandEnv(tab.assignedProfileId);
 
   return gitExecutor.transaction(tab.path, async () => {
+    if (input.stashChanges && !input.expectedBranch?.trim()) {
+      throw new Error('The expected branch is required to stash changes and pull.');
+    }
     await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
     await gitExecutor.run(['fetch'], {
       cwd: tab.path,
@@ -205,15 +208,6 @@ export async function pullRepository(
     onFetchCompleted?.(new Date().toISOString());
     await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
     const upstreamCommit = await resolvePullUpstream(tab.path, env);
-
-    if (input.mode === 'rebase') {
-      await assertNoIgnoredTreeCollisions(tab.path, upstreamCommit, env, 'Pull with rebase');
-      const result = await rebaseOnto(tab, {
-        target: upstreamCommit,
-        expectedCurrentBranch: input.expectedBranch
-      });
-      return createOperationResult(tab, env, 'pull', 'Pull with rebase', undefined, result.conflictState);
-    }
 
     const headCommit = await revParseOptional(tab.path, 'HEAD^{commit}', env);
 
@@ -227,40 +221,50 @@ export async function pullRepository(
       );
     }
 
-    await assertNoIgnoredTreeCollisions(tab.path, upstreamCommit, env, 'Pull fast-forward');
+    await assertNoIgnoredTreeCollisions(tab.path, upstreamCommit, env, 'Pull');
     await assertExpectedCurrentBranch(tab.path, input.expectedBranch, env);
 
-    if (headCommit === upstreamCommit) {
-      return createOperationResult(
-        tab,
-        env,
-        'pull',
-        input.mode === 'ff' ? 'Pull fast-forward if possible' : 'Pull fast-forward only'
-      );
-    }
+    return withSavedLocalChanges(tab, input.stashChanges, `Before pulling ${input.expectedBranch}`, async () => {
+      if (input.mode === 'rebase') {
+        const result = await rebaseOnto(tab, {
+          target: upstreamCommit,
+          expectedCurrentBranch: input.expectedBranch
+        });
+        return createOperationResult(tab, env, 'pull', 'Pull with rebase', undefined, result.conflictState);
+      }
 
-    if (input.mode === 'ff') {
-      const { conflictState } = await runMutationAllowingConflicts(
-        tab,
-        ['merge', '--ff', '--no-edit', upstreamCommit],
+      if (headCommit === upstreamCommit) {
+        return createOperationResult(
+          tab,
+          env,
+          'pull',
+          input.mode === 'ff' ? 'Pull fast-forward if possible' : 'Pull fast-forward only'
+        );
+      }
+
+      if (input.mode === 'ff') {
+        const { conflictState } = await runMutationAllowingConflicts(
+          tab,
+          ['merge', '--ff', '--no-edit', upstreamCommit],
+          env
+        );
+        return createOperationResult(
+          tab,
+          env,
+          'pull',
+          'Pull fast-forward if possible',
+          undefined,
+          conflictState
+        );
+      }
+
+      await gitExecutor.run(['merge', '--ff-only', upstreamCommit], {
+        cwd: tab.path,
+        kind: 'mutation',
         env
-      );
-      return createOperationResult(
-        tab,
-        env,
-        'pull',
-        'Pull fast-forward if possible',
-        undefined,
-        conflictState
-      );
-    }
-
-    await gitExecutor.run(['merge', '--ff-only', upstreamCommit], {
-      cwd: tab.path,
-      kind: 'mutation',
-      env
+      });
+      return createOperationResult(tab, env, 'pull', 'Pull fast-forward only');
     });
-    return createOperationResult(tab, env, 'pull', 'Pull fast-forward only');
   });
 }
 
@@ -609,7 +613,7 @@ export async function deleteBranch(tab: OperationTab, input: GitDeleteBranchInpu
 
 export async function checkoutRef(tab: OperationTab, target: GitCheckoutTarget): Promise<GitOperationResult> {
   if (target.kind === 'remote-reset') {
-    return resetLocalBranchToRemote(tab, target);
+    return gitExecutor.transaction(tab.path, () => resetLocalBranchToRemote(tab, target));
   }
 
   const env = createProfileCommandEnv(tab.assignedProfileId);
@@ -642,11 +646,9 @@ async function resetLocalBranchToRemote(
   const remoteName = normalizeRequiredName(target.name, 'Remote branch name');
   const localName = normalizeRequiredName(target.localName, 'Local branch name');
   await assertValidBranchName(tab.path, localName, env);
-  await assertCleanWorktreeAndIndex(
-    tab.path,
-    env,
-    `Reset ${localName} is blocked while the repository has index or working-tree changes. Stash or commit them first.`
-  );
+  if (target.stashChanges) {
+    await assertExpectedCurrentBranch(tab.path, localName, env);
+  }
 
   const localHeadBefore = await revParseOptional(tab.path, `refs/heads/${localName}^{commit}`, env);
 
@@ -657,28 +659,67 @@ async function resetLocalBranchToRemote(
   const remoteRef = `refs/remotes/${remoteName}`;
   const remoteHead = await revParse(tab.path, `${remoteRef}^{commit}`, env);
   await assertNoIgnoredTreeCollisions(tab.path, remoteHead, env, `Reset ${localName} to ${remoteName}`);
-  await gitExecutor.run(
-    ['checkout', '--no-overwrite-ignore', '-B', localName, remoteRef],
-    { cwd: tab.path, kind: 'mutation', env }
-  );
-  const headAfter = await revParseOptional(tab.path, 'HEAD', env);
-  const undoEntry = headAfter && localHeadBefore !== headAfter
-    ? recordUndo(tab, 'reset', `Undo reset ${localName} to ${remoteName}`, {
-        headBefore: localHeadBefore,
-        headAfter,
-        resetMode: 'hard',
-        affectedRefs: [`refs/heads/${localName}`],
-        warning: 'Undo restores the previous local branch tip and is only available while the index and working tree remain clean.'
-      })
-    : undefined;
+  return withSavedLocalChanges(tab, target.stashChanges, `Before resetting ${localName} to ${remoteName}`, async () => {
+    await assertCleanWorktreeAndIndex(
+      tab.path,
+      env,
+      `Reset ${localName} is blocked while the repository has index or working-tree changes. Stash or commit them first.`
+    );
+    await gitExecutor.run(
+      ['checkout', '--no-overwrite-ignore', '-B', localName, remoteRef],
+      { cwd: tab.path, kind: 'mutation', env }
+    );
+    const headAfter = await revParseOptional(tab.path, 'HEAD', env);
+    const undoEntry = headAfter && localHeadBefore !== headAfter
+      ? recordUndo(tab, 'reset', `Undo reset ${localName} to ${remoteName}`, {
+          headBefore: localHeadBefore,
+          headAfter,
+          resetMode: 'hard',
+          affectedRefs: [`refs/heads/${localName}`],
+          warning: 'Undo restores the previous local branch tip and is only available while the index and working tree remain clean.'
+        })
+      : undefined;
 
-  return createOperationResult(
-    tab,
-    env,
-    'checkout',
-    `Reset ${localName} to ${remoteName}`,
-    undoEntry
-  );
+    return createOperationResult(
+      tab,
+      env,
+      'checkout',
+      `Reset ${localName} to ${remoteName}`,
+      undoEntry
+    );
+  });
+}
+
+async function withSavedLocalChanges(
+  tab: OperationTab,
+  saveChanges: boolean | undefined,
+  message: string,
+  action: () => Promise<GitOperationResult>
+): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  let saved = false;
+  try {
+    if (saveChanges) {
+      const before = await revParseOptional(tab.path, 'refs/stash', env);
+      try {
+        await stashPush(tab, { message, includeUntracked: true });
+      } finally {
+        // Even a failed stash command can have saved work before a later step failed.
+        saved = before !== await revParseOptional(tab.path, 'refs/stash', env);
+      }
+      await assertCleanWorktreeAndIndex(tab.path, env, 'Some local changes could not be stashed. Review the remaining changes before retrying.');
+    }
+    const result = await action();
+    if (saved && result.operation) {
+      result.operation.message = [result.operation.message, 'Your local changes are saved in Stashes. Apply them when you are ready.'].filter(Boolean).join('\n');
+    }
+    return result;
+  } catch (error) {
+    if (saved) {
+      throw new Error(`${error instanceof Error ? error.message : 'Git operation failed.'}\nYour local changes are saved in Stashes and have not been reapplied.`, { cause: error });
+    }
+    throw error;
+  }
 }
 
 export async function mergeRef(tab: OperationTab, input: GitMergeInput): Promise<GitOperationResult> {

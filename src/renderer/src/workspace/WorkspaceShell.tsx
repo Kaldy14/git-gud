@@ -167,6 +167,15 @@ import {
   isNonFastForwardPushError,
   type PushRejectionPrompt
 } from '@renderer/workspace/pushRejection';
+import {
+  createLocalResetPlan,
+  isSavedInStashesMessage,
+  resolvePullFailure,
+  resolveStashedOperationFailure,
+  stashAndPullDialogItems,
+  withSavedInStashesNote,
+  type OperationFailureState
+} from '@renderer/workspace/pullRecovery';
 import { dashboardProfileId } from '@shared/dashboard';
 import type { RepositoryCloneInput, RepositoryInitializeInput } from '@shared/ipc';
 import type { PullRequestDeepLinkTarget } from '@shared/pullRequestDeepLink';
@@ -183,6 +192,7 @@ import type {
   GitInteractiveRebaseInput,
   GitInteractiveRebasePlan,
   GitOperationResult,
+  GitPullInput,
   GitHubPullRequestSummary,
   GitHubWorkflowRun,
   GitProfile,
@@ -289,6 +299,24 @@ type RepositoryOperationOptions = {
   background?: boolean;
   checkout?: Omit<CheckoutTransition, 'phase'>;
   onFailure?: (failure: { repoPath: string; message: string }) => void;
+  /** Decides how a failure stays on screen; called before the error reaches the log. */
+  failureState?: (message: string) => OperationFailureState | undefined;
+  /** Replaced only once the operation really starts, so a refused start keeps this card. */
+  replacesEntryId?: string;
+  /** A failed pull may still have fetched or checked out, so the repository is re-read. */
+  refreshOnFailure?: boolean;
+  savesChangesInStashes?: boolean;
+};
+
+type PullOperation = {
+  label: string;
+  mode: GitPullInput['mode'];
+  expectedBranch?: string;
+  upstream?: string;
+  repoPath?: string;
+  /** Runs first inside the same operation, such as the checkout of checkout-and-pull. */
+  prepare?: (repoPath: string) => Promise<void>;
+  checkout?: Omit<CheckoutTransition, 'phase'>;
 };
 
 type ActiveRepositoryOperation = {
@@ -2131,7 +2159,7 @@ export function WorkspaceShell(): ReactElement {
         retryable,
         background
       }),
-      ...entries
+      ...entries.filter((entry) => entry.id !== options.replacesEntryId)
     ]);
 
     try {
@@ -2190,7 +2218,9 @@ export function WorkspaceShell(): ReactElement {
             result.operation?.status === 'conflicted' || result.conflictState?.isActive
               ? 'conflict'
               : 'success';
-          const detail = result.conflictState?.message ?? result.operation?.message;
+          const resultDetail = result.conflictState?.message ?? result.operation?.message;
+          const savedChanges = options.savesChangesInStashes && isSavedInStashesMessage(result.operation?.message ?? '');
+          const detail = savedChanges ? withSavedInStashesNote(resultDetail) : resultDetail;
           operationRetryActionsRef.current.delete(id);
           setOperationLogEntries((entries) =>
             entries.map((entry) =>
@@ -2203,6 +2233,8 @@ export function WorkspaceShell(): ReactElement {
                     canRetry: false,
                     waitsForRefresh: false,
                     detail,
+                    // The conflict banner cannot say where the saved changes went.
+                    persistent: status === 'conflict' && savedChanges,
                     happenedAt: result.happenedAt
                   }
                 : entry
@@ -2211,10 +2243,14 @@ export function WorkspaceShell(): ReactElement {
           return true;
         } catch (error) {
           const message = ipcErrorMessage(error, 'Git operation failed.');
+          const failureState = options.failureState?.(message);
           setOperationLogEntries((entries) =>
-            applyOperationFailure(entries, id, message, new Date().toISOString())
+            applyOperationFailure(entries, id, message, new Date().toISOString(), failureState)
           );
           options.onFailure?.({ repoPath: requestedRepoPath, message });
+          if (options.refreshOnFailure) {
+            await invalidateRepositoryQueries(queryClient, requestedRepoPath).catch(() => undefined);
+          }
           return false;
         } finally {
           setActiveRepositoryOperations((operations) => {
@@ -2268,6 +2304,88 @@ export function WorkspaceShell(): ReactElement {
       void runRepositoryOperation(retry.label, retry.action, {
         repoPath: retry.repoPath,
         retryable: retry.retryable
+      });
+    }
+  }
+
+  function repositoryOverviewForPath(repoPath: string): GitRepositoryOverview | undefined {
+    return queryClient.getQueryData<GitRepositoryOverview>(repositoryOverviewQueryKey(repoPath));
+  }
+
+  function repositoryNameForPath(repoPath: string): string {
+    return workspaceTabsRef.current.find((tab) => tab.path === repoPath)?.name ?? repoPath;
+  }
+
+  function isRepositoryRecoveryUnavailable(repoPath: string): boolean {
+    return (
+      localMutationCount > 0 ||
+      !workspace.tabs.some((tab) => tab.path === repoPath) ||
+      Boolean(activeRepositoryOperations[repoPath] && !activeRepositoryOperations[repoPath]?.background) ||
+      operationLogEntries.some(
+        (entry) => entry.repoPath === repoPath && entry.status === 'pending' && !entry.background
+      )
+    );
+  }
+
+  async function handleReviewBlockedChanges(entry: OperationLogEntry): Promise<void> {
+    const tab = workspace.tabs.find((candidate) => candidate.path === entry.recovery?.repoPath);
+
+    if (!tab) {
+      return;
+    }
+
+    await handleActivateRepositoryTab(tab.id);
+    setBulkSelectionByTab((value) => ({ ...value, [tab.id]: [] }));
+    setReviewTargetByTab((value) => withoutRecordKey(value, tab.id));
+    delete reviewViewStateByTabRef.current[tab.id];
+    openHistoryDetailPanel();
+    await selectFile(tab.id, undefined);
+    await selectCommit(tab.id, 'wip');
+  }
+
+  function handleStashAndRetryPull(entry: OperationLogEntry): void {
+    const recovery = entry.recovery;
+
+    if (!recovery) {
+      return;
+    }
+
+    openCommandDialog({
+      title: `Stash changes and pull ${recovery.branchName}?`,
+      description: `This updates ${recovery.branchName} in ${recovery.repoName}.`,
+      detailItems: stashAndPullDialogItems(recovery),
+      confirmLabel: 'Stash and Pull',
+      icon: Archive,
+      fields: [],
+      onSubmit() {
+        void runRepositoryOperation(
+          `Stash and pull ${recovery.branchName}`,
+          (repoPath) => window.api.pullRepository(repoPath, {
+            mode: recovery.mode,
+            expectedBranch: recovery.branchName,
+            stashChanges: true
+          }),
+          {
+            repoPath: recovery.repoPath,
+            replacesEntryId: entry.id,
+            refreshOnFailure: true,
+            savesChangesInStashes: true,
+            failureState: resolveStashedOperationFailure
+          }
+        );
+      }
+    });
+  }
+
+  function handleResetBlockedBranch(entry: OperationLogEntry): void {
+    const recovery = entry.recovery;
+
+    if (recovery?.upstream) {
+      openResetLocalBranchDialog({
+        repoPath: recovery.repoPath,
+        localName: recovery.branchName,
+        remoteName: recovery.upstream,
+        replacesEntryId: entry.id
       });
     }
   }
@@ -2425,6 +2543,46 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  function runPullWithRecovery(pull: PullOperation): Promise<boolean> {
+    const pullRepoPath = pull.repoPath ?? activeTab?.path;
+    const { expectedBranch, mode } = pull;
+    // A failed checkout before the pull says the same words, but pull recovery cannot fix it.
+    let reachedPull = !pull.prepare;
+
+    return runRepositoryOperation(
+      pull.label,
+      async (repoPath) => {
+        await pull.prepare?.(repoPath);
+        reachedPull = true;
+        return window.api.pullRepository(repoPath, { mode, expectedBranch });
+      },
+      {
+        repoPath: pullRepoPath,
+        checkout: pull.checkout,
+        refreshOnFailure: true,
+        failureState: (message) => {
+          if (!reachedPull || !expectedBranch || !pullRepoPath) {
+            return undefined;
+          }
+
+          return resolvePullFailure(message, {
+            repoPath: pullRepoPath,
+            repoName: repositoryNameForPath(pullRepoPath),
+            branchName: expectedBranch,
+            upstream:
+              repositoryOverviewForPath(pullRepoPath)?.refs.localBranches
+                .find((branch) => branch.name === expectedBranch)?.upstream ?? pull.upstream,
+            mode
+          });
+        }
+      }
+    );
+  }
+
+  function upstreamForBranch(name: string): string | undefined {
+    return repositoryQuery.data?.refs.localBranches.find((branch) => branch.name === name)?.upstream;
+  }
+
   function handlePull(mode: 'ff' | 'ff-only' | 'rebase' = 'ff-only'): void {
     const branch = repositoryQuery.data?.status.branch;
     const expectedBranch = branch && !branch.isDetached ? branch.head : undefined;
@@ -2433,9 +2591,7 @@ export function WorkspaceShell(): ReactElement {
       : mode === 'ff'
         ? 'Pull fast-forward if possible'
         : 'Pull fast-forward only';
-    void runRepositoryOperation(label, (repoPath) =>
-      window.api.pullRepository(repoPath, { mode, expectedBranch })
-    );
+    void runPullWithRecovery({ label, mode, expectedBranch, upstream: branch?.upstream });
   }
 
   function handlePrimarySync(operation: PrimarySyncOperation): void {
@@ -2462,9 +2618,12 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handlePullBranch(name: string): void {
-    void runRepositoryOperation(`Pull ${name}`, (repoPath) =>
-      window.api.pullRepository(repoPath, { mode: 'ff-only', expectedBranch: name })
-    );
+    void runPullWithRecovery({
+      label: `Pull ${name}`,
+      mode: 'ff-only',
+      expectedBranch: name,
+      upstream: upstreamForBranch(name)
+    });
   }
 
   function handleCopyBranchName(name: string): void {
@@ -2617,15 +2776,13 @@ export function WorkspaceShell(): ReactElement {
     setPushRejectionPrompt(undefined);
 
     if (prompt.isCurrentBranch) {
-      void runRepositoryOperation(
-        `Pull ${prompt.branchName}`,
-        (repoPath) =>
-          window.api.pullRepository(repoPath, {
-            mode: 'ff-only',
-            expectedBranch: prompt.branchName
-          }),
-        { repoPath: prompt.repoPath }
-      );
+      void runPullWithRecovery({
+        label: `Pull ${prompt.branchName}`,
+        mode: 'ff-only',
+        expectedBranch: prompt.branchName,
+        upstream: prompt.remoteBranchName,
+        repoPath: prompt.repoPath
+      });
       return;
     }
 
@@ -2639,23 +2796,17 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
-    void runRepositoryOperation(
-      `Checkout and pull ${prompt.branchName}`,
-      async (repoPath) => {
-        await window.api.checkoutRef(repoPath, {
-          kind: 'local',
-          name: prompt.branchName
-        });
-        return window.api.pullRepository(repoPath, {
-          mode: 'ff-only',
-          expectedBranch: prompt.branchName
-        });
+    void runPullWithRecovery({
+      label: `Checkout and pull ${prompt.branchName}`,
+      mode: 'ff-only',
+      expectedBranch: prompt.branchName,
+      upstream: prompt.remoteBranchName,
+      repoPath: prompt.repoPath,
+      prepare: async (repoPath) => {
+        await window.api.checkoutRef(repoPath, { kind: 'local', name: prompt.branchName });
       },
-      {
-        repoPath: prompt.repoPath,
-        checkout: { targetRef: { kind: 'branch', name: prompt.branchName } }
-      }
-    );
+      checkout: { targetRef: { kind: 'branch', name: prompt.branchName } }
+    });
   }
 
   function handleOfferForcePush(prompt: PushRejectionPrompt): void {
@@ -3027,11 +3178,13 @@ export function WorkspaceShell(): ReactElement {
     }
 
     if (activation.kind === 'pull') {
-      void runRepositoryOperation(
-        `Pull ${activation.branchName}`,
-        (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }),
-        { checkout: { targetRef: { kind: 'remote', name } } }
-      );
+      void runPullWithRecovery({
+        label: `Pull ${activation.branchName}`,
+        mode: 'ff-only',
+        expectedBranch: activation.branchName,
+        upstream: name,
+        checkout: { targetRef: { kind: 'remote', name } }
+      });
       return;
     }
 
@@ -3045,36 +3198,60 @@ export function WorkspaceShell(): ReactElement {
       return;
     }
 
-    void runRepositoryOperation(
-      `Checkout and pull ${activation.branchName}`,
-      async (repoPath) => {
+    void runPullWithRecovery({
+      label: `Checkout and pull ${activation.branchName}`,
+      mode: 'ff-only',
+      expectedBranch: activation.branchName,
+      upstream: name,
+      prepare: async (repoPath) => {
         await window.api.checkoutRef(repoPath, { kind: 'local', name: activation.branchName });
-        return window.api.pullRepository(repoPath, { mode: 'ff-only' });
       },
-      { checkout: { targetRef: { kind: 'remote', name } } }
-    );
+      checkout: { targetRef: { kind: 'remote', name } }
+    });
   }
 
   async function activateWorktreeAndPull(branchName: string, worktreePath: string): Promise<void> {
+    const upstream = upstreamForBranch(branchName);
     await activateLinkedWorktreeWip(worktreePath);
-    await runRepositoryOperation(
-      `Pull ${branchName}`,
-      (repoPath) => window.api.pullRepository(repoPath, { mode: 'ff-only' }),
-      { repoPath: worktreePath }
-    );
+    await runPullWithRecovery({
+      label: `Pull ${branchName}`,
+      mode: 'ff-only',
+      expectedBranch: branchName,
+      upstream,
+      repoPath: worktreePath
+    });
   }
 
   function handleResetLocalBranchToRemote(localName: string, remoteName: string): void {
-    const localBranch = repositoryQuery.data?.refs.localBranches.find((branch) => branch.name === localName);
-    const localCommitLabel = localBranch?.ahead
-      ? `${localBranch.ahead} local ${localBranch.ahead === 1 ? 'commit' : 'commits'} will no longer be on ${localName}.`
-      : `The current tip of ${localName} will be replaced.`;
+    if (activeTab) {
+      openResetLocalBranchDialog({ repoPath: activeTab.path, localName, remoteName });
+    }
+  }
+
+  function openResetLocalBranchDialog({
+    repoPath: targetRepoPath,
+    localName,
+    remoteName,
+    replacesEntryId
+  }: {
+    repoPath: string;
+    localName: string;
+    remoteName: string;
+    replacesEntryId?: string;
+  }): void {
+    const plan = createLocalResetPlan({
+      repoName: repositoryNameForPath(targetRepoPath),
+      localName,
+      remoteName,
+      overview: repositoryOverviewForPath(targetRepoPath),
+      assumeDirtyCurrent: Boolean(replacesEntryId)
+    });
 
     openCommandDialog({
-      title: `Reset ${localName} to ${remoteName}?`,
-      description: `Check out ${localName} and move it to the selected remote branch.`,
-      detail: `${localCommitLabel} Your working tree must be clean. You can undo the reset until the repository changes again.`,
-      confirmLabel: 'Reset Local to Remote',
+      title: plan.title,
+      description: plan.description,
+      detailItems: plan.detailItems,
+      confirmLabel: plan.confirmLabel,
       tone: 'danger',
       fields: [],
       onSubmit() {
@@ -3083,9 +3260,21 @@ export function WorkspaceShell(): ReactElement {
           (repoPath) => window.api.checkoutRef(repoPath, {
             kind: 'remote-reset',
             name: remoteName,
-            localName
+            localName,
+            stashChanges: plan.stashChanges
           }),
-          { checkout: { targetRef: { kind: 'remote', name: remoteName } } }
+          {
+            repoPath: targetRepoPath,
+            checkout: { targetRef: { kind: 'remote', name: remoteName } },
+            replacesEntryId,
+            ...(plan.stashChanges
+              ? {
+                  refreshOnFailure: true,
+                  savesChangesInStashes: true,
+                  failureState: resolveStashedOperationFailure
+                }
+              : {})
+          }
         );
       }
     });
@@ -4089,6 +4278,7 @@ export function WorkspaceShell(): ReactElement {
                 onCheckoutRemoteBranch={handleActivateRemoteBranch}
                 onCopyBranchName={handleCopyBranchName}
                 onPullBranch={handlePullBranch}
+                onResetBranchToUpstream={handleResetLocalBranchToRemote}
                 onPushBranch={handlePushBranch}
                 onPushBranchWithTag={handlePushBranchWithTag}
                 onSetBranchUpstream={handleSetBranchUpstream}
@@ -4225,6 +4415,7 @@ export function WorkspaceShell(): ReactElement {
                   pullRequestsByBranch={pullRequestsByBranch.local}
                   onCopyBranchName={handleCopyBranchName}
                   onPullBranch={handlePullBranch}
+                  onResetBranchToUpstream={handleResetLocalBranchToRemote}
                   onPushBranch={handlePushBranch}
                   onPushBranchWithTag={handlePushBranchWithTag}
                   onSetBranchUpstream={handleSetBranchUpstream}
@@ -4378,6 +4569,10 @@ export function WorkspaceShell(): ReactElement {
         onCancel={(entry) => void handleCancelOperation(entry)}
         onRetry={handleRetryOperation}
         onCopyDetails={handleCopyOperationDetails}
+        onReviewChanges={(entry) => void handleReviewBlockedChanges(entry)}
+        onStashAndRetryPull={handleStashAndRetryPull}
+        onResetLocalBranch={handleResetBlockedBranch}
+        isRecoveryUnavailable={isRepositoryRecoveryUnavailable}
       />
       {profileTransition ? <ProfileTransition transition={profileTransition} /> : null}
       {isQuickJumpOpen ? (

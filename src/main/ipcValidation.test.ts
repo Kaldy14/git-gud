@@ -769,6 +769,13 @@ describe('IPC argument validation', () => {
     ).toThrow('upstream must be a string.');
   });
 
+  it('validates explicit stash recovery choices for pull and remote reset', () => {
+    expect(validateIpcArgs('repo:pull', ['/repo', { mode: 'ff-only', expectedBranch: 'main', stashChanges: true }])[1]).toMatchObject({ stashChanges: true, expectedBranch: 'main' });
+    expect(validateIpcArgs('repo:checkout', ['/repo', { kind: 'remote-reset', name: 'origin/main', localName: 'main', stashChanges: true }])[1]).toMatchObject({ stashChanges: true });
+    expect(() => validateIpcArgs('repo:pull', ['/repo', { mode: 'ff-only', stashChanges: 'true' }])).toThrow('stashChanges must be a boolean');
+    expect(() => validateIpcArgs('repo:checkout', ['/repo', { kind: 'remote-reset', name: 'origin/main', localName: 'main', stashChanges: 'true' }])).toThrow('stashChanges must be a boolean');
+  });
+
   it('rejects invalid enums before they reach Git commands', () => {
     expect(() =>
       validateIpcArgs('repo:pull', [

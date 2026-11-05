@@ -1,4 +1,5 @@
 import type { OperationLogEntry } from './OperationLog';
+import type { OperationFailureState } from '@renderer/workspace/pullRecovery';
 import type { GitOperationProgressEvent } from '@shared/types';
 
 const ROUTINE_PENDING_GRACE_MS = 2_000;
@@ -25,6 +26,11 @@ export function operationEarnsCard(entry: OperationLogEntry, now: number): boole
   }
 
   return entry.status !== 'success' || Boolean(entry.detail);
+}
+
+/** Finished entries leave after a few seconds unless they still ask something of the user. */
+export function operationAutoDismisses(entry: OperationLogEntry): boolean {
+  return entry.status !== 'pending' && !entry.persistent;
 }
 
 type OptimisticOperationInput = {
@@ -138,7 +144,8 @@ export function applyOperationFailure(
   entries: OperationLogEntry[],
   entryId: string,
   detail: string,
-  happenedAt: string
+  happenedAt: string,
+  failureState?: OperationFailureState
 ): OperationLogEntry[] {
   return entries.map((entry) => {
     if (entry.id !== entryId || entry.status === 'cancelled') {
@@ -147,6 +154,7 @@ export function applyOperationFailure(
 
     return {
       ...entry,
+      ...failureState,
       status: 'error',
       detail,
       happenedAt,

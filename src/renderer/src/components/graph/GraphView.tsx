@@ -144,6 +144,7 @@ type GraphViewProps = {
   onCheckoutBranch?: (name: string) => Promise<void> | void;
   onCopyBranchName?: (name: string) => Promise<void> | void;
   onPullBranch?: (name: string) => Promise<void> | void;
+  onResetBranchToUpstream?: (name: string, upstream: string) => Promise<void> | void;
   onPushBranch?: (name: string) => Promise<void> | void;
   onPushBranchWithTag?: (branchName: string, tagName: string) => Promise<void> | void;
   onSetBranchUpstream?: (name: string) => Promise<void> | void;
@@ -247,6 +248,7 @@ export function GraphView({
   onCheckoutBranch,
   onCopyBranchName,
   onPullBranch,
+  onResetBranchToUpstream,
   onPushBranch,
   onPushBranchWithTag,
   onSetBranchUpstream,
@@ -1021,6 +1023,7 @@ export function GraphView({
           onCheckoutBranch={onCheckoutBranch}
           onCopyBranchName={onCopyBranchName}
           onPullBranch={onPullBranch}
+          onResetBranchToUpstream={onResetBranchToUpstream}
           onPushBranch={onPushBranch}
           onPushBranchWithTag={onPushBranchWithTag}
           onSetBranchUpstream={onSetBranchUpstream}
@@ -2344,6 +2347,7 @@ function GraphBranchContextMenu({
   onCheckoutBranch,
   onCopyBranchName,
   onPullBranch,
+  onResetBranchToUpstream,
   onPushBranch,
   onPushBranchWithTag,
   onSetBranchUpstream,
@@ -2366,6 +2370,7 @@ function GraphBranchContextMenu({
   onCheckoutBranch?: (name: string) => Promise<void> | void;
   onCopyBranchName?: (name: string) => Promise<void> | void;
   onPullBranch?: (name: string) => Promise<void> | void;
+  onResetBranchToUpstream?: (name: string, upstream: string) => Promise<void> | void;
   onPushBranch?: (name: string) => Promise<void> | void;
   onPushBranchWithTag?: (branchName: string, tagName: string) => Promise<void> | void;
   onSetBranchUpstream?: (name: string) => Promise<void> | void;
@@ -2417,7 +2422,7 @@ function GraphBranchContextMenu({
         targetSha={state.targetSha}
         currentBranchName={state.currentBranchName}
         isCurrentBranch={isCurrentBranch}
-        hasUpstream={Boolean(state.upstream)}
+        upstream={state.upstream}
         canSetBranchUpstream={canSetBranchUpstream}
         suggestedTagName={suggestedTagName}
         pullRequest={pullRequest}
@@ -2426,6 +2431,7 @@ function GraphBranchContextMenu({
         onPushBranch={onPushBranch}
         onPushBranchWithTag={onPushBranchWithTag}
         onPullBranch={onPullBranch}
+        onResetBranchToUpstream={onResetBranchToUpstream}
         onSetBranchUpstream={onSetBranchUpstream}
         onReviewBranch={onReviewBranch}
         onViewPullRequest={onViewPullRequest}

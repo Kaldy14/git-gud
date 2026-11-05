@@ -10,6 +10,7 @@ import {
   Link,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Tag,
   Trash2,
   Workflow
@@ -26,7 +27,7 @@ type BranchContextMenuItemsProps = {
   targetSha: string;
   currentBranchName?: string;
   isCurrentBranch: boolean;
-  hasUpstream: boolean;
+  upstream?: string;
   canSetBranchUpstream: boolean;
   suggestedTagName?: string;
   pullRequest?: GitHubPullRequestSummary;
@@ -35,6 +36,7 @@ type BranchContextMenuItemsProps = {
   onPushBranch?: (name: string) => MaybeAsync;
   onPushBranchWithTag?: (branchName: string, tagName: string) => MaybeAsync;
   onPullBranch?: (name: string) => MaybeAsync;
+  onResetBranchToUpstream?: (name: string, upstream: string) => MaybeAsync;
   onSetBranchUpstream?: (name: string) => MaybeAsync;
   onReviewBranch?: (name: string, sha: string) => MaybeAsync;
   onViewPullRequest?: (pullRequest: GitHubPullRequestSummary) => MaybeAsync;
@@ -60,7 +62,7 @@ export function BranchContextMenuItems({
   targetSha,
   currentBranchName,
   isCurrentBranch,
-  hasUpstream,
+  upstream,
   canSetBranchUpstream,
   suggestedTagName,
   pullRequest,
@@ -69,6 +71,7 @@ export function BranchContextMenuItems({
   onPushBranch,
   onPushBranchWithTag,
   onPullBranch,
+  onResetBranchToUpstream,
   onSetBranchUpstream,
   onReviewBranch,
   onViewPullRequest,
@@ -124,7 +127,7 @@ export function BranchContextMenuItems({
           <span>Push remote &amp; Create tag {suggestedTagName} &amp; push tag</span>
         </button>
       ) : null}
-      {isCurrentBranch && hasUpstream ? (
+      {isCurrentBranch && upstream ? (
         <button
           className="menu-row"
           type="button"
@@ -136,7 +139,21 @@ export function BranchContextMenuItems({
           <span>Pull</span>
         </button>
       ) : null}
-      {!hasUpstream && canSetBranchUpstream ? (
+      {upstream ? (
+        <button
+          className="menu-row"
+          type="button"
+          role="menuitem"
+          disabled={!onResetBranchToUpstream || isOperationBusy}
+          onClick={() => run(() => onResetBranchToUpstream?.(branchName, upstream))}
+        >
+          <RotateCcw size={14} />
+          <span>
+            Reset local {branchName} to {upstream}…
+          </span>
+        </button>
+      ) : null}
+      {!upstream && canSetBranchUpstream ? (
         <button
           className="menu-row"
           type="button"

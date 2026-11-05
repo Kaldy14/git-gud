@@ -24,7 +24,7 @@ describe('context menu action order', () => {
         targetSha="abc123"
         currentBranchName="main"
         isCurrentBranch
-        hasUpstream
+        upstream="origin/main"
         canSetBranchUpstream
         suggestedTagName="v2026.8.49"
         pullRequest={{ number: 7 } as never}
@@ -33,6 +33,7 @@ describe('context menu action order', () => {
         onPushBranch={vi.fn()}
         onPushBranchWithTag={vi.fn()}
         onPullBranch={vi.fn()}
+        onResetBranchToUpstream={vi.fn()}
         onReviewBranch={vi.fn()}
         onViewPullRequest={vi.fn()}
         onCreateTagAtCommit={vi.fn()}
@@ -52,6 +53,7 @@ describe('context menu action order', () => {
       'Push branch to remote',
       'Push remote &amp; Create tag v2026.8.49 &amp; push tag',
       'Pull',
+      'Reset local main to origin/main…',
       '---',
       'Review entire branch',
       'View pull request #7',
@@ -75,7 +77,6 @@ describe('context menu action order', () => {
         branchName="feature/menu-order"
         targetSha="abc123"
         isCurrentBranch={false}
-        hasUpstream={false}
         canSetBranchUpstream={false}
         isOperationBusy={false}
         onCheckoutBranch={vi.fn()}
@@ -88,6 +89,35 @@ describe('context menu action order', () => {
 
     expect(menuItemLabels(markup).slice(0, 2)).toEqual(['Checkout feature/menu-order', 'Push branch to remote']);
     expect(menuItemLabels(markup)).toContain('Merge feature/menu-order into current');
+  });
+
+  it('names the real upstream on reset and offers it for branches that are not checked out', () => {
+    const onReset = vi.fn();
+    const markup = renderToStaticMarkup(
+      <BranchContextMenuItems
+        branchName="feature/x"
+        targetSha="abc123"
+        isCurrentBranch={false}
+        upstream="fork/topic"
+        canSetBranchUpstream
+        isOperationBusy={false}
+        onResetBranchToUpstream={onReset}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(menuItemLabels(markup)).toContain('Reset local feature/x to fork/topic…');
+    expect(menuItemLabels(markup)).not.toContain('Pull');
+    expect(menuItemLabels(markup)).not.toContain('Set upstream…');
+  });
+
+  it('hides reset without an upstream and disables it while busy', () => {
+    const props = { branchName: 'main', targetSha: 'abc123', isCurrentBranch: true, canSetBranchUpstream: true, onResetBranchToUpstream: vi.fn(), onClose: vi.fn() };
+    const withoutUpstream = renderToStaticMarkup(<BranchContextMenuItems {...props} isOperationBusy={false} />);
+    const busy = renderToStaticMarkup(<BranchContextMenuItems {...props} upstream="origin/main" isOperationBusy />);
+
+    expect(menuItemLabels(withoutUpstream).join()).not.toContain('Reset local');
+    expect(busy).toMatch(/<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Reset local main to origin\/main/);
   });
 
   it('places tag clipboard and delete actions in the trailing group', () => {

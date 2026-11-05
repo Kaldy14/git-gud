@@ -1158,7 +1158,8 @@ function readPullInput(value: unknown): GitPullInput {
   const record = readRecord(value, 'pull input');
   return {
     mode: readEnumProperty(record, 'mode', ['ff', 'ff-only', 'rebase']),
-    expectedBranch: readOptionalStringProperty(record, 'expectedBranch')
+    expectedBranch: readOptionalStringProperty(record, 'expectedBranch'),
+    stashChanges: readOptionalBooleanProperty(record, 'stashChanges')
   };
 }
 
@@ -1381,7 +1382,8 @@ function readCheckoutTarget(value: unknown): GitCheckoutTarget {
     return {
       kind,
       name: readStringProperty(record, 'name'),
-      localName: readStringProperty(record, 'localName')
+      localName: readStringProperty(record, 'localName'),
+      stashChanges: readOptionalBooleanProperty(record, 'stashChanges')
     };
   }
 
