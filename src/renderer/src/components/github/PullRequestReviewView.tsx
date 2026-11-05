@@ -569,6 +569,13 @@ function PullRequestReviewContent({
 
   const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
   const mergeBlockers = pullRequestMergeBlockers(detail);
+  // Code opens folded so the diff gets the height; the status then rides beside the tabs.
+  const isHeaderCondensed = !bugFinderOpen && (detailTab === 'code' || condensedTabs[detailTab] === true);
+  const condensedStatus = isHeaderCondensed ? (
+    <span className="pr-detail-status pr-tabs-status">
+      <ReviewStatus detail={detail} onToggleConflicts={toggleConflicts} />
+    </span>
+  ) : null;
   const conflictDetailsQuery = useQuery({
     queryKey: [
       'github-pull-request-conflicts',
@@ -893,7 +900,7 @@ function PullRequestReviewContent({
     <section className="pr-review-view" aria-label={`Review ${detail.title}`}>
       <PullRequestDetailHeader
         pullRequest={detail}
-        condensed={!bugFinderOpen && condensedTabs[detailTab] === true}
+        condensed={isHeaderCondensed}
         commits={detail.commits}
         onBack={onBackToInbox}
         status={
@@ -977,6 +984,7 @@ function PullRequestReviewContent({
         counts={{ activity: discussion.length + detail.commits, code: detail.changedFiles }}
         trailing={detailTab === 'activity' ? (
           <>
+            {condensedStatus}
             <span className="pr-activity-counts">
               <span title="Comments and reviews"><MessageSquare size={12} aria-hidden="true" />{discussion.length}<span className="sr-only"> comments and reviews</span></span>
               <span title="Commits"><GitCommitHorizontal size={12} aria-hidden="true" />{detail.commits}<span className="sr-only"> commits</span></span>
@@ -1001,12 +1009,17 @@ function PullRequestReviewContent({
               {activityPreferences.order === 'newest' ? 'Newest first' : 'Oldest first'}
             </button>
           </>
-        ) : detailTab === 'code' && cameFromGuide ? (
-          <button className="btn-subtle btn-compact" type="button" onClick={() => selectDetailTab('guide')}>
-            <ArrowLeft size={12} />
-            Back to Guide
-          </button>
-        ) : null}
+        ) : (
+          <>
+            {condensedStatus}
+            {detailTab === 'code' && cameFromGuide ? (
+              <button className="btn-subtle btn-compact" type="button" onClick={() => selectDetailTab('guide')}>
+                <ArrowLeft size={12} />
+                Back to Guide
+              </button>
+            ) : null}
+          </>
+        )}
       />
 
       <div

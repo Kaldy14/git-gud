@@ -1825,3 +1825,4 @@
 /* Drafts are not open for review yet, so their icon is not green. */
 .pr-row-icon[data-draft='true'] { color: var(--text-3); }
 .pr-row-guide:has(.pr-row-job-label) .pr-row-guide-dot { display: none; }
+.pr-tabs-status { gap: var(--space-3); margin-right: var(--space-2); font-size: var(--text-xs); }

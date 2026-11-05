@@ -9,6 +9,7 @@
 
 - Keep the Summary, Guide, Activity, and Code tabs; Code must keep `ReviewView`'s section split. Keep inactive panes mounted (hidden) so drafts and review state survive tab switches.
 - `PullRequestDetailHeader` (in `PullRequestDetailTabs.tsx`) is shared by the loaded and loading views. Author, branches, and size live in the header, not in Summary's meta rows. Keep Summary and Activity in the same centred column so tab switches keep their edges.
+- The Code tab opens with the header folded so the diff keeps its height; whenever the header is folded, the conflict and checks status moves beside the tabs so it never disappears.
 - Guide excerpts must stay inside one hunk of the loaded plan; validate model output in `src/shared/pullRequestTour.ts` rather than trusting line numbers.
 - Guide-to-Code jumps go through `ReviewView`'s `navigationRequest` (path, line range, side) so they land on the section holding those lines.
 - The Guide is the only AI layer in the PR view: pass its notes to `ReviewView` as `guideReferences` and do not pass `reviewGuideProvider` there (the AI brief is for local reviews). Pi is the default harness; fall back to the Claude Code CLI only when Pi is missing or signed out, never to hide real Pi failures.
