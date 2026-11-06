@@ -52,6 +52,7 @@
 ## Selection and profiles
 
 - List selection follows the macOS rule: the focused list shows `--select-row-focused` (teal tint), every other list `--select-row` (neutral). Graph rows, the sidebar tree and the PR inbox nav switch with `:focus-within` on their container; keep new lists on the same tokens.
+- The PR inbox nav lists only All / Review requests / Yours and repositories; status categories narrow from each group heading's Show only button, never a second copy in the nav.
 - The profile menu (`ProfileMenu.tsx`) only switches profiles. The editor lives in `ProfileEditor.tsx` inside Settings › Profiles (`ProfileSettingsSection.tsx`); `onOpenProfileSettings` opens Settings scrolled there.
 
 ## Diff readability

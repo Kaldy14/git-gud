@@ -98,7 +98,7 @@
 
 ## Pull request workspace
 - Approved direction (2026-09-07): Inbox A and Review C from the PR layout study.
-- Inbox: One compact search and refresh row, action and repository scopes on the left, populated groups ordered by the next action. Recently pushed branches follow the review queue.
+- Inbox: One compact search and refresh row; the left nav lists Inbox scopes (all, review requests, yours) and repositories as 13px sidebar rows, and populated groups follow ordered by the next action. Status categories are not repeated in the nav: each group heading offers Show only / Show all. Recently pushed branches follow the review queue.
 - Review: Keep the title bar and a 40px PR command row above the code. Repository navigation and its footer are hidden while reviewing pull requests.
 - Navigation: Blocks and their files share a left directory tree. Only the selected block expands; progress, grouping explanation, filters, diff style, and Viewed & next stay in its footer. The selected file follows code scrolling without moving the reader's position.
 - Context: Details, discussion, attached images, review submission, and merge confirmation open in a dismissible right panel. It docks from 1400px and overlays at narrower widths; code keeps its full vertical space. Closing a panel preserves its draft and restores focus.

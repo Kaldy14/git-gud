@@ -208,14 +208,12 @@ export function PullRequestInboxView({
   );
   const scopedPullRequests = repositoryPullRequests.filter((pr) => matchesScope(pr, scope));
   const hasActiveFilters = Boolean(search) || scope !== 'all' || repository !== 'all' || updatedRange !== 'all';
+  // Status categories are not listed here: the results are already grouped by them, and each
+  // group heading offers "Show only" to narrow to that category.
   const scopes: Array<{ id: InboxScope; label: string }> = [
     { id: 'all', label: 'All pull requests' },
     { id: 'review-requests', label: 'Review requests' },
-    { id: 'authored', label: 'Your pull requests' },
-    { id: 'needs-action', label: 'Needs action' },
-    { id: 'ready-to-merge', label: 'Ready to merge' },
-    { id: 'waiting', label: 'Waiting' },
-    { id: 'drafts', label: 'Drafts' }
+    { id: 'authored', label: 'Your pull requests' }
   ];
 
   if (!profile?.ghConfigDir || !profile.githubLogin) {
@@ -303,11 +301,11 @@ export function PullRequestInboxView({
       </header>
       <div className="pr-inbox-workspace">
         <nav className="pr-inbox-scopes" aria-label="Pull request scopes">
+          <h2>Inbox</h2>
           {scopes.map((item) => (
             <button
               type="button"
               key={item.id}
-              className={item.id === 'needs-action' ? 'pr-scope-group-start' : undefined}
               aria-current={scope === item.id ? 'page' : undefined}
               onClick={() => setScope(item.id)}
             >
@@ -378,25 +376,36 @@ export function PullRequestInboxView({
 
               return (
                 <section className="pr-inbox-group" key={group.id}>
-                  <button
-                    className="pr-group-heading"
-                    type="button"
-                    aria-expanded={isExpanded}
-                    title={group.description}
-                    onClick={() =>
-                      setExpandedGroups((current) => ({
-                        ...current,
-                        [group.id]: !resolvePullRequestGroupExpansion(
-                          current[group.id],
-                          rows.length
-                        )
-                      }))
-                    }
-                  >
-                    {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                    <span>{group.title}</span>
-                    <span className="pr-count-badge">{rows.length}</span>
-                  </button>
+                  <div className="pr-group-heading-row">
+                    <button
+                      className="pr-group-heading"
+                      type="button"
+                      aria-expanded={isExpanded}
+                      title={group.description}
+                      onClick={() =>
+                        setExpandedGroups((current) => ({
+                          ...current,
+                          [group.id]: !resolvePullRequestGroupExpansion(
+                            current[group.id],
+                            rows.length
+                          )
+                        }))
+                      }
+                    >
+                      {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      <span>{group.title}</span>
+                      <span className="pr-count-badge">{rows.length}</span>
+                    </button>
+                    <button
+                      className="pr-group-filter"
+                      type="button"
+                      data-active={scope === group.id || undefined}
+                      aria-label={scope === group.id ? 'Show all pull requests' : `Show only ${group.title.toLowerCase()}`}
+                      onClick={() => setScope(scope === group.id ? 'all' : group.id)}
+                    >
+                      {scope === group.id ? 'Show all' : 'Show only'}
+                    </button>
+                  </div>
                   {isExpanded ? (
                     <div className="pr-row-list">
                       {rows.map((pullRequest) => (

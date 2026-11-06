@@ -51,14 +51,13 @@
 }
 .pr-inbox-scopes > button {
   display: flex;
-  min-height: 32px;
+  min-height: 26px;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 5px;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--text-md);
   text-align: left;
 }
 .pr-inbox-scopes > button > span:first-child {
@@ -69,7 +68,7 @@
 .pr-inbox-scopes > button > span:last-child {
   margin-left: auto;
   color: var(--text-3);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 .pr-inbox-scopes > button:hover {
   background: var(--bg-hover-subtle);
@@ -81,16 +80,14 @@
 .pr-inbox-scopes:focus-within > button[aria-current='page'] {
   background: var(--select-row-focused);
 }
-.pr-inbox-scopes > .pr-scope-group-start {
-  margin-top: var(--space-4);
-}
 .pr-inbox-scopes h2 {
   margin: var(--space-4) 10px var(--space-1);
-  color: var(--text-3);
-  font-size: var(--text-2xs);
+  color: var(--text-1);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+}
+.pr-inbox-scopes h2:first-child {
+  margin-top: var(--space-1);
 }
 .pr-inbox-results {
   min-width: 0;
@@ -107,12 +104,40 @@
   border-radius: 0;
   background: transparent;
 }
+.pr-inbox-results .pr-group-heading-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-graph-header);
+}
+/* "Show only" narrows the inbox to one group; it appears on hover or focus, and stays while active. */
+.pr-group-filter {
+  flex: none;
+  margin-right: 12px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  opacity: 0;
+}
+.pr-group-heading-row:is(:hover, :focus-within) .pr-group-filter,
+.pr-group-filter[data-active] {
+  opacity: 1;
+}
+.pr-group-filter:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.pr-group-filter[data-active] {
+  background: var(--select-row);
+  color: var(--text-1);
+}
 .pr-inbox-results .pr-group-heading {
   height: 32px;
   min-height: 32px;
-  border-bottom: 1px solid var(--border);
+  flex: 1;
   border-radius: 0;
-  background: var(--bg-graph-header);
+  background: transparent;
   /* Label lines up with row titles: an 18px icon column and a 12px gap, like the rows. */
   gap: var(--space-3);
   padding: 4px 16px;
