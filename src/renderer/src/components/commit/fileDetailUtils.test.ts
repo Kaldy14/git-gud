@@ -230,13 +230,13 @@ describe('fileTreeAncestorPaths', () => {
 });
 
 describe('createDiffOptionsBase', () => {
-  it('uses the selected bundled Shiki theme for file diffs', () => {
+  it('uses the readable copy of the selected Shiki theme for file diffs', () => {
     expect(createDiffOptionsBase('git-gud-dark')).toMatchObject({
-      theme: 'dark-plus',
+      theme: 'git-gud-dark-plus',
       themeType: 'dark'
     });
     expect(createDiffOptionsBase('tokyo-night-storm')).toMatchObject({
-      theme: 'tokyo-night',
+      theme: 'git-gud-tokyo-night',
       themeType: 'dark'
     });
     expect(createDiffOptionsBase('git-gud-dark').unsafeCSS).toContain(

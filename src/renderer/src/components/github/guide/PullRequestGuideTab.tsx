@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, Sparkles } from 'lucide-react';
+import { AlertTriangle, CircleDotDashed, Loader2, Sparkles } from 'lucide-react';
 
 import type { PullRequestTourState } from '@shared/pullRequestTour';
 import type { DiffSyntaxTheme, GitHubPullRequestDetail } from '@shared/types';
@@ -44,7 +44,7 @@ export function PullRequestGuideTab({ detail, active, diffStyle, diffSyntaxTheme
   useAnnounceOnChange(guidePhase, running ? 'Writing the review guide' : failure ? `Review guide failed. ${failure}` : tour ? 'Review guide ready' : undefined);
   const writeButton = (label: string) => (
     <button type="button" className="btn-subtle btn-regular" aria-disabled={running || undefined} onClick={() => { if (!running) write.mutate(); }}>
-      {running ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+      {running ? <CircleDotDashed size={13} /> : <Sparkles size={13} />}
       {running ? 'Reading the change…' : label}
     </button>
   );
@@ -72,7 +72,7 @@ export function PullRequestGuideTab({ detail, active, diffStyle, diffSyntaxTheme
 
   const banner = running || stale || failure ? (
     <div className="pr-guide-banner" data-tone={running ? 'info' : 'warning'} role="status">
-      {running ? <Loader2 size={13} className="animate-spin" /> : <AlertTriangle size={13} />}
+      {running ? <CircleDotDashed size={13} /> : <AlertTriangle size={13} />}
       <span>
         {running
           ? 'Rewriting this guide. It updates here when the new one is ready.'

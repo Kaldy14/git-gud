@@ -43,6 +43,17 @@
 - Use the `:root` type, spacing, and tone tokens in `main.css` for PR surfaces; keep content text at 11px or larger (10px only for counts, pills, and eyebrows).
 - Tones: `pending` = in progress (info blue), `warning` = needs attention (amber), `muted` = no signal. Do not use amber for pending.
 - In the Guide, teal marks position (the stop lane, current node and ordinal, selected tab, Next link) and copper (`--guide-annotation`) marks the guide's own commentary (note keys, judgement heads). Note keys are only for real code↔note references, and both directions must stay linked. Merged PRs use the neutral `merged` tone with a merge icon, not success green.
+- Custom fields use `--border-control` at rest and the `.form-input:focus` treatment (`--focus-ring` border plus 1px outline) on focus; `--border` and `--select-border` are too faint for field edges or focus (WCAG 1.4.11).
+- No content text below 11px anywhere, dashboards and Portainer included (`--text-2xs` stays for counts, pills, eyebrows and avatar initials).
+- States that can last minutes (running CI runs, the "N Running" pill, guide writing) use the static `CircleDotDashed` icon or a dashed ring; spinners are only for short fetches, and skeletons are static.
+- Electron's "Error invoking remote method" prefix is stripped once in the preload `invoke` (`src/shared/ipcErrors.ts`), so `error.message` is safe to show.
+
+
+## Diff readability
+
+- Syntax themes are readable copies registered in `src/renderer/src/components/diff/diffTheme.ts` (`git-gud-dark-plus`, `git-gud-tokyo-night`). `READABLE_COLORS` lifts token colours to 4.5:1 on the `.gg-diff` canvas, added/removed lines and word emphasis; comments only need 4.5:1 on lines so they stay dimmer. Re-derive the map whenever the canvas, line tints or emphasis alphas in `main.css` change.
+- Pierre pairs the n-th removed and added lines of a block; `dissimilarLineDiff.ts` drops word emphasis when a pair shares under half its words, so unrelated lines are not painted with confetti.
+- The `codeFontFamily` setting (Settings › Diffs › Code font) overrides `--font-mono` on the document root; the name is sanitised in `normalizeCodeFontFamily`.
 
 ## Pull request review comments
 

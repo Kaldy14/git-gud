@@ -17,12 +17,14 @@ import {
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { MachineSettingsSection } from '@renderer/components/machines/MachineSettingsSection';
 import {
+  clampAutoFetchIntervalMinutes,
+  clampGraphPageSize,
+  codeFontStack,
   MAX_AUTO_FETCH_INTERVAL_MINUTES,
   MAX_GRAPH_PAGE_SIZE,
   MIN_AUTO_FETCH_INTERVAL_MINUTES,
   MIN_GRAPH_PAGE_SIZE,
-  clampAutoFetchIntervalMinutes,
-  clampGraphPageSize
+  normalizeCodeFontFamily
 } from '@shared/settings';
 import type { AppSettings, CodexAgentNotesSkillState, DiffSyntaxTheme } from '@shared/types';
 
@@ -62,7 +64,8 @@ export function SettingsPanel({
       autoFetchIntervalMinutes: clampAutoFetchIntervalMinutes(
         draft.autoFetchIntervalMinutes
       ),
-      graphPageSize: clampGraphPageSize(draft.graphPageSize)
+      graphPageSize: clampGraphPageSize(draft.graphPageSize),
+      codeFontFamily: normalizeCodeFontFamily(draft.codeFontFamily)
     });
   }
 
@@ -141,6 +144,23 @@ export function SettingsPanel({
                   <p className="settings-row-help">Applied to file diffs and review views.</p>
                 </fieldset>
               </div>
+              <label className="settings-row">
+                <SettingCopy
+                  label="Code font"
+                  help="Font family for diffs, hashes and code, as installed on this Mac. Leave empty for the system monospace font."
+                />
+                <input
+                  className="form-input form-input--text"
+                  type="text"
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="SF Mono"
+                  maxLength={80}
+                  value={draft.codeFontFamily}
+                  style={{ fontFamily: codeFontStack(draft.codeFontFamily) ?? 'var(--font-mono)' }}
+                  onChange={(event) => setDraft((value) => ({ ...value, codeFontFamily: event.target.value }))}
+                />
+              </label>
             </div>
           </section>
 

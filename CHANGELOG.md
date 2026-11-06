@@ -6,12 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- A Code font setting under Diffs sets the monospace font for diffs, hashes and code; empty keeps the system font.
+
 ### Changed
 
 - Remove the coloured side bars from selected sidebar, palette, file and review rows, diff line highlights and callouts; selection now shows through the row highlight alone.
+- Raise dashboard, Portainer, agent-note, profile-menu and operation-log text that was 7.5–10px to at least 11px, and give dashboard dialogs the standard label and field sizes.
+- Show running workflow runs, the tile "Running" pill and guide writing with a static icon instead of a spinner that loops for minutes; loading skeletons no longer shimmer.
+- The launcher headings use the 17px title size instead of 24px.
+- Remove about 500 lines of CSS that no component used.
 
 ### Fixed
 
+- Make code readable in diffs with both syntax themes: token and comment colours that fell to 1.1–3:1 (Tokyo Night comments, keywords on word highlights) now reach 4.5:1, word highlights are calmer, and a removed line paired with an unrelated added line (code replaced by a comment) is no longer covered in highlights.
+- Make search fields, selects and inputs in the PR inbox, review search, repository inspector, workflow jobs and dashboard dialogs visible at rest and give them a full-strength focus ring.
+- Show main-process errors without Electron's "Error invoking remote method" prefix, and stop the profile menu from also saying "No authenticated GitHub CLI accounts found" when the account lookup failed.
 - Keep expanded graph references stable while hovering the overflow count, so tags do not flicker open and closed.
 
 ## [2026.11.5] - 2026-11-05

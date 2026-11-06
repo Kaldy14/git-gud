@@ -3,12 +3,18 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { IpcChannelMap, RendererApi, RendererDevApi } from '@shared/ipc';
 import { PULL_REQUEST_DEEP_LINK_EVENT } from '@shared/pullRequestDeepLink';
 import { isMenuCommand, MENU_COMMAND_EVENT } from '@shared/menuCommands';
+import { stripIpcErrorPrefix } from '@shared/ipcErrors';
 
 function invoke<TChannel extends keyof IpcChannelMap>(
   channel: TChannel,
   ...args: IpcChannelMap[TChannel]['args']
 ): Promise<IpcChannelMap[TChannel]['result']> {
-  return ipcRenderer.invoke(channel, ...args) as Promise<IpcChannelMap[TChannel]['result']>;
+  // Strip Electron's "Error invoking remote method" wrapper here so every caller that shows
+  // error.message gets the main-process text without repeating the cleanup.
+  return (ipcRenderer.invoke(channel, ...args) as Promise<IpcChannelMap[TChannel]['result']>).catch((error: unknown) => {
+    if (error instanceof Error) error.message = stripIpcErrorPrefix(error.message);
+    throw error;
+  });
 }
 
 const devApi: Partial<RendererDevApi> = import.meta.env.DEV

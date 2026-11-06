@@ -2,6 +2,10 @@ import type { FileDiffOptions } from '@pierre/diffs';
 
 import { getDiffThemeName } from '@renderer/components/diff/diffTheme';
 import {
+  createDissimilarLineDiffPostRender,
+  DISSIMILAR_LINE_DIFF_CSS
+} from '@renderer/components/diff/dissimilarLineDiff';
+import {
   createWhitespaceOnlyDiffPostRender,
   WHITESPACE_ONLY_DIFF_CSS
 } from '@renderer/components/diff/whitespaceDiff';
@@ -77,7 +81,7 @@ export const DIFF_OPTIONS_BASE = {
   lineDiffType: 'char',
   overflow: 'wrap',
   stickyHeader: true,
-  unsafeCSS: `${WHITESPACE_ONLY_DIFF_CSS}\n${DIFF_SEPARATOR_CSS}\n${DIFF_SELECTION_CSS}`
+  unsafeCSS: `${WHITESPACE_ONLY_DIFF_CSS}\n${DISSIMILAR_LINE_DIFF_CSS}\n${DIFF_SEPARATOR_CSS}\n${DIFF_SELECTION_CSS}`
 } satisfies FileDiffOptions<undefined>;
 
 export function createDiffOptionsBase<LAnnotation = undefined>(
@@ -86,7 +90,18 @@ export function createDiffOptionsBase<LAnnotation = undefined>(
   return {
     ...DIFF_OPTIONS_BASE,
     theme: getDiffThemeName(theme),
-    onPostRender: createWhitespaceOnlyDiffPostRender<LAnnotation>()
+    onPostRender: combinePostRenders(
+      createWhitespaceOnlyDiffPostRender<LAnnotation>(),
+      createDissimilarLineDiffPostRender<LAnnotation>()
+    )
+  };
+}
+
+function combinePostRenders<LAnnotation>(
+  ...handlers: NonNullable<FileDiffOptions<LAnnotation>['onPostRender']>[]
+): NonNullable<FileDiffOptions<LAnnotation>['onPostRender']> {
+  return (...args) => {
+    for (const handler of handlers) handler(...args);
   };
 }
 

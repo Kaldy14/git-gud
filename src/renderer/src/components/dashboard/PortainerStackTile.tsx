@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleDotDashed,
   CircleSlash2,
   ExternalLink,
   Layers,
@@ -282,7 +283,7 @@ function StatusIcon({
   }
 
   if (tone === 'running') {
-    return <Loader2 size={size} className="animate-spin" />;
+    return <CircleDotDashed size={size} />;
   }
 
   if (tone === 'danger') {

@@ -144,18 +144,18 @@ export function OperationLog({
                 {isBriefSuccess ? null : entry.status !== 'pending' ? (
                   <div className="mt-2 flex flex-wrap items-center gap-1">
                     {entry.canRetry && (entry.status === 'error' || entry.status === 'cancelled') ? (
-                      <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onRetry(entry)}>
+                      <button className="btn-subtle h-6 px-2 text-[11px]" type="button" onClick={() => onRetry(entry)}>
                         <RefreshCcw size={11} />
                         Retry
                       </button>
                     ) : null}
-                    <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => onCopyDetails(entry)}>
+                    <button className="btn-subtle h-6 px-2 text-[11px]" type="button" onClick={() => onCopyDetails(entry)}>
                       <Copy size={11} />
                       Copy
                     </button>
                   </div>
                 ) : entry.cancellable ? (
-                  <button className="btn-subtle mt-2 h-6 px-2 text-[10px]" type="button" onClick={() => onCancel(entry)}>
+                  <button className="btn-subtle mt-2 h-6 px-2 text-[11px]" type="button" onClick={() => onCancel(entry)}>
                     <Ban size={11} />
                     Cancel
                   </button>

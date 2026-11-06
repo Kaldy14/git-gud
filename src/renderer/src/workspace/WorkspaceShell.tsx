@@ -209,7 +209,7 @@ import type {
   RemoteMachine,
   RemoteMachineRepository
 } from '@shared/types';
-import { createDefaultAppSettings } from '@shared/settings';
+import { codeFontStack, createDefaultAppSettings } from '@shared/settings';
 import { DEFAULT_DETAIL_PANEL_WIDTH, DEFAULT_SIDEBAR_WIDTH } from '@shared/workspace';
 import { isRepositoryUnavailableError } from '@shared/repositoryAvailability';
 import {
@@ -955,6 +955,16 @@ export function WorkspaceShell(): ReactElement {
         console.error('Unable to apply the selected diff syntax theme.', error);
       });
   }, [diffWorkerPool, settings.diffSyntaxTheme]);
+
+  // --font-mono drives diffs (through --diffs-font-family), hashes and code chips.
+  useEffect(() => {
+    const stack = codeFontStack(settings.codeFontFamily);
+    if (stack) {
+      document.documentElement.style.setProperty('--font-mono', stack);
+    } else {
+      document.documentElement.style.removeProperty('--font-mono');
+    }
+  }, [settings.codeFontFamily]);
 
   useEffect(() => {
     window.api

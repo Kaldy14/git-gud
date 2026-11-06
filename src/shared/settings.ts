@@ -10,6 +10,7 @@ export function createDefaultAppSettings(): AppSettings {
   return {
     defaultDiffStyle: 'unified',
     diffSyntaxTheme: 'git-gud-dark',
+    codeFontFamily: '',
     defaultSyncOperation: 'fetch-all',
     autoFetchIntervalMinutes: DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
     graphPageSize: 1500,
@@ -37,6 +38,10 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
       settings.diffSyntaxTheme === 'git-gud-dark' || settings.diffSyntaxTheme === 'tokyo-night-storm'
         ? settings.diffSyntaxTheme
         : fallback.diffSyntaxTheme,
+    codeFontFamily:
+      typeof settings.codeFontFamily === 'string'
+        ? normalizeCodeFontFamily(settings.codeFontFamily)
+        : fallback.codeFontFamily,
     defaultSyncOperation:
       settings.defaultSyncOperation === 'fetch-all' ||
       settings.defaultSyncOperation === 'pull-ff' ||
@@ -66,6 +71,17 @@ export function normalizeAppSettings(input: unknown, fallback: AppSettings = cre
     remoteAvatars:
       typeof settings.remoteAvatars === 'boolean' ? settings.remoteAvatars : fallback.remoteAvatars
   };
+}
+
+/** Keeps one plain family name: letters, digits, spaces, dots and dashes, so it is safe inside CSS. */
+export function normalizeCodeFontFamily(value: string): string {
+  return value.replace(/[^\p{L}\p{N} ._-]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80);
+}
+
+/** The --font-mono value for a chosen family, falling back to the system monospace stack. */
+export function codeFontStack(family: string): string | undefined {
+  const name = normalizeCodeFontFamily(family);
+  return name ? `"${name}", ui-monospace, 'SF Mono', Menlo, monospace` : undefined;
 }
 
 export function clampGraphPageSize(value: number): number {

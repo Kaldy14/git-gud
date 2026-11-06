@@ -314,7 +314,7 @@ export function FileFocusView({
                   </span>
                 </ContextMenuPrimitive.Item>
                 {contextSelection ? (
-                  <p className="mx-2 mt-1 border-t border-[var(--border)] pt-1.5 text-[10px] text-[var(--text-3)]">
+                  <p className="mx-2 mt-1 border-t border-[var(--border)] pt-1.5 text-[11px] text-[var(--text-3)]">
                     {contextSelection.lineCount} selected line{contextSelection.lineCount === 1 ? '' : 's'}
                   </p>
                 ) : null}

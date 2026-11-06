@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  CircleDotDashed,
   CircleSlash2,
   Copy,
   ExternalLink,
@@ -1309,12 +1310,12 @@ function GitHubActionsTile({
         <div className="actions-tile-header-actions">
           {runningCount > 0 ? (
             <span className="actions-summary" data-tone="running">
-              <Loader2 size={11} className="animate-spin" />
+              <CircleDotDashed size={11} />
               {runningCount} Running
             </span>
           ) : queuedCount > 0 ? (
             <span className="actions-summary" data-tone="running">
-              <Loader2 size={11} className="animate-spin" />
+              <CircleDotDashed size={11} />
               {queuedCount} Queued
             </span>
           ) : failedCount > 0 ? (
@@ -1524,7 +1525,7 @@ function PullRequestWorkflowGroup({
           data-tone={presentation.tone}
         >
           {presentation.icon === 'running' ? (
-            <Loader2 size={10} className="animate-spin" />
+            <CircleDotDashed size={10} />
           ) : presentation.icon === 'success' ? (
             <CheckCircle2 size={10} />
           ) : presentation.icon === 'failure' ? (
@@ -1569,7 +1570,7 @@ function PullRequestWorkflowRow({
   const presentation = workflowRunPresentation(run);
   const statusIcon =
     presentation.icon === 'running' ? (
-      <Loader2 size={11} className="animate-spin" />
+      <CircleDotDashed size={11} />
     ) : presentation.icon === 'success' ? (
       <CheckCircle2 size={11} />
     ) : presentation.icon === 'failure' ? (
@@ -1833,7 +1834,7 @@ function WorkflowRunRow({
   const startedRelativeTime = run.startedAt ? formatRelativeTime(run.startedAt) : undefined;
   const statusIcon =
     presentation.icon === 'running' ? (
-      <Loader2 size={14} className="animate-spin" />
+      <CircleDotDashed size={14} />
     ) : presentation.icon === 'success' ? (
       <CheckCircle2 size={14} />
     ) : presentation.icon === 'failure' ? (

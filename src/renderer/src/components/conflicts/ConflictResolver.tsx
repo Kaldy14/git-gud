@@ -345,7 +345,7 @@ function ConflictSource({
           <span className="conflict-side-letter">{side === 'ours' ? 'A' : 'B'}</span>
           <div className="min-w-0">
             <div className="truncate text-[11.5px] font-semibold text-[var(--text-1)]">{label}</div>
-            <div className="mt-0.5 text-[10px] text-[var(--text-3)]">
+            <div className="mt-0.5 text-[11px] text-[var(--text-3)]">
               {version ? `${side === 'ours' ? 'ours' : 'theirs'} · ${version.shortOid}` : 'file deleted on this side'}
             </div>
           </div>

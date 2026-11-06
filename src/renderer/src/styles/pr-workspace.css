@@ -268,16 +268,6 @@
   font-size: 11px;
 }
 .review-sidebar-heading { flex: 1; min-width: 0; }
-.review-scope-control {
-  height: 28px;
-  min-width: 0;
-  flex: 1;
-  justify-content: space-between;
-  padding: 0 6px;
-  font-size: var(--text-xs);
-}
-.review-scope-control > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-scope-control > svg { flex-shrink: 0; }
 .review-block-progress .review-sidebar-tool {
   position: relative;
   width: 26px;
@@ -719,14 +709,12 @@
   border-bottom: 1px solid var(--border);
   font-size: 12px;
 }
-.review-guide-panel-body { padding: 18px 15px; }
 .review-guide-position { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-3); font-size: 10px; }
 .review-guide-panel h2 { margin: 17px 0 10px; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; line-height: 1.5; }
 .review-guide-panel p { margin: 8px 0; color: var(--text-2); font-size: 12px; line-height: var(--leading-prose); }
 .review-guide-file-links { display: flex; flex-direction: column; gap: 5px; margin-top: 17px; }
 .review-guide-file-links button { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0; color: var(--accent-2); font-size: var(--text-xs); text-align: left; }
 .review-guide-file-links button span { overflow-wrap: anywhere; }
-.review-guide-navigation { display: flex; justify-content: space-between; gap: 8px; margin: 22px 0 12px; }
 .review-guide-panel small { display: block; color: var(--text-3); font-size: var(--text-xs); line-height: var(--leading-ui); }
 .review-guide-panel > footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding: 13px; border-top: 1px solid var(--border); }
 .review-guide-panel > footer small { flex-basis: 100%; }
@@ -748,7 +736,7 @@
 .review-guide-playground > header select { font-size: 11px; padding: 4px; }
 
 /* AI-only presentation. The ordinary PR keeps its existing blocks and diff layout. */
-.review-ai-layer-overview { flex: 0 0 auto; margin: 0; padding: 0 13px 12px; color: var(--text-3); font-size: 10px; line-height: 1.6; }
+.review-ai-layer-overview { flex: 0 0 auto; margin: 0; padding: 0 13px 12px; color: var(--text-3); font-size: var(--text-xs); line-height: 1.6; }
 .review-layer-finding-dot { width: 6px; height: 6px; flex: 0 0 6px; align-self: center; margin: 0 2px 0 4px; border-radius: 50%; background: var(--warning-text); }
 .review-layer-finding-dot[data-severity='critical'], .review-layer-finding-dot[data-severity='major'] { background: var(--danger-text); }
 .review-layer-finding-dot[data-severity='nitpick'] { background: var(--text-3); }
@@ -798,7 +786,6 @@
 .review-ai-brief .review-brief-findings-status { padding: 10px 0 4px; color: var(--text-3); font-size: var(--text-xs); }
 .review-brief-finding { padding: 11px 0; border-bottom: 1px solid var(--border); }
 .review-brief-finding > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 8px; color: var(--text-3); font-size: var(--text-xs); }
-.review-brief-finding .review-comment-body { max-width: 100%; overflow-wrap: anywhere; }
 .review-brief-finding .review-summary-link { margin-top: 9px; }
 .review-ai-brief > footer { flex: 0 0 auto; gap: 6px; padding: 10px 12px; }
 .review-brief-read-count { color: var(--text-3); font-size: var(--text-xs); }
@@ -850,19 +837,13 @@
   background: currentColor;
   border-color: currentColor;
 }
-/* Rotate only the ring; the status dot stays fixed and fully visible. */
+/* A static dashed ring marks a running guide; a guide can run for minutes, so nothing spins. */
 .pr-row-guide[data-status='running'] .pr-row-guide-dot::after {
   content: '';
   position: absolute;
   inset: -3px;
-  border: 1px solid transparent;
-  border-top-color: var(--info-text);
-  border-right-color: var(--info-text);
+  border: 1px dashed var(--info-text);
   border-radius: 50%;
-  animation: pr-guide-working 2.4s linear infinite;
-}
-@keyframes pr-guide-working {
-  to { transform: rotate(360deg); }
 }
 .pr-row-guide-tooltip {
   z-index: 100;
@@ -908,7 +889,6 @@
 .bug-finder-item-link small { display: block; margin-top: 5px; font-size: var(--text-xs); color: var(--text-3); overflow-wrap: anywhere; }
 .bug-finder-detail { overflow: auto; padding: 20px; min-width: 0; }
 .bug-finder-detail > h2 { font-size: 16px; margin: 14px 0; }
-.bug-finder-detail .review-comment-body { font-size: 12px; }
 .bug-finder-actions { margin-left: auto; display: flex; gap: 4px; }
 .bug-finder-code { margin: 18px 0; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-field); overflow: auto; }
 .bug-finder-code header { color: var(--text-3); font-size: 11px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
@@ -1171,7 +1151,6 @@
 .pr-summary-tone[data-tone='warning'] { color: var(--warning-text); }
 .pr-summary-tone[data-tone='muted'] { color: var(--text-3); }
 .pr-summary-checks { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
-.pr-summary-column > .pr-conflict-panel { margin-top: 12px; }
 
 /* Collapsible sections with sticky headings: title, then a chevron. */
 .pr-summary-section-toggle {
@@ -1366,7 +1345,6 @@
 .pr-guide-stop { display: grid; gap: 40px; }
 .pr-guide-stop > article { display: flex; width: 100%; max-width: 880px; min-width: 0; flex-direction: column; gap: 28px; margin-inline: auto; }
 .pr-guide-stop-header { display: flex; min-height: 28px; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: -24px; }
-.pr-guide-stop-count { color: var(--text-3); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .pr-guide-rail-toggle svg[data-open='true'] { transform: rotate(180deg); }
 .pr-guide-stepper { display: flex; align-items: center; gap: 2px; margin-right: -4px; }
 .pr-guide-stepper > kbd { margin: 0 6px 0 -2px; color: var(--text-3); font: var(--weight-semibold) var(--text-xs) / 16px var(--font-ui); }

@@ -251,7 +251,7 @@ export function ProfileMenu({
             <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]">{profileEmail ?? 'No Git identity configured'}</p>
             <p className="mt-1 truncate text-[10.5px] text-[var(--text-3)]">Workspace profile: {activeProfile?.name ?? 'Git config'}</p>
             {activeProfile?.githubLogin ? <p className="mt-1 truncate text-[10.5px] text-[var(--text-3)]">GitHub: @{activeProfile.githubLogin}</p> : null}
-            <p className="mt-1 text-[10px] leading-4 text-[var(--text-3)]">Open and recent repositories are separate for each profile.</p>
+            <p className="mt-1 text-[11px] leading-4 text-[var(--text-3)]">Open and recent repositories are separate for each profile.</p>
           </div>
 
           {identityMismatch ? (
@@ -299,7 +299,7 @@ export function ProfileMenu({
                     aria-hidden="true"
                   />
                   <span className="min-w-0 flex-1 truncate">{profile.name}</span>
-                  {profile.githubLogin ? <span className="max-w-20 truncate text-[10px] text-[var(--text-3)]">@{profile.githubLogin}</span> : null}
+                  {profile.githubLogin ? <span className="max-w-20 truncate text-[11px] text-[var(--text-3)]">@{profile.githubLogin}</span> : null}
                 </button>
               );
             })}
@@ -325,7 +325,7 @@ export function ProfileMenu({
                 {editingProfileId ? 'Edit workspace profile' : 'New profile'}
               </span>
               {editingProfileId ? (
-                <button className="btn-subtle h-6 px-2 text-[10px]" type="button" onClick={() => loadProfileForm(undefined)}>
+                <button className="btn-subtle h-6 px-2 text-[11px]" type="button" onClick={() => loadProfileForm(undefined)}>
                   <Plus size={11} />
                   New
                 </button>
@@ -353,7 +353,7 @@ export function ProfileMenu({
               <div className="mb-1.5 flex items-center gap-1.5">
                 <Cloud size={13} className="text-[var(--text-2)]" />
                 <span className="text-[11px] font-medium text-[var(--text-2)]">GitHub account</span>
-                {connectedGithubAccount ? <span className="ml-auto text-[10px] text-[var(--success-text)]">Connected</span> : null}
+                {connectedGithubAccount ? <span className="ml-auto text-[11px] text-[var(--success-text)]">Connected</span> : null}
               </div>
 
               {isLoadingGithubAccounts ? (
@@ -387,7 +387,7 @@ export function ProfileMenu({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[11px] font-semibold text-[var(--text-1)]">@{account.login}</span>
-                          <span className="block truncate text-[10px] text-[var(--text-3)]">{account.host} · {account.gitProtocol.toUpperCase()} via GitHub CLI</span>
+                          <span className="block truncate text-[11px] text-[var(--text-3)]">{account.host} · {account.gitProtocol.toUpperCase()} via GitHub CLI</span>
                         </span>
                         <span className="shrink-0 text-[10px] font-semibold text-[var(--accent-2)]">
                           {isActive ? 'Active' : 'Switch'}
@@ -396,17 +396,17 @@ export function ProfileMenu({
                     );
                   })}
                   {ghConfigDir ? (
-                    <button className="w-full rounded px-2 py-1 text-left text-[10px] text-[var(--text-3)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]" type="button" onClick={() => setGithubAccount(undefined)}>
+                    <button className="w-full rounded px-2 py-1 text-left text-[11px] text-[var(--text-3)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]" type="button" onClick={() => setGithubAccount(undefined)}>
                       Disconnect GitHub account
                     </button>
                   ) : null}
                 </div>
-              ) : (
+              ) : githubAccountsError ? null : (
                 <p className="px-1 py-1 text-[11px] text-[var(--text-3)]">No authenticated GitHub CLI accounts found.</p>
               )}
 
-              {githubAccountsError ? <p className="mt-1 text-[10px] text-[var(--danger-text)]">{githubAccountsError}</p> : null}
-              <p className="mt-1.5 px-1 text-[10px] leading-4 text-[var(--text-3)]">Reuses GitHub CLI credentials and your existing Git credential or SSH setup. Git Gud never copies the token.</p>
+              {githubAccountsError ? <p className="mt-1 text-[11px] text-[var(--danger-text)]">{githubAccountsError}</p> : null}
+              <p className="mt-1.5 px-1 text-[11px] leading-4 text-[var(--text-3)]">Reuses GitHub CLI credentials and your existing Git credential or SSH setup. Git Gud never copies the token.</p>
             </div>
 
             <button

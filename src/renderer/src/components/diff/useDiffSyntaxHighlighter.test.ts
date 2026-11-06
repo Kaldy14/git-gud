@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const pierreDiffs = vi.hoisted(() => ({
   getFiletypeFromFileName: vi.fn((filePath: string) => filePath.endsWith('.tsx') ? 'tsx' : 'typescript'),
   getHighlighterOptions: vi.fn((language: string) => ({ langs: [language], themes: [] })),
-  preloadHighlighter: vi.fn<() => Promise<void>>()
+  preloadHighlighter: vi.fn<() => Promise<void>>(),
+  registerCustomTheme: vi.fn(),
+  resolveTheme: vi.fn()
 }));
 
 vi.mock('@pierre/diffs', () => pierreDiffs);
@@ -27,7 +29,7 @@ describe('preloadDiffSyntaxHighlighter', () => {
 
     expect(pierreDiffs.preloadHighlighter).toHaveBeenCalledTimes(1);
     expect(pierreDiffs.getHighlighterOptions).toHaveBeenCalledWith('typescript', {
-      theme: 'dark-plus'
+      theme: 'git-gud-dark-plus'
     });
   });
 
@@ -50,7 +52,7 @@ describe('preloadDiffSyntaxHighlighter', () => {
 
     expect(pierreDiffs.preloadHighlighter).toHaveBeenCalledTimes(2);
     expect(pierreDiffs.getHighlighterOptions).toHaveBeenLastCalledWith('typescript', {
-      theme: 'tokyo-night'
+      theme: 'git-gud-tokyo-night'
     });
   });
 

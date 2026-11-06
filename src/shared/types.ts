@@ -807,6 +807,8 @@ export type PrimarySyncOperation = 'fetch-all' | 'pull-ff' | 'pull-ff-only' | 'p
 export type AppSettings = {
   defaultDiffStyle: 'unified' | 'split';
   diffSyntaxTheme: DiffSyntaxTheme;
+  /** A monospace font family name for diffs, hashes and code; empty uses the system font. */
+  codeFontFamily: string;
   defaultSyncOperation: PrimarySyncOperation;
   autoFetchIntervalMinutes: number;
   graphPageSize: number;

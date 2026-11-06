@@ -26,10 +26,9 @@
 .start-title {
   margin: 0;
   color: var(--text-1);
-  font-size: 24px;
+  font-size: var(--text-title);
   font-weight: 600;
-  letter-spacing: -0.012em;
-  line-height: 1.2;
+  line-height: var(--leading-title);
 }
 
 .start-actions {
@@ -97,10 +96,9 @@
 .start-recent-title {
   margin: 0;
   color: var(--text-1);
-  font-size: 24px;
+  font-size: var(--text-title);
   font-weight: 600;
-  letter-spacing: -0.012em;
-  line-height: 1.2;
+  line-height: var(--leading-title);
 }
 
 .start-recent-count {

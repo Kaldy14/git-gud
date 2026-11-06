@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_AUTO_FETCH_INTERVAL_MINUTES,
+  codeFontStack,
   createDefaultAppSettings,
   normalizeAppSettings
 } from './settings';
@@ -33,6 +34,14 @@ describe('app settings', () => {
     expect(normalizeAppSettings({ autoFetchIntervalMinutes: 2.6 }).autoFetchIntervalMinutes).toBe(3);
     expect(normalizeAppSettings({ autoFetchIntervalMinutes: 61 }).autoFetchIntervalMinutes).toBe(60);
     expect(normalizeAppSettings({ autoFetchIntervalMinutes: Number.NaN }).autoFetchIntervalMinutes).toBe(1);
+  });
+
+  it('keeps one plain code font name that cannot break out of the CSS value', () => {
+    expect(normalizeAppSettings({}).codeFontFamily).toBe('');
+    expect(normalizeAppSettings({ codeFontFamily: '  JetBrains   Mono ' }).codeFontFamily).toBe('JetBrains Mono');
+    expect(normalizeAppSettings({ codeFontFamily: 'x"; } body { color: red' }).codeFontFamily).toBe('x body color red');
+    expect(codeFontStack('')).toBeUndefined();
+    expect(codeFontStack('Berkeley Mono')).toBe(`"Berkeley Mono", ui-monospace, 'SF Mono', Menlo, monospace`);
   });
 
   it('keeps valid syntax themes and repairs unknown persisted values', () => {

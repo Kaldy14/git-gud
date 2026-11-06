@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleDotDashed,
   CircleSlash2,
   Clock,
   ExternalLink,
@@ -857,7 +858,7 @@ function StatusIcon({
 }): ReactElement {
   const presentation = workflowRunPresentation(item);
   if (presentation.icon === 'running') {
-    return <Loader2 size={size} className="animate-spin" data-tone={presentation.tone} />;
+    return <CircleDotDashed size={size} data-tone={presentation.tone} />;
   }
   if (presentation.icon === 'success') {
     return <CheckCircle2 size={size} data-tone={presentation.tone} />;
