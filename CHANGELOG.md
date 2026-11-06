@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.7] - 2026-11-06
+
 ### Added
 
 - A Code font setting under Diffs sets the monospace font for diffs, hashes and code; empty keeps the system font.
@@ -28,6 +30,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Make search fields, selects and inputs in the PR inbox, review search, repository inspector, workflow jobs and dashboard dialogs visible at rest and give them a full-strength focus ring.
 - Show main-process errors without Electron's "Error invoking remote method" prefix, and stop the profile menu from also saying "No authenticated GitHub CLI accounts found" when the account lookup failed.
 - Keep expanded graph references stable while hovering the overflow count, so tags do not flicker open and closed.
+- When a pull is blocked by local changes, the operation log offers Review changes, Stash and retry pull, or resetting the local branch to its upstream instead of only showing the Git error.
 
 ## [2026.11.5] - 2026-11-05
 
