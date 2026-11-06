@@ -9,7 +9,7 @@ import {
   type TabDropPosition
 } from '@renderer/components/tabs/tabReordering';
 import type { ExternalApplication } from '@shared/externalApplications';
-import type { GitProfile, RepoProfileState, RepoTab } from '@shared/types';
+import type { RepoProfileState, RepoTab } from '@shared/types';
 
 const START_TAB_ID = 'new-repository-tab';
 const DASHBOARDS_TAB_ID = 'dashboards-tab';
@@ -54,7 +54,7 @@ type TabStripProps = {
   onActivatePullRequestsTab?: () => void;
   onOpenSettings: () => void;
   onActivateProfile: (profileId: string | undefined) => Promise<void>;
-  onSaveAndActivateProfile: (profile: GitProfile) => Promise<void>;
+  onOpenProfileSettings: () => void;
 };
 
 export function TabStrip({
@@ -84,7 +84,7 @@ export function TabStrip({
   onActivatePullRequestsTab,
   onOpenSettings,
   onActivateProfile,
-  onSaveAndActivateProfile
+  onOpenProfileSettings
 }: TabStripProps): ReactElement {
   const [draggedTabId, setDraggedTabId] = useState<string>();
   const [dropTarget, setDropTarget] = useState<TabDropTarget>();
@@ -502,7 +502,7 @@ export function TabStrip({
           profileState={profileState}
           onOpenSettings={onOpenSettings}
           onActivateProfile={onActivateProfile}
-          onSaveAndActivateProfile={onSaveAndActivateProfile}
+          onOpenProfileSettings={onOpenProfileSettings}
         />
       </div>
     </div>

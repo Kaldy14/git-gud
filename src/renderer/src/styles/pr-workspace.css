@@ -75,9 +75,11 @@
   background: var(--bg-hover-subtle);
 }
 .pr-inbox-scopes > button[aria-current='page'] {
-  border-color: var(--select-border);
-  background: var(--select-bg);
+  background: var(--select-row);
   color: var(--text-1);
+}
+.pr-inbox-scopes:focus-within > button[aria-current='page'] {
+  background: var(--select-row-focused);
 }
 .pr-inbox-scopes > .pr-scope-group-start {
   margin-top: var(--space-4);

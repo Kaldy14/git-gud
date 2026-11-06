@@ -18,8 +18,8 @@
   width: 100%;
   max-width: 880px;
   margin: clamp(32px, calc((100vh - 64px - var(--start-home-height)) * 0.42), 280px) auto 0;
-  grid-template-columns: 264px minmax(0, 1fr);
-  gap: 48px;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 40px;
   align-items: start;
 }
 
@@ -33,26 +33,25 @@
 
 .start-actions {
   display: grid;
-  gap: 8px;
-  margin-top: 20px;
+  gap: 2px;
+  margin-top: 25px;
 }
 
+/* Compact rows, like sidebar rows: icon, label, optional shortcut. */
 .start-action {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  column-gap: 12px;
-  align-items: start;
-  padding: 10px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--bg-surface);
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text-1);
   text-align: left;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease;
 }
 
 .start-action:not(:disabled):hover {
-  border-color: var(--select-border);
-  background: var(--bg-surface-2);
+  background: var(--bg-hover);
 }
 
 .start-action:disabled {
@@ -60,26 +59,33 @@
 }
 
 .start-action-icon {
-  grid-row: span 2;
-  margin-top: 1px;
+  display: grid;
+  color: var(--text-3);
+}
+
+.start-action:not(:disabled):hover .start-action-icon {
   color: var(--accent-2);
 }
 
 .start-action-title {
-  color: var(--text-1);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: var(--leading-heading);
+  flex: 1;
+  font-size: var(--text-md);
 }
 
-.start-action-description {
+.start-action-shortcut {
+  min-width: 26px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
   color: var(--text-3);
-  font-size: 12px;
-  line-height: var(--leading-label);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  text-align: center;
 }
 
 .start-drop-hint {
-  margin: 20px 0 0;
+  margin: 14px 10px 0;
   color: var(--text-3);
   font-size: 12px;
   line-height: var(--leading-label);

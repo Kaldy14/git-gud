@@ -51,3 +51,16 @@ function createProfileId(name: string, email: string, now: number): string {
 
   return `${slug}-${now.toString(36)}`;
 }
+
+export const PROFILE_COLOR = 'var(--accent-2)';
+
+export function profileInitials(value: string): string {
+  return (
+    value
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || 'P'
+  );
+}

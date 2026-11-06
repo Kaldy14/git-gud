@@ -47,7 +47,7 @@ describe('TabStrip', () => {
         onActivateDashboardsTab={vi.fn()}
         onOpenSettings={vi.fn()}
         onActivateProfile={vi.fn(async () => {})}
-        onSaveAndActivateProfile={vi.fn(async () => {})}
+        onOpenProfileSettings={vi.fn()}
       />
     );
 
@@ -78,7 +78,7 @@ describe('TabStrip', () => {
         onActivateDashboardsTab={vi.fn()}
         onOpenSettings={vi.fn()}
         onActivateProfile={vi.fn(async () => {})}
-        onSaveAndActivateProfile={vi.fn(async () => {})}
+        onOpenProfileSettings={vi.fn()}
       />
     );
 
@@ -111,7 +111,7 @@ describe('TabStrip', () => {
           onActivateDashboardsTab={vi.fn()}
           onOpenSettings={vi.fn()}
           onActivateProfile={vi.fn(async () => {})}
-          onSaveAndActivateProfile={vi.fn(async () => {})}
+          onOpenProfileSettings={vi.fn()}
         />
       );
 
@@ -170,7 +170,7 @@ describe('TabStrip', () => {
           onActivatePullRequestsTab={vi.fn()}
           onOpenSettings={vi.fn()}
           onActivateProfile={vi.fn(async () => {})}
-          onSaveAndActivateProfile={vi.fn(async () => {})}
+          onOpenProfileSettings={vi.fn()}
         />
       );
 
@@ -212,7 +212,7 @@ describe('TabStrip', () => {
         onActivateDashboardsTab={vi.fn()}
         onOpenSettings={vi.fn()}
         onActivateProfile={vi.fn(async () => {})}
-        onSaveAndActivateProfile={vi.fn(async () => {})}
+        onOpenProfileSettings={vi.fn()}
       />
     );
 

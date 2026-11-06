@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Selection follows the macOS list rule: the list you are working in (history, sidebar, PR inbox) shows a teal selection and other lists a neutral one, replacing the bright grey history row.
+- The profile menu is now a switcher with a one-line identity warning; creating and editing profiles moved to Settings › Profiles.
+- The launcher lists Open, Clone and Create as compact rows with shortcuts, giving recent repositories the width.
 - Remove the coloured side bars from selected sidebar, palette, file and review rows, diff line highlights and callouts; selection now shows through the row highlight alone.
 - Raise dashboard, Portainer, agent-note, profile-menu and operation-log text that was 7.5–10px to at least 11px, and give dashboard dialogs the standard label and field sizes.
 - Show running workflow runs, the tile "Running" pill and guide writing with a static icon instead of a spinner that loops for minutes; loading skeletons no longer shimmer.

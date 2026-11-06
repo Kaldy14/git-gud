@@ -435,6 +435,7 @@ export function WorkspaceShell(): ReactElement {
   >([]);
   const [pullRequestDeepLinkError, setPullRequestDeepLinkError] = useState<string>();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<'profiles'>();
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [settingsErrorMessage, setSettingsErrorMessage] = useState<string>();
   const [codexSkillState, setCodexSkillState] = useState<CodexAgentNotesSkillState>();
@@ -1447,10 +1448,6 @@ export function WorkspaceShell(): ReactElement {
     );
   }
 
-  function handleOpenGitProfileMenu(): void {
-    document.querySelector<HTMLButtonElement>('[aria-label="Git profile menu"]')?.click();
-  }
-
   function handleFocusSidebarFilter(): void {
     if (isCompactWorkspace) {
       setCompactSidebarOpen(true);
@@ -1706,13 +1703,17 @@ export function WorkspaceShell(): ReactElement {
     workspace.activeProfileId
   ]);
 
-  async function handleSaveAndActivateProfile(profile: GitProfile): Promise<void> {
+  // Saving the active profile re-applies it so its identity and GitHub account take effect now;
+  // other profiles are only stored until someone switches to them.
+  async function handleSaveProfile(profile: GitProfile): Promise<void> {
     const nextProfiles = await window.api.saveProfile(profile);
     setProfiles(nextProfiles);
-    await handleActivateProfile(
-      profile.id,
-      nextProfiles.find((candidate) => candidate.id === profile.id)
-    );
+    if (profile.id === workspace.activeProfileId) {
+      await handleActivateProfile(
+        profile.id,
+        nextProfiles.find((candidate) => candidate.id === profile.id)
+      );
+    }
   }
 
   function handleCloseTab(tabId: string): Promise<void> {
@@ -1954,7 +1955,13 @@ export function WorkspaceShell(): ReactElement {
     }
   }
 
+  function handleOpenProfileSettings(): void {
+    setSettingsSection('profiles');
+    setIsSettingsOpen(true);
+  }
+
   function handleOpenSettings(): void {
+    setSettingsSection(undefined);
     setIsSettingsOpen(true);
     setCodexSkillState(undefined);
     setCodexSkillErrorMessage(undefined);
@@ -4042,7 +4049,7 @@ export function WorkspaceShell(): ReactElement {
         onActivatePullRequestsTab={handleOpenPullRequestInbox}
         onOpenSettings={handleOpenSettings}
         onActivateProfile={handleActivateProfile}
-        onSaveAndActivateProfile={handleSaveAndActivateProfile}
+        onOpenProfileSettings={handleOpenProfileSettings}
       />
 
       {!gitHubWorkspaceView && !isStartTabActive && !repositoryUnavailable ? (
@@ -4142,7 +4149,7 @@ export function WorkspaceShell(): ReactElement {
             onMarkActionAlertsRead={handleMarkDashboardActionAlertsRead}
             onSelectDashboard={handleSelectDashboard}
             onOpenWorkflowRun={handleOpenWorkflowRun}
-            onOpenProfileSettings={handleOpenGitProfileMenu}
+            onOpenProfileSettings={handleOpenProfileSettings}
             onClose={handleClosePullRequestWorkspace}
             resolveRepositoryPath={resolveDashboardRepositoryPath}
             chooseRepositoryPathForCodex={chooseDashboardRepositoryPathForCodex}
@@ -4190,7 +4197,7 @@ export function WorkspaceShell(): ReactElement {
                 }
                 onRefresh={() => void pullRequestInboxQuery.refetch()}
                 onClose={handleClosePullRequestWorkspace}
-                onOpenProfileSettings={handleOpenGitProfileMenu}
+                onOpenProfileSettings={handleOpenProfileSettings}
                 onSelectPullRequest={(pullRequest, openGuide, openBugFinder) =>
                   setGitHubWorkspaceView({ kind: 'review', pullRequest, openGuide, openBugFinder })
                 }
@@ -4641,6 +4648,9 @@ export function WorkspaceShell(): ReactElement {
           onSave={handleSaveSettings}
           onInstallCodexSkill={handleInstallCodexSkill}
           onRemoveCodexSkill={handleRemoveCodexSkill}
+          profileState={workspaceProfileState}
+          onSaveProfile={handleSaveProfile}
+          initialSection={settingsSection}
         />
       ) : null}
       {commandDialog ? <CommandDialog key={commandDialog.id} dialog={commandDialog} onClose={() => setCommandDialog(undefined)} /> : null}

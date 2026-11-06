@@ -26,6 +26,7 @@ describe('SettingsPanel', () => {
         onSave={vi.fn()}
         onInstallCodexSkill={vi.fn()}
         onRemoveCodexSkill={vi.fn()}
+        onSaveProfile={vi.fn(async () => {})}
       />
     );
 
@@ -50,6 +51,7 @@ describe('SettingsPanel', () => {
         onSave={vi.fn()}
         onInstallCodexSkill={vi.fn()}
         onRemoveCodexSkill={vi.fn()}
+        onSaveProfile={vi.fn(async () => {})}
       />
     );
 
@@ -70,6 +72,7 @@ describe('SettingsPanel', () => {
         onSave={vi.fn()}
         onInstallCodexSkill={vi.fn()}
         onRemoveCodexSkill={vi.fn()}
+        onSaveProfile={vi.fn(async () => {})}
       />
     );
 

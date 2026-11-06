@@ -1,41 +1,28 @@
-import type { FormEvent, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { AlertTriangle, Check, ChevronDown, Cloud, GitBranch, Lightbulb, Plus, Settings, Settings2, UserRound } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, GitBranch, Lightbulb, Settings, UserRound } from 'lucide-react';
 
-import type { GitHubCliAccount, GitProfile, RepoProfileState } from '@shared/types';
+import type { RepoProfileState } from '@shared/types';
 
-import { gitProfileFromDraft } from './ProfileMenu.logic';
+import { PROFILE_COLOR, profileInitials } from './ProfileMenu.logic';
 
 type ProfileMenuProps = {
   profileState?: RepoProfileState;
   onActivateProfile: (profileId: string | undefined) => Promise<void>;
-  onSaveAndActivateProfile: (profile: GitProfile) => Promise<void>;
   onOpenSettings: () => void;
+  /** Opens Settings scrolled to Profiles, where profiles are created and edited. */
+  onOpenProfileSettings: () => void;
 };
 
-const PROFILE_COLOR = 'var(--accent-2)';
-
+/** The title-bar profile switcher. Editing lives in Settings › Profiles. */
 export function ProfileMenu({
   profileState,
   onActivateProfile,
-  onSaveAndActivateProfile,
-  onOpenSettings
+  onOpenSettings,
+  onOpenProfileSettings
 }: ProfileMenuProps): ReactElement {
   const popoverId = useId();
   const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [editingProfileId, setEditingProfileId] = useState<string>();
-  const [sshKeyPath, setSshKeyPath] = useState('');
-  const [ghConfigDir, setGhConfigDir] = useState('');
-  const [githubLogin, setGithubLogin] = useState('');
-  const [githubHost, setGithubHost] = useState('');
-  const [githubAccounts, setGithubAccounts] = useState<GitHubCliAccount[]>([]);
-  const [isLoadingGithubAccounts, setIsLoadingGithubAccounts] = useState(false);
-  const [githubAccountsError, setGithubAccountsError] = useState<string>();
-  const [signingKey, setSigningKey] = useState('');
-  const [remoteUrlPatterns, setRemoteUrlPatterns] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
   const [isPending, setIsPending] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -48,9 +35,6 @@ export function ProfileMenu({
   const profileColor = activeProfile?.avatarColor ?? PROFILE_COLOR;
   const profiles = profileState?.profiles ?? [];
   const identityMismatch = Boolean(activeProfile && profileState?.identityMatchesActiveProfile === false);
-  const connectedGithubAccount = githubAccounts.find(
-    (account) => account.configDir === ghConfigDir && (!githubLogin || account.login === githubLogin)
-  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -79,143 +63,23 @@ export function ProfileMenu({
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    let isCancelled = false;
-    void window.api
-      .listGitHubAccounts()
-      .then((accounts) => {
-        if (!isCancelled) {
-          setGithubAccounts(accounts);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!isCancelled) {
-          setGithubAccountsError(error instanceof Error ? error.message : 'Could not read GitHub CLI accounts.');
-        }
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          setIsLoadingGithubAccounts(false);
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [isOpen]);
-
-  function toggleOpen(): void {
-    const nextOpen = !isOpen;
-    setIsOpen(nextOpen);
-    setErrorMessage(undefined);
-
-    if (nextOpen) {
-      loadProfileForm(activeProfile);
-      setIsLoadingGithubAccounts(true);
-      setGithubAccountsError(undefined);
-    }
-  }
-
-  function loadProfileForm(profile: GitProfile | undefined): void {
-    setEditingProfileId(profile?.id);
-    setName(profile?.name ?? effectiveIdentity?.name ?? '');
-    setEmail(profile?.email ?? effectiveIdentity?.email ?? '');
-    setSshKeyPath(profile?.sshKeyPath ?? '');
-    setGhConfigDir(profile?.ghConfigDir ?? '');
-    setGithubLogin(profile?.githubLogin ?? '');
-    setGithubHost(profile?.githubHost ?? '');
-    setSigningKey(profile?.signingKey ?? '');
-    setRemoteUrlPatterns(profile?.remoteUrlPatterns?.join('\n') ?? '');
-    setShowAdvanced(Boolean(profile?.sshKeyPath || profile?.ghConfigDir || profile?.signingKey || profile?.remoteUrlPatterns?.length));
-  }
-
-  async function runProfileAction(action: () => Promise<void>): Promise<void> {
+  async function handleAssign(profileId: string | undefined): Promise<void> {
+    setIsOpen(false);
     setIsPending(true);
     setErrorMessage(undefined);
-
     try {
-      await action();
+      await onActivateProfile(profileId);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Profile action failed.');
+      setErrorMessage(error instanceof Error ? error.message : 'Could not switch profiles.');
+      setIsOpen(true);
     } finally {
       setIsPending(false);
     }
   }
 
-  async function handleAssign(profileId: string | undefined): Promise<void> {
+  function openFromMenu(open: () => void): void {
     setIsOpen(false);
-    await runProfileAction(async () => {
-      await onActivateProfile(profileId);
-    });
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-
-    const profile = currentProfileDraft();
-
-    if (!profile) {
-      setErrorMessage('Name and email are required.');
-      return;
-    }
-
-    await runProfileAction(async () => {
-      await onSaveAndActivateProfile(profile);
-      setIsOpen(false);
-    });
-  }
-
-  function setGithubAccount(account: GitHubCliAccount | undefined): void {
-    setGhConfigDir(account?.configDir ?? '');
-    setGithubLogin(account?.login ?? '');
-    setGithubHost(account?.host ?? '');
-  }
-
-  async function handleGithubAccountSelect(account: GitHubCliAccount): Promise<void> {
-    setGithubAccount(account);
-    const profile = currentProfileDraft(account);
-
-    if (!profile) {
-      setErrorMessage('Name and email are required before switching GitHub accounts.');
-      return;
-    }
-
-    await runProfileAction(async () => {
-      await onSaveAndActivateProfile(profile);
-      setIsOpen(false);
-    });
-  }
-
-  function currentProfileDraft(githubAccount?: GitHubCliAccount): GitProfile | undefined {
-    return gitProfileFromDraft(
-      {
-        editingProfileId,
-        name,
-        email,
-        avatarColor:
-          activeProfile && activeProfile.id === editingProfileId
-            ? activeProfile.avatarColor
-            : PROFILE_COLOR,
-        sshKeyPath,
-        ghConfigDir,
-        githubLogin,
-        githubHost,
-        signingKey,
-        remoteUrlPatterns
-      },
-      githubAccount
-    );
-  }
-
-  function updateGhConfigDir(value: string): void {
-    const matchedAccount = githubAccounts.find((account) => account.configDir === value.trim());
-    setGhConfigDir(value);
-    setGithubLogin(matchedAccount?.login ?? '');
-    setGithubHost(matchedAccount?.host ?? '');
+    open();
   }
 
   return (
@@ -227,7 +91,10 @@ export function ProfileMenu({
         aria-label="Git profile menu"
         disabled={isPending}
         title={profileEmail ? `${profileLabel} <${profileEmail}>` : 'Git config workspace'}
-        onClick={toggleOpen}
+        onClick={() => {
+          setIsOpen((value) => !value);
+          setErrorMessage(undefined);
+        }}
         aria-busy={isPending}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
@@ -237,49 +104,44 @@ export function ProfileMenu({
           className="grid h-5.5 w-5.5 place-items-center rounded-full text-[10px] font-bold text-[var(--bg-field)]"
           style={{ background: profileColor }}
         >
-          {initials(profileLabel)}
+          {profileInitials(profileLabel)}
         </span>
         <span className="max-w-28 truncate">{profileLabel}</span>
-        {identityMismatch ? <AlertTriangle size={12} className="shrink-0 text-[var(--danger-text)]" aria-label="Workspace profile differs from local Git identity" /> : null}
+        {identityMismatch ? <AlertTriangle size={12} className="shrink-0 text-[var(--warning-text)]" aria-label="Workspace profile differs from local Git identity" /> : null}
         <ChevronDown size={12} />
       </button>
 
       {isOpen ? (
-        <div id={popoverId} className="absolute right-0 top-[34px] z-50 max-h-[min(720px,82vh)] w-80 overflow-y-auto rounded-lg border border-[var(--border-strong)] bg-[var(--bg-popover)] p-2 shadow-2xl shadow-black/60" role="dialog" aria-label="Git identity and profiles">
-          <div className="px-2 pb-2 pt-1">
-            <p className="truncate text-xs font-semibold text-[var(--text-1)]">{profileLabel}</p>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]">{profileEmail ?? 'No Git identity configured'}</p>
-            <p className="mt-1 truncate text-[10.5px] text-[var(--text-3)]">Workspace profile: {activeProfile?.name ?? 'Git config'}</p>
-            {activeProfile?.githubLogin ? <p className="mt-1 truncate text-[10.5px] text-[var(--text-3)]">GitHub: @{activeProfile.githubLogin}</p> : null}
-            <p className="mt-1 text-[11px] leading-4 text-[var(--text-3)]">Open and recent repositories are separate for each profile.</p>
+        <div id={popoverId} className="profile-menu" role="dialog" aria-label="Git profiles">
+          <div className="profile-menu-header">
+            <span className="profile-menu-avatar" style={{ background: profileColor }} aria-hidden="true">
+              {profileInitials(profileLabel)}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-semibold text-[var(--text-1)]">{profileLabel}</span>
+              <span className="block truncate text-[var(--text-3)]">
+                {profileEmail ?? 'No Git identity configured'}
+                {activeProfile?.githubLogin ? ` · GitHub @${activeProfile.githubLogin}` : ''}
+              </span>
+            </span>
           </div>
 
           {identityMismatch ? (
-            <div className="mx-1 mb-2 flex gap-2 rounded border border-[var(--danger-border)] bg-[var(--danger-bg)] px-2.5 py-2 text-[11px] leading-4 text-[var(--danger-text)]" role="status">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              <span>The repository's local Git identity differs from this workspace profile. Git Gud operations still use the workspace profile.</span>
-            </div>
+            <button className="profile-menu-warning" type="button" onClick={() => openFromMenu(onOpenProfileSettings)}>
+              <AlertTriangle size={13} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">This repository's Git identity differs.</span>
+              <span className="profile-menu-warning-action">Review</span>
+            </button>
           ) : null}
 
           {suggestedProfile && suggestedProfile.id !== activeProfile?.id ? (
-            <div className="mb-2 border-t border-[var(--border)] pt-1">
-              <button className="menu-row" type="button" disabled={isPending} onClick={() => void handleAssign(suggestedProfile.id)}>
-                <Lightbulb size={14} className="text-[var(--accent-2)]" />
-                <span className="min-w-0 flex-1 truncate">Switch to suggested profile: {suggestedProfile.name}</span>
-              </button>
-            </div>
+            <button className="menu-row" type="button" disabled={isPending} onClick={() => void handleAssign(suggestedProfile.id)}>
+              <Lightbulb size={14} className="text-[var(--accent-2)]" />
+              <span className="min-w-0 flex-1 truncate">Switch to suggested profile: {suggestedProfile.name}</span>
+            </button>
           ) : null}
 
-          <div className="border-t border-[var(--border)] pt-1">
-            <button
-              className="menu-row"
-              type="button"
-              disabled={isPending || !activeProfile}
-              onClick={() => void handleAssign(undefined)}
-            >
-              {activeProfile ? <GitBranch size={14} /> : <Check size={14} className="text-[var(--accent-2)]" />}
-              <span className="min-w-0 flex-1 truncate">Use Git config</span>
-            </button>
+          <div className="profile-menu-section">
             {profiles.map((profile) => {
               const isActive = profile.id === activeProfile?.id;
 
@@ -288,198 +150,40 @@ export function ProfileMenu({
                   key={profile.id}
                   className="menu-row"
                   type="button"
-                  disabled={isPending || isActive}
+                  disabled={isPending}
+                  aria-current={isActive || undefined}
                   title={profile.githubLogin ? `${profile.email} · @${profile.githubLogin}` : profile.email}
-                  onClick={() => void handleAssign(profile.id)}
+                  onClick={() => (isActive ? setIsOpen(false) : void handleAssign(profile.id))}
                 >
-                  {isActive ? <Check size={14} className="text-[var(--accent-2)]" /> : <UserRound size={14} />}
-                  <span
-                    className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ background: profile.avatarColor }}
-                    aria-hidden="true"
-                  />
+                  <span className="profile-menu-check">{isActive ? <Check size={14} /> : null}</span>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: profile.avatarColor }} aria-hidden="true" />
                   <span className="min-w-0 flex-1 truncate">{profile.name}</span>
-                  {profile.githubLogin ? <span className="max-w-20 truncate text-[11px] text-[var(--text-3)]">@{profile.githubLogin}</span> : null}
+                  {profile.githubLogin ? <span className="max-w-24 truncate text-[11px] text-[var(--text-3)]">@{profile.githubLogin}</span> : null}
                 </button>
               );
             })}
+            <button className="menu-row" type="button" disabled={isPending} aria-current={!activeProfile || undefined} onClick={() => (activeProfile ? void handleAssign(undefined) : setIsOpen(false))}>
+              <span className="profile-menu-check">{activeProfile ? null : <Check size={14} />}</span>
+              <GitBranch size={13} className="text-[var(--text-3)]" />
+              <span className="min-w-0 flex-1 truncate">Use Git config</span>
+            </button>
           </div>
 
-          <div className="mt-1 border-t border-[var(--border)] pt-1">
-            <button
-              className="menu-row"
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                onOpenSettings();
-              }}
-            >
+          {errorMessage ? <p className="profile-menu-error" role="alert">{errorMessage}</p> : null}
+
+          <div className="profile-menu-section">
+            <button className="menu-row" type="button" onClick={() => openFromMenu(onOpenProfileSettings)}>
+              <UserRound size={14} />
+              <span className="min-w-0 flex-1 truncate">Manage profiles…</span>
+            </button>
+            <button className="menu-row" type="button" onClick={() => openFromMenu(onOpenSettings)}>
               <Settings size={14} />
               <span className="min-w-0 flex-1 truncate">Settings</span>
+              <kbd className="text-[11px] text-[var(--text-3)]">⌘,</kbd>
             </button>
           </div>
-
-          <form className="mt-2 space-y-2 border-t border-[var(--border)] px-2 pt-2" onSubmit={(event) => void handleSubmit(event)}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-[var(--text-1)]">
-                {editingProfileId ? 'Edit workspace profile' : 'New profile'}
-              </span>
-              {editingProfileId ? (
-                <button className="btn-subtle h-6 px-2 text-[11px]" type="button" onClick={() => loadProfileForm(undefined)}>
-                  <Plus size={11} />
-                  New
-                </button>
-              ) : null}
-            </div>
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">Name</span>
-              <input
-                className="form-input form-input--compact"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">Email</span>
-              <input
-                className="form-input form-input--compact"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-
-            <div className="rounded-md border border-[var(--border)] bg-[var(--bg-field)] p-2">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <Cloud size={13} className="text-[var(--text-2)]" />
-                <span className="text-[11px] font-medium text-[var(--text-2)]">GitHub account</span>
-                {connectedGithubAccount ? <span className="ml-auto text-[11px] text-[var(--success-text)]">Connected</span> : null}
-              </div>
-
-              {isLoadingGithubAccounts ? (
-                <p className="px-1 py-1 text-[11px] text-[var(--text-3)]">Finding GitHub CLI accounts…</p>
-              ) : githubAccounts.length > 0 ? (
-                <div className="space-y-1">
-                  {githubAccounts.map((account) => {
-                    const isConnected = account.configDir === ghConfigDir && account.login === githubLogin;
-                    const isActive = Boolean(
-                      activeProfile &&
-                      activeProfile.id === editingProfileId &&
-                      activeProfile.ghConfigDir === account.configDir &&
-                      activeProfile.githubLogin === account.login
-                    );
-
-                    return (
-                      <button
-                        key={`${account.configDir}:${account.host}:${account.login}`}
-                        className={`flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left transition ${
-                          isConnected
-                            ? 'border-[var(--select-border)] bg-[var(--select-bg)]'
-                            : 'border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-hover)]'
-                        }`}
-                        type="button"
-                        disabled={isPending || isActive}
-                        aria-label={`${isActive ? 'Active GitHub account' : 'Save and switch to GitHub account'} @${account.login}`}
-                        onClick={() => void handleGithubAccountSelect(account)}
-                      >
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--bg-panel)] text-[var(--text-2)]">
-                          {isConnected ? <Check size={12} className="text-[var(--accent-2)]" /> : <Cloud size={12} />}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-semibold text-[var(--text-1)]">@{account.login}</span>
-                          <span className="block truncate text-[11px] text-[var(--text-3)]">{account.host} · {account.gitProtocol.toUpperCase()} via GitHub CLI</span>
-                        </span>
-                        <span className="shrink-0 text-[10px] font-semibold text-[var(--accent-2)]">
-                          {isActive ? 'Active' : 'Switch'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {ghConfigDir ? (
-                    <button className="w-full rounded px-2 py-1 text-left text-[11px] text-[var(--text-3)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-2)]" type="button" onClick={() => setGithubAccount(undefined)}>
-                      Disconnect GitHub account
-                    </button>
-                  ) : null}
-                </div>
-              ) : githubAccountsError ? null : (
-                <p className="px-1 py-1 text-[11px] text-[var(--text-3)]">No authenticated GitHub CLI accounts found.</p>
-              )}
-
-              {githubAccountsError ? <p className="mt-1 text-[11px] text-[var(--danger-text)]">{githubAccountsError}</p> : null}
-              <p className="mt-1.5 px-1 text-[11px] leading-4 text-[var(--text-3)]">Reuses GitHub CLI credentials and your existing Git credential or SSH setup. Git Gud never copies the token.</p>
-            </div>
-
-            <button
-              className="flex w-full items-center justify-between rounded px-1 py-1 text-[11px] font-semibold text-[var(--text-2)] hover:bg-[var(--bg-hover)]"
-              type="button"
-              aria-expanded={showAdvanced}
-              onClick={() => setShowAdvanced((value) => !value)}
-            >
-              <span className="flex items-center gap-1.5"><Settings2 size={12} />Advanced Git and remote settings</span>
-              <ChevronDown size={12} className={showAdvanced ? 'rotate-180' : undefined} />
-            </button>
-
-            {showAdvanced ? (
-              <div className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-field)] p-2">
-                <ProfileTextField label="SSH key path" value={sshKeyPath} placeholder="~/.ssh/id_ed25519_work" onChange={setSshKeyPath} />
-                <ProfileTextField label="GH_CONFIG_DIR (manual)" value={ghConfigDir} placeholder="~/.config/gh-work" onChange={updateGhConfigDir} />
-                <ProfileTextField label="Signing key" value={signingKey} placeholder="GPG or SSH signing key" onChange={setSigningKey} />
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">Remote URL patterns</span>
-                  <textarea
-                    className="form-input form-input--multiline"
-                    value={remoteUrlPatterns}
-                    placeholder={'github.com/work\ngitlab.example.com'}
-                    onChange={(event) => setRemoteUrlPatterns(event.target.value)}
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            {errorMessage ? <p className="text-[11px] text-[var(--danger-text)]" role="alert">{errorMessage}</p> : null}
-
-            <button className="btn-primary h-8 w-full" type="submit" disabled={isPending || !name.trim() || !email.trim()}>
-              <Plus size={13} />
-              <span>{editingProfileId ? 'Update and switch' : 'Save and switch'}</span>
-            </button>
-          </form>
         </div>
       ) : null}
     </div>
-  );
-}
-
-function ProfileTextField({
-  label,
-  value,
-  placeholder,
-  onChange
-}: {
-  label: string;
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-}): ReactElement {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[11px] font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        className="form-input form-input--compact"
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function initials(value: string): string {
-  return (
-    value
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join('') || 'P'
   );
 }

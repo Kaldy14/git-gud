@@ -49,6 +49,11 @@
 - Electron's "Error invoking remote method" prefix is stripped once in the preload `invoke` (`src/shared/ipcErrors.ts`), so `error.message` is safe to show.
 
 
+## Selection and profiles
+
+- List selection follows the macOS rule: the focused list shows `--select-row-focused` (teal tint), every other list `--select-row` (neutral). Graph rows, the sidebar tree and the PR inbox nav switch with `:focus-within` on their container; keep new lists on the same tokens.
+- The profile menu (`ProfileMenu.tsx`) only switches profiles. The editor lives in `ProfileEditor.tsx` inside Settings › Profiles (`ProfileSettingsSection.tsx`); `onOpenProfileSettings` opens Settings scrolled there.
+
 ## Diff readability
 
 - Syntax themes are readable copies registered in `src/renderer/src/components/diff/diffTheme.ts` (`git-gud-dark-plus`, `git-gud-tokyo-night`). `READABLE_COLORS` lifts token colours to 4.5:1 on the `.gg-diff` canvas, added/removed lines and word emphasis; comments only need 4.5:1 on lines so they stay dimmer. Re-derive the map whenever the canvas, line tints or emphasis alphas in `main.css` change.

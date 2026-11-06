@@ -1,5 +1,5 @@
 import type { FormEvent, ReactElement } from 'react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   Bot,
   Check,
@@ -11,11 +11,13 @@ import {
   ShieldAlert,
   SplitSquareHorizontal,
   Trash2,
+  UserRound,
   X
 } from 'lucide-react';
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { MachineSettingsSection } from '@renderer/components/machines/MachineSettingsSection';
+import { ProfileSettingsSection } from '@renderer/components/profile/ProfileSettingsSection';
 import {
   clampAutoFetchIntervalMinutes,
   clampGraphPageSize,
@@ -26,7 +28,7 @@ import {
   MIN_GRAPH_PAGE_SIZE,
   normalizeCodeFontFamily
 } from '@shared/settings';
-import type { AppSettings, CodexAgentNotesSkillState, DiffSyntaxTheme } from '@shared/types';
+import type { AppSettings, CodexAgentNotesSkillState, DiffSyntaxTheme, GitProfile, RepoProfileState } from '@shared/types';
 
 type SettingsPanelProps = {
   settings: AppSettings;
@@ -39,6 +41,10 @@ type SettingsPanelProps = {
   onSave: (settings: AppSettings) => Promise<void> | void;
   onInstallCodexSkill: () => Promise<void> | void;
   onRemoveCodexSkill: () => Promise<void> | void;
+  profileState?: RepoProfileState;
+  onSaveProfile: (profile: GitProfile) => Promise<void>;
+  /** Scrolls this section into view when the drawer opens. */
+  initialSection?: 'profiles';
 };
 
 export function SettingsPanel({
@@ -51,9 +57,18 @@ export function SettingsPanel({
   onClose,
   onSave,
   onInstallCodexSkill,
-  onRemoveCodexSkill
+  onRemoveCodexSkill,
+  profileState,
+  onSaveProfile,
+  initialSection
 }: SettingsPanelProps): ReactElement {
   const titleId = useId();
+
+  useEffect(() => {
+    if (initialSection === 'profiles') {
+      document.getElementById('settings-profiles')?.scrollIntoView({ block: 'start' });
+    }
+  }, [initialSection]);
   const descriptionId = useId();
   const [draft, setDraft] = useState<AppSettings>(settings);
 
@@ -249,6 +264,12 @@ export function SettingsPanel({
               </label>
             </div>
           </section>
+
+          <ProfileSettingsSection
+            heading={<SettingHeading icon={<UserRound size={15} />} label="Profiles" note="Changes here apply right away." />}
+            profileState={profileState}
+            onSaveProfile={onSaveProfile}
+          />
 
           <MachineSettingsSection heading={<SettingHeading icon={<Monitor size={15} />} label="Machines" note="Changes here apply right away." />} />
 

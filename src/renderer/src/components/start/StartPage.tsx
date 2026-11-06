@@ -137,31 +137,32 @@ export function StartPage({
           style={{ '--start-recent-rows': recentRepos.length } as CSSProperties}
         >
           <div>
-            <h1 className="start-title">Repositories</h1>
+            <h1 className="start-title">Start</h1>
             <div className="start-actions">
               <RepositoryAction
-                icon={<FolderOpen size={18} />}
-                title="Open"
+                icon={<FolderOpen size={15} />}
+                title="Open…"
                 description="Choose an existing Git repository on this Mac."
+                shortcut="⌘O"
                 disabled={busy}
                 onClick={() => void handleOpenRepository()}
               />
               <RepositoryAction
-                icon={<CloudDownload size={18} />}
-                title="Clone"
+                icon={<CloudDownload size={15} />}
+                title="Clone…"
                 description="Clone with a URL or from GitHub.com."
                 disabled={busy}
                 onClick={() => setMode('clone')}
               />
               <RepositoryAction
-                icon={<PlusSquare size={18} />}
-                title="Create"
+                icon={<PlusSquare size={15} />}
+                title="Create…"
                 description="Initialize a new local Git repository."
                 disabled={busy}
                 onClick={() => setMode('initialize')}
               />
             </div>
-            <p className="start-drop-hint">You can also drop a repository folder anywhere in this window.</p>
+            <p className="start-drop-hint">Or drop a repository folder anywhere in this window.</p>
           </div>
 
           <div>
@@ -353,20 +354,24 @@ function RepositoryAction({
   icon,
   title,
   description,
+  shortcut,
   disabled,
   onClick
 }: {
   icon: ReactElement;
   title: string;
   description: string;
+  shortcut?: string;
   disabled: boolean;
   onClick: () => void;
 }): ReactElement {
+  // A compact row: the description moves to the tooltip and accessible description.
   return (
-    <button className="start-action" type="button" disabled={disabled} onClick={onClick}>
+    <button className="start-action" type="button" title={description} disabled={disabled} onClick={onClick}>
       <span className="start-action-icon">{icon}</span>
       <span className="start-action-title">{title}</span>
-      <span className="start-action-description">{description}</span>
+      <span className="sr-only">{description}</span>
+      {shortcut ? <kbd className="start-action-shortcut">{shortcut}</kbd> : null}
     </button>
   );
 }

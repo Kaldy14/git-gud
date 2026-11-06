@@ -77,8 +77,12 @@
   --select-border: rgb(95 214 195 / 0.4);
   --control-active-bg: rgb(95 214 195 / 0.13);
   --control-active-border: rgb(95 214 195 / 0.3);
-  --graph-row-selected: #5b6572;
-  --graph-row-bulk: #626b77;
+  /* List selection follows the macOS rule: the focused list shows teal, every other list keeps a
+     neutral selection, so it is always clear where J/K and the arrow keys go. */
+  --select-row: var(--bg-active);
+  --select-row-focused: var(--control-active-bg);
+  --graph-row-selected: var(--bg-active);
+  --graph-row-selected-focused: color-mix(in srgb, var(--accent-2) 14%, var(--bg-graph));
   --graph-row-search-match: color-mix(in srgb, var(--accent-2) 8%, var(--bg-graph));
 
   /* Scrollbars */
@@ -351,6 +355,241 @@ code,
   line-height: var(--leading-label);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Title-bar profile switcher. */
+.profile-menu {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 50;
+  width: 300px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-popover);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--text-sm);
+}
+
+.profile-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 8px;
+  line-height: var(--leading-label);
+}
+
+.profile-menu-avatar {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--bg-field);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.profile-menu-warning {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  text-align: left;
+}
+
+.profile-menu-warning:hover .profile-menu-warning-action {
+  color: var(--text-1);
+}
+
+.profile-menu-warning-action {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.profile-menu-section {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-menu-check {
+  display: grid;
+  width: 14px;
+  flex: none;
+  color: var(--accent-2);
+}
+
+.profile-menu-error {
+  margin: 4px 8px;
+  color: var(--danger-text);
+  font-size: var(--text-xs);
+}
+
+/* Settings › Profiles: one row per profile, the editor opens inline beneath it. */
+.profile-settings-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.profile-settings-row > :last-child:is(button) {
+  margin-left: auto;
+}
+
+.profile-settings-avatar {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--bg-field);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.profile-settings-meta {
+  display: block;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-settings-active {
+  margin-left: var(--space-2);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--control-active-bg);
+  color: var(--accent-2);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.profile-settings-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-container);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: var(--text-sm);
+  line-height: var(--leading-label);
+}
+
+.profile-editor {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.profile-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.profile-editor-field > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.profile-editor-github {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-container);
+}
+
+.profile-editor-github > legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.profile-editor-accounts {
+  display: grid;
+  gap: 4px;
+}
+
+.profile-editor-account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.profile-editor-account:hover {
+  background: var(--bg-hover);
+}
+
+.profile-editor-account[data-selected='true'] {
+  border-color: var(--select-border);
+  background: var(--select-bg);
+}
+
+.profile-editor-account-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--text-2);
+}
+
+.profile-editor-account[data-selected='true'] .profile-editor-account-icon {
+  color: var(--accent-2);
+}
+
+.profile-editor-help,
+.profile-editor-error {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: var(--leading-micro);
+}
+
+.profile-editor-error {
+  color: var(--danger-text);
+}
+
+.profile-editor-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.profile-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 /* A checkbox is narrow enough to stay trailing. */
@@ -1532,8 +1771,12 @@ code,
 }
 
 .side-row[data-active='true'] {
-  background: var(--control-active-bg);
+  background: var(--select-row);
   color: var(--text-1);
+}
+
+[role='tree']:focus-within .side-row[data-active='true'] {
+  background: var(--select-row-focused);
 }
 
 .side-row:focus-visible,
@@ -2001,16 +2244,22 @@ code,
   --graph-node-fill: color-mix(in srgb, white 3.5%, var(--graph-row-fill));
 }
 
-/* Selection uses the whole-row fill and brighter subject text, without a decorative edge. */
-.graph-row[aria-selected='true'] {
-  --text-1: #ffffff;
-  --text-2: #f1f3f5;
-  --text-3: #e4e8ee;
-  --graph-text-muted: var(--text-3);
+/* Selection uses the whole-row fill and brighter subject text, without a decorative edge.
+   The fill is opaque because hollow graph nodes paint with it. */
+.graph-row:is([aria-selected='true'], [data-bulk-selected='true']) {
   --graph-selected-ref-background: var(--bg-graph);
   --graph-selected-text: #ffffff;
   --graph-row-fill: var(--graph-row-selected);
   background: var(--graph-row-fill);
+}
+
+[role='listbox']:focus-within .graph-row:is([aria-selected='true'], [data-bulk-selected='true']) {
+  --graph-row-fill: var(--graph-row-selected-focused);
+}
+
+/* Selected chips turn dark, so a light outline keeps each chip 3:1 apart from the row. */
+.graph-row:is([aria-selected='true'], [data-bulk-selected='true']) :is(.ref-chip, .ref-overflow) {
+  box-shadow: 0 0 0 1px var(--text-3);
 }
 
 .graph-row[aria-selected='true'] :is(.machine-wip-chip, .machine-badge) {
@@ -2019,14 +2268,6 @@ code,
 
 .graph-row[aria-selected='true'] .graph-subject {
   color: var(--text-1);
-}
-
-/* --graph-text-muted resolved at :root, so it will not follow a local --text-3. */
-.graph-row[data-bulk-selected='true'] {
-  --text-3: var(--text-2);
-  --graph-text-muted: var(--text-2);
-  --graph-row-fill: var(--graph-row-bulk);
-  background: var(--graph-row-fill);
 }
 
 .graph-row[data-search-match='true']:not([aria-selected='true']) {
