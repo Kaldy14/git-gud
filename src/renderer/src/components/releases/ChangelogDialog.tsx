@@ -59,7 +59,7 @@ export function ChangelogDialog({
           <h2 id={titleId} className="text-sm font-semibold text-[var(--text-1)]">
             Git Gud was updated
           </h2>
-          <p className="mt-0.5 text-[10.5px] text-[var(--text-3)]">
+          <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
             Version {releaseNotes.version}
           </p>
         </div>
@@ -114,7 +114,7 @@ export function ChangelogDialog({
         </div>
 
         {releaseNotes.notes.length > MAX_HIGHLIGHTS ? (
-          <p className="mt-3 text-[10.5px] text-[var(--text-3)]">
+          <p className="mt-3 text-[11px] text-[var(--text-3)]">
             {releaseNotes.notes.length - MAX_HIGHLIGHTS} more change{releaseNotes.notes.length - MAX_HIGHLIGHTS === 1 ? '' : 's'} in the full release notes.
           </p>
         ) : null}

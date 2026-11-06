@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- The status bar shortens your home folder to `~`, keeps a gap before the branch, and leaves out repository details on Dashboards.
+- Discard all sits at the end of the uncommitted-changes header and only turns red under the pointer or focus.
+- Every CSS font size and corner radius now uses the shared type and radius tokens, and `pnpm lint` checks that they stay that way.
+
+### Fixed
+
+- The previous and next conflict buttons have accessible names, and the remaining 10.5px helper text is 11px.
+- Release builds retry Apple's online stapler and Gatekeeper checks instead of failing on a dropped connection.
+
 ## [2026.11.7] - 2026-11-06
 
 ### Added

@@ -83,7 +83,7 @@ export function Toolbar({
   onOpenInApplication
 }: ToolbarProps): ReactElement {
   const hasRepo = Boolean(activeTab);
-  const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : '—';
+  const branchLabel = repositoryOverview ? formatBranchLabel(repositoryOverview) : hasRepo ? 'Loading…' : 'No branch';
   const dirtyCount = repositoryOverview?.status.dirtyCount ?? 0;
   const hasConflicts = (repositoryOverview?.status.conflictedCount ?? 0) > 0;
   const hasStashes = (repositoryOverview?.stashes.length ?? 0) > 0;

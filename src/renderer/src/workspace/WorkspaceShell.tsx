@@ -3617,9 +3617,9 @@ export function WorkspaceShell(): ReactElement {
           label: 'Reset mode',
           value: 'mixed',
           options: [
-            { value: 'soft', label: 'Soft — keep all changes', description: 'Move HEAD only; keep index and working tree.' },
-            { value: 'mixed', label: 'Mixed — keep working copy but reset index', description: 'Move HEAD and reset index; keep working tree.' },
-            { value: 'hard', label: 'Hard — discard all changes', description: 'Move HEAD, index, and tracked working tree files.' }
+            { value: 'soft', label: 'Soft: keep all changes', description: 'Move HEAD only; keep index and working tree.' },
+            { value: 'mixed', label: 'Mixed: keep the working copy, reset the index', description: 'Move HEAD and reset index; keep working tree.' },
+            { value: 'hard', label: 'Hard: discard all changes', description: 'Move HEAD, index, and tracked working tree files.' }
           ]
         }
       ],
@@ -4532,9 +4532,10 @@ export function WorkspaceShell(): ReactElement {
       </section>
 
       {gitHubWorkspaceView?.kind !== 'inbox' && gitHubWorkspaceView?.kind !== 'review' ? <StatusBar
-        activeTab={isStartTabActive ? undefined : activeTab}
-        repositoryOverview={isStartTabActive ? undefined : repositoryQuery.data}
-        isRepositoryLoading={!isStartTabActive && repositoryQuery.isLoading}
+        // Dashboards are not about the open repository, so its path and status stay out of the bar there.
+        activeTab={isStartTabActive || gitHubWorkspaceView ? undefined : activeTab}
+        repositoryOverview={isStartTabActive || gitHubWorkspaceView ? undefined : repositoryQuery.data}
+        isRepositoryLoading={!isStartTabActive && !gitHubWorkspaceView && repositoryQuery.isLoading}
         isRepositoryRefreshing={
           !isStartTabActive &&
           !gitHubWorkspaceView &&

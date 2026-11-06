@@ -486,7 +486,7 @@ function RebaseTodoRow({
 
       <div className="relative z-10 flex h-8 min-w-0 items-center gap-2">
         <span className="min-w-0 truncate text-[13px] font-medium text-[var(--text-1)]">{item.subject}</span>
-        <span className="mono shrink-0 text-[10.5px] text-[var(--text-3)]">{item.shortSha}</span>
+        <span className="mono shrink-0 text-[11px] text-[var(--text-3)]">{item.shortSha}</span>
       </div>
 
       <div className={`relative z-10 flex h-8 items-center justify-end gap-1 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
@@ -716,7 +716,7 @@ function ShortcutRail({
 function ShortcutLabel({ label, value }: { label: string; value: string }): ReactElement {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <kbd className="rounded border border-[var(--border-strong)] bg-[var(--bg-field)] px-1.5 py-px text-[10.5px] font-semibold text-[var(--text-2)]">
+      <kbd className="rounded border border-[var(--border-strong)] bg-[var(--bg-field)] px-1.5 py-px text-[11px] font-semibold text-[var(--text-2)]">
         {value}
       </kbd>
       <span>{label}</span>

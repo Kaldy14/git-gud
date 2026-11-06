@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "declaration-property-value-allowed-list": {
+      "font-size": [
+        "/^var\\(--text-[a-z0-9]+\\)$/",
+        "inherit",
+        "/^[0-9.]+em$/",
+        "/^(max|min|clamp)\\(.*var\\(--text-/"
+      ],
+      "/^border(-[a-z]+)*-radius$/": [
+        "/^((var\\(--radius-[a-z]+\\)|0|50%|inherit|[0-9.]+em)\\s*)+$/"
+      ]
+    }
+  }
+}

@@ -41,7 +41,7 @@ export function Badge({
         : 'border-[var(--border)] text-[var(--text-2)]';
 
   return (
-    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded border px-1.5 text-[10.5px] font-medium leading-[18px] ${classes}`} title={title}>
+    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded border px-1.5 text-[11px] font-medium leading-[18px] ${classes}`} title={title}>
       {children}
     </span>
   );

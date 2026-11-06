@@ -182,7 +182,7 @@ export function RepositoryInspectorDialog({
                 <span className="mt-0.5 shrink-0 text-[var(--accent-2)]">{item.icon}</span>
                 <span className="min-w-0">
                   <span className="block font-semibold">{item.label}</span>
-                  <span className="mt-0.5 block leading-4 text-[10.5px] text-[var(--text-3)] max-[700px]:hidden">{item.description}</span>
+                  <span className="mt-0.5 block leading-4 text-[11px] text-[var(--text-3)] max-[700px]:hidden">{item.description}</span>
                 </span>
               </button>
             ))}

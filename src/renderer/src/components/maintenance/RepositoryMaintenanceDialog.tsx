@@ -1589,9 +1589,9 @@ function branchColumns(baseName: string): Array<SelectionColumn<BranchCleanupCan
         return (
           <>
             <span className="mono block break-all text-[var(--text-1)]">{candidate.name}</span>
-            {reason ? <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">{reason}</span> : null}
+            {reason ? <span className="mt-0.5 block text-[11px] text-[var(--text-3)]">{reason}</span> : null}
             {candidate.upstreamGone ? (
-              <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">Upstream is missing; update remote branches to check.</span>
+              <span className="mt-0.5 block text-[11px] text-[var(--text-3)]">Upstream is missing; update remote branches to check.</span>
             ) : null}
           </>
         );
@@ -1612,7 +1612,7 @@ function branchColumns(baseName: string): Array<SelectionColumn<BranchCleanupCan
       render: (candidate) => (
         <span className="flex min-w-0 items-start gap-2">
           <EvidenceBadge candidate={candidate} />
-          <span className="min-w-0 truncate text-[10.5px] leading-[18px] text-[var(--text-3)]" title={candidate.explanation || EVIDENCE_HINTS[candidate.evidence]}>
+          <span className="min-w-0 truncate text-[11px] leading-[18px] text-[var(--text-3)]" title={candidate.explanation || EVIDENCE_HINTS[candidate.evidence]}>
             {isAnalyzed(candidate) ? candidate.explanation || EVIDENCE_HINTS[candidate.evidence] : 'Merge status was not checked.'}
           </span>
         </span>
@@ -1635,7 +1635,7 @@ function ArtifactStatus({ candidate }: { candidate: ArtifactCleanupCandidate }):
 
 function ArtifactReason({ candidate }: { candidate: ArtifactCleanupCandidate }): ReactElement | null {
   const reason = candidate.protectedReason ?? (!candidate.oldEnough ? 'Newer than the age threshold' : undefined);
-  return reason ? <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">{reason}</span> : null;
+  return reason ? <span className="mt-0.5 block text-[11px] text-[var(--text-3)]">{reason}</span> : null;
 }
 
 const STASH_COLUMNS: Array<SelectionColumn<ArtifactCleanupCandidate>> = [
@@ -1645,7 +1645,7 @@ const STASH_COLUMNS: Array<SelectionColumn<ArtifactCleanupCandidate>> = [
     render: (candidate) => (
       <>
         <span className="block break-words text-[var(--text-1)]">{candidate.name}</span>
-        <span className="mono mt-0.5 block text-[10.5px] text-[var(--text-3)]">{candidate.id} · {candidate.sha.slice(0, 8)}</span>
+        <span className="mono mt-0.5 block text-[11px] text-[var(--text-3)]">{candidate.id} · {candidate.sha.slice(0, 8)}</span>
         <ArtifactReason candidate={candidate} />
       </>
     )
@@ -1666,7 +1666,7 @@ const WORKTREE_COLUMNS: Array<SelectionColumn<ArtifactCleanupCandidate>> = [
     render: (candidate) => (
       <>
         <span className="block break-words text-[var(--text-1)]">{candidate.name}</span>
-        <span className="mono mt-0.5 block break-all text-[10.5px] text-[var(--text-3)]">{candidate.id}</span>
+        <span className="mono mt-0.5 block break-all text-[11px] text-[var(--text-3)]">{candidate.id}</span>
         <ArtifactReason candidate={candidate} />
       </>
     )
@@ -1720,7 +1720,7 @@ function ReviewGroup({ title, items }: { title: string; items: ReviewItem[] }): 
           <li key={item.key} className="flex items-center gap-3 px-3 py-1.5 text-[11.5px]">
             <span className="min-w-0 flex-1">
               <span className="mono block break-all text-[var(--text-1)]">{item.name}</span>
-              {item.detail ? <span className="block break-all text-[10.5px] text-[var(--text-3)]">{item.detail}</span> : null}
+              {item.detail ? <span className="block break-all text-[11px] text-[var(--text-3)]">{item.detail}</span> : null}
             </span>
             <span className="shrink-0 tabular-nums text-[var(--text-3)]">{item.age}</span>
             {item.badge}

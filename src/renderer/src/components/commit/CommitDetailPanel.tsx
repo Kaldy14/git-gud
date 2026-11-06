@@ -808,16 +808,6 @@ function PanelHeader({
 
     return (
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 text-xs text-[var(--text-2)]">
-        <button
-          className="icon-btn icon-btn-danger h-7 w-7 shrink-0"
-          type="button"
-          disabled={discardDisabled}
-          onClick={onDiscardAllWip}
-          aria-label="Discard all uncommitted changes"
-          title={discardTitle}
-        >
-          <Trash2 size={14} />
-        </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {wipDetail ? (
             <span className="shrink-0 whitespace-nowrap font-semibold text-[var(--text-1)]" title={wipDetail.branch.head}>
@@ -828,6 +818,17 @@ function PanelHeader({
             <span className="font-semibold text-[var(--text-1)]">File changes</span>
           )}
         </div>
+        {/* Destructive, so it sits at the trailing end and only turns red under the pointer or focus. */}
+        <button
+          className="icon-btn icon-btn-danger icon-btn-danger-quiet h-7 w-7 shrink-0"
+          type="button"
+          disabled={discardDisabled}
+          onClick={onDiscardAllWip}
+          aria-label="Discard all uncommitted changes"
+          title={discardTitle}
+        >
+          <Trash2 size={14} />
+        </button>
         {headerActions}
       </div>
     );

@@ -22,6 +22,7 @@ import type {
 
 import type { BackgroundOperationStatus } from './backgroundOperationStatus';
 import { formatFetchedAgo } from './fetchedAgo';
+import { abbreviateHomePath } from '@renderer/lib/displayPath';
 
 type StatusBarProps = {
   activeTab?: RepoTab;
@@ -87,10 +88,10 @@ export function StatusBar({
   }
 
   return (
-    <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-titlebar)] px-3 text-[13px] text-[var(--text-3)]">
+    <footer className="flex h-7 shrink-0 items-center justify-between gap-4 border-t border-[var(--border)] bg-[var(--bg-titlebar)] px-3 text-[13px] text-[var(--text-3)]">
       <span className="flex min-w-0 items-center gap-1.5">
         <FolderGit2 size={12} className="shrink-0" />
-        <span className="min-w-0 truncate">{activeTab ? activeTab.path : 'Git Gud'}</span>
+        <span className="min-w-0 truncate" title={activeTab?.path}>{activeTab ? abbreviateHomePath(activeTab.path) : 'Git Gud'}</span>
         <ApplicationUpdateButton
           state={applicationUpdateState}
           isApplying={isApplyingUpdate}
@@ -335,3 +336,4 @@ function formatIdentity(repositoryOverview: GitRepositoryOverview | undefined): 
 
   return identity.name ?? identity.email;
 }
+

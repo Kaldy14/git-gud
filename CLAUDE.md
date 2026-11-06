@@ -40,6 +40,7 @@
 
 ## PR visual tokens
 
+- Stylelint (`.stylelintrc.json`, part of `pnpm lint`) requires `font-size` to use `--text-*` and `border-radius` to use `--radius-*`; mark a real exception with a `stylelint-disable-next-line` comment that says why.
 - Use the `:root` type, spacing, and tone tokens in `main.css` for PR surfaces; keep content text at 11px or larger (10px only for counts, pills, and eyebrows).
 - Tones: `pending` = in progress (info blue), `warning` = needs attention (amber), `muted` = no signal. Do not use amber for pending.
 - In the Guide, teal marks position (the stop lane, current node and ordinal, selected tab, Next link) and copper (`--guide-annotation`) marks the guide's own commentary (note keys, judgement heads). Note keys are only for real code↔note references, and both directions must stay linked. Merged PRs use the neutral `merged` tone with a merge icon, not success green.

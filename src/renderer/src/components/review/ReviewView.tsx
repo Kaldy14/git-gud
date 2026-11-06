@@ -3022,7 +3022,7 @@ function ReviewFile({
   const fileComposerId = useId();
   const guideDiffOptions = useMemo(() => guideLine ? {
     ...diffOptions,
-    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n${Array.from({ length: Math.min((guideEndLine ?? guideLine) - guideLine + 1, 1000) }, (_, index) => `[data-line="${guideLine + index}"][data-line-type="${guideSide === 'left' ? 'change-deletion' : 'change-addition'}"]`).join(',')} { background-color: rgb(95 214 195 / 0.14) !important; }`
+    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n${Array.from({ length: Math.min((guideEndLine ?? guideLine) - guideLine + 1, 1000) }, (_, index) => `[data-line="${guideLine + index}"][data-line-type="${guideSide === 'left' ? 'change-deletion' : 'change-addition'}"]`).join(',')} { background-color: color-mix(in srgb, var(--accent-2) 14%, transparent) !important; }`
   } : diffOptions, [diffOptions, guideLine, guideSide, guideEndLine]);
   const firstChunk = file.chunks[0]!;
   const fileThreads = lineCollaboration?.threads.filter(

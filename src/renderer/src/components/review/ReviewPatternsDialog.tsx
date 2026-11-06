@@ -77,13 +77,13 @@ export function ReviewPatternsDialog({
             Enter one repository-relative pattern per line. Use <code className="text-[var(--text-2)]">*</code> within a path segment, <code className="text-[var(--text-2)]">**</code> across directories, and <code className="text-[var(--text-2)]">?</code> for one character. Lines beginning with <code className="text-[var(--text-2)]">#</code> are ignored.
           </div>
 
-          <p className="truncate font-mono text-[10.5px] text-[var(--text-3)]" title={repoPath}>
+          <p className="truncate font-mono text-[11px] text-[var(--text-3)]" title={repoPath}>
             {repoPath}
           </p>
         </div>
 
         <footer className="flex min-h-14 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-graph-header)] px-5 py-3">
-          <p className="text-[10.5px] text-[var(--text-3)]">Saving an empty list disables pattern skipping.</p>
+          <p className="text-[11px] text-[var(--text-3)]">Saving an empty list disables pattern skipping.</p>
           <div className="flex shrink-0 items-center gap-2">
             <button className="btn-subtle btn-regular" type="button" onClick={onClose}>Cancel</button>
             <button className="btn-primary btn-regular" type="submit">Save patterns</button>

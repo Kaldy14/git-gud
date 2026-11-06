@@ -183,8 +183,18 @@ jobs:
             echo "Unexpected updater bundle identifier: ${bundle_identifier:-missing}"
             exit 1
           fi
-          xcrun stapler validate "dist/mac/Git Gud.app"
-          syspolicy_check distribution "dist/mac/Git Gud.app"
+          # Both checks ask Apple's ticket service online, which sometimes drops runner
+          # connections (stapler "Error 68", NSURLErrorDomain -1005); retry before failing.
+          retry() {
+            for attempt in 1 2 3 4; do
+              "$@" && return 0
+              echo "Attempt ${attempt} failed: $*"
+              sleep $((attempt * 20))
+            done
+            return 1
+          }
+          retry xcrun stapler validate "dist/mac/Git Gud.app"
+          retry syspolicy_check distribution "dist/mac/Git Gud.app"
 
       - name: Package release artifact
         shell: bash

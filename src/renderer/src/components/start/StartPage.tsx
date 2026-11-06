@@ -19,6 +19,7 @@ import {
   filterRecentRepositories,
   githubCloneUrl
 } from './startPageHelpers';
+import { abbreviateHomePath } from '@renderer/lib/displayPath';
 
 type StartPageMode = 'home' | 'clone' | 'initialize';
 type CloneSource = 'url' | 'github';
@@ -203,7 +204,7 @@ export function StartPage({
                     <FolderGit2 size={16} className="start-recent-icon" aria-hidden="true" />
                     <span className="start-recent-text">
                       <span className="start-recent-name">{repo.name}</span>
-                      <span className="start-recent-path">{repo.path}</span>
+                      <span className="start-recent-path">{abbreviateHomePath(repo.path)}</span>
                     </span>
                     <span className="start-recent-age">{formatRelative(repo.lastOpenedAt)}</span>
                   </button>

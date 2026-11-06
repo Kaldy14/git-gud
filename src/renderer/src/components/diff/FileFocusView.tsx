@@ -310,7 +310,7 @@ export function FileFocusView({
                   </span>
                   <span className="min-w-0">
                     <span className="block text-xs font-semibold text-[var(--text-1)]">Ask Codex</span>
-                    <span className="mt-0.5 block text-[10.5px] text-[var(--text-3)]">Explain this change in project context</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-3)]">Explain this change in project context</span>
                   </span>
                 </ContextMenuPrimitive.Item>
                 {contextSelection ? (

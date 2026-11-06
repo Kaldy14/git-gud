@@ -628,7 +628,7 @@ export function BugFinderView({
                   <p key={i}>
                     {item.actor} · {item.action} ·{' '}
                     {new Date(item.at).toLocaleString()}
-                    {item.reason ? ` — ${item.reason}` : ''}
+                    {item.reason ? `: ${item.reason}` : ''}
                   </p>
                 ))}
               </details>

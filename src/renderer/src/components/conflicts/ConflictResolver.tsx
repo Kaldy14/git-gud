@@ -179,13 +179,13 @@ export function ConflictResolver({
               <span className="truncate text-xs font-semibold text-[var(--text-1)]">{path}</span>
               {conflictFile ? <span className="badge-mini shrink-0">{formatConflictKind(conflictFile.kind)}</span> : null}
             </div>
-            <div className="mt-0.5 text-[10.5px] text-[var(--text-3)]">
+            <div className="mt-0.5 text-[11px] text-[var(--text-3)]">
               {formatOperation(operation ?? conflictFile?.operation)} · file {displayIndex} of {unresolvedPaths.length} unresolved
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden text-[10.5px] text-[var(--text-3)] min-[980px]:inline">⌘S to save and stage</span>
+          <span className="hidden text-[11px] text-[var(--text-3)] min-[980px]:inline">⌘S to save and stage</span>
           <button
             className="btn-primary h-8 px-3 text-xs"
             type="button"
@@ -266,7 +266,7 @@ export function ConflictResolver({
                   <button className="btn-subtle h-7 px-2 text-[11px]" type="button" onClick={() => resolveCurrent('theirs')} title={`Use B: ${conflictFile.theirsLabel}`} aria-label={`Use B: ${conflictFile.theirsLabel}`}>
                     Use B
                   </button>
-                  <span className="ml-1 text-[10.5px] text-[var(--text-3)]">
+                  <span className="ml-1 text-[11px] text-[var(--text-3)]">
                     {Math.min(currentConflictIndex + 1, markers.length)} of {markers.length}
                   </span>
                   <button
@@ -275,6 +275,7 @@ export function ConflictResolver({
                     disabled={currentConflictIndex <= 0}
                     onClick={() => setCurrentConflictIndex((index) => Math.max(0, index - 1))}
                     title="Previous conflict"
+                    aria-label="Previous conflict"
                   >
                     <ChevronUp size={13} />
                   </button>
@@ -284,6 +285,7 @@ export function ConflictResolver({
                     disabled={currentConflictIndex >= markers.length - 1}
                     onClick={() => setCurrentConflictIndex((index) => Math.min(markers.length - 1, index + 1))}
                     title="Next conflict"
+                    aria-label="Next conflict"
                   >
                     <ChevronDown size={13} />
                   </button>
