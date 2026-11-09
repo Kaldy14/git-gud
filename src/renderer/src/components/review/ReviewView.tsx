@@ -250,6 +250,7 @@ type ReviewDiffAnnotation =
 const NO_GUIDE_FINDINGS: readonly ReviewGuideFinding[] = [];
 
 const NO_GUIDE_NOTES: readonly ReviewInlineGuideNote[] = [];
+const NO_UNITS: readonly VisibleReviewUnit[] = [];
 
 /** An inline AI note; Guide notes also carry their letter key, title, and a way back to their stop. */
 export type ReviewInlineGuideNote = GitReviewGuideNote & {
@@ -1033,6 +1034,14 @@ export function ReviewView({
     }
   }
 
+  // A file opened from an expanded, unselected block stays in that block even when others share the path.
+  function selectUnitFile(unitId: string, path: string): void {
+    if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
+    setRequestedFilePath(path);
+    setFileNavigationSignal((signal) => signal + 1);
+    selectReviewUnit(unitId, 'file');
+  }
+
   function selectFile(path: string | undefined): void {
     if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
     setRequestedFilePath(path);
@@ -1721,6 +1730,7 @@ export function ReviewView({
         typeDefinitionInteraction={typeDefinitionInteraction}
         onSelectUnit={selectReviewUnit}
         onSelectFile={selectFile}
+        onSelectUnitFile={selectUnitFile}
         onScrollTopChange={saveReviewScrollTop}
         onStartReviewGuide={() => void startReviewGuide()}
         onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
@@ -2024,6 +2034,7 @@ function ReviewBody({
   typeDefinitionInteraction,
   onSelectUnit,
   onSelectFile,
+  onSelectUnitFile,
   onScrollTopChange,
   onStartReviewGuide,
   onToggleViewed
@@ -2071,6 +2082,7 @@ function ReviewBody({
   typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
   onSelectUnit: (unitId: string) => void;
   onSelectFile: (path: string | undefined) => void;
+  onSelectUnitFile: (unitId: string, path: string) => void;
   onScrollTopChange: (unitId: string, scrollTop: number, visiblePath?: string) => void;
   onStartReviewGuide: () => void;
   onToggleViewed: () => void;
@@ -2127,6 +2139,10 @@ function ReviewBody({
   }, [agentNotes]);
   const selectedGuideUnit = selectedUnit ? reviewGuideUnits.get(selectedUnit.unit.id) : undefined;
   const selectedTreeUnits = useMemo(() => (selectedUnit ? [selectedUnit] : []), [selectedUnit]);
+  // Stable one-block lists, so an expanded block's file tree keeps its model across renders.
+  const blockTreeUnits = useMemo(() => new Map(units.map((unit) => [unit.unit.id, [unit]])), [units]);
+  // Only the selected block lists its files until a block's chevron says otherwise.
+  const [blockFilesOpen, setBlockFilesOpen] = useState<ReadonlyMap<string, boolean>>(() => new Map());
 
   useEffect(() => {
     if (compact) {
@@ -2349,21 +2365,21 @@ function ReviewBody({
               <span className="badge-mini">temporary</span>
             </button>
           ) : null}
-          {units.map((candidate, index) => (
+          {units.map((candidate, index) => {
+            const isSelected = !reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id;
+            const title = unitTitles?.get(candidate.unit.id) ?? (compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title);
+            const filesOpen = compact && !reviewSearch?.isSelected && (blockFilesOpen.get(candidate.unit.id) ?? isSelected);
+            const guideUnit = reviewGuideUnits.get(candidate.unit.id);
+            // The selected block keeps the guide's line-precise jumps; another block opens its file first.
+            const openFile = (path: string) => isSelected ? onSelectFile(path) : onSelectUnitFile(candidate.unit.id, path);
+            return (
             <div className="review-block-entry" key={candidate.unit.id}>
               <ReviewLayerTooltip enabled={Boolean(reviewGuide)} title={candidate.unit.title} description={candidate.unit.explanation}
                 findings={guideFindings.get(candidate.unit.id) ?? NO_GUIDE_FINDINGS}>
               <button
                 className="review-unit-row"
                 type="button"
-                data-active={
-                  !reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id
-                }
-                aria-expanded={
-                  compact
-                    ? !reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id
-                    : undefined
-                }
+                data-active={isSelected}
                 disabled={
                   lineCollaboration?.selectedChunkId !== undefined &&
                   candidate.unit.id !== selectedUnit?.unit.id
@@ -2378,14 +2394,10 @@ function ReviewBody({
                     className="review-unit-title block truncate"
                     title={reviewGuide ? undefined : candidate.unit.explanation}
                   >
-                    {unitTitles?.get(candidate.unit.id) ?? (compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title)}
+                    {title}
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">
-                    {reviewGuideUnits.get(candidate.unit.id) ? (
-                      <ReviewGuidePriority
-                        priority={reviewGuideUnits.get(candidate.unit.id)!.priority}
-                      />
-                    ) : null}
+                    {guideUnit ? <ReviewGuidePriority priority={guideUnit.priority} /> : null}
                     <span className="review-unit-meta min-w-0 truncate">
                       {compact
                         ? formatReviewBlockSize(candidate)
@@ -2399,28 +2411,36 @@ function ReviewBody({
                 ) : null}
               </button>
               </ReviewLayerTooltip>
-              {compact &&
-              !reviewSearch?.isSelected &&
-              candidate.unit.id === selectedUnit?.unit.id ? (
-                selectedGuideUnit ? (
-                  <div className="review-guide-ranked-files" aria-label="Ranked block files">
-                    {[...new Set(selectedUnit.visibleChunks.map((chunk) => chunk.path))].map((path) => {
-                      const file = visibleReviewGuideFiles(selectedUnit, selectedGuideUnit).find((item) => item.path === path);
-                      return <button type="button" key={path} data-active={selectedFilePath === path}
+              {compact && !reviewSearch?.isSelected ? (
+                <button type="button" className="review-block-toggle" aria-expanded={filesOpen}
+                  aria-label={`${filesOpen ? 'Hide' : 'Show'} files in ${title}`} title={filesOpen ? 'Hide files' : 'Show files'}
+                  onClick={() => setBlockFilesOpen((current) => new Map(current).set(candidate.unit.id, !filesOpen))}>
+                  <ChevronRight size={14} aria-hidden="true" />
+                </button>
+              ) : null}
+              {filesOpen ? (
+                guideUnit ? (
+                  <div className="review-guide-ranked-files" aria-label={`Ranked files in ${title}`}>
+                    {[...new Set(candidate.visibleChunks.map((chunk) => chunk.path))].map((path) => {
+                      const file = visibleReviewGuideFiles(candidate, guideUnit).find((item) => item.path === path);
+                      return <button type="button" key={path} data-active={isSelected && selectedFilePath === path}
                         disabled={Boolean(lineCollaboration?.selectedChunkId)} title={file?.reason || path}
-                        onClick={() => file ? selectGuideFile(file) : onSelectFile(path)}>
+                        onClick={() => isSelected && file ? selectGuideFile(file) : openFile(path)}>
                         <span title={path}>{path.split('/').pop()}</span>
                         {file ? <ReviewGuidePriority priority={file.priority} reason={file.reason} /> : null}
                       </button>;
                     })}
                   </div>
                 ) : (
-                  <ReviewFileTree embedded repoPath={repoPath} units={selectedTreeUnits}
-                    selectedPath={selectedFilePath} onSelectPath={onSelectFile} />
+                  <ReviewFileTree embedded repoPath={repoPath}
+                    units={isSelected ? selectedTreeUnits : blockTreeUnits.get(candidate.unit.id) ?? NO_UNITS}
+                    selectedPath={isSelected ? selectedFilePath : undefined}
+                    onSelectPath={(path) => { if (path) openFile(path); }} />
                 )
               ) : null}
             </div>
-          ))}
+            );
+          })}
         </div>
         {compact ? (
           <footer className="review-navigation-footer">

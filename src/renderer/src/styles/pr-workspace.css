@@ -345,6 +345,34 @@
 .review-queue[data-nested='true'] .review-unit-status {
   margin-top: -1px;
 }
+/* Each block's chevron shows or hides its files without selecting it; it sits over the row's right edge. */
+.review-queue[data-nested='true'] .review-block-entry {
+  position: relative;
+}
+.review-queue[data-nested='true'] .review-unit-row:not(.review-search-unit-row) {
+  padding-right: 30px;
+}
+.review-block-toggle {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--text-3);
+}
+.review-block-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.review-block-toggle svg {
+  transition: transform 120ms ease;
+}
+.review-block-toggle[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
 .review-file-tree-panel[data-embedded='true'] {
   width: auto;
   min-width: 0;
