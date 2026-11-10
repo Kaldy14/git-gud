@@ -51,6 +51,17 @@
 - Electron's "Error invoking remote method" prefix is stripped once in the preload `invoke` (`src/shared/ipcErrors.ts`), so `error.message` is safe to show.
 
 
+## Workflow run graph
+
+- A job card's look comes from `workflowJobState` (`workflowJobState.ts`). Failed and running are the only filled cards (red, info blue), queued is the blue outline without the fill, passed stays flat and neutral, skipped is dashed. Don't add fills, shadows or weight to passed cards, and never change font weight by state: a heavier name wraps differently and the graph re-flows when a job fails.
+- The sidebar and the header tally list jobs by state with failed first (`groupWorkflowJobsByState`). Tally chips for failed, running and queued jump to the next job in that state. Passed is a plain count.
+- Opening a run scrolls the graph to its failed jobs, or its running ones when nothing failed. The graph scrolls inside `.workflow-run-job-scroll`, so the run facts and tally stay put.
+- Geometry lives in `workflowRunGraphLayout.ts`, which places cards and lines in one coordinate space. Every column is packed from the top in workflow order (collapsed skipped jobs last). Don't reorder or align cards to straighten lines: that was tried and read as a mess. Density is fixed (6px gaps, columns only as wide as their longest name), so never fix clutter by adding space.
+- Don't draw every dependency at rest. With the columns packed it is a tangle however it is routed. At rest only the failure flow is drawn (`workflowFailureFlow`): what each failed job held up, in red, and what the first failure of a chain waited for. Hover or focus on a card draws everything it waits for and everything waiting on it, and dims the rest.
+- Tracing must not move anything. Pinned lines get their own tracks and set the gutter widths; traced lines fit into the tracks and gaps that are left (`pinnedEdges` and `tracedEdges` in `computeWorkflowGraphGeometry`).
+- The lines that can be drawn are the dependencies a longer chain does not imply (`reduceWorkflowJobDependencies`). With skipped jobs collapsed, a job that ran links to the nearest jobs that ran before it, so a collapsed skipped node ends lines and never relays one.
+- A dependency that skips columns passes through the gap between two cards or below the column, never behind a card. Lines merge on a vertical track only when they share a job.
+
 ## Selection and profiles
 
 - List selection follows the macOS rule: the focused list shows `--select-row-focused` (teal tint), every other list `--select-row` (neutral). Graph rows, the sidebar tree and the PR inbox nav switch with `:focus-within` on their container; keep new lists on the same tokens.

@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleDashed,
   CircleDotDashed,
   CircleSlash2,
   Clock,
@@ -44,8 +45,19 @@ import {
 import {
   isSkippedWorkflowJob,
   layoutWorkflowJobGraph,
-  workflowGraphEdgePath
+  workflowFailureFlow
 } from './workflowRunGraph';
+import {
+  computeWorkflowGraphGeometry,
+  workflowGraphEdgeKey,
+  type WorkflowGraphEdge,
+  type WorkflowGraphRect
+} from './workflowRunGraphLayout';
+import {
+  groupWorkflowJobsByState,
+  workflowJobState,
+  type WorkflowJobState
+} from './workflowJobState';
 
 const NO_JOBS: GitHubWorkflowJob[] = [];
 
@@ -84,7 +96,7 @@ export function WorkflowRunView({
   ).length;
   const totalJobs = detailQuery.data?.totalJobCount ?? 0;
   const [skippedJobsExpanded, setSkippedJobsExpanded] = useState(false);
-  const activeJobs = useMemo(() => jobs.filter((job) => !isSkippedWorkflowJob(job)), [jobs]);
+  const jobGroups = useMemo(() => groupWorkflowJobsByState(jobs), [jobs]);
   const skippedJobs = useMemo(() => jobs.filter(isSkippedWorkflowJob), [jobs]);
 
   const sectionRef = useRef<HTMLElement>(null);
@@ -221,6 +233,7 @@ export function WorkflowRunView({
       <button
         className="workflow-run-nav-item workflow-run-job-nav"
         data-active={selectedJobId === job.id}
+        data-state={workflowJobState(job)}
         data-workflow-job-id={job.id}
         {...workflowJobSearchAttributes(job.id, search)}
         type="button"
@@ -300,7 +313,23 @@ export function WorkflowRunView({
             <span>All jobs</span>
             {totalJobs > 0 ? <span>{completedJobs ?? 0}/{totalJobs}</span> : null}
           </div>
-          {activeJobs.map(renderJobNavItem)}
+          {jobGroups.map((group) => (
+            <div
+              className="workflow-run-nav-group"
+              role="group"
+              aria-label={`${group.label} jobs`}
+              key={group.state}
+            >
+              {/* One group needs no label: "All jobs" already says it. */}
+              {jobGroups.length > 1 ? (
+                <div className="workflow-run-nav-group-heading" data-state={group.state}>
+                  <span>{group.label}</span>
+                  <span>{group.jobs.length}</span>
+                </div>
+              ) : null}
+              {group.jobs.map(renderJobNavItem)}
+            </div>
+          ))}
           {skippedJobs.length > 0 ? (
             <button
               className="workflow-run-nav-item workflow-run-skipped-nav"
@@ -320,7 +349,7 @@ export function WorkflowRunView({
           ) : null}
         </aside>
 
-        <main className="workflow-run-main">
+        <main className="workflow-run-main" data-view={selectedJob ? 'job' : 'summary'}>
           {detailQuery.error && !detailQuery.data ? (
             <div className="workflow-run-load-error" role="alert">
               <XCircle size={18} />
@@ -381,10 +410,24 @@ function WorkflowRunSummary({
 }): ReactElement {
   const presentation = workflowRunPresentation(run);
   const duration = formatDuration(run.startedAt, run.updatedAt, run.status);
+  const graphRef = useRef<HTMLElement>(null);
+  const tallyCursor = useRef(new Map<WorkflowJobState, number>());
+  const groups = useMemo(() => groupWorkflowJobsByState(jobs), [jobs]);
+
+  // Each press moves to the next job in that state, so two failures are two presses apart.
+  function revealNext(state: WorkflowJobState, jobIds: number[]): void {
+    const next = ((tallyCursor.current.get(state) ?? -1) + 1) % jobIds.length;
+    tallyCursor.current.set(state, next);
+    const card = graphRef.current?.querySelector<HTMLElement>(
+      `.workflow-run-job-card[data-workflow-job-id="${jobIds[next]}"]`
+    );
+    card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    card?.focus({ preventScroll: true });
+  }
 
   return (
     <div className="workflow-run-summary-page">
-      <section className="workflow-run-graph" aria-label={`${run.name} jobs`}>
+      <section className="workflow-run-graph" aria-label={`${run.name} jobs`} ref={graphRef}>
         <header>
           <div className="workflow-run-graph-title">
             <Workflow size={14} />
@@ -413,6 +456,37 @@ function WorkflowRunSummary({
                 </dd>
               </div>
             </dl>
+            {groups.length > 0 ? (
+              <div className="workflow-run-tally" role="group" aria-label="Jobs by status">
+                {groups.map((group) => {
+                  const label = `${group.jobs.length} ${group.label.toLowerCase()}`;
+                  // Passed jobs are the background; only the states worth finding are buttons.
+                  return group.state === 'passed' ? (
+                    <span className="workflow-run-tally-item" data-state={group.state} key={group.state}>
+                      <WorkflowJobStateIcon state={group.state} size={12} />
+                      {label}
+                    </span>
+                  ) : (
+                    <button
+                      className="workflow-run-tally-item"
+                      data-state={group.state}
+                      type="button"
+                      key={group.state}
+                      title={`Go to the next ${group.label.toLowerCase()} job`}
+                      onClick={() =>
+                        revealNext(
+                          group.state,
+                          group.jobs.map((job) => job.id)
+                        )
+                      }
+                    >
+                      <WorkflowJobStateIcon state={group.state} size={12} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
           <div className="workflow-run-graph-actions">
             {skippedJobCount > 0 ? (
@@ -461,12 +535,6 @@ function WorkflowRunSummary({
   );
 }
 
-type WorkflowGraphEdge = {
-  sourceKey: string;
-  targetKey: string;
-  path: string;
-};
-
 function WorkflowDependencyGraph({
   jobs,
   showSkipped,
@@ -480,191 +548,347 @@ function WorkflowDependencyGraph({
   onSelectJob: (jobId: number) => void;
   onShowSkipped: () => void;
 }): ReactElement {
-  const { columns, nodeKeyByJobId } = useMemo(
-    () => layoutWorkflowJobGraph(jobs, showSkipped),
-    [jobs, showSkipped]
-  );
-  const containerRef = useRef<HTMLDivElement>(null);
+  const layout = useMemo(() => layoutWorkflowJobGraph(jobs, showSkipped), [jobs, showSkipped]);
   const nodeRefs = useRef(new Map<string, HTMLButtonElement>());
-  const [edges, setEdges] = useState<WorkflowGraphEdge[]>([]);
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [sizes, setSizes] = useState<ReadonlyMap<string, WorkflowCardSize>>(() => new Map());
+  const [hoveredKey, setHoveredKey] = useState<string>();
+  const [focusedKey, setFocusedKey] = useState<string>();
 
+  // Polling replaces `jobs` on every refresh while the shape of the graph rarely moves,
+  // so the geometry is keyed on that shape instead of on the array.
+  const structureKey = useMemo(
+    () =>
+      JSON.stringify([
+        layout.columns.map((column) => column.map((node) => node.key)),
+        layout.edges.map((edge) => [edge.source, edge.target])
+      ]),
+    [layout]
+  );
+  const nodesByKey = useMemo(
+    () => new Map(layout.columns.flat().map((node) => [node.key, node])),
+    [layout]
+  );
+
+  // The flow around a failed job is always drawn: what it held up, in red, and what the
+  // first failure of a chain was waiting for.
+  const pinned = useMemo(() => {
+    const failed = new Set(
+      layout.columns.flatMap((column) =>
+        column
+          .filter((node) => node.kind === 'job' && workflowJobState(node.job) === 'failed')
+          .map((node) => node.key)
+      )
+    );
+    const edges = workflowFailureFlow(layout.edges, failed);
+    return { failed, edges, key: edges.map(workflowGraphEdgeKey).join(' ') };
+  }, [layout]);
+
+  // Every other line appears on demand. Pointing at a job (or focusing it) draws all it
+  // waits for and all that waits for it, and the rest of the graph steps back.
+  const tracedKey = hoveredKey ?? focusedKey;
+  const trace = useMemo(() => {
+    if (tracedKey === undefined || !nodesByKey.has(tracedKey)) {
+      return undefined;
+    }
+    const walk = (from: 'source' | 'target', to: 'source' | 'target'): Set<string> => {
+      const reached = new Set<string>([tracedKey]);
+      const queue = [tracedKey];
+      while (queue.length > 0) {
+        const current = queue.pop()!;
+        for (const edge of layout.edges) {
+          if (edge[from] === current && !reached.has(edge[to])) {
+            reached.add(edge[to]);
+            queue.push(edge[to]);
+          }
+        }
+      }
+      return reached;
+    };
+    const upstream = walk('target', 'source');
+    const downstream = walk('source', 'target');
+    return {
+      keys: new Set([...upstream, ...downstream]),
+      edges: layout.edges.filter(
+        (edge) =>
+          (upstream.has(edge.source) && upstream.has(edge.target)) ||
+          (downstream.has(edge.source) && downstream.has(edge.target))
+      )
+    };
+  }, [layout, nodesByKey, tracedKey]);
+
+  const geometry = useMemo(
+    () =>
+      computeWorkflowGraphGeometry({
+        columns: layout.columns.map((column) => column.map((node) => node.key)),
+        heights: new Map([...sizes].map(([key, size]) => [key, size.height])),
+        // A column is as wide as its longest name; one unmeasured card keeps it at full width.
+        columnWidths: layout.columns.map((column) =>
+          column.reduce<number | undefined>((width, node) => {
+            const size = sizes.get(node.key);
+            return width === undefined || !size ? undefined : Math.max(width, size.naturalWidth);
+          }, 0)
+        ),
+        pinnedEdges: pinned.edges,
+        tracedEdges: trace?.edges
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the keys stand in for layout, pinned and trace
+    [structureKey, sizes, pinned.key, tracedKey]
+  );
+
+  // A card's height and the width its name needs are only known once it is in the
+  // document. Measuring feeds the geometry, which sets the widths, so this re-runs until
+  // nothing moves (a pass or two, before paint). The budget stops a size that never
+  // settles from re-rendering forever.
+  const [measureRequest, requestMeasure] = useState(0);
+  const settleBudget = useRef(MEASURE_PASSES_PER_FRAME);
   useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
+    let changed = sizes.size !== nodeRefs.current.size;
+    const next = new Map<string, WorkflowCardSize>();
+    for (const [key, element] of nodeRefs.current) {
+      const size = measureWorkflowCard(element);
+      const before = sizes.get(key);
+      next.set(key, size);
+      changed ||= before?.height !== size.height || before.naturalWidth !== size.naturalWidth;
+    }
+    if (!changed || settleBudget.current <= 0) {
       return;
     }
-    const measuredContainer = container;
-    let frame: number | undefined;
-    let disposed = false;
-
-    function measure(): void {
-      frame = undefined;
-      const containerBounds = measuredContainer.getBoundingClientRect();
-      // Collapsed skipped jobs share one node, so their edges are rerouted to it and deduped.
-      const seenEdgeKeys = new Set<string>();
-      const nextEdges = jobs.flatMap((job) => {
-        const targetKey = nodeKeyByJobId.get(job.id);
-        const target = targetKey === undefined ? undefined : nodeRefs.current.get(targetKey);
-        if (targetKey === undefined || !target) {
-          return [];
-        }
-        const targetBounds = target.getBoundingClientRect();
-
-        return job.dependencyJobIds.flatMap((dependencyJobId) => {
-          const sourceKey = nodeKeyByJobId.get(dependencyJobId);
-          const source = sourceKey === undefined ? undefined : nodeRefs.current.get(sourceKey);
-          const edgeKey = `${sourceKey}->${targetKey}`;
-          if (
-            sourceKey === undefined ||
-            !source ||
-            sourceKey === targetKey ||
-            seenEdgeKeys.has(edgeKey)
-          ) {
-            return [];
-          }
-          seenEdgeKeys.add(edgeKey);
-          const sourceBounds = source.getBoundingClientRect();
-          const sourceX = sourceBounds.right - containerBounds.left;
-          const sourceY = sourceBounds.top - containerBounds.top + sourceBounds.height / 2;
-          const targetX = targetBounds.left - containerBounds.left;
-          const targetY = targetBounds.top - containerBounds.top + targetBounds.height / 2;
-
-          return [
-            {
-              sourceKey,
-              targetKey,
-              path: workflowGraphEdgePath(sourceX, sourceY, targetX, targetY)
-            }
-          ];
-        });
+    if (settleBudget.current === MEASURE_PASSES_PER_FRAME) {
+      window.requestAnimationFrame(() => {
+        settleBudget.current = MEASURE_PASSES_PER_FRAME;
       });
-
-      const width = measuredContainer.clientWidth;
-      const height = measuredContainer.clientHeight;
-      setCanvasSize((previous) =>
-        previous.width === width && previous.height === height ? previous : { width, height }
-      );
-      setEdges((previous) => (sameWorkflowGraphEdges(previous, nextEdges) ? previous : nextEdges));
     }
+    settleBudget.current -= 1;
+    setSizes(next);
+    // `layout` changes with every refresh, when a longer duration can widen a card.
+  }, [sizes, layout, measureRequest]);
 
-    function scheduleMeasure(): void {
-      if (!disposed && frame === undefined) {
-        frame = window.requestAnimationFrame(measure);
-      }
-    }
-
-    measure();
-    // Wrapped job names change individual card heights (and so edge anchors) without
-    // necessarily resizing the canvas, so every node is observed alongside the container.
-    const observer = new ResizeObserver(scheduleMeasure);
-    observer.observe(measuredContainer);
+  // Fonts and zoom change card sizes without a render, so they ask for a new pass.
+  useEffect(() => {
+    let frame: number | undefined;
+    const schedule = (): void => {
+      frame ??= window.requestAnimationFrame(() => {
+        frame = undefined;
+        requestMeasure((count) => count + 1);
+      });
+    };
+    const observer = new ResizeObserver(schedule);
     for (const node of nodeRefs.current.values()) {
       observer.observe(node);
     }
-    window.addEventListener('resize', scheduleMeasure);
-    void document.fonts?.ready.then(scheduleMeasure);
+    void document.fonts?.ready.then(schedule);
     return () => {
-      disposed = true;
       observer.disconnect();
-      window.removeEventListener('resize', scheduleMeasure);
       if (frame !== undefined) {
         window.cancelAnimationFrame(frame);
       }
     };
-  }, [jobs, columns, nodeKeyByJobId]);
+  }, [structureKey]);
+
+  // Opening a run answers "what failed" (or "what is running") without scrolling: the
+  // graph is often wider than the window and those jobs sit in its later columns.
+  const revealedRef = useRef(false);
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (revealedRef.current || !scroller || sizes.size === 0) {
+      return;
+    }
+    revealedRef.current = true;
+    const rectsIn = (state: WorkflowJobState): WorkflowGraphRect[] =>
+      layout.columns.flatMap((column) =>
+        column.flatMap((node) => {
+          const rect = geometry.nodes.get(node.key);
+          return rect && node.kind === 'job' && workflowJobState(node.job) === state ? [rect] : [];
+        })
+      );
+    const failed = rectsIn('failed');
+    const targets = failed.length > 0 ? failed : rectsIn('running');
+    if (targets.length > 0) {
+      revealWorkflowCards(scroller, targets);
+    }
+  }, [geometry, layout, sizes]);
+
+  const pathOf = (edges: WorkflowGraphEdge[]): string =>
+    edges
+      .map((edge) => geometry.paths.get(workflowGraphEdgeKey(edge)))
+      .filter((path) => path !== undefined)
+      .join(' ');
+  const inputPath = pathOf(pinned.edges.filter((edge) => !pinned.failed.has(edge.source)));
+  const failedPath = pathOf(pinned.edges.filter((edge) => pinned.failed.has(edge.source)));
+  const tracedPath = trace ? pathOf(trace.edges) : '';
 
   return (
-    <div className="workflow-run-job-scroll">
-      <div className="workflow-run-job-columns" ref={containerRef}>
-        {edges.length > 0 ? (
-          <svg
-            className="workflow-run-job-edges"
-            width={canvasSize.width}
-            height={canvasSize.height}
-            viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
-            aria-hidden="true"
-          >
-            {edges.map((edge) => (
-              <path
-                d={edge.path}
-                key={`${edge.sourceKey}->${edge.targetKey}`}
-              />
-            ))}
-          </svg>
-        ) : null}
-        {columns.map((column, columnIndex) => (
-          <div className="workflow-run-job-column" key={columnIndex}>
-            {column.map((node) => {
-              const ref = (element: HTMLButtonElement | null): void => {
-                if (element) {
-                  nodeRefs.current.set(node.key, element);
-                } else {
-                  nodeRefs.current.delete(node.key);
-                }
-              };
-              if (node.kind === 'skipped') {
-                return (
-                  <button
-                    className="workflow-run-job-card workflow-run-skipped-card"
-                    type="button"
-                    key={node.key}
-                    ref={ref}
-                    data-tone="neutral"
-                    title={node.jobs.map((job) => job.name).join('\n')}
-                    aria-label={`Show ${skippedJobsLabel(node.jobs.length)}`}
-                    onClick={onShowSkipped}
-                  >
-                    <CircleSlash2 size={13} />
-                    <span>{skippedJobsLabel(node.jobs.length)}</span>
-                    <ChevronDown size={12} />
-                  </button>
-                );
+    <div className="workflow-run-job-scroll" ref={scrollRef}>
+      <div
+        className="workflow-run-job-canvas"
+        data-tracing={trace ? true : undefined}
+        style={{ width: geometry.width, height: geometry.height }}
+      >
+        <svg
+          className="workflow-run-job-edges"
+          width={geometry.width}
+          height={geometry.height}
+          viewBox={`0 0 ${geometry.width} ${geometry.height}`}
+          aria-hidden="true"
+        >
+          {inputPath ? <path className="workflow-run-job-edge" d={inputPath} /> : null}
+          {failedPath ? (
+            <path className="workflow-run-job-edge" data-state="failed" d={failedPath} />
+          ) : null}
+          {tracedPath ? (
+            <path className="workflow-run-job-edge" data-state="traced" d={tracedPath} />
+          ) : null}
+        </svg>
+        {layout.columns.flat().map((node) => {
+          const { key } = node;
+          const rect = geometry.nodes.get(key);
+          if (!rect) {
+            return null;
+          }
+          const placement = {
+            style: { left: rect.x, top: rect.y, width: rect.width },
+            'data-trace': trace
+              ? key === tracedKey
+                ? 'self'
+                : trace.keys.has(key)
+                  ? 'linked'
+                  : undefined
+              : undefined,
+            ref: (element: HTMLButtonElement | null): void => {
+              if (element) {
+                nodeRefs.current.set(key, element);
+              } else {
+                nodeRefs.current.delete(key);
               }
-              const { job } = node;
-              return (
-                <button
-                  className="workflow-run-job-card"
-                  type="button"
-                  key={node.key}
-                  ref={ref}
-                  data-tone={workflowRunPresentation(job).tone}
-                  data-workflow-job-id={job.id}
-                  {...workflowJobSearchAttributes(job.id, search)}
-                  onClick={() => onSelectJob(job.id)}
-                >
-                  <StatusIcon item={job} size={13} />
-                  <WorkflowJobName name={job.name} search={search} />
-                  <small>
-                    {formatDuration(
-                      job.startedAt,
-                      job.completedAt,
-                      job.status
-                    )}
-                  </small>
-                </button>
-              );
-            })}
-          </div>
-        ))}
+            },
+            onPointerEnter: () => setHoveredKey(key),
+            onPointerLeave: () => setHoveredKey((current) => (current === key ? undefined : current)),
+            onFocus: () => setFocusedKey(key),
+            onBlur: () => setFocusedKey((current) => (current === key ? undefined : current))
+          };
+          if (node.kind === 'skipped') {
+            return (
+              <button
+                className="workflow-run-job-card workflow-run-skipped-card"
+                type="button"
+                key={key}
+                {...placement}
+                data-state="skipped"
+                title={node.jobs.map((job) => job.name).join('\n')}
+                aria-label={`Show ${skippedJobsLabel(node.jobs.length)}`}
+                onClick={onShowSkipped}
+              >
+                <CircleSlash2 size={13} />
+                <span className="workflow-run-job-text">
+                  <ChevronDown size={12} />
+                  <span className="workflow-run-job-name">{skippedJobsLabel(node.jobs.length)}</span>
+                </span>
+              </button>
+            );
+          }
+          const { job } = node;
+          const state = workflowJobState(job);
+          // A skipped job never ran, so it has no duration worth a column of "0s".
+          const timing =
+            state === 'queued'
+              ? 'Queued'
+              : state === 'skipped'
+                ? ''
+                : formatDuration(job.startedAt, job.completedAt, job.status);
+          return (
+            <button
+              className="workflow-run-job-card"
+              type="button"
+              key={key}
+              {...placement}
+              data-state={state}
+              data-workflow-job-id={job.id}
+              {...workflowJobSearchAttributes(job.id, search)}
+              aria-label={`${job.name}, ${workflowRunPresentation(job).label}${
+                state === 'queued' || timing === '' || timing === '–' ? '' : `, ${timing}`
+              }`}
+              onClick={() => onSelectJob(job.id)}
+            >
+              <StatusIcon item={job} size={13} />
+              {/* The time floats, so a long name wraps under it instead of beside it. */}
+              <span className="workflow-run-job-text">
+                <small>{timing}</small>
+                <WorkflowJobName name={job.name} search={search} />
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function sameWorkflowGraphEdges(
-  previous: WorkflowGraphEdge[],
-  next: WorkflowGraphEdge[]
-): boolean {
-  return (
-    previous.length === next.length &&
-    previous.every(
-      (edge, index) =>
-        edge.path === next[index].path &&
-        edge.sourceKey === next[index].sourceKey &&
-        edge.targetKey === next[index].targetKey
+const MEASURE_PASSES_PER_FRAME = 6;
+
+type WorkflowCardSize = { height: number; naturalWidth: number };
+
+/**
+ * A card's height at its current width, and the width it would need to keep its name
+ * on one line. A name that already wraps asks for the full column.
+ */
+function measureWorkflowCard(card: HTMLElement): WorkflowCardSize {
+  const text = card.querySelector<HTMLElement>('.workflow-run-job-text');
+  const name = card.querySelector<HTMLElement>('.workflow-run-job-name');
+  const aside = text?.firstElementChild;
+  if (!text || !name || !aside) {
+    return { height: card.offsetHeight, naturalWidth: Number.POSITIVE_INFINITY };
+  }
+  const lines = new Set([...name.getClientRects()].map((rect) => Math.round(rect.top)));
+  if (lines.size > 1) {
+    return { height: card.offsetHeight, naturalWidth: Number.POSITIVE_INFINITY };
+  }
+  const asideStyle = window.getComputedStyle(aside);
+  return {
+    height: card.offsetHeight,
+    naturalWidth: Math.ceil(
+      card.offsetWidth -
+        text.clientWidth +
+        name.getBoundingClientRect().width +
+        aside.getBoundingClientRect().width +
+        Number.parseFloat(asideStyle.marginLeft) +
+        1
     )
-  );
+  };
+}
+
+const REVEAL_MARGIN = 20;
+
+/** Scrolls the least distance that brings the cards into view; the first wins if not all fit. */
+function revealWorkflowCards(scroller: HTMLElement, rects: WorkflowGraphRect[]): void {
+  const canvas = scroller.firstElementChild;
+  if (!(canvas instanceof HTMLElement)) {
+    return;
+  }
+  const originX = canvas.offsetLeft;
+  const originY = canvas.offsetTop;
+  const fits = (axis: 'x' | 'y', size: 'width' | 'height', viewport: number): number => {
+    const first = rects[0][axis];
+    let start = first;
+    let end = first + rects[0][size];
+    for (const rect of rects) {
+      const nextStart = Math.min(start, rect[axis]);
+      const nextEnd = Math.max(end, rect[axis] + rect[size]);
+      if (nextEnd - nextStart + REVEAL_MARGIN * 2 <= viewport) {
+        start = nextStart;
+        end = nextEnd;
+      }
+    }
+    const origin = axis === 'x' ? originX : originY;
+    const current = axis === 'x' ? scroller.scrollLeft : scroller.scrollTop;
+    const lowest = origin + end + REVEAL_MARGIN - viewport;
+    const highest = origin + start - REVEAL_MARGIN;
+    return Math.max(0, Math.min(Math.max(current, lowest), highest));
+  };
+  scroller.scrollTo({
+    left: fits('x', 'width', scroller.clientWidth),
+    top: fits('y', 'height', scroller.clientHeight)
+  });
 }
 
 function skippedJobsLabel(count: number): string {
@@ -858,7 +1082,12 @@ function StatusIcon({
 }): ReactElement {
   const presentation = workflowRunPresentation(item);
   if (presentation.icon === 'running') {
-    return <CircleDotDashed size={size} data-tone={presentation.tone} />;
+    // Waiting and working are both blue; the missing centre dot tells them apart.
+    return isQueuedWorkflowRun(item) ? (
+      <CircleDashed size={size} data-tone={presentation.tone} />
+    ) : (
+      <CircleDotDashed size={size} data-tone={presentation.tone} />
+    );
   }
   if (presentation.icon === 'success') {
     return <CheckCircle2 size={size} data-tone={presentation.tone} />;
@@ -867,6 +1096,28 @@ function StatusIcon({
     return <XCircle size={size} data-tone={presentation.tone} />;
   }
   return <CircleSlash2 size={size} data-tone={presentation.tone} />;
+}
+
+function WorkflowJobStateIcon({
+  state,
+  size
+}: {
+  state: WorkflowJobState;
+  size: number;
+}): ReactElement {
+  if (state === 'failed') {
+    return <XCircle size={size} />;
+  }
+  if (state === 'running') {
+    return <CircleDotDashed size={size} />;
+  }
+  if (state === 'queued') {
+    return <CircleDashed size={size} />;
+  }
+  if (state === 'passed') {
+    return <CheckCircle2 size={size} />;
+  }
+  return <CircleSlash2 size={size} />;
 }
 
 function formatEvent(event: string): string {

@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Workflow run graphs show failed jobs in red and running jobs in blue while passed jobs recede. The header counts jobs by status and jumps to each failure, the job list puts failed and running first, and opening a run scrolls to what failed.
+- Workflow run graphs keep jobs in sorted columns and draw dependency lines on demand. A failed job shows what it was waiting for and what it held up, and pointing at any job draws everything it depends on and everything waiting for it. Lines run between job cards and skip dependencies a longer chain already implies.
+- The workflow run graph is denser: shorter cards, columns sized to their job names, and a run header that stays in place while the graph scrolls.
 - The status bar shortens your home folder to `~`, keeps a gap before the branch, and leaves out repository details on Dashboards.
 - Discard all sits at the end of the uncommitted-changes header and only turns red under the pointer or focus.
 - Every CSS font size and corner radius now uses the shared type and radius tokens, and `pnpm lint` checks that they stay that way.
