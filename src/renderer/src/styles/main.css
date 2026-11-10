@@ -781,18 +781,50 @@ code,
 }
 
 .repo-tab--repository {
-  padding-right: 7px;
+  padding-right: 0;
 }
 
 .repo-tab--repository .repo-tab-main {
-  padding-right: 4px;
+  padding-right: 10px;
+}
+
+/*
+ * A name that does not fit fades out instead of spending width on an ellipsis.
+ * The fade sits in padding past the text (cancelled by the margin), so a name that fits stays crisp.
+ */
+.repo-tab-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin-right: -10px;
+  padding-right: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 10px), transparent calc(100% - 2px));
+}
+
+/*
+ * Room for the close button. In a squeezed tab it gives way before the name does.
+ * The size is a width, not a flex-basis, so it still counts toward the tab's natural width.
+ */
+.repo-tab--repository:has(.repo-tab-close) .repo-tab-main::after {
+  flex: 0 100000 auto;
+  width: 23px;
+  min-width: 0;
+  margin-left: -8px;
+  content: '';
+}
+
+/* The active tab always shows its close button, so its name stops short of it. */
+.repo-tab--repository[data-active='true'] .repo-tab-main::after {
+  flex-shrink: 0;
 }
 
 .repo-tab-close {
-  position: static;
+  position: absolute;
   z-index: 2;
+  top: 7px;
+  right: 7px;
   display: grid;
-  flex: 0 0 auto;
   width: 20px;
   height: 20px;
   place-items: center;
@@ -800,6 +832,11 @@ code,
   color: var(--text-3);
   opacity: 0;
   transition: color 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+/* A squeezed name runs under the close button, so it fades out where the two meet. */
+.repo-tab--repository:not([data-active='true']):is(:hover, :has(.repo-tab-close:focus-visible)) .repo-tab-main {
+  mask-image: linear-gradient(to right, #000 calc(100% - 33px), transparent calc(100% - 27px));
 }
 
 .repo-tab-dirty {

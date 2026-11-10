@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The status bar shortens your home folder to `~`, keeps a gap before the branch, and leaves out repository details on Dashboards.
 - Discard all sits at the end of the uncommitted-changes header and only turns red under the pointer or focus.
 - Every CSS font size and corner radius now uses the shared type and radius tokens, and `pnpm lint` checks that they stay that way.
+- Repository tabs show more of a long name: it runs into the space the hidden close button used to hold and fades out instead of ending in an ellipsis.
 
 ### Fixed
 

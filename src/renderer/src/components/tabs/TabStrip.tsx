@@ -303,7 +303,7 @@ export function TabStrip({
                       }
                     >
                       <RepositoryTabIcon repoPath={tab.path} />
-                      <span className="min-w-0 flex-1 truncate">{tab.name}</span>
+                      <span className="repo-tab-label">{tab.name}</span>
                       {isActive && activeRepoDirty ? (
                         <span className="repo-tab-dirty size-2 shrink-0 rounded-full bg-[var(--accent-2)]" title="Working directory has changes" aria-label="Working directory has changes" />
                       ) : null}
@@ -380,7 +380,7 @@ export function TabStrip({
                   size={13}
                   className={isStartTabActive ? 'shrink-0 text-[var(--accent-2)]' : 'shrink-0'}
                 />
-                <span className="min-w-0 truncate">New Tab</span>
+                <span className="repo-tab-label">New Tab</span>
               </button>
               {tabs.length > 0 ? (
                 <button
