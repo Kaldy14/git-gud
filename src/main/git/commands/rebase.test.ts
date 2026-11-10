@@ -6,6 +6,7 @@ import { basename, dirname, join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { gitExecutor } from '../exec';
+import { resolveConflict } from '../operations';
 import {
   clearRebaseEditorState,
   createRebaseContinuationEnv,
@@ -15,6 +16,152 @@ import {
 } from './rebase';
 
 const rebaseStatePathName = 'git-gud-rebase-state.json';
+
+describe.each(['standard', 'interactive'] as const)('%s rebase autostash', (mode) => {
+  async function startRebase(repoPath: string) {
+    const tab = { path: repoPath };
+
+    if (mode === 'standard') {
+      return rebaseOnto(tab, { target: 'main' });
+    }
+
+    const plan = await prepareInteractiveRebasePlan(tab, 'main');
+    return runInteractiveRebase(tab, {
+      base: plan.base,
+      commits: plan.commits.map((commit) => ({ sha: commit.sha, action: 'pick' }))
+    });
+  }
+
+  it('restores staged and unstaged work without consuming an existing stash', async () => {
+    const { repoPath, rootPath } = await createRepository();
+
+    try {
+      await git(repoPath, ['config', 'rebase.autoStash', 'false']);
+      await writeFile(join(repoPath, 'base.txt'), 'previous stash\n');
+      await git(repoPath, ['stash', 'push', '-m', 'existing stash']);
+      const previousStash = (await git(repoPath, ['rev-parse', 'refs/stash'])).stdout.trim();
+      await git(repoPath, ['checkout', '-b', 'feature']);
+      await commitFile(repoPath, 'feature.txt', 'feature\n', 'feature commit');
+      const featureHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+      await commitFile(repoPath, 'main.txt', 'main\n', 'main advance');
+      await git(repoPath, ['checkout', 'feature']);
+      await writeFile(join(repoPath, 'base.txt'), 'staged edit\n');
+      await writeFile(join(repoPath, 'added.txt'), 'staged addition\n');
+      await git(repoPath, ['add', 'base.txt', 'added.txt']);
+      await writeFile(join(repoPath, 'base.txt'), 'unstaged edit\n');
+      await writeFile(join(repoPath, 'draft.txt'), 'untracked draft\n');
+
+      const result = await startRebase(repoPath);
+
+      expect(result.operation?.status).toBe('completed');
+      expect(result.conflictState?.isActive).toBe(false);
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).not.toBe(featureHead);
+      expect((await git(repoPath, ['merge-base', 'HEAD', 'main'])).stdout)
+        .toBe((await git(repoPath, ['rev-parse', 'main'])).stdout);
+      expect(await readFile(join(repoPath, 'base.txt'), 'utf8')).toBe('unstaged edit\n');
+      expect(await readFile(join(repoPath, 'added.txt'), 'utf8')).toBe('staged addition\n');
+      expect(await readFile(join(repoPath, 'draft.txt'), 'utf8')).toBe('untracked draft\n');
+      expect((await git(repoPath, ['show', 'HEAD:base.txt'])).stdout).toBe('base\n');
+      expect((await git(repoPath, ['stash', 'list', '--format=%H'])).stdout.trim()).toBe(previousStash);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['continue', 'abort', 'skip'] as const)('restores local work after %s of a conflicting rebase', async (action) => {
+    const { repoPath, rootPath } = await createRepository();
+
+    try {
+      await commitFile(repoPath, 'notes.txt', 'original notes\n', 'add notes');
+      await git(repoPath, ['checkout', '-b', 'feature']);
+      await commitFile(repoPath, 'base.txt', 'feature\n', 'feature edit');
+      const featureHead = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['checkout', 'main']);
+      await commitFile(repoPath, 'base.txt', 'main\n', 'main edit');
+      await git(repoPath, ['checkout', 'feature']);
+      await writeFile(join(repoPath, 'notes.txt'), 'local notes\n');
+
+      const result = await startRebase(repoPath);
+
+      expect(result.operation?.status).toBe('conflicted');
+      expect(result.conflictState?.operation).toBe('rebase');
+      expect(await readFile(join(repoPath, 'notes.txt'), 'utf8')).toBe('original notes\n');
+      const autostash = (await git(repoPath, ['rev-parse', '--git-path', 'rebase-merge/autostash'])).stdout.trim();
+      const savedSha = (await readFile(join(repoPath, autostash), 'utf8')).trim();
+      expect((await git(repoPath, ['show', `${savedSha}:notes.txt`])).stdout).toBe('local notes\n');
+
+      if (action === 'continue') {
+        await writeFile(join(repoPath, 'base.txt'), 'resolved\n');
+        await git(repoPath, ['add', 'base.txt']);
+      }
+
+      const resolved = await resolveConflict({ path: repoPath }, { action });
+
+      expect(resolved.operation?.status).toBe('completed');
+      expect(resolved.conflictState?.isActive).toBe(false);
+      expect(await readFile(join(repoPath, 'notes.txt'), 'utf8')).toBe('local notes\n');
+      expect((await git(repoPath, ['status', '--porcelain'])).stdout.trim()).toBe('M notes.txt');
+      expect((await git(repoPath, ['stash', 'list'])).stdout).toBe('');
+      expect((await git(repoPath, ['branch', '--show-current'])).stdout.trim()).toBe('feature');
+
+      if (action === 'abort') {
+        expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(featureHead);
+      }
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])('retains conflicting local work for recovery, after continuation: %s', async (pauseForConflict) => {
+    const { repoPath, rootPath } = await createRepository();
+
+    try {
+      await commitFile(repoPath, 'shared.txt', 'original\n', 'add shared file');
+      await git(repoPath, ['checkout', '-b', 'feature']);
+      await commitFile(repoPath, 'feature.txt', 'feature\n', 'feature commit');
+
+      if (pauseForConflict) {
+        await commitFile(repoPath, 'shared.txt', 'feature\n', 'feature edit');
+      }
+
+      await git(repoPath, ['checkout', 'main']);
+      await commitFile(repoPath, 'base.txt', 'main\n', 'main edit');
+
+      if (pauseForConflict) {
+        await commitFile(repoPath, 'shared.txt', 'main\n', 'main shared edit');
+      }
+
+      await git(repoPath, ['checkout', 'feature']);
+      await writeFile(join(repoPath, 'base.txt'), 'local edit\n');
+
+      let result = await startRebase(repoPath);
+
+      if (pauseForConflict) {
+        expect(result.conflictState?.operation).toBe('rebase');
+        await writeFile(join(repoPath, 'shared.txt'), 'resolved\n');
+        await git(repoPath, ['add', 'shared.txt']);
+        result = await resolveConflict({ path: repoPath }, { action: 'continue' });
+      }
+
+      expect(result.operation?.status).toBe('conflicted');
+      expect(result.conflictState).toMatchObject({
+        isActive: true,
+        canContinue: false,
+        canAbort: false,
+        files: [expect.objectContaining({ path: 'base.txt' })]
+      });
+      expect((await git(repoPath, ['merge-base', 'HEAD', 'main'])).stdout)
+        .toBe((await git(repoPath, ['rev-parse', 'main'])).stdout);
+      expect((await git(repoPath, ['stash', 'list', '--format=%s'])).stdout).toContain('autostash');
+      expect((await git(repoPath, ['show', 'stash@{0}:base.txt'])).stdout).toBe('local edit\n');
+      expect(await readFile(join(repoPath, 'base.txt'), 'utf8')).toContain('<<<<<<<');
+      await expect(readFile(rebaseStatePath(repoPath), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('prepareInteractiveRebasePlan', () => {
   it('prepares and runs an interactive rebase onto a divergent branch', async () => {

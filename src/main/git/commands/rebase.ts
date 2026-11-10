@@ -56,14 +56,19 @@ const rebaseTempDirNamePattern = new RegExp(`^git-gud-rebase-${uuidPattern}$`);
 const noncePattern = new RegExp(`^${uuidPattern}$`);
 const untrustedRebaseStateMessage = 'Stored interactive rebase editor state is untrusted.';
 
-export async function rebaseOnto(tab: RebaseTab, input: GitRebaseInput): Promise<GitOperationResult> {
+export async function rebaseOnto(
+  tab: RebaseTab,
+  input: GitRebaseInput,
+  options: { autostash?: boolean } = {}
+): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const target = normalizeRequiredName(input.target, 'Rebase target');
   const targetCommit = await revParse(tab.path, `${target}^{commit}`, env);
   await assertNoIgnoredUntrackedTreeTransitionCollisions(tab.path, 'HEAD', targetCommit, env, 'the target tree');
   await assertNoIgnoredUntrackedReplayCollisionsForRange(tab.path, `${targetCommit}..HEAD`, env);
   await assertExpectedCurrentBranch(tab.path, input.expectedCurrentBranch, env);
-  const { conflictState } = await runMutationAllowingConflicts(tab, ['rebase', target], env);
+  const args = options.autostash === false ? ['rebase', target] : ['rebase', '--autostash', target];
+  const { conflictState } = await runMutationAllowingConflicts(tab, args, env);
   return createOperationResult(tab, env, `Rebase onto ${target.slice(0, 8)}`, conflictState);
 }
 
@@ -139,9 +144,9 @@ export async function runInteractiveRebase(tab: RebaseTab, input: GitInteractive
 
   try {
     const rebaseEnv = createRebaseEditorEnv(env, editorFiles, donePath);
-    const { conflictState } = await runMutationAllowingConflicts(tab, ['rebase', '-i', plan.base], rebaseEnv);
+    const { conflictState } = await runMutationAllowingConflicts(tab, ['rebase', '--autostash', '-i', plan.base], rebaseEnv);
 
-    if (!conflictState.isActive) {
+    if (conflictState.operation !== 'rebase') {
       await clearRebaseEditorState(tab.path, env);
     }
 

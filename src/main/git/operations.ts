@@ -226,10 +226,11 @@ export async function pullRepository(
 
     return withSavedLocalChanges(tab, input.stashChanges, `Before pulling ${input.expectedBranch}`, async () => {
       if (input.mode === 'rebase') {
-        const result = await rebaseOnto(tab, {
-          target: upstreamCommit,
-          expectedCurrentBranch: input.expectedBranch
-        });
+        const result = await rebaseOnto(
+          tab,
+          { target: upstreamCommit, expectedCurrentBranch: input.expectedBranch },
+          { autostash: false }
+        );
         return createOperationResult(tab, env, 'pull', 'Pull with rebase', undefined, result.conflictState);
       }
 
@@ -1087,7 +1088,7 @@ export async function resolveConflict(tab: OperationTab, input: GitConflictActio
   if (conflictState.operation === 'rebase' && input.action === 'abort') {
     // Git already restored the branch; stale auxiliary editor state must not turn a successful abort into a failure.
     await clearRebaseEditorState(tab.path, env).catch(() => undefined);
-  } else if (conflictState.operation === 'rebase' && !resolvedConflictState.isActive) {
+  } else if (conflictState.operation === 'rebase' && resolvedConflictState.operation !== 'rebase') {
     await clearRebaseEditorState(tab.path, env);
   }
 
