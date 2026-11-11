@@ -15,6 +15,7 @@ import {
   GitPullRequestArrow,
   MonitorUp,
   MoreHorizontal,
+  Rocket,
   Search,
   Tag,
   Undo2,
@@ -51,6 +52,9 @@ type ToolbarProps = {
   onRebaseSelected: () => void;
   onInteractiveRebaseSelected: () => void;
   onTagSelected: () => void;
+  /** The automatic next tag name; without one the Release action stays disabled. */
+  releaseTagName?: string;
+  onCreateRelease: () => void;
   onOpenRepositoryMaintenance: () => void;
   hasSelectedCommit: boolean;
   applications: readonly ExternalApplication[];
@@ -76,6 +80,8 @@ export function Toolbar({
   onRebaseSelected,
   onInteractiveRebaseSelected,
   onTagSelected,
+  releaseTagName,
+  onCreateRelease,
   onOpenRepositoryMaintenance,
   hasSelectedCommit,
   applications,
@@ -99,6 +105,11 @@ export function Toolbar({
   const branchUnavailableReason = !repositoryOverview ? 'Loading repository state'
     : hasNoCommits ? 'Make the first commit before creating a branch'
     : hasUnfinishedOperation ? 'Finish or abort the current Git operation before creating a branch'
+    : undefined;
+  // Keep in step with releaseUnavailableReason in WorkspaceShell, which guards the same action.
+  const releaseUnavailableReason = !repositoryOverview ? 'Loading repository state'
+    : !repositoryOverview.remotes.some((remote) => remote.name === 'origin') ? 'Add a remote named origin to create a release'
+    : !releaseTagName ? noReleaseTagHint
     : undefined;
 
   return (
@@ -164,6 +175,14 @@ export function Toolbar({
           badge={aheadCount > 0 ? { count: aheadCount, description: `${formatCommitCount(aheadCount)} to push` } : undefined}
           disabled={!hasRepo || isBusy || hasNoRemotes}
           onClick={onPush}
+        />
+        <span className="tb-divider" aria-hidden="true" />
+        <ToolbarAction
+          label="Release"
+          icon={<Rocket size={15} />}
+          hint={releaseUnavailableReason ?? `Create release ${releaseTagName} from latest origin/main and push to origin`}
+          disabled={!hasRepo || isBusy || Boolean(releaseUnavailableReason)}
+          onClick={onCreateRelease}
         />
         <span className="tb-divider" aria-hidden="true" />
         <ToolbarAction
@@ -540,6 +559,7 @@ function ToolbarAction({ label, icon, hint, ariaLabel, badge, disabled = true, o
 }
 
 const noRemoteHint = 'This repository has no remotes. Add one with + beside Remote in the sidebar.';
+const noReleaseTagHint = 'No automatic release tag name can be determined from the existing tags';
 
 function formatCommitCount(count: number): string {
   return `${count} ${count === 1 ? 'commit' : 'commits'}`;

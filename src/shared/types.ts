@@ -594,6 +594,10 @@ export type GitMergeInput = {
   expectedCurrentBranch?: string;
 };
 
+export type GitReleaseCreateInput = {
+  name: string;
+};
+
 export type GitTagCreateInput = {
   name: string;
   targetSha?: string;

@@ -105,6 +105,7 @@ const api: RendererApi = {
   checkoutRef: (repoPath, target) => invoke('repo:checkout', repoPath, target),
   mergeRef: (repoPath, input) => invoke('repo:merge', repoPath, input),
   createTag: (repoPath, input) => invoke('repo:create-tag', repoPath, input),
+  createRelease: (repoPath, input) => invoke('repo:create-release', repoPath, input),
   pushTag: (repoPath, input) => invoke('repo:push-tag', repoPath, input),
   deleteTag: (repoPath, input) => invoke('repo:delete-tag', repoPath, input),
   stashPush: (repoPath, input) => invoke('repo:stash-push', repoPath, input),

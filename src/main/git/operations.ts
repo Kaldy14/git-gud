@@ -10,6 +10,7 @@ import type {
   GitMergeInput,
   GitOperationResult,
   GitPullInput,
+  GitReleaseCreateInput,
   GitPublishBranchWithTagInput,
   GitPushInput,
   GitRemoteCreateInput,
@@ -744,6 +745,33 @@ export async function mergeRef(tab: OperationTab, input: GitMergeInput): Promise
   return createOperationResult(tab, env, 'merge', `Merge ${ref}`, undoEntry, conflictState);
 }
 
+export async function createRelease(tab: OperationTab, input: GitReleaseCreateInput): Promise<GitOperationResult> {
+  const env = createProfileCommandEnv(tab.assignedProfileId);
+  const name = normalizeRequiredName(input.name, 'Tag name');
+  await assertValidTagName(tab.path, name, env);
+  await assertRemoteExists(tab.path, 'origin', env);
+  // Fetch main explicitly even when origin's configured fetch refspec excludes it.
+  // Disable tag pruning and auto-follow so unrelated local tags remain untouched.
+  await gitExecutor.run([
+    'fetch', '--no-tags', '--no-prune', '--no-prune-tags', '--no-recurse-submodules', '--refmap=',
+    '--', 'origin', '+refs/heads/main:refs/remotes/origin/main'
+  ], {
+    cwd: tab.path,
+    kind: 'mutation',
+    env,
+    cancellable: true,
+    timeoutMs: NETWORK_GIT_TIMEOUT_MS
+  });
+  const targetSha = await revParse(tab.path, 'refs/remotes/origin/main^{commit}', env);
+  const result = await createTag(tab, { name, targetSha, annotated: true, pushRemote: 'origin' });
+
+  if (result.operation) {
+    result.operation.label = `Create release ${name} from origin/main and push to origin`;
+  }
+
+  return result;
+}
+
 export async function createTag(tab: OperationTab, input: GitTagCreateInput): Promise<GitOperationResult> {
   const env = createProfileCommandEnv(tab.assignedProfileId);
   const tagName = normalizeRequiredName(input.name, 'Tag name');
@@ -791,7 +819,14 @@ export async function createTag(tab: OperationTab, input: GitTagCreateInput): Pr
   });
 
   if (remoteName) {
-    await pushTagRef(tab.path, tagName, remoteName, env);
+    try {
+      await pushTagRef(tab.path, tagName, remoteName, env);
+    } catch (error) {
+      if (error instanceof GitCommandError) {
+        error.message = `Tag ${tagName} was created locally, but pushing it to ${remoteName} failed. Push the existing tag to retry.\n${error.message}`;
+      }
+      throw error;
+    }
   }
 
   const label = remoteName

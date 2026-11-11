@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { validateIpcArgs } from './ipcValidation';
 
 describe('IPC argument validation', () => {
+  it('accepts a release tag name without allowing the caller to choose the target or remote', () => {
+    expect(validateIpcArgs('repo:create-release', ['/repo', {
+      name: 'v1.0.1', targetSha: 'HEAD', pushRemote: 'elsewhere'
+    }])).toEqual(['/repo', { name: 'v1.0.1' }]);
+    for (const input of [undefined, null, {}, { name: '' }, { name: '   ' }, { name: 1 }]) {
+      expect(() => validateIpcArgs('repo:create-release', ['/repo', input])).toThrow();
+    }
+  });
+
   it('validates bounded commit avatar candidates', () => {
     const candidate = { sha: 'a'.repeat(40), email: 'author@example.test', hasRemoteRef: false };
     expect(validateIpcArgs('repo:graph-avatars', ['/repo', [candidate]])).toEqual(['/repo', [candidate]]);

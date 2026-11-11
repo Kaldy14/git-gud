@@ -44,6 +44,7 @@ import type {
   GitProfile,
   GitPublishBranchWithTagInput,
   GitPullInput,
+  GitReleaseCreateInput,
   GitRemoteCreateInput,
   GitRemoteUpdateInput,
   GitPushInput,
@@ -183,6 +184,7 @@ const validators = {
   'repo:checkout': (args) => readRepoPathWithObject(args, 'repo:checkout', readCheckoutTarget),
   'repo:merge': (args) => readRepoPathWithObject(args, 'repo:merge', readMergeInput),
   'repo:create-tag': (args) => readRepoPathWithObject(args, 'repo:create-tag', readTagCreateInput),
+  'repo:create-release': (args) => readRepoPathWithObject(args, 'repo:create-release', readReleaseCreateInput),
   'repo:push-tag': (args) => readRepoPathWithObject(args, 'repo:push-tag', readTagPushInput),
   'repo:delete-tag': (args) => readRepoPathWithObject(args, 'repo:delete-tag', readTagDeleteInput),
   'repo:stash-push': (args) => readRepoPathWithObject(args, 'repo:stash-push', readStashPushInput),
@@ -1399,6 +1401,11 @@ function readMergeInput(value: unknown): GitMergeInput {
     ref: readStringProperty(record, 'ref'),
     expectedCurrentBranch: readOptionalStringProperty(record, 'expectedCurrentBranch')
   };
+}
+
+function readReleaseCreateInput(value: unknown): GitReleaseCreateInput {
+  const input = readRecord(value, 'input');
+  return { name: readNonEmptyString(input.name, 'input.name') };
 }
 
 function readTagCreateInput(value: unknown): GitTagCreateInput {

@@ -36,6 +36,7 @@ import type {
   GitOperationProgressEvent,
   GitPatchApplyInput,
   GitPullInput,
+  GitReleaseCreateInput,
   GitRemoteCreateInput,
   GitRemoteUpdateInput,
   GitHubCliAccount,
@@ -425,6 +426,10 @@ export type IpcChannelMap = {
     args: [repoPath: string, input: GitTagCreateInput];
     result: GitOperationResult;
   };
+  'repo:create-release': {
+    args: [repoPath: string, input: GitReleaseCreateInput];
+    result: GitOperationResult;
+  };
   'repo:push-tag': {
     args: [repoPath: string, input: GitTagPushInput];
     result: GitOperationResult;
@@ -784,6 +789,7 @@ export type RendererApi = {
   checkoutRef: (repoPath: string, target: GitCheckoutTarget) => Promise<GitOperationResult>;
   mergeRef: (repoPath: string, input: GitMergeInput) => Promise<GitOperationResult>;
   createTag: (repoPath: string, input: GitTagCreateInput) => Promise<GitOperationResult>;
+  createRelease: (repoPath: string, input: GitReleaseCreateInput) => Promise<GitOperationResult>;
   pushTag: (repoPath: string, input: GitTagPushInput) => Promise<GitOperationResult>;
   deleteTag: (repoPath: string, input: GitTagDeleteInput) => Promise<GitOperationResult>;
   stashPush: (repoPath: string, input: GitStashPushInput) => Promise<GitOperationResult>;

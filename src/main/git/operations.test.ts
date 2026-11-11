@@ -12,6 +12,7 @@ import {
   cherryPickCommits,
   checkoutRef,
   createBranch,
+  createRelease,
   createTag,
   deleteBranch,
   deleteTag,
@@ -2216,6 +2217,113 @@ describe('git operations', () => {
 
       expect(await readFile(hookOutputPath, 'utf8')).toBe('unset\n');
       expect((await git(remotePath, ['rev-parse', '--verify', 'refs/tags/release/v3'])).stdout.trim()).not.toBe('');
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['feature', 'detached'])('creates a release from freshly fetched origin/main with a dirty %s checkout', async (checkout) => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-release-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['clone', '--bare', repoPath, remotePath]);
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      await git(repoPath, ['fetch', 'origin']);
+      const oldMain = (await git(repoPath, ['rev-parse', 'origin/main'])).stdout.trim();
+      // Publish a newer main commit, then restore a deliberately stale tracking ref.
+      await writeRepoFile(repoPath, 'release.txt', 'new release\n');
+      await git(repoPath, ['add', 'release.txt']);
+      await git(repoPath, ['commit', '-m', 'new remote main']);
+      const remoteMain = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await git(repoPath, ['push', 'origin', 'main']);
+      await git(repoPath, ['update-ref', 'refs/remotes/origin/main', oldMain]);
+      await git(repoPath, checkout === 'feature'
+        ? ['checkout', '-b', 'feature/release-test', oldMain]
+        : ['checkout', '--detach', oldMain]);
+      await writeRepoFile(repoPath, 'conflict.txt', 'staged draft\n');
+      await git(repoPath, ['add', 'conflict.txt']);
+      await writeRepoFile(repoPath, 'conflict.txt', 'unstaged draft\n');
+      await writeRepoFile(repoPath, 'untracked.txt', 'keep me\n');
+      await git(repoPath, ['tag', 'keep-local']);
+      // The release fetch must work despite a narrow refspec and prune-tags settings.
+      await git(repoPath, ['config', 'remote.origin.fetch', '+refs/heads/feature/*:refs/remotes/origin/feature/*']);
+      await git(repoPath, ['config', '--add', 'remote.origin.fetch', '+refs/tags/*:refs/tags/*']);
+      await git(repoPath, ['config', 'fetch.prune', 'true']);
+      await git(repoPath, ['config', 'fetch.pruneTags', 'true']);
+      await git(repoPath, ['config', 'remote.origin.pruneTags', 'true']);
+      const statusBefore = (await git(repoPath, ['status', '--porcelain=v1', '--branch'])).stdout;
+      const indexBefore = (await git(repoPath, ['diff', '--cached'])).stdout;
+      const tab = { path: repoPath, assignedProfileId: undefined };
+
+      const result = await createRelease(tab, { name: 'v1.0.1' });
+
+      expect((await git(repoPath, ['rev-parse', 'refs/tags/v1.0.1^{}'])).stdout.trim()).toBe(remoteMain);
+      expect((await git(remotePath, ['rev-parse', 'refs/tags/v1.0.1^{}'])).stdout.trim()).toBe(remoteMain);
+      expect((await git(remotePath, ['cat-file', '-t', 'refs/tags/v1.0.1'])).stdout.trim()).toBe('tag');
+      expect((await git(repoPath, ['rev-parse', 'origin/main'])).stdout.trim()).toBe(remoteMain);
+      expect((await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(oldMain);
+      expect((await git(repoPath, ['status', '--porcelain=v1', '--branch'])).stdout).toBe(statusBefore);
+      expect((await git(repoPath, ['diff', '--cached'])).stdout).toBe(indexBefore);
+      expect(await readFile(join(repoPath, 'conflict.txt'), 'utf8')).toBe('unstaged draft\n');
+      expect(await readFile(join(repoPath, 'untracked.txt'), 'utf8')).toBe('keep me\n');
+      expect((await git(repoPath, ['rev-parse', 'refs/tags/keep-local'])).stdout.trim()).toBe(oldMain);
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/tags/keep-local']);
+      expect(result.operation?.label).toBe('Create release v1.0.1 from origin/main and push to origin');
+      expect(result.invalidates).toEqual(['overview', 'graph']);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['missing origin', 'missing main', 'unreachable origin'])('does not create a release tag with %s', async (failure) => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-release-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const remotePath = join(rootPath, 'origin.git');
+      if (failure !== 'missing origin') {
+        if (failure === 'missing main') {
+          await git(rootPath, ['init', '--bare', remotePath]);
+        }
+        await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+        // A stale origin/main must never be used if fetching fails.
+        await git(repoPath, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      }
+
+      await expect(createRelease({ path: repoPath }, { name: 'v1.0.1' })).rejects.toThrow();
+      await expectGitFailure(repoPath, ['rev-parse', '--verify', 'refs/tags/v1.0.1']);
+    } finally {
+      await rm(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects invalid or duplicate release tags and never overwrites a remote tag', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'git-gud-release-'));
+
+    try {
+      const repoPath = await createBaseRepository(rootPath);
+      const remotePath = join(rootPath, 'origin.git');
+      await git(rootPath, ['clone', '--bare', repoPath, remotePath]);
+      await git(repoPath, ['remote', 'add', 'origin', remotePath]);
+      const tab = { path: repoPath };
+      await expect(createRelease(tab, { name: '--list' })).rejects.toThrow('cannot start with a dash');
+      await expect(createRelease(tab, { name: 'invalid..name' })).rejects.toThrow();
+      await git(repoPath, ['tag', 'local-existing']);
+      const original = (await git(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+      await expect(createRelease(tab, { name: 'local-existing' })).rejects.toThrow();
+      expect((await git(repoPath, ['rev-parse', 'refs/tags/local-existing'])).stdout.trim()).toBe(original);
+      await expectGitFailure(remotePath, ['rev-parse', '--verify', 'refs/tags/local-existing']);
+      await git(remotePath, ['update-ref', 'refs/tags/remote-existing', original]);
+
+      await expect(createRelease(tab, { name: 'remote-existing' })).rejects.toThrow(
+        'Tag remote-existing was created locally, but pushing it to origin failed. Push the existing tag to retry.'
+      );
+
+      expect((await git(remotePath, ['rev-parse', 'refs/tags/remote-existing'])).stdout.trim()).toBe(original);
+      // A rejected push preserves the newly created local tag for inspection/retry.
+      expect((await git(repoPath, ['cat-file', '-t', 'refs/tags/remote-existing'])).stdout.trim()).toBe('tag');
     } finally {
       await rm(rootPath, { recursive: true, force: true });
     }

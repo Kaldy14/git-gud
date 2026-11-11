@@ -42,6 +42,7 @@ import {
   checkoutRef,
   cherryPickCommits,
   createBranch,
+  createRelease,
   createTag,
   deleteBranch,
   deleteTag,
@@ -215,6 +216,7 @@ const trackedOperationDescriptors: Partial<Record<IpcChannelName, { label: strin
   'repo:checkout': { label: 'Checkout' },
   'repo:merge': { label: 'Merge' },
   'repo:create-tag': { label: 'Create tag', cancellable: true },
+  'repo:create-release': { label: 'Create release', cancellable: true },
   'repo:push-tag': { label: 'Push tag', cancellable: true },
   'repo:delete-tag': { label: 'Delete tag' },
   'repo:stash-push': { label: 'Stash changes' },
@@ -744,6 +746,9 @@ export function registerIpcHandlers(
   );
   handle('repo:create-tag', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => createTag(tab, input))
+  );
+  handle('repo:create-release', async (_event, repoPath, input) =>
+    inRepositoryTransaction(repoPath, (tab) => createRelease(tab, input))
   );
   handle('repo:push-tag', async (_event, repoPath, input) =>
     inRepositoryTransaction(repoPath, (tab) => pushTag(tab, input))

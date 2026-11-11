@@ -23,6 +23,7 @@ import {
   PanelRightClose,
   PencilLine,
   RefreshCw,
+  Rocket,
   RotateCcw,
   Rows3,
   SearchCode,
@@ -851,6 +852,11 @@ export function WorkspaceShell(): ReactElement {
     : repositoryQuery.data.conflictState.isActive || conflictedPaths.length > 0
       ? 'Finish or abort the current Git operation before creating a branch'
       : undefined;
+  // Keep in step with the Toolbar's Release action, which shows the same reasons as its hint.
+  const releaseUnavailableReason = !repositoryQuery.data ? 'Loading repository state'
+    : !repositoryQuery.data.remotes.some((remote) => remote.name === 'origin') ? 'Add a remote named origin to create a release'
+    : !suggestedTagName ? 'No automatic release tag name can be determined from the existing tags'
+    : undefined;
   const isCodeFocused = Boolean(activeTab?.selectedFile || activeReviewTarget || activeMachineFile);
   const { sidebar: sidebarWidthCap, detail: detailPanelWidthCap } = workspacePanelCaps(viewportWidth, isCodeFocused);
   const sidebarWidth = sidebarWidthDraft ?? workspace.sidebarWidth;
@@ -3500,6 +3506,21 @@ export function WorkspaceShell(): ReactElement {
     });
   }
 
+  // One click, like Push: tag the freshly fetched origin/main with the automatic next tag name.
+  function handleCreateRelease(): void {
+    const name = suggestedTagName;
+
+    if (!activeTab || isOperationBusy || releaseUnavailableReason || !name) {
+      return;
+    }
+
+    void runRepositoryOperation(
+      `Create release ${name}`,
+      (repoPath) => window.api.createRelease(repoPath, { name }),
+      { refreshOnFailure: true }
+    );
+  }
+
   function handleDeleteTag(input: GitTagDeleteInput): void {
     const { name, target } = input;
     const remote = target === 'local' ? undefined : input.remote;
@@ -3857,6 +3878,17 @@ export function WorkspaceShell(): ReactElement {
       onSelect: () => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)
     },
     {
+      id: 'create-release',
+      label: suggestedTagName ? `Create release ${suggestedTagName}` : 'Create release',
+      category: 'Git',
+      detail: 'Tag the latest origin/main and push the tag to origin',
+      keywords: ['release', 'tag', 'version', 'publish', 'origin', 'main'],
+      icon: <Rocket size={14} />,
+      disabled: !activeTab || isOperationBusy || Boolean(releaseUnavailableReason),
+      disabledReason: !activeTab ? 'Open a repository first' : releaseUnavailableReason ?? (isOperationBusy ? 'A Git operation is running' : undefined),
+      onSelect: handleCreateRelease
+    },
+    {
       id: 'file-history',
       label: 'Inspect file history',
       category: 'Inspect',
@@ -4072,6 +4104,8 @@ export function WorkspaceShell(): ReactElement {
           onRebaseSelected={() => selectedRow && handleRebaseOntoCommit(selectedRow.sha)}
           onInteractiveRebaseSelected={() => selectedRow && handleInteractiveRebaseFromCommit(selectedRow.sha)}
           onTagSelected={() => selectedRow && handleOpenCreateTagDialog(selectedRow.sha)}
+          releaseTagName={suggestedTagName}
+          onCreateRelease={handleCreateRelease}
           onOpenRepositoryMaintenance={handleOpenRepositoryMaintenance}
           applications={externalApplications}
           selectedApplication={repositoryApplication}
