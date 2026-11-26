@@ -1,7 +1,8 @@
 import { useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
-import { ArrowLeft, ChevronRight, ExternalLink, FileDiff } from 'lucide-react';
+import { ArrowLeft, CodeXml, ExternalLink, FileDiff, LayoutDashboard, MessagesSquare, PanelLeftClose, PanelLeftOpen, Route, type LucideIcon } from 'lucide-react';
 
 import { pullRequestLineBreakdown, type FileLineStat } from '@shared/lineBreakdown';
+import { useSlidingIndicator } from '@renderer/components/ui/useSlidingIndicator';
 import type { GitHubPullRequestSummary } from '@shared/types';
 import { PullRequestLineStats } from './PullRequestLineStats';
 import {
@@ -10,46 +11,41 @@ import {
   pullRequestDetailTabId,
   type PullRequestDetailTab
 } from './pullRequestDetailTab';
+import { isMacPlatform } from './shortcuts/pullRequestShortcutList';
+import { usePullRequestWorkspaceChrome } from './workspace/pullRequestWorkspaceChrome';
 
-const LABELS: Record<PullRequestDetailTab, string> = {
-  summary: 'Summary',
-  guide: 'Guide',
-  activity: 'Activity',
-  code: 'Code'
+const TABS: Record<PullRequestDetailTab, { label: string; icon: LucideIcon }> = {
+  overview: { label: 'Overview', icon: LayoutDashboard },
+  conversation: { label: 'Conversation', icon: MessagesSquare },
+  tour: { label: 'Tour', icon: Route },
+  code: { label: 'Code', icon: CodeXml }
 };
 
 /**
- * T3 Code's detail header: a crumb row (repository and number) with the actions, then the title,
- * status line, and branch line. Once the active pane scrolls, the fold collapses and the crumb row
- * shows the number and title instead. Short and compact windows keep the title in the crumb row
- * and set the fold as one metadata row (pr-workspace.css). CSS shows one title at a time, so the
- * crumb title carries the heading role whenever the h1 is hidden or inert.
+ * The pull request's header: one row on every tab (list toggle, back, repository, number, title, actions),
+ * so the tab strip beneath it never moves. The author and branch line is `PullRequestMeta`, shown at the
+ * top of Overview and Conversation.
  */
-export function PullRequestDetailHeader({ pullRequest, condensed = false, commits, status, actions, onBack }: {
-  /** The loaded view passes the detail, whose full `files` list makes the breakdown exact. */
-  pullRequest: GitHubPullRequestSummary & { files?: readonly FileLineStat[] };
+export function PullRequestDetailHeader({ pullRequest, condensed = false, actions, onBack }: {
+  pullRequest: GitHubPullRequestSummary;
+  /** Code and Tour: the title is set smaller. The row keeps its height. */
   condensed?: boolean;
-  commits?: number;
-  status: ReactNode;
   actions: ReactNode;
   onBack: () => void;
 }): ReactElement {
-  // Show the fork owner when the head branch lives outside the base repository.
-  const headLabel = pullRequest.headRepositoryOwner && pullRequest.headRepositoryOwner.toLowerCase() !== pullRequest.owner.toLowerCase()
-    ? `${pullRequest.headRepositoryOwner}:${pullRequest.headRefName}`
-    : pullRequest.headRefName;
   const number = (
     <a className="pr-detail-number" href={pullRequest.url} target="_blank" rel="noreferrer" title="Open on GitHub">
       #{pullRequest.number}
-      <ExternalLink size={10} aria-hidden="true" />
+      <ExternalLink size={12} aria-hidden="true" />
     </a>
   );
 
   return (
     <header className="pr-detail-header" data-condensed={condensed}>
       <div className="pr-detail-crumbs">
+        <RailToggle />
         <button className="icon-btn icon-btn-tertiary" type="button" onClick={onBack} aria-label="Back to pull requests" title="Back to pull requests">
-          <ArrowLeft size={14} />
+          <ArrowLeft size={16} />
         </button>
         <span className="pr-detail-crumb-path">
           <span className="pr-detail-crumb-repo">{pullRequest.owner}/{pullRequest.repository}</span>
@@ -58,20 +54,35 @@ export function PullRequestDetailHeader({ pullRequest, condensed = false, commit
         </span>
         <div className="pr-detail-actions">{actions}</div>
       </div>
-      <div className="pr-detail-fold" inert={condensed}>
-        <div>
-          <h1 title={pullRequest.title}>{pullRequest.title}</h1>
-          <div className="pr-detail-meta">
+    </header>
+  );
+}
+
+/**
+ * Who, when and which branches: the line that opens Overview and Conversation. It lives in the page, not
+ * in the header, so the header is one row of the same height on every tab and the tabs never move.
+ */
+export function PullRequestMeta({ pullRequest, commits, commitsPending }: {
+  pullRequest: GitHubPullRequestSummary & { files?: readonly FileLineStat[] };
+  commits?: number;
+  /** The count is on its way: hold its place so the line does not shift when it arrives. */
+  commitsPending?: boolean;
+}): ReactElement {
+  // Show the fork owner when the head branch lives outside the base repository.
+  const headLabel = pullRequest.headRepositoryOwner && pullRequest.headRepositoryOwner.toLowerCase() !== pullRequest.owner.toLowerCase()
+    ? `${pullRequest.headRepositoryOwner}:${pullRequest.headRefName}`
+    : pullRequest.headRefName;
+  return (
+    <div className="pr-detail-meta">
             <div className="pr-detail-line">
-              <span className="pr-detail-status">{status}</span>
-              <span className="pr-detail-divider" aria-hidden="true" />
               <span className="pr-detail-byline">
                 <PullRequestAvatar author={pullRequest.author} authorAvatarUrl={pullRequest.authorAvatarUrl} size="small" />
                 <strong>{pullRequest.author}</strong>
                 <span>
                   updated <time dateTime={pullRequest.updatedAt} title={new Date(pullRequest.updatedAt).toLocaleString()}>{formatRelativeTime(pullRequest.updatedAt)}</time>
                 </span>
-                {commits !== undefined ? <span>{commits.toLocaleString()} {commits === 1 ? 'commit' : 'commits'}</span> : null}
+                {commits !== undefined ? <span>{commits.toLocaleString()} {commits === 1 ? 'commit' : 'commits'}</span>
+                  : commitsPending ? <span className="pr-review-skeleton pr-detail-commits-pending" aria-hidden="true" /> : null}
               </span>
             </div>
             <div className="pr-detail-line">
@@ -89,9 +100,28 @@ export function PullRequestDetailHeader({ pullRequest, condensed = false, commit
               </span>
             </div>
           </div>
-        </div>
-      </div>
-    </header>
+  );
+}
+
+/** Shows or hides the pull request list; first in the crumb row, before the back arrow. */
+function RailToggle(): ReactElement | null {
+  const chrome = usePullRequestWorkspaceChrome();
+  if (!chrome) return null;
+  const label = `${chrome.railOpen ? 'Hide' : 'Show'} pull request list (${isMacPlatform() ? '⌘' : 'Ctrl+'}B)`;
+  const Icon = chrome.railOpen ? PanelLeftClose : PanelLeftOpen;
+  return (
+    <button
+      className="icon-btn icon-btn-tertiary pr-rail-toggle"
+      type="button"
+      data-rail-toggle
+      aria-expanded={chrome.railOpen}
+      aria-controls={chrome.railOpen ? chrome.railId : undefined}
+      aria-label={label}
+      title={label}
+      onClick={chrome.toggleRail}
+    >
+      <Icon size={16} />
+    </button>
   );
 }
 
@@ -129,15 +159,21 @@ export function PullRequestAvatar({ author, authorAvatarUrl, size = 'regular' }:
   );
 }
 
-export function PullRequestDetailTabs({ value, onChange, hidden, disabled, counts, trailing }: {
+export function PullRequestDetailTabs({ value, onChange, hidden, disabled, counts, pendingCounts, trailing }: {
   value: PullRequestDetailTab;
-  onChange: (tab: PullRequestDetailTab) => void;
+  // Returns whether the tab changed; the open pull request can refuse (a composer would be hidden).
+  onChange: (tab: PullRequestDetailTab) => boolean;
   hidden?: boolean;
   disabled?: boolean;
   counts: Partial<Record<PullRequestDetailTab, number>>;
+  /** Tabs whose count is still loading: an empty pill holds its place. */
+  pendingCounts?: readonly PullRequestDetailTab[];
   trailing?: ReactNode;
 }): ReactElement {
   const refs = useRef<Partial<Record<PullRequestDetailTab, HTMLButtonElement | null>>>({});
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useSlidingIndicator(listRef, value, 10);
 
   // Arrow, Home, and End keys move between tabs, following the WAI-ARIA tabs pattern.
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
@@ -151,14 +187,16 @@ export function PullRequestDetailTabs({ value, onChange, hidden, disabled, count
     if (target === undefined) return;
     event.preventDefault();
     const next = PULL_REQUEST_DETAIL_TABS[target]!;
-    onChange(next);
-    refs.current[next]?.focus();
+    // Focus follows only a change that happened; a refused one leaves it on the selected tab.
+    if (onChange(next)) refs.current[next]?.focus();
   }
 
   return (
     <div className="pr-detail-tabs" hidden={hidden}>
-      <div role="tablist" aria-label="Pull request" onKeyDown={onKeyDown}>
-        {PULL_REQUEST_DETAIL_TABS.map((tab) => (
+      <div ref={listRef} role="tablist" aria-label="Pull request" onKeyDown={onKeyDown}>
+        {PULL_REQUEST_DETAIL_TABS.map((tab) => {
+          const { label, icon: Icon } = TABS[tab];
+          return (
           <button
             key={tab}
             ref={(node) => { refs.current[tab] = node; }}
@@ -171,38 +209,16 @@ export function PullRequestDetailTabs({ value, onChange, hidden, disabled, count
             tabIndex={value === tab ? 0 : -1}
             onClick={() => onChange(tab)}
           >
-            {LABELS[tab]}
-            {counts[tab] ? <span className="pr-detail-tab-count">{counts[tab]!.toLocaleString()}</span> : null}
+            <Icon size={14} aria-hidden="true" />
+            {label}
+            {counts[tab] !== undefined ? <span className="pr-detail-tab-count">{counts[tab].toLocaleString()}</span>
+              : pendingCounts?.includes(tab) ? <span className="pr-detail-tab-count" data-pending="" aria-hidden="true" /> : null}
           </button>
-        ))}
+          );
+        })}
+        <span className="sliding-indicator" aria-hidden="true" />
       </div>
       {trailing ? <div className="pr-detail-tabs-trailing">{trailing}</div> : null}
     </div>
-  );
-}
-
-export function PullRequestMetaRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }): ReactElement {
-  return (
-    <div className="pr-meta-row">
-      <span className="pr-meta-label">{icon}{label}</span>
-      <span className="pr-meta-value">{children}</span>
-    </div>
-  );
-}
-
-export function PullRequestSection({ title, defaultOpen = true, children }: {
-  title: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}): ReactElement {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <section className="pr-summary-section" aria-label={title}>
-      <button type="button" className="pr-summary-section-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {title}
-        <ChevronRight size={13} aria-hidden="true" data-open={open} />
-      </button>
-      {open ? <div className="pr-summary-section-body">{children}</div> : null}
-    </section>
   );
 }

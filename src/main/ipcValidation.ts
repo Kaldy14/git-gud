@@ -749,6 +749,10 @@ function readStartPullRequestTourArgs(
     throw new Error('headSha must be a full Git object ID.');
   }
   const context = readRecord(args[3], 'context');
+  const baseSha = readNonEmptyLimitedString(context.baseSha, 'context.baseSha', 64).toLowerCase();
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(baseSha)) {
+    throw new Error('context.baseSha must be a full Git object ID.');
+  }
   return [
     readGitHubPullRequestLocator(args[0]),
     readReviewSourceFingerprint(args[1]),
@@ -756,6 +760,7 @@ function readStartPullRequestTourArgs(
     {
       body: readLimitedString(context.body, 'context.body', 200_000),
       baseRefName: readNonEmptyLimitedString(context.baseRefName, 'context.baseRefName', 512),
+      baseSha,
       settledReview: readLimitedString(context.settledReview, 'context.settledReview', 20_000)
     }
   ];
@@ -763,15 +768,19 @@ function readStartPullRequestTourArgs(
 
 function readGitHubPullRequestReviewPlanArgs(
   args: readonly unknown[]
-): [GitHubPullRequestLocator, string] {
-  assertArgCount('github:pull-request-review-plan', args, 2);
-  const headSha = readNonEmptyLimitedString(args[1], 'headSha', 64).toLowerCase();
+): [GitHubPullRequestLocator, string, string] {
+  assertArgCount('github:pull-request-review-plan', args, 3);
+  const readSha = (value: unknown, label: string): string => {
+    const sha = readNonEmptyLimitedString(value, label, 64).toLowerCase();
 
-  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(headSha)) {
-    throw new Error('headSha must be a full Git object ID.');
-  }
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha)) {
+      throw new Error(`${label} must be a full Git object ID.`);
+    }
 
-  return [readGitHubPullRequestLocator(args[0]), headSha];
+    return sha;
+  };
+
+  return [readGitHubPullRequestLocator(args[0]), readSha(args[1], 'headSha'), readSha(args[2], 'baseSha')];
 }
 
 function readDashboardInput(value: unknown): DashboardInput {
@@ -1120,7 +1129,8 @@ function readGitHubPullRequestMergeInput(value: unknown): GitHubPullRequestMerge
   const record = readRecord(value, 'pull request merge input');
   return {
     ...readGitHubPullRequestLocator(record),
-    method: readEnumProperty(record, 'method', ['merge', 'squash', 'rebase'])
+    method: readEnumProperty(record, 'method', ['merge', 'squash', 'rebase']),
+    headSha: readFullObjectId(record.headSha, 'headSha')
   };
 }
 
@@ -1682,6 +1692,12 @@ function readRecord(value: unknown, label: string): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>;
+}
+
+function readFullObjectId(value: unknown, label: string): string {
+  const sha = readString(value, label).toLowerCase();
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sha)) throw new Error(`${label} must be a full Git object ID.`);
+  return sha;
 }
 
 function readStringProperty(record: Record<string, unknown>, property: string): string {

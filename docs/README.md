@@ -30,13 +30,19 @@ src/renderer/src/
     sidebar/Sidebar.tsx               PR destination, expandable dashboard list, refs sections, collapse rail
     dashboard/DashboardView.tsx       GitHub Actions tiles, live run rows, dashboard and tile dialogs
     github/PullRequestInboxView.tsx   profile-scoped GitHub pull-request inbox
-    github/PullRequestReviewView.tsx  PR detail: header, Summary/Guide/Activity/Code tabs, drafts, submission
-    github/guide/                     AI review guide tour (rail, stops, excerpts, notes)
+    github/workspace/                 pull request workspace: rail + detail + shortcut bar, leave guard, keys
+    github/rail/                      the pull request queue beside an open pull request
+    github/PullRequestReviewView.tsx  one pull request: header, tabs, drafts, submission, the shared ReviewView
+    github/overview/                  Overview tab: merge verdict, checks, risk, issues, behavior changes
+    github/conversation/              Conversation tab: description, composer, timeline
+    github/tour/                      Tour tab: step panel, progress strip, walk state
+    github/shortcuts/                 shortcut rules, the shortcut list, the bar and dialog
     graph/GraphView.tsx               virtualized commit graph: ref chips, per-row SVG rails, nodes, date markers,
                                       arrow-key row navigation, viewport-clamped context menus, WIP status counts
     commit/CommitDetailPanel.tsx      commit metadata, author card, Path/Tree file list, WIP composer/actions
     diff/FileFocusView.tsx            selected-file patch view with unified/split diff modes and WIP hunk staging
     review/ReviewView.tsx              focused local/GitHub review with expandable context above and below each hunk
+    review/ReviewFilesView.tsx         the files layout used by pull requests (files panel, stacked files, strip)
     review/agentNotes.ts               Agent Note matching, relocation, and per-repository hidden state
     settings/SettingsPanel.tsx        app defaults plus Codex Agent Notes skill management
     operations/ConflictBanner.tsx     merge/rebase/cherry-pick/revert conflict action banner
@@ -52,23 +58,89 @@ src/renderer/src/
 
 ## Theme
 
-Dark slate palette defined as CSS variables in `styles/main.css` (`--bg-*`, `--text-1..3`, `--border*`, `--accent`). `:root` also defines a type scale (`--text-2xs` 10px for counts and eyebrows only, `--text-xs` 11 meta, `--text-sm` 12 UI and comment bodies, `--text-md` 13 prose and titles, `--text-xl` 18 guide stop titles, `--text-2xl` 21 display headings; weights 500/600; `--leading-*`), spacing (`--space-1..6`, 4–24px), radii (`--radius-xs`, `--radius-row`, `--radius-container`, `--radius-lg`, `--radius-pill`), and focus/selection tokens (`--focus-ring`, `--select-row`, `--select-row-focused`). Status tones: success, danger, `pending` = in progress (blue `--info-*`), `warning` = blocked or needs attention (amber, also guide attention), `muted` = no signal (drafts, closed, unknown or absent checks). Code chips in comments are neutral so they are not confused with teal links. Branch lane colors (`LANE_COLORS`) and file status colors (`FILE_STATUS_COLORS`) live in `src/shared/graph.ts`. Components use Tailwind v4 utilities referencing the variables; repeated patterns (toolbar actions, chips, menus, segmented controls) are shared classes in `main.css`. Field edges use `--border-control` and focus uses `--focus-ring`; content text never goes below 11px. `pnpm lint` runs Stylelint so every CSS `font-size` and `border-radius` uses these tokens; avatar initials and the Guide stop numeral are the only marked exceptions. Long-running states (CI runs, guide writing) show a static `CircleDotDashed` icon rather than a spinner. The preload `invoke` strips Electron's IPC error prefix, so renderer code can show `error.message` directly. Diff syntax themes are readable copies of Shiki's Dark+ and Tokyo Night (`components/diff/diffTheme.ts`) with every token at 4.5:1 on diff surfaces, word emphasis is skipped for unrelated line pairs (`dissimilarLineDiff.ts`), and the Code font setting overrides `--font-mono`. List selection is teal only in the focused list and neutral elsewhere (`--select-row`, `--select-row-focused`). Profiles are switched from the title-bar menu and edited in Settings › Profiles. The PR inbox nav holds the inbox scopes and repositories; status groups narrow from their headings (Show only).
+Dark slate palette defined as CSS variables in `styles/main.css` (`--bg-*`, `--text-1..3`, `--border*`, `--accent`). `:root` also defines a type scale (`--text-2xs` 10px for counts and eyebrows only, `--text-xs` 11 meta, `--text-sm` 12 UI and comment bodies, `--text-md` 13 prose and titles, `--text-xl` 18 large titles, `--text-2xl` 21 display headings; weights 500/600; `--leading-*`), spacing (`--space-1..6`, 4–24px), radii (`--radius-xs`, `--radius-row`, `--radius-container`, `--radius-lg`, `--radius-pill`), and focus/selection tokens (`--focus-ring`, `--select-row`, `--select-row-focused`). Status tones: success, danger, `pending` = in progress (blue `--info-*`), `warning` = blocked or needs attention (amber), `muted` = no signal (drafts, closed, unknown or absent checks). Code chips in comments are neutral so they are not confused with teal links. Branch lane colors (`LANE_COLORS`) and file status colors (`FILE_STATUS_COLORS`) live in `src/shared/graph.ts`. Components use Tailwind v4 utilities referencing the variables; repeated patterns (toolbar actions, chips, menus, segmented controls) are shared classes in `main.css`. Field edges use `--border-control` and focus uses `--focus-ring`; content text never goes below 11px. `pnpm lint` runs Stylelint so every CSS `font-size` and `border-radius` uses these tokens; avatar initials are the only marked exception. Long-running states (CI runs, tour writing) show a static `CircleDotDashed` icon rather than a spinner. The preload `invoke` strips Electron's IPC error prefix, so renderer code can show `error.message` directly. Diff syntax themes are readable copies of Shiki's Dark+ and Tokyo Night (`components/diff/diffTheme.ts`) with every token at 4.5:1 on diff surfaces, word emphasis is skipped for unrelated line pairs (`dissimilarLineDiff.ts`), and the Code font setting overrides `--font-mono`. List selection is teal only in the focused list and neutral elsewhere (`--select-row`, `--select-row-focused`). Profiles are switched from the title-bar menu and edited in Settings › Profiles. The PR inbox nav holds the inbox scopes and repositories; status groups narrow from their headings (Show only).
 
-## Pull request detail
+## Pull request workspace
 
-A pull request opens with four tabs, modelled on T3 Code's PR detail: **Summary** (reviewers, checks breakdown, merge readiness, links, description, images), **Guide**, **Activity** (comments, reviews, and collapsed commit runs; newest first, optional bot hiding), and **Code** (the existing `ReviewView` with its section split). The last tab is remembered. Inactive panes stay mounted so drafts, scroll, and review state survive tab switches. The header follows T3 Code too: a crumb row (repository, `#number`, actions) above the title, a status line (state, checks, author, updated, commits), and a branch line (base ← head, files, line counts). Scrolling a pane past 48px collapses the title fold and the crumb row shows the number and title instead; the state is remembered per tab. The Code tab always opens folded, and a folded header shows the conflict and checks status at the end of the tab row. Summary and Activity share one centred 832px reading column. Summary's **Before this can merge** checklist lists each blocker with its fix: merge conflicts (conflicting files and Resolve on GitHub), failing or running checks (View checks), drafts (Ready for review, via `gh pr ready`), and a branch behind its base. The inbox says it shows review requests and pull requests you opened, and how many older matches GitHub did not return; its recently-pushed-branch warning ignores deleted branches and offers Retry. In the Code tab, files hidden by review filters stay in the tree dimmed (open one to reveal it), the footer shows file coverage (`0 of 21 files viewed · 5 hidden by filters`), one Show menu holds the change scope and the filters, internal grouping values read as words (Changed here, Strong link), and blocks take Guide stop titles when a guide exists. Each block in the Blocks list has a chevron that shows or hides its files without selecting it; the selected block opens by default, and opening a file from another block selects that block. Inbox rows keep compact guide and bug-scan icons (status dot plus tooltip), ask before starting either AI job, mute the icon of drafts, and support J/K row navigation. GitHub alert blockquotes (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) render as titled callouts (`remarkGithubAlerts`). In the Code tab Escape dismisses an empty comment composer and never closes the pull request; background status changes are announced through one polite live region (`lib/announce.ts`). Checks count only unfinished runs as pending; skipped and neutral runs are reported as skipped and left out of the header's passed/ran ratio (`12/12 checks passed · 7 skipped`). Merge conflicts put an authored pull request in the inbox's **Needs action** group and outrank the Draft label, so a draft with conflicts shows **Merge conflicts** with a separate Draft chip in the header.
+Opening a pull request shows a review workspace: the queue on the left, the pull request in the middle, and a row of keyboard hints at the bottom. Its layout and keyboard model follow Greptile's pull request view.
+
+```text
+┌ title bar ────────────────────────────────────────────────────────────────┐
+│ Pull requests (rail)   │ header: repository, #number, title, actions      │
+│  search                │ tabs: Overview · Conversation · Tour · Code      │
+│  ▾ Needs your review   │ ───────────────────────────────────────────────  │
+│  ▾ Ready to merge      │ active tab                                       │
+├────────────────────────┴──────────────────────────────────────────────────┤
+│ Keyboard shortcuts  J K switch PR · H L switch tabs · …        View all × │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Rail.** The whole inbox in compact form, with the inbox's groups (foldable, remembered), a search field, the Live/refresh control, and a "Viewing" group for a pull request opened by link that is not in the inbox. A row shows the status icon in a tile tinted with its tone, title, author, age and checks ratio. Every status has its own icon (merge conflict, draft, changes requested, failing checks, awaiting review, waiting for approval, blocked, merged, closed), the same one in the inbox and the header. It is shown by default beside Overview and Conversation from 1240px and beside Tour and Code from 1840px, remembered separately; below 1240px it floats over the content. Mod+B or the button before the back arrow toggles it. The inbox page itself is unchanged and stays the landing page. When it floats over a narrow window, Escape closes it from anywhere.
+- **Layout.** The header is one row on every tab, so the tabs never move; the author, commits and branch line opens Overview and Conversation. Overview leads with the merge verdict in a band tinted green, blue, amber or red, with each blocker and its action directly beneath; when nothing is unresolved, Behavior changes comes before Issues. Merge is the solid teal button only while the verdict is Ready to merge; Review is always a neutral button.
+- **Loading.** A pull request keeps its layout while it loads: the header and tabs are already in place, grey placeholders stand where the content of the tab will be, and the content fades in once it arrives (a pull request that is already loaded appears at once). The header says "Loading pull request", then "Adding context" while full files are fetched for expandable context. The inbox shows placeholder rows on its first load. The tour and bug scan icons show a dot only when there is a result, a run in progress or a failure.
+- **Motion.** Small one-shot movements show where you moved and what just happened: the tab underline and the list selection slide, a tour step arrives from the side you came from, a reviewed step fills its segment, the lines a jump lands on start brighter and settle, and a key in the shortcut bar lights when its shortcut did something (a key that could not act stays dark). Background refreshes are silent. "Reduce motion" in the system settings turns all of it off.
+- **Switching.** J/K move through the rail. The row selects at once, the pull request loads after 150ms so holding a key does not fire a request per row, the neighbours are prefetched, and the open tab is kept.
+- **You act on what you read.** If commits are pushed while you have unsaved text or pending review comments, the pull request stays on the commit you are reviewing and says so; the new commits load once you add, submit or discard. Merging and reviewing are bound to the commit on screen. A pull request that changes while it loads (a push, or a move to another base branch) is read again rather than shown half old, half new.
+- **Nothing typed is lost.** If a comment, reply, edit or review summary holds unsaved text, every way out of the pull request (rail, J/K, back, close, title-bar tabs, links, profile switch) first asks "Discard your unsaved comment?".
+- **Shortcut bar.** Shows the keys for the open tab. "View all" or `?` lists every shortcut and holds two switches: "Single-key shortcuts" (turns off letter and symbol keys) and "Show shortcut bar". The header's more menu has "Keyboard shortcuts" too.
+
+| Keys | Action |
+| --- | --- |
+| J / K | next / previous pull request |
+| H / L | previous / next tab |
+| / | search pull requests |
+| Mod+B | show or hide the rail |
+| ← / → | previous / next tour step |
+| R | mark the tour step reviewed and go on |
+| [ / ] | previous / next file |
+| V | mark the current file viewed |
+| ↑ / ↓, Shift, C | line cursor, extend, comment |
+| ? | all shortcuts |
+
+### Overview
+
+A decision page, read top to bottom:
+
+1. **Merge status** with its verdict (Ready to merge, Awaiting approval, Checks failing, Merge conflicts, Draft, Merged…). One line of facts (`12/12 checks passed · 2 approvals · no unresolved threads`), then the checks grouped by outcome (Failed, Running, Passed, Skipped; each opens to its runs with duration and a link), the **Before this can merge** checklist with the action that clears each blocker (conflicting files and Resolve on GitHub, View checks, Ready for review via `gh pr ready`, update a branch behind its base), and the reviewers. Merging is bound to the commit on screen: if someone pushed since, GitHub rejects it and the pull request refreshes.
+2. **Risk level** (Low, Medium, High) with a plain summary of what the pull request changes and up to four bullets. This is written by the tour's AI run and says so, with the commit it was written for and a Rewrite button. Without a tour the section is **From the author**: the start of the description, a link to the rest, and "Write tour".
+3. **Issues**: review threads from people and bots, split into Unresolved and Resolved. A thread opens Code at its line; an outdated one opens Conversation at the comment. Bug scan findings are listed apart as "Local scan · not posted".
+4. **Behavior changes**: the tour's behaviour steps with their risk; a row opens the Tour at that step.
+
+Checks count only unfinished runs as pending; skipped and neutral runs are reported as skipped and left out of the passed/ran ratio. Merge conflicts put an authored pull request in the inbox's **Needs action** group and outrank the Draft label.
+
+### Conversation
+
+The description first (folded when long), then the comment box and the timeline of comments, reviews and collapsed commit runs (newest first by default, optional bot hiding). GitHub alert blockquotes (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) render as titled callouts (`remarkGithubAlerts`).
+
+### Tour
+
+A guided walk through the change on the real diff. An AI run (Pi; the Claude Code CLI when Pi is not installed or signed in) writes ordered steps. Each step has a title that states a behaviour, a summary, a risk, an optional attention call (tradeoff, contract, product, risk, accessibility), numbered **points** anchored to line ranges, the files it owns and optional questions. `src/shared/pullRequestTour.ts` validates the result: a point is trimmed to one real hunk, a point that cannot be placed is kept as text, and every changed file belongs to exactly one step.
+
+```text
+Step 2 of 5  ▰▰▱▱▱                                             ‹ ›
+┌ step ────────────────────────┐ ┌ this step's files ─────────────────────────┐
+│ [Med risk] What it does      │ │ src/a.ts  +40 −5                 ☐ Viewed  │
+│ summary                      │ │  …diff, ① marked on its lines…             │
+│ ① point (selected)           │ │ src/b.ts  +6 −3                            │
+│ ② point                      │ └────────────────────────────────────────────┘
+│ Files (2)                    │
+│ [ Reviewed & next ]          │
+└──────────────────────────────┘
+```
+
+Selecting a point scrolls the diff to its lines and tints them; the number on the line selects the point; scrolling the diff moves the selection. ←/→ change step, R marks the step reviewed and moves on, and the last step offers **Finish review**. Comments, the line cursor and Viewed work as in Code, because Tour and Code are the same diff view with a different left panel. A step's Reviewed state is separate from a file's Viewed state. The tour is kept in the `git-gud-pull-request-guides` store, survives restarts, and when the branch moves it says "written before the latest push", drops its line marks and offers Rewrite. In Code the same points appear inline, labelled `step.point`, each linking back to its step.
+
+### Code
+
+Every changed file stacked in one scroller in tree order, with a files panel on the left (filter, tree with line counts and a viewed tick, coverage, the Show menu for scope and filters, unified/split) and a strip above showing `File 3 of 48 · 12 viewed`. Each file has a sticky header with a **Viewed** checkbox; ticking it collapses the file and moves on. Files hidden by review filters stay in the tree dimmed (open one to reveal it) and never count as viewed. Hunks render only near the viewport, so large pull requests open quickly. Local branch reviews keep the Blocks layout.
 
 ### Line breakdown
 
 Changed lines are grouped by kind: **Code**, **Tests**, **Docs**, **Config**, and **Generated** (generated paths and lockfiles). `src/shared/lineBreakdown.ts` classifies by path alone, reusing the Code tab's test and generated rules, so it works in the inbox without patches. Hovering or focusing the `+/−` totals, in inbox rows and in the detail header, opens a table of files and lines per kind with a total. The inbox query asks GitHub for the first 100 files of each pull request (`fileLineStats`); lines beyond those show as **Unlisted**. The loaded detail uses its full file list.
 
-### Review guide
-
-The Guide tab ports T3 Code's review guide: an ordered tour of stops, each with a title, summary, optional attention call (tradeoff, contract, product, risk, accessibility), code excerpts, lettered line notes, file rows, and questions. `src/main/pullRequestTour.ts` adapts T3 Code's prompt and runs it through the Pi harness with the numbered patch inline (PR reviews have no checkout); when Pi is not installed or not signed in, it falls back to the Claude Code CLI (`claude -p`, `src/main/claudeHarness.ts`); `src/shared/pullRequestTour.ts` validates the response so every excerpt sits inside one real hunk, notes sit inside an excerpt, and every changed file is placed exactly once. The latest guide per pull request is kept in the `git-gud-pull-request-guides` store, so it survives restarts and shows a "written before the latest push" banner when the head moves. J/K step through stops; read progress is stored per guide in local storage. The stop rail is drawn as a commit-graph lane (teal through read stops, a ring on the current stop, slate ahead); each attention call is a copper run-in head over the judgement, and copper note keys link excerpt lines and notes in both directions with a one-shot highlight. Clicking an excerpt header opens Code at the section and lines that contain it (`ReviewView`'s `navigationRequest`), and **Back to Guide** returns. The Guide is the pull request's only AI layer: its notes also appear inline in Code with their copper keys and a link back to their stop, the inbox's guide button reads and starts the same Guide, and the per-section **AI brief** remains only for local branch reviews.
-
 ## Pull request comments
 
-PR reviews support local line comments, whole-file comments, and replies. Hovering a line number shows a `+`; clicking a line number or dragging in either direction across lines opens the composer directly beneath the normalized range. Review-unit and filter navigation remain disabled until the active composer is added or cancelled, preventing typed text from becoming hidden. File headers provide a persistent **Comment on file** action. Drafts remain local until **Finish your review** submits them. Published line comments, file comments, and replies authored by the active GitHub viewer can be edited inline. File comments use GitHub's standalone review-comment endpoint with `subject_type: file`, while edits use the repository-level pull review comment endpoint. From the keyboard, ↑/↓ move a line cursor through the diff (Shift extends it inside one hunk) and C opens the comment composer for those lines.
+PR reviews support local line comments, whole-file comments, and replies, in both Code and Tour. Hovering a line number shows a `+`; clicking a line number or dragging in either direction across lines opens the composer directly beneath the normalized range. File, tour-step and filter navigation remain disabled until the active composer is added or cancelled, preventing typed text from becoming hidden. File headers provide a persistent **Comment on file** action. Drafts remain local until **Finish your review** submits them. Published line comments, file comments, and replies authored by the active GitHub viewer can be edited inline. File comments use GitHub's standalone review-comment endpoint with `subject_type: file`, while edits use the repository-level pull review comment endpoint. From the keyboard, ↑/↓ move a line cursor through the diff (Shift extends it inside one hunk) and C opens the comment composer for those lines.
 
 Review controls use three shared densities: 32px contained actions in headers and dialogs, 28px contained actions in inline forms, and 24px tertiary actions for comment, edit, reply, and draft removal. This keeps action hierarchy, icons, focus states, and disabled states consistent across the review flow.
 

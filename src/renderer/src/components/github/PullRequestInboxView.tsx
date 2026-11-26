@@ -3,16 +3,12 @@ import type { ReactElement } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
   ChevronRight,
-  CircleDot,
   ExternalLink,
   GitBranch,
-  GitMerge,
-  GitPullRequest,
   Inbox,
-  Loader2,
+  CircleDotDashed,
   MessageSquare,
   Search,
   ShieldCheck,
@@ -31,8 +27,9 @@ import { pullRequestLineBreakdown } from '@shared/lineBreakdown';
 import { PullRequestLineStats } from './PullRequestLineStats';
 import { PullRequestReviewerAvatars } from './PullRequestReviewerAvatars';
 import { PullRequestRefreshControl } from './PullRequestRefreshControl';
-import { resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
+import { matchesPullRequestSearch, PULL_REQUEST_INBOX_GROUPS, resolvePullRequestGroupExpansion } from './pullRequestInboxGroups';
 import { pullRequestChecksTone, pullRequestStatus } from './pullRequestInboxStatus';
+import { PullRequestStatusIcon } from './PullRequestStatusIcon';
 import {
   loadDismissedPullRequestSuggestionIds,
   saveDismissedPullRequestSuggestionIds
@@ -51,43 +48,6 @@ type PullRequestInboxViewProps = {
 };
 
 type UpdatedRange = '7' | '30' | '90' | 'all';
-
-const GROUPS: Array<{
-  id: GitHubPullRequestCategory;
-  title: string;
-  description: string;
-}> = [
-  {
-    id: 'needs-your-review',
-    title: 'Needs your review',
-    description: 'You were requested directly as a reviewer.'
-  },
-  {
-    id: 'needs-team-review',
-    title: "Needs your teams' review",
-    description: 'A team you belong to was requested.'
-  },
-  {
-    id: 'needs-action',
-    title: 'Needs action',
-    description: 'Merge conflicts, requested changes, or failing checks need attention.'
-  },
-  {
-    id: 'ready-to-merge',
-    title: 'Ready to merge',
-    description: 'Approved pull requests with successful checks.'
-  },
-  {
-    id: 'waiting',
-    title: 'Waiting for review or checks',
-    description: 'Your pull requests that are still progressing.'
-  },
-  {
-    id: 'drafts',
-    title: 'Your drafts',
-    description: 'Open draft pull requests you authored.'
-  }
-];
 
 type InboxScope = 'all' | 'review-requests' | 'authored' | GitHubPullRequestCategory;
 
@@ -230,14 +190,7 @@ export function PullRequestInboxView({
   }
 
   if (isLoading && !inbox) {
-    return (
-      <InboxMessage
-        icon={<Loader2 size={20} className="animate-spin" />}
-        title="Scanning your pull requests"
-        detail={`Reading review requests and authored work for @${profile.githubLogin}.`}
-        onClose={onClose}
-      />
-    );
+    return <InboxSkeleton login={profile.githubLogin} onClose={onClose} />;
   }
 
   if (errorMessage && !inbox) {
@@ -296,7 +249,7 @@ export function PullRequestInboxView({
           aria-label="Close pull request inbox and return to commit graph"
           title="Return to commit graph"
         >
-          <X size={14} />
+          <X size={16} />
         </button>
       </header>
       <div className="pr-inbox-workspace">
@@ -345,14 +298,14 @@ export function PullRequestInboxView({
         >
           {errorMessage ? (
             <div className="pr-inline-error" role="alert">
-              <AlertTriangle size={13} />
+              <AlertTriangle size={14} />
               <span>{errorMessage}</span>
             </div>
           ) : null}
 
           {inbox?.suggestionsError ? (
             <div className="pr-inline-warning" role="status">
-              <AlertTriangle size={13} />
+              <AlertTriangle size={14} />
               <span>{inbox.suggestionsError}</span>
               <button className="btn-subtle btn-compact" type="button" aria-disabled={isRefreshing || undefined} onClick={() => {
                 if (isRefreshing || !profile) return;
@@ -364,7 +317,7 @@ export function PullRequestInboxView({
           ) : null}
 
           <div className="pr-inbox-groups">
-            {GROUPS.map((group) => {
+            {PULL_REQUEST_INBOX_GROUPS.map((group) => {
               const rows = scopedPullRequests.filter(
                 (pullRequest) => pullRequest.category === group.id
               );
@@ -392,7 +345,7 @@ export function PullRequestInboxView({
                         }))
                       }
                     >
-                      {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       <span>{group.title}</span>
                       <span className="pr-count-badge">{rows.length}</span>
                     </button>
@@ -425,7 +378,7 @@ export function PullRequestInboxView({
           </div>
           {scopedPullRequests.length === 0 ? (
             <div className="pr-inbox-empty-results">
-              <Inbox size={24} />
+              <Inbox size={20} />
               <h2>
                 {(inbox?.pullRequests.length ?? 0) === 0
                   ? `No open pull requests for @${profile.githubLogin}`
@@ -476,7 +429,7 @@ export function PullRequestInboxView({
               <div className="pr-create-suggestion-list">
                 {visibleSuggestions.map((suggestion) => (
                   <article className="pr-create-suggestion" key={suggestion.id}>
-                    <GitBranch size={15} aria-hidden="true" />
+                    <GitBranch size={16} aria-hidden="true" />
                     <span className="pr-create-suggestion-copy">
                       <strong>{suggestion.branch}</strong>
                       <span>
@@ -533,7 +486,9 @@ function PullRequestRow({
     <div className="pr-inbox-row" onClick={onSelect}>
       <button className="pr-row-open" type="button" aria-label={`Open pull request ${pullRequest.title}`} />
       <span className="pr-row-accent" data-category={pullRequest.category} />
-      <GitPullRequest size={16} className="pr-row-icon" data-draft={pullRequest.isDraft || undefined} />
+      <span className="pr-row-status-tile" data-tone={status.tone} aria-hidden="true">
+        <PullRequestStatusIcon icon={status.icon} size={14} />
+      </span>
       <span className="pr-row-copy">
         <span className="pr-row-title" title={pullRequest.title}>{pullRequest.title}</span>
         <span className="pr-row-meta">
@@ -564,19 +519,10 @@ function PullRequestRow({
       </span>
       <span className="pr-row-state">
         <PullRequestReviewerAvatars reviewers={pullRequest.reviewers} />
-        {status.icon === 'warning' ? (
-          <AlertTriangle size={13} data-tone={status.tone} />
-        ) : status.icon === 'check' ? (
-          <Check size={13} data-tone={status.tone} />
-        ) : status.icon === 'merge' ? (
-          <GitMerge size={13} data-tone={status.tone} />
-        ) : (
-          <CircleDot size={11} data-tone={status.tone} />
-        )}
-        <span className="pr-row-label" title={status.label}>{status.label}</span>
+        <span className="pr-row-label" data-tone={status.tone} title={status.label}>{status.label}</span>
       </span>
       <span className="pr-row-checks" data-tone={checkTone} title={checksTitle(pullRequest.checks)}>
-        {checkTone === 'success' ? <Check size={14} /> : checkTone === 'danger' ? <AlertTriangle size={13} /> : <CircleDot size={11} />}
+        <PullRequestStatusIcon icon={checkTone === 'success' ? 'check' : checkTone === 'danger' ? 'failing' : checkTone === 'pending' ? 'running' : 'dot'} size={14} />
         {/* Skipped and neutral runs count toward GitHub's total but are not outstanding. */}
         {pullRequest.checks.total > 0
           ? <span className="pr-row-label">{pullRequest.checks.passed}/{pullRequest.checks.passed + pullRequest.checks.failed + pullRequest.checks.pending}</span>
@@ -584,7 +530,7 @@ function PullRequestRow({
       </span>
       <PullRequestGuideIndicator pullRequest={pullRequest} onOpen={onOpenGuide} />
       <BugFinderButton pullRequest={pullRequest} onOpen={onOpenBugFinder} />
-      <span className="pr-row-comments" aria-label={`${pullRequest.comments} comments`}>
+      <span className="pr-row-comments" data-empty={pullRequest.comments === 0 || undefined} aria-label={`${pullRequest.comments} comments`}>
         <MessageSquare size={14} />
         <span>{pullRequest.comments}</span>
       </span>
@@ -601,6 +547,62 @@ function checksTitle(checks: GitHubPullRequestSummary['checks']): string {
     checks.pending ? `${checks.pending} pending` : '',
     skipped ? `${skipped} skipped` : ''
   ].filter(Boolean).join(' · ');
+}
+
+/** The inbox's own shape while the first load runs: header, scopes and rows as static placeholders. */
+function InboxSkeleton({ login, onClose }: { login: string; onClose: () => void }): ReactElement {
+  return (
+    <section className="pr-inbox-view pr-inbox-loading" aria-label="Pull request inbox" aria-busy="true">
+      <header className="pr-inbox-header pr-inbox-header--queue">
+        <h1>Pull requests <span className="pr-count-badge pr-inbox-loading-count" aria-hidden="true" /></h1>
+        <span className="pr-inbox-account">@{login}</span>
+        <span className="pr-inbox-loading-status" role="status">
+          <CircleDotDashed size={14} aria-hidden="true" />
+          <span>Reading review requests and your pull requests</span>
+        </span>
+        {/* Stand-ins for the search field, the date range and Live/refresh, at their sizes. */}
+        <span className="pr-inbox-loading-control" data-shape="search" aria-hidden="true" />
+        <span className="pr-inbox-loading-control" data-shape="range" aria-hidden="true" />
+        <span className="pr-inbox-loading-control" data-shape="refresh" aria-hidden="true" />
+        <button
+          className="icon-btn icon-btn-regular"
+          type="button"
+          onClick={onClose}
+          aria-label="Close pull request inbox and return to commit graph"
+          title="Return to commit graph"
+        >
+          <X size={16} />
+        </button>
+      </header>
+      <div className="pr-inbox-workspace" aria-hidden="true">
+        <div className="pr-inbox-scopes">
+          <h2>Inbox</h2>
+          {[108, 96, 120].map((width) => <span key={width}><b style={{ width }} /></span>)}
+          <h2>Repositories</h2>
+          <span><b style={{ width: 104 }} /></span>
+        </div>
+        <div className="pr-inbox-results">
+          {[2, 3, 1].map((rows, group) => (
+            <div className="pr-inbox-loading-group" key={group}>
+              <div><b /></div>
+              {Array.from({ length: rows }, (_, row) => (
+                // The loaded row's own classes, so its grid and its narrow-window forms apply here too.
+                <div className="pr-inbox-row pr-inbox-loading-row" key={row}>
+                  <i />
+                  <span className="pr-row-copy"><b /><b /></span>
+                  <span className="pr-row-state"><b /></span>
+                  <span className="pr-row-checks"><b /></span>
+                  <span className="pr-row-job"><i /></span>
+                  <span className="pr-row-job"><i /></span>
+                  <span className="pr-row-comments"><b /></span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function InboxMessage({
@@ -629,14 +631,14 @@ function InboxMessage({
         aria-label="Close pull request inbox and return to commit graph"
         title="Return to commit graph"
       >
-        <X size={14} />
+        <X size={16} />
       </button>
       <span className="pr-inbox-message-icon">{icon}</span>
       <h1>{title}</h1>
       <p>{detail}</p>
       {actionLabel && onAction ? (
         <button className="btn-primary mt-4 h-8 text-xs" type="button" onClick={onAction}>
-          <ShieldCheck size={13} />
+          <ShieldCheck size={14} />
           {actionLabel}
         </button>
       ) : null}
@@ -649,29 +651,14 @@ function filterPullRequests(
   search: string,
   updatedRange: UpdatedRange
 ): GitHubPullRequestSummary[] {
-  const normalizedSearch = search.trim().toLowerCase();
   const earliestTime =
     updatedRange === 'all'
       ? Number.NEGATIVE_INFINITY
       : Date.now() - Number(updatedRange) * 24 * 60 * 60 * 1000;
 
-  return pullRequests.filter((pullRequest) => {
-    if (Date.parse(pullRequest.updatedAt) < earliestTime) {
-      return false;
-    }
-
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return [
-      pullRequest.title,
-      pullRequest.owner,
-      pullRequest.repository,
-      pullRequest.author,
-      String(pullRequest.number)
-    ].some((value) => value.toLowerCase().includes(normalizedSearch));
-  });
+  return pullRequests.filter(
+    (pullRequest) => Date.parse(pullRequest.updatedAt) >= earliestTime && matchesPullRequestSearch(pullRequest, search)
+  );
 }
 
 function formatRelativeTime(value: string): string {

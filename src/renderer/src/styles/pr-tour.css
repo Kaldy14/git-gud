@@ -1,0 +1,249 @@
+/* Pull request Tour tab: the states without a usable tour, and the Tour on the shared diff surface
+   (progress strip, narrative panel, point marks). */
+
+.pr-tour-empty {
+  display: flex;
+  height: 100%;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 16px;
+  text-align: center;
+}
+/* The icon sits in a tile tinted with the AI tone, as status icons do in the rail. */
+.pr-tour-empty-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-bottom: 4px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--ai-text) 12%, transparent);
+  color: var(--ai-text);
+}
+.pr-tour-empty-icon[data-tone='pending'] { background: var(--info-bg); color: var(--info-text); }
+.pr-tour-empty-icon[data-tone='danger'] { background: var(--danger-bg); color: var(--danger-text); }
+.pr-tour-empty-title { color: var(--text-1); font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.pr-tour-empty-body { max-width: 440px; margin-bottom: 6px; color: var(--text-2); font-size: var(--text-md); line-height: var(--leading-prose); }
+
+.pr-tour-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-container);
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  color: var(--text-1);
+  font-size: var(--text-sm);
+}
+.pr-tour-banner[data-tone='warning'] { border-color: var(--warning-border); background: var(--warning-bg); }
+.pr-tour-banner[data-tone='info'] { border-color: var(--info-border); background: var(--info-bg); }
+.pr-tour-banner > svg { flex-shrink: 0; color: var(--warning-text); }
+.pr-tour-banner[data-tone='info'] > svg { color: var(--info-text); }
+.pr-tour-banner > span { flex: 1; min-width: 0; }
+
+.pr-tour-failure { width: 100%; max-width: 520px; color: var(--text-3); font-size: var(--text-xs); text-align: left; }
+.pr-tour-failure summary { cursor: pointer; }
+.pr-tour-failure pre {
+  max-height: 160px;
+  margin-top: 6px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-row);
+  padding: 8px;
+  background: var(--bg-field);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--text-xs) var(--font-mono);
+}
+
+/* Progress strip: "Step N of M", one segment per step, previous / next. Teal marks position. */
+.pr-tour-progress { display: flex; min-width: 0; flex: 1; align-items: center; gap: var(--space-3); }
+.pr-tour-progress-text { flex: 0 0 auto; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pr-tour-progress-segments { display: flex; min-width: 48px; flex: 1; gap: 3px; }
+.pr-tour-progress-segments > li { display: flex; min-width: 0; flex: 1; }
+.pr-tour-segment { display: flex; width: 100%; height: 20px; align-items: center; border-radius: var(--radius-xs); }
+/* Three heights, so the strip reads without colour: ahead is a 2px line, reviewed a 4px bar (dimmed
+   teal, filled from the left by pr-motion.css), current a 6px bar in full teal. */
+.pr-tour-segment > i {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transition: background-color 120ms ease, height 200ms var(--ease-out);
+}
+.pr-tour-segment[data-kind='mechanical'] > i { opacity: 0.6; }
+.pr-tour-segment:hover > i { background: var(--text-3); }
+.pr-tour-segment[data-reviewed] > i { height: 4px; background: var(--bg-surface-2); opacity: 1; }
+.pr-tour-segment[data-current] > i,
+.pr-tour-segment[data-current]:hover > i { height: 6px; background: var(--accent-2); opacity: 1; }
+.pr-tour-segment:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.pr-tour-progress-nav { display: flex; flex: 0 0 auto; gap: 2px; }
+.pr-tour-progress-nav [aria-disabled] { opacity: 0.4; cursor: default; }
+
+/* The narrative panel replaces the files panel in the same resizable column. */
+.pr-tour-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.pr-tour-panel-body {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  overscroll-behavior: contain;
+}
+/* The step itself, inside the scroller: a step change moves this, never the scrollbar. */
+.pr-tour-panel-step { display: flex; flex-direction: column; gap: var(--space-4); }
+.pr-tour-step-head { display: flex; flex-direction: column; gap: var(--space-2); }
+.pr-tour-step-eyebrow { display: flex; min-height: 24px; align-items: center; gap: var(--space-2); }
+.pr-tour-kind,
+.pr-tour-reviewed { color: var(--text-3); font-size: var(--text-xs); }
+.pr-tour-reviewed { display: inline-flex; align-items: center; gap: 3px; color: var(--accent-2); }
+.pr-tour-collapse { margin-left: auto; color: var(--text-3); }
+.pr-tour-step-title {
+  color: var(--text-1);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-heading);
+  overflow-wrap: anywhere;
+  outline: none;
+}
+/* Step moves focus the heading for screen readers; it is not a control, so it draws no ring. */
+
+/* Prose: the shared markdown body, unclamped, at reading size. */
+.pr-tour-panel .review-line-comment-body {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+.pr-tour-summary { color: var(--text-2); font-size: var(--text-md); line-height: var(--leading-prose); }
+.pr-tour-attention { color: var(--text-1); font-size: var(--text-md); line-height: var(--leading-prose); }
+.pr-tour-attention p:first-child > strong:first-child { color: var(--guide-annotation); font-weight: var(--weight-semibold); }
+
+/* Points: numbered cards. The selected one takes the selection fill; its copper key stays solid. */
+.pr-tour-points { display: flex; flex-direction: column; gap: 2px; margin-inline: calc(var(--space-2) * -1); }
+.pr-tour-point {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  border-radius: var(--radius-row);
+  padding: 10px var(--space-2);
+  color: var(--text-1);
+  font-size: var(--text-md);
+  line-height: var(--leading-prose);
+  scroll-margin-block: var(--space-3);
+}
+.pr-tour-point[data-anchored] { cursor: pointer; }
+.pr-tour-point[data-anchored]:hover { background: var(--bg-hover-subtle); }
+.pr-tour-point[data-active] { background: var(--select-row); }
+.pr-tour-points:focus-within .pr-tour-point[data-active] { background: var(--select-row-focused); }
+.pr-tour-point-key { margin-top: 2px; }
+button.pr-tour-point-key:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* A point that is not placed on a line: the same number, outlined, so it never reads as a link. */
+.pr-tour-point-key[data-text-only] {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--guide-annotation) 55%, transparent);
+  border-radius: var(--radius-xs);
+  color: var(--guide-annotation);
+  font: 700 var(--text-xs) / 1 var(--font-ui);
+}
+.pr-tour-point-body { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.pr-tour-point-where { color: var(--text-3); font-family: var(--font-mono); font-size: var(--text-xs); line-height: var(--leading-ui); overflow-wrap: anywhere; }
+
+.pr-tour-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.pr-tour-eyebrow { color: var(--text-3); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.pr-tour-questions { display: flex; flex-direction: column; gap: var(--space-2); padding-left: 16px; color: var(--text-2); font-size: var(--text-md); line-height: var(--leading-prose); list-style: disc; }
+.pr-tour-muted { color: var(--text-3); font-size: var(--text-sm); }
+
+/* Files (N): a disclosure; each row scrolls the diff to its file. */
+.pr-tour-files { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.pr-tour-files > summary { display: flex; align-items: center; gap: 4px; cursor: pointer; list-style: none; }
+.pr-tour-files > summary::-webkit-details-marker { display: none; }
+.pr-tour-files > summary > svg { transition: transform 120ms ease; }
+.pr-tour-files[open] > summary > svg { transform: rotate(90deg); }
+.pr-tour-files > summary:focus-visible { border-radius: var(--radius-xs); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.pr-tour-files ul { display: flex; flex-direction: column; margin-inline: calc(var(--space-2) * -1); }
+.pr-tour-file {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-row);
+  padding: 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.pr-tour-file:hover { background: var(--bg-hover-subtle); color: var(--text-1); }
+.pr-tour-file:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.pr-tour-file[data-hidden] { opacity: 0.6; }
+.pr-tour-file-viewed {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  place-items: center;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-xs);
+}
+.pr-tour-file-viewed[data-viewed] { border-color: var(--accent-2); background: var(--accent-2); color: var(--bg-graph); }
+.pr-tour-file-path { display: flex; min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
+.pr-tour-file-dir { min-width: 0; overflow: hidden; color: var(--text-3); text-overflow: ellipsis; direction: rtl; }
+.pr-tour-file-name { flex: 0 0 auto; }
+
+/* The step's terminal action stays pinned to the panel's foot. */
+.pr-tour-foot { display: flex; flex: 0 0 auto; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--border); padding: var(--space-3) var(--space-4); }
+.pr-tour-foot-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.pr-tour-foot-actions .pr-tour-action { flex: 1; justify-content: center; }
+.pr-tour-finish-check { display: flex; flex-direction: column; gap: var(--space-2); color: var(--text-1); font-size: var(--text-sm); }
+.pr-tour-finish-check p { display: flex; align-items: center; gap: 6px; }
+.pr-tour-finish-check p > svg { flex-shrink: 0; color: var(--warning-text); }
+.pr-tour-finish-check > div { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+/* Banners sit at the top of the panel. */
+.pr-tour-panel .pr-tour-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 6px 8px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-ui);
+}
+.pr-tour-panel .pr-tour-banner > svg { margin-top: 2px; }
+.pr-tour-panel .pr-tour-banner > button { grid-column: 2; justify-self: start; }
+
+/* Collapsed: a slim strip with the step, its title and the action. */
+.review-files-panel[data-collapsed] { width: 44px; flex: 0 0 44px; }
+.pr-tour-panel[data-collapsed] { align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+.pr-tour-strip-step { color: var(--text-3); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.pr-tour-strip-title {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  outline: none;
+}
+.pr-tour-strip-foot .pr-tour-action { width: 32px; justify-content: center; padding: 0; }
+
+/* Point marks inside the diff. In the Tour the panel carries the text, so a mark keeps it to one line. */
+/* contain: the one-line text must not widen the diff's scroll width. */
+.pr-diff-pane[data-diff-tab='tour'] .review-guide-inline-note[data-guide-reference] { align-items: center; contain: inline-size; transition: background-color 120ms ease; }
+.pr-diff-pane[data-diff-tab='tour'] .review-guide-inline-note[data-guide-reference] > div { overflow: hidden; }
+.pr-diff-pane[data-diff-tab='tour'] .review-guide-inline-note[data-guide-reference] .review-line-comment-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-diff-pane[data-diff-tab='tour'] .review-guide-inline-note[data-guide-reference] .review-line-comment-body * { display: inline; white-space: nowrap; }

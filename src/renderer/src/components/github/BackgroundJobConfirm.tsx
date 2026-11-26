@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Popover as PopoverPrimitive } from 'radix-ui';
 
-// AI jobs (review guide, bug scan) run for minutes and use the user's quota, so an idle
+// AI jobs (tour, bug scan) run for minutes and use the user's quota, so an idle
 // job asks once before starting instead of starting on a single click of a small icon.
 export function BackgroundJobConfirm({
   open,

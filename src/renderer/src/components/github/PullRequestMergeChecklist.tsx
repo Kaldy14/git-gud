@@ -9,7 +9,8 @@ export function PullRequestMergeChecklist({
   blockers,
   conflicts,
   isMarkingReady,
-  onMarkReady
+  onMarkReady,
+  onOpenConversation
 }: {
   detail: GitHubPullRequestSummary;
   blockers: MergeBlocker[];
@@ -23,18 +24,19 @@ export function PullRequestMergeChecklist({
   };
   isMarkingReady: boolean;
   onMarkReady: () => void;
+  onOpenConversation: () => void;
 }): ReactElement | null {
   if (blockers.length === 0) return null;
   const link = (path: string, label: string) => (
     <a className="btn-subtle btn-compact" href={`${detail.url}${path}`} target="_blank" rel="noreferrer">
       {label}
-      <ExternalLink size={11} aria-hidden="true" />
+      <ExternalLink size={12} aria-hidden="true" />
     </a>
   );
 
   return (
     <section className="pr-merge-checklist" aria-labelledby="pr-merge-checklist-heading" id="pr-review-conflict-panel">
-      <h2 id="pr-merge-checklist-heading">Before this can merge</h2>
+      <h3 id="pr-merge-checklist-heading">Before this can merge</h3>
       <ul>
         {blockers.map((blocker) => {
           let actions: ReactNode = null;
@@ -44,7 +46,7 @@ export function PullRequestMergeChecklist({
               <>
                 <button className="btn-subtle btn-compact" type="button" aria-expanded={conflicts.isOpen} aria-controls="pr-merge-conflict-files" onClick={conflicts.onToggle}>
                   Files
-                  <ChevronRight size={11} aria-hidden="true" data-open={conflicts.isOpen} />
+                  <ChevronRight size={12} aria-hidden="true" data-open={conflicts.isOpen} />
                 </button>
                 {link('/conflicts', 'Resolve on GitHub')}
               </>
@@ -53,7 +55,7 @@ export function PullRequestMergeChecklist({
           } else if (blocker.id === 'draft') {
             actions = (
               <button className="btn-subtle btn-compact" type="button" aria-disabled={isMarkingReady || undefined} onClick={() => { if (!isMarkingReady) onMarkReady(); }}>
-                {isMarkingReady ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : null}
+                {isMarkingReady ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : null}
                 Ready for review
               </button>
             );
@@ -61,6 +63,8 @@ export function PullRequestMergeChecklist({
             actions = link('/checks', 'View checks');
           } else if (blocker.id === 'behind') {
             actions = link('', 'Update on GitHub');
+          } else if (blocker.id === 'changes-requested') {
+            actions = <button className="btn-subtle btn-compact" type="button" onClick={onOpenConversation}>Read the review</button>;
           }
           return (
             <li key={blocker.id} data-tone={blocker.tone}>
@@ -100,7 +104,7 @@ function ConflictFiles({
       {!hasLocalCheckout ? (
         <small>Open {detail.owner}/{detail.repository} in Git Gud to list the conflicting files, or resolve them on GitHub.</small>
       ) : isLoading ? (
-        <small><Loader2 size={11} className="animate-spin" aria-hidden="true" /> Inspecting the local checkout…</small>
+        <small><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Inspecting the local checkout…</small>
       ) : errorMessage ? (
         <small>Could not inspect the conflicting files: {errorMessage}</small>
       ) : details?.unavailableReason ? (

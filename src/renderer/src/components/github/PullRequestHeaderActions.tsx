@@ -7,7 +7,11 @@ import {
   ChevronRight,
   ExternalLink,
   GitMerge,
+  Keyboard,
+  Link2,
   Loader2,
+  MessageSquare,
+  MessageSquareDiff,
   MonitorUp,
   MoreHorizontal,
   ShieldCheck,
@@ -32,6 +36,8 @@ import type {
 import { ApplicationIcon } from '@renderer/components/applications/ApplicationIcon';
 import { selectApplication, loadPreferredApplication, savePreferredApplication } from '@renderer/components/applications/preferredApplication';
 import type { GitHubPullRequestDetail } from '@shared/types';
+import { copyGitGudPullRequestLink } from './pullRequestLinkClipboard';
+import { usePullRequestWorkspaceChrome } from './workspace/pullRequestWorkspaceChrome';
 
 
 type PullRequestHeaderActionsProps = {
@@ -40,6 +46,8 @@ type PullRequestHeaderActionsProps = {
   reviewDraftCount: number;
   mergeLabel: string;
   mergeDisabled: boolean;
+  /** Merge stays neutral: on Tour and Code (the panel's finishing action is the solid one) and whenever the verdict is not ready. */
+  quietMerge: boolean;
   mergeTitle: string;
   isMergePending: boolean;
   onFinishReview: () => void;
@@ -66,6 +74,7 @@ export function PullRequestHeaderActions({
   reviewDraftCount,
   mergeLabel,
   mergeDisabled,
+  quietMerge,
   mergeTitle,
   isMergePending,
   onFinishReview,
@@ -78,8 +87,8 @@ export function PullRequestHeaderActions({
   const compactTriggerRef = useRef<HTMLButtonElement>(null);
   const decisionTriggerRef = useRef<HTMLButtonElement>(null);
   const pendingActionRef = useRef<(() => void) | undefined>(undefined);
-  const finishReviewLabel = reviewDraftCount > 0 ? `Review · ${reviewDraftCount}` : 'Review';
   const isOwnPullRequest = detail.author.toLowerCase() === detail.viewerLogin.toLowerCase();
+  const chrome = usePullRequestWorkspaceChrome();
 
   function runAfterMenuClose(action: () => void): void {
     pendingActionRef.current = action;
@@ -88,19 +97,19 @@ export function PullRequestHeaderActions({
   return (
     <div className="pr-review-header-actions pr-review-actions-persistent">
       <div className="pr-review-decision-split">
-        <button className="btn-primary btn-regular" type="button" onClick={onFinishReview}>
-          <ShieldCheck size={13} />
-          {finishReviewLabel}
+        <button className="btn-subtle btn-regular" type="button" onClick={onFinishReview}>
+          <ShieldCheck size={14} />
+          {reviewDraftCount > 0 ? `Review · ${reviewDraftCount}` : 'Review'}
         </button>
         {!isOwnPullRequest ? <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               ref={decisionTriggerRef}
-              className="btn-primary btn-regular"
+              className="btn-subtle btn-regular"
               type="button"
               aria-label="Choose review decision"
             >
-              <ChevronDown size={12} />
+              <ChevronDown size={14} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -118,16 +127,19 @@ export function PullRequestHeaderActions({
             <DropdownMenuItem
               onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('comment'))}
             >
+              <MessageSquare size={14} />
               Send comments
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('approve'))}
             >
+              <Check size={14} className="text-[var(--success-text)]" />
               Approve
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => runAfterMenuClose(() => onSelectReviewDecision('request-changes'))}
             >
+              <MessageSquareDiff size={14} className="text-[var(--danger-text)]" />
               Request changes
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -135,14 +147,17 @@ export function PullRequestHeaderActions({
       </div>
       {/* A finished pull request has nothing to merge; the status chip already says so. */}
       {detail.state === 'merged' || detail.state === 'closed' ? null : <button
-        className="btn-subtle btn-regular pr-header-merge"
+        // The one solid button on screen, and only when the pull request can merge. On Tour and Code the
+        // panel's finishing action is the solid one, so Merge stays neutral there with a teal mark.
+        className={`${mergeDisabled || quietMerge ? 'btn-subtle' : 'btn-primary'} btn-regular pr-header-merge`}
+        data-ready={!mergeDisabled || undefined}
         type="button"
         disabled={mergeDisabled}
         title={mergeTitle}
         aria-label={mergeLabel}
         onClick={onOpenMerge}
       >
-        {isMergePending ? <Loader2 size={13} /> : <GitMerge size={13} />}
+        {isMergePending ? <Loader2 size={14} className="animate-spin" /> : <GitMerge size={14} />}
         <span className="pr-merge-label-full">{mergeLabel}</span>
         <span className="pr-merge-label-compact" aria-hidden="true">Merge</span>
       </button>}
@@ -178,6 +193,17 @@ export function PullRequestHeaderActions({
               Open on GitHub
             </a>
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              void copyGitGudPullRequestLink(detail.url, navigator.clipboard).then(
+                () => onNotice({ tone: 'success', message: 'Git Gud link copied.' }),
+                () => onNotice({ tone: 'danger', message: 'Could not copy the link.' })
+              );
+            }}
+          >
+            <Link2 size={14} />
+            Copy Git Gud link
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             disabled={mergeDisabled}
@@ -187,6 +213,15 @@ export function PullRequestHeaderActions({
             <GitMerge size={14} />
             {mergeLabel}
           </DropdownMenuItem>
+          {chrome ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => runAfterMenuClose(chrome.openShortcuts)}>
+                <Keyboard size={14} />
+                Keyboard shortcuts
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       <CloseReviewButton onClose={onClose} />
@@ -215,7 +250,7 @@ function OpenApplicationSubmenu({
           <MonitorUp size={14} />
         )}
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <ChevronRight className="text-[var(--text-3)]" size={13} />
+        <ChevronRight className="text-[var(--text-3)]" size={14} />
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent
         sideOffset={5}
@@ -261,7 +296,7 @@ function CloseReviewButton({ onClose }: { onClose: () => void }): ReactElement {
       aria-label="Close pull request review and return to commit graph"
       title="Return to commit graph"
     >
-      <X size={14} />
+      <X size={16} />
     </button>
   );
 }

@@ -127,7 +127,7 @@ export function BugFinderView({
           onClick={onClose}
           aria-label="Close bug finder"
         >
-          <X size={14} />
+          <X size={16} />
         </button>
       </header>
       {stale ? (
@@ -635,7 +635,7 @@ export function BugFinderView({
             </>
           ) : (
             <div className="bug-finder-empty">
-              <Bug size={24} />
+              <Bug size={20} />
               <h2>
                 {scanning ? 'Generating bug report…' : state?.status === 'failed'
                   ? 'Bug report could not be generated'
@@ -693,7 +693,7 @@ export function BugFinderView({
             disabled={!selected.length || pending || stale}
             onClick={() => void copy(selected)}
           >
-            <Copy size={13} /> Copy prompt · {selected.length}
+            <Copy size={14} /> Copy prompt · {selected.length}
           </button>
           <button
             className="btn-primary btn-regular"
@@ -731,7 +731,7 @@ export function BugFinderView({
               disabled={pending}
               onClick={() => setReview(undefined)}
             >
-              <X size={14} />
+              <X size={16} />
             </button>
           </header>
           <div className="bug-finder-review-comments">
@@ -791,7 +791,7 @@ export function BugFinderView({
                 )
               }
             >
-              <Check size={13} />
+              <Check size={14} />
               {pending ? 'Posting…' : `Post ${review.length} ${review.length === 1 ? 'comment' : 'comments'}`}
             </button>
           </footer>

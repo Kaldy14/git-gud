@@ -1,11 +1,35 @@
 import type { GitHubPullRequestSummary } from '@shared/types';
 
+/**
+ * One glyph per state, so a status is recognisable before its label is read. `PullRequestStatusIcon`
+ * draws them; `warning`, `dot` and `running` are the generic ones the merge verdict falls back to.
+ */
+export type PullRequestStatusIconName =
+  | 'check' | 'approved' | 'merge' | 'closed' | 'draft' | 'conflict' | 'failing' | 'changes'
+  | 'review' | 'waiting' | 'blocked' | 'running' | 'warning' | 'dot';
+
 // pending = in progress (blue), warning = blocked on something, muted = no signal.
 export type PullRequestInboxStatus = {
   label: string;
   tone: 'success' | 'danger' | 'pending' | 'warning' | 'muted' | 'merged';
-  icon: 'check' | 'dot' | 'warning' | 'merge';
+  icon: PullRequestStatusIconName;
 };
+
+// Shared with the merge verdict (Overview and the detail header), so one state always reads the same.
+export const PULL_REQUEST_STATUS_LABELS = {
+  merged: 'Merged',
+  closed: 'Closed',
+  conflicts: 'Merge conflicts',
+  draft: 'Draft',
+  changesRequested: 'Changes requested',
+  checksFailing: 'Checks failing',
+  readyToMerge: 'Ready to merge',
+  approved: 'Approved',
+  awaitingReview: 'Awaiting review',
+  awaitingApproval: 'Awaiting approval',
+  blockedByRules: 'Blocked by branch rules',
+  reviewUnknown: 'Review status unknown'
+} as const;
 
 export function hasPullRequestMergeConflicts(
   pullRequest: GitHubPullRequestSummary
@@ -18,25 +42,25 @@ export function pullRequestStatus(
 ): PullRequestInboxStatus {
   if (pullRequest.state === 'merged') {
     // Merged is a fact, not a passing check, so it does not share the success tone.
-    return { label: 'Merged', tone: 'merged', icon: 'merge' };
+    return { label: PULL_REQUEST_STATUS_LABELS.merged, tone: 'merged', icon: 'merge' };
   }
   if (pullRequest.state === 'closed') {
-    return { label: 'Closed', tone: 'muted', icon: 'dot' };
+    return { label: PULL_REQUEST_STATUS_LABELS.closed, tone: 'muted', icon: 'closed' };
   }
   // Conflicts outrank Draft: drafts are already grouped and chipped separately,
   // while a hidden conflict is work the author does not know about.
   if (hasPullRequestMergeConflicts(pullRequest)) {
-    return { label: 'Merge conflicts', tone: 'danger', icon: 'warning' };
+    return { label: PULL_REQUEST_STATUS_LABELS.conflicts, tone: 'danger', icon: 'conflict' };
   }
   if (pullRequest.isDraft) {
-    return { label: 'Draft', tone: 'muted', icon: 'dot' };
+    return { label: PULL_REQUEST_STATUS_LABELS.draft, tone: 'muted', icon: 'draft' };
   }
   const reviewStatus = pullRequestReviewStatus(pullRequest);
   if (reviewStatus.tone === 'danger') {
     return reviewStatus;
   }
   if (pullRequest.checks.state === 'failure' || pullRequest.checks.state === 'error') {
-    return { label: 'Checks failing', tone: 'danger', icon: 'warning' };
+    return { label: PULL_REQUEST_STATUS_LABELS.checksFailing, tone: 'danger', icon: 'failing' };
   }
   return reviewStatus;
 }
@@ -49,7 +73,7 @@ export function pullRequestReviewStatus(
     pullRequest.reviewers.some((reviewer) => reviewer.state === 'changes-requested');
 
   if (hasChangesRequested) {
-    return { label: 'Changes requested', tone: 'danger', icon: 'warning' };
+    return { label: PULL_REQUEST_STATUS_LABELS.changesRequested, tone: 'danger', icon: 'changes' };
   }
 
   const checksSatisfied =
@@ -61,26 +85,26 @@ export function pullRequestReviewStatus(
     checksSatisfied;
 
   if (isReadyToMerge) {
-    return { label: 'Ready to merge', tone: 'success', icon: 'check' };
+    return { label: PULL_REQUEST_STATUS_LABELS.readyToMerge, tone: 'success', icon: 'check' };
   }
 
   if (pullRequest.reviewDecision === 'approved') {
-    return { label: 'Approved', tone: 'success', icon: 'check' };
+    return { label: PULL_REQUEST_STATUS_LABELS.approved, tone: 'success', icon: 'approved' };
   }
 
   if (pullRequest.reviewers.some((reviewer) => reviewer.state === 'pending')) {
-    return { label: 'Awaiting review', tone: 'pending', icon: 'dot' };
+    return { label: PULL_REQUEST_STATUS_LABELS.awaitingReview, tone: 'pending', icon: 'review' };
   }
 
   if (pullRequest.reviewDecision === 'review-required') {
-    return { label: 'Awaiting approval', tone: 'pending', icon: 'dot' };
+    return { label: PULL_REQUEST_STATUS_LABELS.awaitingApproval, tone: 'pending', icon: 'waiting' };
   }
 
   if (pullRequest.mergeState === 'blocked') {
-    return { label: 'Blocked by branch rules', tone: 'warning', icon: 'warning' };
+    return { label: PULL_REQUEST_STATUS_LABELS.blockedByRules, tone: 'warning', icon: 'blocked' };
   }
 
-  return { label: 'Review status unknown', tone: 'muted', icon: 'dot' };
+  return { label: PULL_REQUEST_STATUS_LABELS.reviewUnknown, tone: 'muted', icon: 'dot' };
 }
 
 // Unknown, expected, or absent checks are not "in progress"; keep them muted.

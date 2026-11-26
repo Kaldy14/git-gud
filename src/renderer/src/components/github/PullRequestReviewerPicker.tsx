@@ -143,7 +143,7 @@ export function PullRequestReviewerPicker({
           </label>
           <div className="pr-reviewer-picker-list" role="listbox" aria-label="Reviewer candidates">
             {candidatesQuery.isLoading ? (
-              <ReviewerPickerMessage icon={<Loader2 className="animate-spin" size={13} />}>
+              <ReviewerPickerMessage icon={<Loader2 className="animate-spin" size={14} />}>
                 Loading reviewers
               </ReviewerPickerMessage>
             ) : candidatesQuery.error ? (

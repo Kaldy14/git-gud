@@ -190,13 +190,14 @@ describe('GitHub pull request review plan queries', () => {
       number: 42
     };
 
-    expect(gitHubPullRequestReviewPlanQueryKey(locator, 'head-sha')).toEqual([
+    expect(gitHubPullRequestReviewPlanQueryKey(locator, 'head-sha', 'base-sha')).toEqual([
       'github-pull-request-review-plan',
       'profile',
       'owner',
       'repository',
       42,
-      'head-sha'
+      'head-sha',
+      'base-sha'
     ]);
   });
 });

@@ -130,7 +130,7 @@ describe('pull request inbox status', () => {
     ).toEqual({
       label: 'Merge conflicts',
       tone: 'danger',
-      icon: 'warning'
+      icon: 'conflict'
     });
   });
 
@@ -157,7 +157,7 @@ describe('pull request inbox status', () => {
     ).toEqual({
       label: 'Checks failing',
       tone: 'danger',
-      icon: 'warning'
+      icon: 'failing'
     });
   });
 
@@ -209,7 +209,7 @@ describe('pull request inbox status', () => {
     ).toEqual({
       label: 'Awaiting review',
       tone: 'pending',
-      icon: 'dot'
+      icon: 'review'
     });
   });
 
@@ -227,7 +227,7 @@ describe('pull request inbox status', () => {
     ).toEqual({
       label: 'Changes requested',
       tone: 'danger',
-      icon: 'warning'
+      icon: 'changes'
     });
   });
 });

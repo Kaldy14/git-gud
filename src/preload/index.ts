@@ -165,8 +165,8 @@ const api: RendererApi = {
     invoke('github:pull-request-reviewer-candidates', locator),
   updateGitHubPullRequestReviewer: (input) =>
     invoke('github:update-pull-request-reviewer', input),
-  getGitHubPullRequestReviewPlan: (locator, headSha) =>
-    invoke('github:pull-request-review-plan', locator, headSha),
+  getGitHubPullRequestReviewPlan: (locator, headSha, baseSha) =>
+    invoke('github:pull-request-review-plan', locator, headSha, baseSha),
   getGitHubPullRequestConflicts: (repoPath, input) =>
     invoke('github:pull-request-conflicts', repoPath, input),
   openGitHubPullRequestInApplication: (repoPath, input) =>

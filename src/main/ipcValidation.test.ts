@@ -515,11 +515,13 @@ describe('IPC argument validation', () => {
     expect(
       validateIpcArgs('github:pull-request-review-plan', [
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
-        'A'.repeat(40)
+        'A'.repeat(40),
+        'B'.repeat(40)
       ])
     ).toEqual([
       { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
-      'a'.repeat(40)
+      'a'.repeat(40),
+      'b'.repeat(40)
     ]);
     expect(
       validateIpcArgs('github:pull-request-conflicts', [
@@ -541,13 +543,13 @@ describe('IPC argument validation', () => {
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
         'a'.repeat(64),
         'B'.repeat(40),
-        { body: 'Adds timeouts.', baseRefName: 'main', settledReview: '' }
+        { body: 'Adds timeouts.', baseRefName: 'main', baseSha: 'C'.repeat(40), settledReview: '' }
       ])
     ).toEqual([
       { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
       'a'.repeat(64),
       'b'.repeat(40),
-      { body: 'Adds timeouts.', baseRefName: 'main', settledReview: '' }
+      { body: 'Adds timeouts.', baseRefName: 'main', baseSha: 'c'.repeat(40), settledReview: '' }
     ]);
     expect(
       validateIpcArgs('github:submit-pull-request-review', [
@@ -958,9 +960,17 @@ describe('IPC argument validation', () => {
     expect(() =>
       validateIpcArgs('github:pull-request-review-plan', [
         { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
-        '--help'
+        '--help',
+        'b'.repeat(40)
       ])
     ).toThrow('headSha must be a full Git object ID.');
+    expect(() =>
+      validateIpcArgs('github:pull-request-review-plan', [
+        { profileId: 'profile:kaldy', owner: 'acme', repository: 'widgets', number: 42 },
+        'a'.repeat(40),
+        'main'
+      ])
+    ).toThrow('baseSha must be a full Git object ID.');
     expect(() =>
       validateIpcArgs('github:pull-request-conflicts', [
         '/repo',

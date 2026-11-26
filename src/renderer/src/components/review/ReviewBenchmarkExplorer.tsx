@@ -164,7 +164,7 @@ export function ReviewBenchmarkExplorer({
           title="Reload benchmark after editing its fixture"
         >
           <RefreshCw
-            size={13}
+            size={14}
             className={previewQuery.isFetching ? 'animate-spin' : undefined}
           />
         </button>
@@ -178,7 +178,7 @@ export function ReviewBenchmarkExplorer({
               className="flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-field)] px-2 py-1"
               title={`${preview.wronglySplit.length} wrongly split pairs and ${preview.wronglyMerged.length} wrongly merged pairs`}
             >
-              <GitCompareArrows size={11} />
+              <GitCompareArrows size={12} />
               Current match {formatScore(preview.score)}
             </span>
           </div>

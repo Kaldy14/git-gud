@@ -125,16 +125,20 @@ export const gitHubPullRequestDetailQueryOptions = (
   staleTime: 15_000
 });
 
+// Cached for good, so the key names the whole revision: a retargeted pull request keeps its head but
+// changes its base, and with it the patches.
 export const gitHubPullRequestReviewPlanQueryKey = (
   locator: GitHubPullRequestLocator,
-  headSha: string
-): readonly ['github-pull-request-review-plan', string, string, string, number, string] => [
+  headSha: string,
+  baseSha: string
+): readonly ['github-pull-request-review-plan', string, string, string, number, string, string] => [
   'github-pull-request-review-plan',
   locator.profileId,
   locator.owner,
   locator.repository,
   locator.number,
-  headSha
+  headSha,
+  baseSha
 ];
 
 export async function refreshGitHubPullRequestInboxAfterMerge(
@@ -309,19 +313,20 @@ export function useGitHubPullRequestReviewerCandidates(
 
 export function useGitHubPullRequestReviewPlan(
   locator: GitHubPullRequestLocator | undefined,
-  headSha: string | undefined
+  headSha: string | undefined,
+  baseSha: string | undefined
 ) {
   return useQuery({
-    queryKey: locator && headSha
-      ? gitHubPullRequestReviewPlanQueryKey(locator, headSha)
-      : ['github-pull-request-review-plan', 'none', 'none', 'none', 0, 'none'],
+    queryKey: locator && headSha && baseSha
+      ? gitHubPullRequestReviewPlanQueryKey(locator, headSha, baseSha)
+      : ['github-pull-request-review-plan', 'none', 'none', 'none', 0, 'none', 'none'],
     queryFn: async (): Promise<GitReviewPlan> => {
-      if (!locator || !headSha) {
+      if (!locator || !headSha || !baseSha) {
         throw new Error('A pull request revision is required.');
       }
-      return window.api.getGitHubPullRequestReviewPlan(locator, headSha);
+      return window.api.getGitHubPullRequestReviewPlan(locator, headSha, baseSha);
     },
-    enabled: Boolean(locator && headSha),
+    enabled: Boolean(locator && headSha && baseSha),
     staleTime: Number.POSITIVE_INFINITY
   });
 }

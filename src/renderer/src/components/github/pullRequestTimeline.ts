@@ -162,16 +162,32 @@ function entryAuthors(entry: Exclude<PullRequestTimelineEntry, { kind: 'commit' 
   }
 }
 
+// Every comment id shown in an entry, so a jump to one can find its entry.
+function entryCommentIds(entry: Exclude<PullRequestTimelineEntry, { kind: 'commit' }>): number[] {
+  const threadIds = (thread: PullRequestReviewThread) => [thread.root.id, ...thread.replies.map((reply) => reply.id)];
+  switch (entry.kind) {
+    case 'conversation': return [entry.comment.id];
+    case 'review': return entry.threads.flatMap(threadIds);
+    case 'review-thread': return threadIds(entry.thread);
+  }
+}
+
 // Collapse runs of consecutive commits so pushes don't bury the discussion, and
 // optionally hide bot-only comments and reviews. An entry a person replied to stays whole,
-// bot root included, so the reply keeps its context. Bot commits stay visible.
+// bot root included, so the reply keeps its context. Bot commits stay visible. The entry holding
+// `keepCommentId` (a comment Overview asked to open) stays even when bots are hidden.
 export function groupPullRequestActivity(
   entries: readonly PullRequestTimelineEntry[],
-  options: { hideBots: boolean }
+  options: { hideBots: boolean; keepCommentId?: number }
 ): PullRequestActivityItem[] {
   const items: PullRequestActivityItem[] = [];
   for (const entry of entries) {
-    if (options.hideBots && entry.kind !== 'commit' && entryAuthors(entry).every(isBotAuthor)) continue;
+    if (
+      options.hideBots &&
+      entry.kind !== 'commit' &&
+      entryAuthors(entry).every(isBotAuthor) &&
+      (options.keepCommentId === undefined || !entryCommentIds(entry).includes(options.keepCommentId))
+    ) continue;
     const last = items.at(-1);
     if (entry.kind === 'commit' && last?.kind === 'commits') {
       last.commits.push(entry);

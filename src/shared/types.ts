@@ -1600,6 +1600,8 @@ export type GitHubRepositoryMergeSettings = {
 };
 
 export type GitHubPullRequestDetail = GitHubPullRequestSummary & {
+  // When the pull request was opened.
+  createdAt?: string;
   body: string;
   bodyImageUrls?: Record<string, string>;
   headSha: string;
@@ -1614,7 +1616,18 @@ export type GitHubPullRequestDetail = GitHubPullRequestSummary & {
   reviewComments: GitHubPullRequestReviewComment[];
   conversationComments: GitHubPullRequestConversationComment[];
   reviews: GitHubPullRequestReview[];
+  // Check runs and status contexts of the head this detail loaded, grouped by the same rules as
+  // `checks`. Kept off `checks` because the inbox row is spread over the detail and would erase it.
+  checkRuns?: GitHubPullRequestCheckRuns;
   loadedAt: string;
+};
+
+export type GitHubPullRequestCheckOutcome = 'failed' | 'running' | 'passed' | 'skipped';
+
+export type GitHubPullRequestCheckRuns = {
+  runs: Array<{ name: string; outcome: GitHubPullRequestCheckOutcome; url?: string; durationSeconds?: number }>;
+  // GitHub returned fewer runs than exist.
+  truncated: boolean;
 };
 
 export type GitHubPullRequestDraftLineComment = {
@@ -1659,6 +1672,8 @@ export type GitHubPullRequestReviewCommentUpdateInput = GitHubPullRequestLocator
 
 export type GitHubPullRequestMergeInput = GitHubPullRequestLocator & {
   method: GitHubPullRequestMergeMethod;
+  // The head the reviewer saw; GitHub rejects the merge when the branch has moved since.
+  headSha: string;
 };
 
 export type GitHubPullRequestActionResult = {

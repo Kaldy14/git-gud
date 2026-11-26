@@ -8,6 +8,8 @@ import type {
   GitHubActionsRunsInput,
   GitHubPullRequestActionResult,
   GitHubPullRequestCategory,
+  GitHubPullRequestCheckOutcome,
+  GitHubPullRequestCheckRuns,
   GitHubPullRequestChecks,
   GitHubPullRequestCommit,
   GitHubPullRequestConversationComment,
@@ -130,6 +132,7 @@ type GitHubPullRequestReviewSeed = {
   locator: GitHubPullRequestLocator;
   pullRequest: GitHubPullRequestSummary;
   headSha: string;
+  baseSha: string;
   files: GitHubPullRequestFile[];
   initialPreparation: GitHubReviewPlanPreparation;
   mergeBaseSha: Promise<string | undefined>;
@@ -269,8 +272,8 @@ query GitGudPullRequest($owner: String!, $repository: String!, $number: Int!) {
           totalCount
           nodes {
             __typename
-            ... on CheckRun { status conclusion }
-            ... on StatusContext { state }
+            ... on CheckRun { name status conclusion url startedAt completedAt }
+            ... on StatusContext { context state targetUrl }
           }
         }
       }
@@ -540,7 +543,7 @@ async function loadGitHubPullRequestInboxForContext(
   context: GitHubContext,
   profileId: string
 ): Promise<GitHubPullRequestInbox> {
-  const [raw, suggestionResult] = await Promise.all([
+  const [read, suggestionResult] = await Promise.all([
     runGitHubJson(context, [
       'api',
       'graphql',
@@ -552,10 +555,12 @@ async function loadGitHubPullRequestInboxForContext(
       'reviewQuery=is:open is:pr archived:false review-requested:@me sort:updated-desc',
       '-F',
       'authoredQuery=is:open is:pr archived:false author:@me sort:updated-desc'
-    ]),
+    ]).then((raw) => ({ raw, readAt: new Date().toISOString() })),
     loadGitHubPullRequestSuggestions(context, profileId)
   ]);
-  const inbox = parseGitHubInboxResponse(raw, profileId, context.host);
+  const inbox = parseGitHubInboxResponse(read.raw, profileId, context.host);
+  // When GitHub answered, not when the slower branch suggestions finished: a detail read in between is newer.
+  inbox.loadedAt = read.readAt;
   inbox.suggestions = suggestionResult.suggestions;
   inbox.suggestionsError = suggestionResult.errorMessage;
 
@@ -780,7 +785,7 @@ async function loadOpenPullRequestsForBranch(
 async function loadGitHubPullRequestSummaryForContext(
   context: GitHubContext,
   locator: GitHubPullRequestLocator
-): Promise<{ pullRequest: GitHubPullRequestSummary; viewerLogin: string }> {
+): Promise<ReturnType<typeof parseGitHubPullRequestResponse>> {
   const raw = await runGitHubJson(context, [
     'api',
     'graphql',
@@ -1425,6 +1430,69 @@ function normalizeWorkflowRunConclusion(
 export async function loadGitHubPullRequestDetail(
   locator: GitHubPullRequestLocator
 ): Promise<GitHubPullRequestDetail> {
+  // A push or a retarget while the pull request loads would label one revision's patches with another, and
+  // the head-bound review and merge would carry a commit whose diff was never shown. Such a load is thrown
+  // away and read once more.
+  const detail = (await loadGitHubPullRequestDetailOnce(locator)) ?? (await loadGitHubPullRequestDetailOnce(locator));
+  if (!detail) throw new Error('The pull request changed while it was loading. Refresh to try again.');
+  return detail;
+}
+
+// GitHub's /files names the commit each entry describes in `contents_url` (`?ref=<sha>`). Added, modified
+// and renamed files point at the head; removed files point at the base, so they say nothing about the head.
+// `copied` and `changed` are left out: no real pull request with such entries was found to confirm their ref.
+const HEAD_BOUND_FILE_STATUSES = new Set(['added', 'modified', 'renamed']);
+
+type PullRequestRevision = { headSha: string; baseSha: string; baseRefName: string };
+
+function readPullRequestRevision(pull: Record<string, unknown>): PullRequestRevision {
+  return {
+    headSha: readNestedString(pull, ['head', 'sha'], 'pull request head SHA'),
+    baseSha: readNestedString(pull, ['base', 'sha'], 'pull request base SHA'),
+    baseRefName: readNestedString(pull, ['base', 'ref'], 'pull request base branch')
+  };
+}
+
+/**
+ * Whether everything one load read describes the same revision (head and base). `before` is the metadata
+ * read alongside `/files` and `after` the same read once the files had loaded, so a push or a retarget
+ * while the files loaded shows as a difference between the two. A file that names another commit, or a
+ * GraphQL summary (checks, counts, merge state, base branch) read for another revision, fails too.
+ *
+ * `/files` is not held back until the first read answers: that costs 0.2–0.4s on every cold open, to cover
+ * only a change landing in the instant between two requests sent together.
+ */
+export function pullRequestLoadDescribesOneRevision(read: {
+  before: PullRequestRevision;
+  after: PullRequestRevision;
+  rawFiles: readonly unknown[];
+  summary: { headSha?: string; baseRefName: string };
+}): boolean {
+  const { before, after, rawFiles, summary } = read;
+  if (after.headSha !== before.headSha || after.baseSha !== before.baseSha) return false;
+  if (after.baseRefName !== before.baseRefName || summary.baseRefName !== before.baseRefName) return false;
+  if (summary.headSha !== undefined && summary.headSha !== before.headSha) return false;
+  return rawFiles.every((raw) => {
+    if (!isRecord(raw) || typeof raw.status !== 'string' || !HEAD_BOUND_FILE_STATUSES.has(raw.status)) return true;
+    const ref = fileContentsRef(raw.contents_url);
+    return ref === undefined || ref === before.headSha;
+  });
+}
+
+function fileContentsRef(contentsUrl: unknown): string | undefined {
+  if (typeof contentsUrl !== 'string') return undefined;
+  try {
+    const ref = new URL(contentsUrl).searchParams.get('ref');
+    return ref && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(ref) ? ref : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** One read of the pull request; undefined when what it read does not describe one revision. */
+async function loadGitHubPullRequestDetailOnce(
+  locator: GitHubPullRequestLocator
+): Promise<GitHubPullRequestDetail | undefined> {
   const context = await getGitHubContext(locator.profileId);
   const endpoint = pullRequestEndpoint(locator);
   const [
@@ -1458,29 +1526,36 @@ export async function loadGitHubPullRequestDetail(
     runGitHubPaginatedArray(context, `${endpoint}/reviews?per_page=100`, true),
     loadReviewThreadStates(context, locator)
   ]);
-  const { pullRequest: summary, viewerLogin } = summaryResult;
+  const { pullRequest: summary, viewerLogin, checkRuns } = summaryResult;
+  // When GitHub answered, not when the review plan and images below finished: the renderer compares it
+  // with the inbox's read time to decide which of the two is newer.
+  const readAt = new Date().toISOString();
 
   const pull = readRecord(pullRaw, 'pull request');
+  const revision = readPullRequestRevision(pull);
+  const { headSha, baseSha } = revision;
   const files = filesRaw.map(parsePullRequestFile);
-  const headSha = readNestedString(pull, ['head', 'sha'], 'pull request head SHA');
-  const baseSha = readNestedString(pull, ['base', 'sha'], 'pull request base SHA');
-  const baseRefShaRequest = loadGitHubBranchHeadSha(
-    context,
-    locator,
-    summary.baseRefName,
-    baseSha
-  );
   const mergeBaseSha = loadGitHubMergeBaseSha(context, locator, baseSha, headSha);
-  const [baseRefSha, initialPreparation] = await Promise.all([
-    baseRefShaRequest,
+  // The second metadata read rides along with requests that were already made here, so it adds no wait.
+  const [rereadRaw, baseRefSha, initialPreparation] = await Promise.all([
+    runGitHubJson(context, ['api', '--hostname', context.host, endpoint]),
+    loadGitHubBranchHeadSha(context, locator, revision.baseRefName, baseSha),
     prepareGitHubPullRequestReviewPlan(context.host, summary, headSha, files)
   ]);
+  const describesOneRevision = pullRequestLoadDescribesOneRevision({
+    before: revision,
+    after: readPullRequestRevision(readRecord(rereadRaw, 'pull request')),
+    rawFiles: filesRaw,
+    summary
+  });
+  if (!describesOneRevision) return undefined;
   const reviewPlan = initialPreparation.reviewPlan;
   rememberGitHubPullRequestReviewSeed({
     context,
     locator,
     pullRequest: summary,
     headSha,
+    baseSha,
     files,
     initialPreparation,
     mergeBaseSha
@@ -1526,8 +1601,10 @@ export async function loadGitHubPullRequestDetail(
     }
   }
 
+  const createdAt = readOptionalString(pull.created_at);
   return {
     ...summary,
+    ...(createdAt ? { createdAt } : {}),
     body,
     bodyImageUrls,
     headSha,
@@ -1542,7 +1619,10 @@ export async function loadGitHubPullRequestDetail(
     reviewComments,
     conversationComments,
     reviews,
-    loadedAt: new Date().toISOString()
+    // The rollup describes the GraphQL head (`headRefOid`); after a push between the two reads it is
+    // another commit's, so Overview shows no runs rather than runs of a head not on screen.
+    checkRuns: summary.headSha === headSha ? checkRuns : undefined,
+    loadedAt: readAt
   };
 }
 
@@ -1579,7 +1659,9 @@ async function loadReviewThreadStates(context: GitHubContext, locator: GitHubPul
       cursor = next;
     } while (cursor);
   } catch {
-    // Keep the PR readable if GraphQL is unavailable. Unknown resolution is shown explicitly in the brief.
+    // Keep the PR readable if GraphQL is unavailable. A partial map would show the threads it misses as
+    // unresolved, so nothing is kept and resolution reads as unknown.
+    return new Map<number, { isResolved: boolean; isOutdated: boolean }>();
   }
   return states;
 }
@@ -1653,11 +1735,14 @@ function reviewerCandidateLabel(candidate: GitHubPullRequestReviewerCandidate): 
 
 export async function loadGitHubPullRequestReviewPlan(
   locator: GitHubPullRequestLocator,
-  headSha: string
+  headSha: string,
+  baseSha: string
 ): Promise<GitReviewPlan> {
   const seed = gitHubPullRequestReviewSeeds.get(pullRequestReviewSeedKey(locator));
 
-  if (!seed || seed.headSha !== headSha) {
+  // The seed is the last revision loaded. A caller still showing an earlier one (another head, or the same
+  // head before a retarget) must reload rather than get this revision's patches under its own.
+  if (!seed || seed.headSha !== headSha || seed.baseSha !== baseSha) {
     throw new Error('Reload the pull request before loading its full review context.');
   }
 
@@ -2499,6 +2584,9 @@ export function reviewCommentBelongsToPullRequest(
   }
 }
 
+export const PULL_REQUEST_HEAD_MOVED_MESSAGE =
+  'The branch changed since you opened this pull request. Review the new commits, then merge.';
+
 export async function mergeGitHubPullRequest(
   input: GitHubPullRequestMergeInput
 ): Promise<GitHubPullRequestActionResult> {
@@ -2524,8 +2612,16 @@ export async function mergeGitHubPullRequest(
     'PUT',
     `${pullRequestEndpoint(input)}/merge`,
     '-f',
-    `merge_method=${input.method}`
-  ]);
+    `merge_method=${input.method}`,
+    '-f',
+    `sha=${input.headSha}`
+  ]).catch((error: unknown) => {
+    // GitHub answers 409 when `sha` is no longer the head: someone pushed after the reviewer looked.
+    if (error instanceof Error && /HTTP 409|Head branch was modified/iu.test(error.message)) {
+      throw new Error(PULL_REQUEST_HEAD_MOVED_MESSAGE, { cause: error });
+    }
+    throw error;
+  });
   const result = readRecord(raw, 'merge result');
   const merged = result.merged === true;
   const message = readOptionalString(result.message) ?? (merged ? 'Pull request merged.' : 'GitHub did not merge the pull request.');
@@ -2712,7 +2808,7 @@ export function buildGitHubPullRequestSuggestion(
 export function parseGitHubPullRequestResponse(
   value: unknown,
   profileId: string
-): { pullRequest: GitHubPullRequestSummary; viewerLogin: string } {
+): { pullRequest: GitHubPullRequestSummary; viewerLogin: string; checkRuns: GitHubPullRequestCheckRuns } {
   const root = readRecord(value, 'GitHub GraphQL response');
   const data = readRecord(root.data, 'GitHub GraphQL data');
   const viewer = readRecord(data.viewer, 'GitHub viewer');
@@ -2728,7 +2824,8 @@ export function parseGitHubPullRequestResponse(
       viewerLogin,
       author.toLowerCase() === viewerLogin.toLowerCase() ? 'authored' : 'review'
     ),
-    viewerLogin
+    viewerLogin,
+    checkRuns: parseCheckRuns(pullRequest)
   };
 }
 
@@ -2894,42 +2991,10 @@ function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChe
   const contexts = nestedRecord(rollup, ['contexts']);
   const nodes = contexts && Array.isArray(contexts.nodes) ? contexts.nodes : [];
   const total = contexts ? readNumber(contexts.totalCount, 'check count') : nodes.length;
-  let passed = 0;
-  let failed = 0;
-  let pending = 0;
-
-  for (const node of nodes) {
-    if (!isRecord(node)) {
-      continue;
-    }
-
-    if (node.__typename === 'StatusContext') {
-      if (node.state === 'SUCCESS') {
-        passed += 1;
-      } else if (node.state === 'FAILURE' || node.state === 'ERROR') {
-        failed += 1;
-      } else if (node.state === 'PENDING' || node.state === 'EXPECTED') {
-        pending += 1;
-      }
-      continue;
-    }
-
-    if (node.__typename === 'CheckRun') {
-      if (node.conclusion === 'SUCCESS') {
-        passed += 1;
-      } else if (
-        node.conclusion === 'FAILURE' ||
-        node.conclusion === 'TIMED_OUT' ||
-        node.conclusion === 'CANCELLED' ||
-        node.conclusion === 'ACTION_REQUIRED' ||
-        node.conclusion === 'STARTUP_FAILURE'
-      ) {
-        failed += 1;
-      } else if (node.status !== 'COMPLETED') {
-        pending += 1;
-      }
-    }
-  }
+  const outcomes = nodes.map(checkOutcome);
+  const passed = outcomes.filter((outcome) => outcome === 'passed').length;
+  const failed = outcomes.filter((outcome) => outcome === 'failed').length;
+  const pending = outcomes.filter((outcome) => outcome === 'running').length;
 
   // Skipped, neutral and stale runs are neither pending nor passed: the renderer
   // derives them as total - passed - failed - pending. Contexts beyond the fetched
@@ -2942,6 +3007,43 @@ function parseChecks(pullRequest: Record<string, unknown>): GitHubPullRequestChe
     failed,
     pending: pending + Math.max(0, total - nodes.length)
   };
+}
+
+const FAILED_CHECK_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']);
+
+// One rule for the counts and the listed runs, so the groups always add up to the counts.
+// Skipped, neutral and stale runs count as neither passed, failed nor pending.
+function checkOutcome(node: unknown): GitHubPullRequestCheckOutcome | undefined {
+  if (!isRecord(node)) return undefined;
+  if (node.__typename === 'StatusContext') {
+    if (node.state === 'SUCCESS') return 'passed';
+    if (node.state === 'FAILURE' || node.state === 'ERROR') return 'failed';
+    if (node.state === 'PENDING' || node.state === 'EXPECTED') return 'running';
+    return 'skipped';
+  }
+  if (node.__typename === 'CheckRun') {
+    if (node.conclusion === 'SUCCESS') return 'passed';
+    if (typeof node.conclusion === 'string' && FAILED_CHECK_CONCLUSIONS.has(node.conclusion)) return 'failed';
+    return node.status === 'COMPLETED' ? 'skipped' : 'running';
+  }
+  return undefined;
+}
+
+function parseCheckRuns(pullRequest: Record<string, unknown>): GitHubPullRequestCheckRuns {
+  const contexts = nestedRecord(pullRequest, ['statusCheckRollup', 'contexts']);
+  const nodes = contexts && Array.isArray(contexts.nodes) ? contexts.nodes : [];
+  const total = contexts ? readOptionalNumber(contexts.totalCount) ?? nodes.length : 0;
+  const runs = nodes.flatMap((node): GitHubPullRequestCheckRuns['runs'] => {
+    const outcome = checkOutcome(node);
+    if (!outcome || !isRecord(node)) return [];
+    const name = readOptionalString(node.__typename === 'CheckRun' ? node.name : node.context) ?? 'Unnamed check';
+    const url = readOptionalString(node.__typename === 'CheckRun' ? node.url : node.targetUrl);
+    const started = Date.parse(readOptionalString(node.startedAt) ?? '');
+    const completed = Date.parse(readOptionalString(node.completedAt) ?? '');
+    const durationSeconds = outcome !== 'running' && completed >= started ? Math.round((completed - started) / 1000) : undefined;
+    return [{ name, outcome, ...(url ? { url } : {}), ...(durationSeconds !== undefined ? { durationSeconds } : {}) }];
+  });
+  return { runs, truncated: total > nodes.length };
 }
 
 // Optional: an older cached response or a GitHub error on `files` must not break the inbox.
@@ -2957,6 +3059,7 @@ function parseFileLineStats(value: unknown): FileLineStat[] | undefined {
 function parsePullRequestFile(value: unknown): GitHubPullRequestFile {
   const file = readRecord(value, 'pull request file');
   const patch = readOptionalString(file.patch);
+  const changes = readNumber(file.changes, 'file changes');
 
   return {
     sha: readString(file.sha, 'file SHA'),
@@ -2965,9 +3068,10 @@ function parsePullRequestFile(value: unknown): GitHubPullRequestFile {
     status: normalizeFileStatus(readString(file.status, 'file status')),
     additions: readNumber(file.additions, 'file additions'),
     deletions: readNumber(file.deletions, 'file deletions'),
-    changes: readNumber(file.changes, 'file changes'),
+    changes,
     patch: patch ? buildCompleteFilePatch(file, patch) : undefined,
-    omittedReason: patch === undefined ? 'binary' : undefined
+    // GitHub leaves the patch out of a binary file (no counted lines) and of a text diff too large to send.
+    omittedReason: patch !== undefined ? undefined : changes > 0 ? 'too-large' : 'binary'
   };
 }
 

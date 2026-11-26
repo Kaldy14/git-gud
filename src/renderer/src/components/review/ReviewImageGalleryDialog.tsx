@@ -68,7 +68,7 @@ export function ReviewImageGalleryDialog({
     >
       <header>
         <span className="review-image-gallery-icon" aria-hidden="true">
-          <Images size={15} />
+          <Images size={16} />
         </span>
         <div>
           <span>Pull request image</span>
@@ -86,7 +86,7 @@ export function ReviewImageGalleryDialog({
           onClick={onClose}
           aria-label="Close image preview"
         >
-          <X size={15} />
+          <X size={16} />
         </button>
       </header>
 

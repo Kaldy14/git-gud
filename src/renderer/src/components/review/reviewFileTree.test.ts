@@ -4,29 +4,14 @@ import type { GitReviewChunk, GitReviewUnit } from '@shared/types';
 
 import {
   createReviewFileTreeEntries,
-  DEFAULT_REVIEW_FILE_TREE_WIDTH,
   findAdjacentReviewFilePath,
   findReviewUnitIdForPath,
   loadReviewFileTreeOpen,
-  loadReviewFileTreeWidth,
-  MAX_REVIEW_FILE_TREE_WIDTH,
-  MIN_REVIEW_FILE_TREE_WIDTH,
-  normalizeReviewFileTreeWidth,
-  reviewFileTreeCommonDirectory,
-  saveReviewFileTreeOpen,
-  saveReviewFileTreeWidth
+  saveReviewFileTreeOpen
 } from './reviewFileTree';
 import type { VisibleReviewUnit } from './reviewFilters';
 
 describe('review file tree', () => {
-  it('extracts only complete shared directories for the embedded tree', () => {
-    expect(reviewFileTreeCommonDirectory(['apps/ui/cart/add.ts', 'apps/ui/detail/view.tsx'])).toBe('apps/ui/');
-    expect(reviewFileTreeCommonDirectory(['src/cart.ts', 'src/catalog.ts'])).toBe('src/');
-    expect(reviewFileTreeCommonDirectory(['src/cart.ts', 'src-old/cart.ts'])).toBe('');
-    expect(reviewFileTreeCommonDirectory(['README.md', 'src/cart.ts'])).toBe('');
-    expect(reviewFileTreeCommonDirectory(['src/cart.ts'])).toBe('src/');
-    expect(reviewFileTreeCommonDirectory([])).toBe('');
-  });
   it('deduplicates visible files and preserves their git status', () => {
     const units = [
       visibleUnit('api', [
@@ -123,48 +108,6 @@ describe('review file tree', () => {
 
     expect(loadReviewFileTreeOpen(storage, '/repo/one')).toBe(false);
     expect(loadReviewFileTreeOpen(storage, '/repo/two')).toBe(true);
-  });
-
-  it('persists a normalized width per repository', () => {
-    const values = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => values.set(key, value)
-    };
-
-    expect(loadReviewFileTreeWidth(storage, '/repo/one')).toBe(
-      DEFAULT_REVIEW_FILE_TREE_WIDTH
-    );
-
-    saveReviewFileTreeWidth(storage, '/repo/one', 347.6);
-
-    expect(loadReviewFileTreeWidth(storage, '/repo/one')).toBe(348);
-    expect(loadReviewFileTreeWidth(storage, '/repo/two')).toBe(
-      DEFAULT_REVIEW_FILE_TREE_WIDTH
-    );
-  });
-
-  it('clamps stored widths and ignores invalid values', () => {
-    const values = new Map<string, string>([
-      ['git-gud:review-file-tree-width:v1:%2Frepo%2Fsmall', '20'],
-      ['git-gud:review-file-tree-width:v1:%2Frepo%2Flarge', '900'],
-      ['git-gud:review-file-tree-width:v1:%2Frepo%2Finvalid', 'wide']
-    ]);
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null
-    };
-
-    expect(normalizeReviewFileTreeWidth(20)).toBe(MIN_REVIEW_FILE_TREE_WIDTH);
-    expect(normalizeReviewFileTreeWidth(900)).toBe(MAX_REVIEW_FILE_TREE_WIDTH);
-    expect(loadReviewFileTreeWidth(storage, '/repo/small')).toBe(
-      MIN_REVIEW_FILE_TREE_WIDTH
-    );
-    expect(loadReviewFileTreeWidth(storage, '/repo/large')).toBe(
-      MAX_REVIEW_FILE_TREE_WIDTH
-    );
-    expect(loadReviewFileTreeWidth(storage, '/repo/invalid')).toBe(
-      DEFAULT_REVIEW_FILE_TREE_WIDTH
-    );
   });
 });
 

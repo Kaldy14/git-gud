@@ -881,8 +881,8 @@ export function registerIpcHandlers(
   handle('github:update-pull-request-reviewer', (_event, input) =>
     updateGitHubPullRequestReviewer(input)
   );
-  handle('github:pull-request-review-plan', (_event, locator, headSha) =>
-    loadGitHubPullRequestReviewPlan(locator, headSha)
+  handle('github:pull-request-review-plan', (_event, locator, headSha, baseSha) =>
+    loadGitHubPullRequestReviewPlan(locator, headSha, baseSha)
   );
   handle('github:pull-request-conflicts', (_event, repoPath, input) =>
     loadPullRequestConflictDetails(getOpenRepositoryTab(repoPath), input)
