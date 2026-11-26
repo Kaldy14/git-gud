@@ -51,7 +51,8 @@ const REVIEW_CONTEXT_SEPARATOR_CSS = `
 
   [data-separator="line-info"] [data-separator-content] {
     padding-inline: 10px;
-    font-size: 10px;
+    /* Content text never goes below 11px (the commit diff's separator uses the same size). */
+    font-size: 11px;
   }
 
   [data-separator="line-info"] [data-separator-wrapper]:hover {

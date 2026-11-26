@@ -635,7 +635,7 @@ export type IpcChannelMap = {
     result: GitHubPullRequestActionResult;
   };
   'github:pull-request-review-plan': {
-    args: [locator: GitHubPullRequestLocator, headSha: string];
+    args: [locator: GitHubPullRequestLocator, headSha: string, baseSha: string];
     result: GitReviewPlan;
   };
   'github:pull-request-conflicts': {
@@ -860,7 +860,8 @@ export type RendererApi = {
   ) => Promise<GitHubPullRequestActionResult>;
   getGitHubPullRequestReviewPlan: (
     locator: GitHubPullRequestLocator,
-    headSha: string
+    headSha: string,
+    baseSha: string
   ) => Promise<GitReviewPlan>;
   getGitHubPullRequestConflicts: (
     repoPath: string,

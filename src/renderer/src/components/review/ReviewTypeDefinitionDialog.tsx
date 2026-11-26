@@ -57,7 +57,7 @@ export function ReviewTypeDefinitionDialog({
           onClick={onClose}
           aria-label="Close definition preview"
         >
-          <X size={15} />
+          <X size={16} />
         </button>
       </header>
 
@@ -85,7 +85,7 @@ export function ReviewTypeDefinitionDialog({
           />
         ) : (
           <div className="review-type-definition-message" role={errorMessage ? 'alert' : 'status'}>
-            {isLoading ? <Loader2 size={18} className="animate-spin" /> : <AlertTriangle size={18} />}
+            {isLoading ? <Loader2 size={20} className="animate-spin" /> : <AlertTriangle size={20} />}
             <span>{isLoading ? 'Resolving this TypeScript symbol…' : errorMessage}</span>
           </div>
         )}

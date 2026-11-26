@@ -1,11 +1,11 @@
 import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen } from 'lucide-react';
+import { Route } from 'lucide-react';
 import { Tooltip } from 'radix-ui';
 
 import type { GitHubPullRequestSummary } from '@shared/types';
-import { pullRequestLocator, pullRequestTourQueryKey, startPullRequestTour } from './guide/pullRequestTourQuery';
+import { pullRequestLocator, pullRequestTourQueryKey, startPullRequestTour, startPullRequestTourMutationKey } from './tour/pullRequestTourQuery';
 import { BackgroundJobConfirm } from './BackgroundJobConfirm';
 import { announce } from '../../lib/announce';
 
@@ -16,9 +16,9 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
   const locator = pullRequestLocator(pullRequest);
   const queryClient = useQueryClient();
   const queryKey = pullRequestTourQueryKey(locator);
-  const mutationKey = ['start-pull-request-tour', ...queryKey];
+  const mutationKey = startPullRequestTourMutationKey(locator);
   const isStarting = useIsMutating({ mutationKey }) > 0;
-  // The same Guide the pull request's Guide tab shows; polled quickly only while it is being written.
+  // The same tour the pull request's Tour tab shows; polled quickly only while it is being written.
   const query = useQuery({
     queryKey,
     queryFn: () => window.api.getGitHubPullRequestTourState(locator),
@@ -32,38 +32,39 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
     mutationFn: async () => {
       // Load only the selected PR, and register its current plan before starting the job.
       const detail = await window.api.getGitHubPullRequestDetail(locator);
-      const plan = await window.api.getGitHubPullRequestReviewPlan(locator, detail.headSha);
+      const plan = await window.api.getGitHubPullRequestReviewPlan(locator, detail.headSha, detail.baseSha);
       return startPullRequestTour(detail, plan.sourceFingerprint);
     },
     onSuccess: (state) => queryClient.setQueryData(queryKey, state)
   });
   const [isConfirming, setIsConfirming] = useState(false);
   const state = query.data;
-  // A failed rewrite must not hide an existing guide: report failure only when there is none.
+  // A failed rewrite must not hide an existing tour: report failure only when there is none.
+  // A tour stored in an older format counts as outdated: it offers to write it again.
   const status = isStarting || state?.running ? 'running'
     : query.isError ? 'failed'
       : !state ? 'loading'
-        : !state.tour ? (generation.isError || state.errorMessage ? 'failed' : 'idle')
+        : !state.tour ? (generation.isError || state.errorMessage ? 'failed' : state.outdatedFormat ? 'stale' : 'idle')
           : pullRequest.headSha && state.tour.headSha !== pullRequest.headSha ? 'stale' : 'ready';
   const error = generation.error?.message ?? query.error?.message ?? state?.errorMessage;
-  const label = status === 'ready' ? 'Review guide ready. Open guide'
-    : status === 'running' ? 'Writing a review guide in the background'
-      : status === 'loading' ? 'Checking review guide status'
-        : status === 'stale' ? 'Review guide was written before the latest push. Write an update'
-          : status === 'failed' ? `${error || 'The review guide could not be written'}. Retry`
-            : 'No review guide yet. Write one in the background';
+  const label = status === 'ready' ? 'Tour ready. Open tour'
+    : status === 'running' ? 'Writing a tour in the background'
+      : status === 'loading' ? 'Checking tour status'
+        : status === 'stale' ? (state?.tour ? 'Tour was written before the latest push. Write an update' : 'Tour was written in an older format. Write it again')
+          : status === 'failed' ? `${error || 'The tour could not be written'}. Retry`
+            : 'No tour yet. Write one in the background';
   const start = () => {
     generation.mutate();
-    announce(`Writing a review guide for #${pullRequest.number}`);
+    announce(`Writing a tour for #${pullRequest.number}`);
   };
 
   return (
     <BackgroundJobConfirm
       open={isConfirming}
       onOpenChange={setIsConfirming}
-      title={status === 'stale' ? 'Update the review guide?' : status === 'failed' ? 'Retry the review guide?' : 'Write a review guide?'}
+      title={status === 'stale' ? 'Write the tour again?' : status === 'failed' ? 'Retry the tour?' : 'Write a tour?'}
       detail="Reads the change with AI and writes a tour of it. Takes a few minutes and runs in the background."
-      actionLabel={status === 'idle' ? 'Write guide' : 'Rewrite guide'}
+      actionLabel={status === 'idle' ? 'Write tour' : 'Rewrite tour'}
       onConfirm={start}
     >
     <span className="pr-row-job">
@@ -85,7 +86,7 @@ export function PullRequestGuideIndicator({ pullRequest, onOpen }: {
               else setIsConfirming(true);
             }}
           >
-            <BookOpen size={14} aria-hidden="true" />
+            <Route size={14} aria-hidden="true" />
             <span
               className="pr-row-guide-dot"
               aria-hidden="true"

@@ -6,8 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.10] - 2026-11-26
+
 ### Changed
 
+- Pull requests open in a review workspace modelled on Greptile's: the pull request list stays beside the open pull request, J/K switch pull requests and H/L switch tabs, and a row of keyboard hints sits at the bottom. The tabs are now Overview, Conversation, Tour and Code.
+- Overview is a decision page: the merge verdict with the checks grouped by outcome and what blocks merging, a risk level with a plain summary of the change, open and resolved review threads, and the behaviour changes.
+- The Tour walks the change on the real diff: each step shows its points beside the step's files, a point jumps to its lines and the lines select the point, and comments and Viewed work there as in Code. One AI run now writes the tour and Overview's risk summary. Guides written before this version need to be written again.
+- Code shows every changed file in one scroll with a file tree, a Viewed checkbox per file and a "File 3 of 48" strip, instead of Blocks. Large pull requests open faster because diffs render only near the viewport.
+- Leaving a pull request with an unsaved comment asks first, and merging is rejected if the branch changed since you opened it.
+- Pull request statuses each have their own icon (merge conflict, draft, changes requested, failing checks, awaiting review and so on) in the inbox, the pull request list and the header, and tour and bug scan icons show a dot only when there is something to open.
+- The pull request view is calmer: the list and side panels share the content's background, everything lines up on one left edge, Overview reads as a page with the merge verdict in one tinted band, and Merge is the highlighted button only when the pull request is ready.
+- Moving around a pull request is easier to follow: the tab underline and the list selection slide to where you went, tour steps arrive from the side you came from, the lines a jump lands on are highlighted for a moment, and the shortcut bar lights the key you just used. Reduce motion turns it off.
+- A pull request keeps its layout while it loads: the header and tabs stay in place, placeholders match the tab that will open, and the content fades in once. The inbox shows placeholder rows on its first load.
 - Workflow run graphs show failed jobs in red and running jobs in blue while passed jobs recede. The header counts jobs by status and jumps to each failure, the job list puts failed and running first, and opening a run scrolls to what failed.
 - Workflow run graphs keep jobs in sorted columns and draw dependency lines on demand. A failed job shows what it was waiting for and what it held up, and pointing at any job draws everything it depends on and everything waiting for it. Lines run between job cards and skip dependencies a longer chain already implies.
 - The workflow run graph is denser: shorter cards, columns sized to their job names, and a run header that stays in place while the graph scrolls.

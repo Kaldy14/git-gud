@@ -49,6 +49,10 @@ describe('pull request timeline', () => {
     const kept = groupPullRequestActivity(timeline, { hideBots: true });
     expect(kept.map((item) => item.kind === 'entry' && item.entry.kind === 'review-thread' ? item.entry.thread.root.id : undefined))
       .toEqual([30]);
+    // A bot thread Overview asked to open stays for the jump; other bot threads stay hidden.
+    const opened = groupPullRequestActivity(timeline, { hideBots: true, keepCommentId: 40 });
+    expect(opened.map((item) => item.kind === 'entry' && item.entry.kind === 'review-thread' ? item.entry.thread.root.id : undefined))
+      .toEqual([30, 40]);
   });
 
   it('sorts commits, comments, and reviews chronologically', () => {

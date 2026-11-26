@@ -17,40 +17,40 @@ import {
   useState
 } from 'react';
 import type {
-  DiffLineAnnotation,
-  DiffTokenEventBaseProps,
+  
+  
   FileDiffOptions,
   SelectedLineRange
 } from '@pierre/diffs';
-import { FileDiff, PatchDiff, useWorkerPool, type DiffBasePropsReact } from '@pierre/diffs/react';
+import { PatchDiff, useWorkerPool } from '@pierre/diffs/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  ArrowUpRight,
+  
   Check,
   CheckCheck,
   ChevronDown,
-  ChevronRight,
+  
   ChevronUp,
   Columns2,
   Clock3,
-  EyeOff,
-  FileCode2,
+  
+  
   FileCog,
-  FolderTree,
+  
   GitBranch,
   Loader2,
-  MessageSquare,
+  
   PackageOpen,
   PanelRightClose,
   PanelRightOpen,
-  Pencil,
+  
   Pilcrow,
-  Plus,
+  
   Rows3,
   Search,
-  Reply,
-  Send,
+  
+  
   Settings2,
   SkipForward,
   Sparkles,
@@ -61,7 +61,7 @@ import {
 
 import { ModalSurface } from '@renderer/components/accessibility/ModalSurface';
 import { useReviewContinuity, type ReviewContinuityIdentity } from './useReviewContinuity';
-import { createDiffOptionsBase, splitPath, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
+import { createDiffOptionsBase, type DiffStyle } from '@renderer/components/commit/fileDetailUtils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,9 +70,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu';
-import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import { reviewPlanQueryKey, useAgentNotes, useReviewPlan } from '@renderer/queries/repository';
-import { reviewGuidePatchChangesLine, reviewGuidePatchContainsLine } from '@shared/reviewGuide';
+import { reviewGuidePatchChangesLine } from '@shared/reviewGuide';
 import type {
   DiffSyntaxTheme,
   GitAgentNote,
@@ -80,7 +79,7 @@ import type {
   GitReviewFileContext,
   GitReviewGuide,
   GitReviewGuideFile,
-  GitReviewGuideNote,
+  
   GitReviewGuideState,
   GitReviewGuideUnit,
   GitReviewPlan,
@@ -93,14 +92,12 @@ import {
   resolveAgentNotes,
   saveHiddenAgentNoteIds
 } from './agentNotes';
-import { guideUnitTitles } from './reviewUnitTitles';
-import { moveReviewLineCursor, paintReviewLineCursor, reviewChunkElements, reviewLineCursorRange, type ReviewLineCursor } from './reviewLineCursor';
 import {
   createReviewPresentation,
   loadReviewPreferences,
   saveReviewPreferences,
   type ReviewPreferences,
-  type ReviewPresentation,
+  
   type VisibleReviewUnit
 } from './reviewFilters';
 import {
@@ -108,9 +105,23 @@ import {
   type PreparedReviewDiff
 } from './reviewContextDiff';
 import {
-  createReviewContextOptions,
-  shareReviewExpansionBoundary
-} from './reviewContextExpansion';
+  NO_GUIDE_NOTES,
+  ReviewFile,
+  type ReviewCommentThread,
+  type ReviewDiffAnnotation,
+  type ReviewFileCommentInput,
+  type ReviewInlineGuideNote,
+  type ReviewLineCollaboration,
+  type ReviewLineComment,
+  type ReviewLineCommentInput,
+  type ReviewLineReplyInput,
+  type ReviewTypeDefinitionHoverTarget,
+  type ReviewTypeDefinitionInteraction,
+  type ReviewTypeDefinitionRequest,
+  ReviewUnsavedTextContext
+} from './ReviewDiffParts';
+import { createReviewFileScope } from './reviewFileScope';
+import { ReviewFilesView, type ReviewFilesViewHandle } from './ReviewFilesView';
 import { ReviewTypeDefinitionDialog } from './ReviewTypeDefinitionDialog';
 import {
   createReviewTypeDefinitionInput,
@@ -118,7 +129,7 @@ import {
   isReviewTypeDefinitionGesture,
   isReviewTypeDefinitionModifier,
   isTypeScriptReviewContext,
-  REVIEW_TYPE_DEFINITION_HOVER_CSS,
+  
   reviewTypeDefinitionHoverCacheKey,
   setReviewTypeDefinitionHoverAvailable
 } from './reviewTypeDefinitionInteraction';
@@ -128,18 +139,15 @@ import {
   loadReviewFileTreeOpen,
   saveReviewFileTreeOpen
 } from './reviewFileTree';
-import { createReviewGuidePlan, rankReviewChunksByGuide, visibleReviewGuideFiles } from './reviewGuidePresentation';
+import { createReviewGuidePlan, rankReviewChunksByGuide } from './reviewGuidePresentation';
 import { createReviewGuideFindings, type ReviewGuideFinding } from './reviewGuideFindings';
 import { ReviewGuidePanel, ReviewGuidePriority, ReviewFindingDot, ReviewLayerTooltip } from './ReviewGuidePanel';
 import {
-  createReviewLineSelectionOptions,
+  
   normalizeReviewLineSelection
 } from './reviewLineSelection';
 import { ReviewPatternsDialog } from './ReviewPatternsDialog';
-import { ReviewFilePathContextMenu } from './ReviewFilePathContextMenu';
 import { ReviewFileTree } from './ReviewFilesPanel';
-import { PanelExpandButton, PanelResizeHandle } from '../ui/panelResize';
-import { usePanelResize } from '../ui/usePanelResize';
 import {
   createReviewSearchResults,
   normalizeReviewSearchSelection,
@@ -149,7 +157,7 @@ import {
   type ReviewSearchResults,
   type ReviewSearchScope
 } from './reviewSearch';
-import { createReviewSections, groupReviewFiles, type VisibleReviewFile } from './reviewSections';
+import { createReviewSections, groupReviewFiles } from './reviewSections';
 import {
   createReviewViewState,
   getReviewScrollTopForNavigation,
@@ -159,7 +167,17 @@ import {
   type ReviewViewState
 } from './reviewViewState';
 
-type ExternalGuideLocation = { file: GitReviewGuideFile; navigationSignal: number; unitId: string };
+export { AgentNoteAnnotation } from './ReviewDiffParts';
+export type {
+  ReviewFileCommentInput,
+  ReviewInlineGuideNote,
+  ReviewLineComment,
+  ReviewLineCommentInput,
+  ReviewLineReplyInput
+} from './ReviewDiffParts';
+
+// An AI brief jump to a file (and line or comment) inside the selected block.
+type GuideLocation = { file: GitReviewGuideFile; navigationSignal: number; unitId: string; commentId?: string | number };
 
 type ReviewViewProps = {
   repoPath: string;
@@ -188,85 +206,51 @@ type ReviewViewProps = {
   closeLabel?: string;
   showCloseButton?: boolean;
   layout?: 'standard' | 'pull-request';
-  fileTreePanel?: { open: boolean; onClose: () => void; onToggle: () => void };
   initialViewState?: ReviewViewState;
   onViewStateChange?: (state: ReviewViewState) => void;
-  // Opens a file (optionally a line range) from outside the review, such as the pull-request
-  // Guide. Bump signal to repeat the same request.
-  navigationRequest?: { path: string; line?: number; endLine?: number; side?: 'left' | 'right'; signal: number };
-  // Notes from the pull-request Guide, shown inline at their lines with a link back to their stop.
+  // Opens a file (optionally a line range) from outside the review, such as a Tour point or an Overview
+  // thread. Bump signal to repeat the same request. `commentId` lands on that thread (scrolled to and
+  // focused), not just its line.
+  navigationRequest?: { path: string; line?: number; endLine?: number; side?: 'left' | 'right'; commentId?: number; signal: number };
+  // Notes from the pull-request Tour, shown inline at their lines with a link back to their step.
   guideReferences?: readonly ReviewInlineGuideNote[];
-  // A pull request's Guide stops; a block mostly made of one stop's files takes its title.
-  guideStops?: ReadonlyArray<{ title: string; paths: readonly string[] }>;
+  // The props below apply to the pull-request layout only.
+  // Which files this instance shows and in what order. No `paths`: every file of the plan in tree order, with
+  // the Show filters and since-last-review scope applied. With `paths`: exactly those files in that order,
+  // never hidden by filters. Scroll position and the current file are remembered per `key`.
+  fileScope?: { key: string; paths?: readonly string[] };
+  // Replaces the files panel with the caller's own panel, in the same resizable column.
+  sidebar?: ReactNode;
+  // Shrinks the caller's panel to a slim strip (no resize handle); the caller draws the strip.
+  sidebarCollapsed?: boolean;
+  // Replaces "File N of M · X viewed" and the viewed bar in the progress strip.
+  progressLead?: ReactNode;
+  // False while the tab showing this instance is hidden: ignore every shortcut and never take focus.
+  active?: boolean;
+  // A line or file comment composer is open.
+  onComposerOpenChange?: (open: boolean) => void;
+  // Some editor here (composer, reply, comment edit) holds typed, unsaved text.
+  onUnsavedTextChange?: (unsaved: boolean) => void;
+  // A change was refused because it would hide a composer or typed text (the caller explains why).
+  onScopeLockRefused?: () => void;
+  // Files of the current scope in display order, for the caller's own panel.
+  onFilesChange?: (files: ReadonlyArray<ReviewScopeFileSummary>) => void;
 };
 
-export type ReviewLineComment = {
-  id: string | number;
-  body: string;
-  author: string;
-  authorAvatarUrl?: string;
-  createdAt: string;
-  path: string;
-  subjectType: 'line' | 'file';
-  line?: number;
-  side?: 'left' | 'right';
-  inReplyToId?: string | number;
-  isDraft?: boolean;
-  canEdit?: boolean;
-  isResolved?: boolean;
-  isOutdated?: boolean;
-  url?: string;
-};
+export type ReviewScopeFileSummary = { path: string; additions: number; deletions: number; viewed: boolean; hidden: boolean };
 
-export type ReviewLineCommentInput = {
-  body: string;
-  path: string;
-  line: number;
-  side: 'left' | 'right';
-  startLine?: number;
-  startSide?: 'left' | 'right';
-};
+const ALL_FILES_SCOPE = { key: 'all' } as const;
+// Diff keys that still work while focus is on the pull request rail (it owns the arrows itself).
+const RAIL_FORWARDED_DIFF_KEYS: ReadonlySet<string> = new Set(['[', ']', 'v', 'c']);
+const NO_PREPARED_DIFFS: ReadonlyMap<string, PreparedReviewDiff> = new Map();
+// Sticky file headers never cover a line scrolled into view (line cursor, jumps).
+const PULL_REQUEST_DIFF_CSS = '[data-line], [data-column-number] { scroll-margin-top: 40px; scroll-margin-bottom: 8px; }';
 
-export type ReviewLineReplyInput = {
-  body: string;
-  inReplyToId: number;
-};
-
-export type ReviewFileCommentInput = {
-  body: string;
-  path: string;
-};
-
-type ReviewCommentThread = ReviewLineComment & {
-  replies: ReviewLineComment[];
-};
-
-type ReviewDiffAnnotation =
-  | { kind: 'thread'; thread: ReviewCommentThread }
-  | { kind: 'composer' }
-  | { kind: 'guide-note'; note: ReviewInlineGuideNote }
-  | { kind: 'agent-note'; note: GitAgentNote; hidden: boolean };
 
 const NO_GUIDE_FINDINGS: readonly ReviewGuideFinding[] = [];
 
-const NO_GUIDE_NOTES: readonly ReviewInlineGuideNote[] = [];
-const NO_UNITS: readonly VisibleReviewUnit[] = [];
 
 /** An inline AI note; Guide notes also carry their letter key, title, and a way back to their stop. */
-export type ReviewInlineGuideNote = GitReviewGuideNote & {
-  marker?: string;
-  title?: string;
-  stopLabel?: string;
-  onOpen?: () => void;
-};
-
-function combineGuideNotes(
-  briefNotes: readonly ReviewInlineGuideNote[],
-  guideReferences: readonly ReviewInlineGuideNote[]
-): readonly ReviewInlineGuideNote[] {
-  return guideReferences.length ? [...briefNotes, ...guideReferences] : briefNotes;
-}
-
 
 const NO_AGENT_NOTES: readonly GitAgentNote[] = [];
 const NO_HIDDEN_AGENT_NOTE_IDS: ReadonlySet<string> = new Set();
@@ -277,25 +261,6 @@ type ReviewCommentTarget =
   | { kind: 'line'; chunkId: string; path: string; range: SelectedLineRange }
   | { kind: 'file'; chunkId: string; path: string };
 
-type ReviewLineCollaboration = {
-  threads: ReviewCommentThread[];
-  selectedChunkId?: string;
-  selectedPath?: string;
-  selectedSubject?: 'line' | 'file';
-  selectedLines: SelectedLineRange | null;
-  getBody: () => string;
-  isSubmitting: boolean;
-  errorMessage?: string;
-  onSelectLines: (chunkId: string, path: string, range: SelectedLineRange | null) => void;
-  onSelectFile: (chunkId: string, path: string) => void;
-  onBodyChange: (body: string) => void;
-  onCancel: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>, body: string) => void;
-  onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
-  onUpdateComment?: (commentId: number, body: string) => Promise<void>;
-  onUpdateDraftComment?: (id: string, body: string) => void;
-  onRemoveDraftComment?: (id: string) => void;
-};
 
 type ReviewCommentBodyBuffer = {
   get: () => string;
@@ -334,27 +299,6 @@ type ReviewTypeDefinitionPreview = {
   errorMessage?: string;
 };
 
-type ReviewTypeDefinitionRequest = (
-  chunk: GitReviewChunk,
-  token: DiffTokenEventBaseProps,
-  event: MouseEvent
-) => void;
-
-type ReviewTypeDefinitionHoverTarget = {
-  chunk: GitReviewChunk;
-  token: DiffTokenEventBaseProps;
-  event: Pick<PointerEvent, 'clientX' | 'clientY'>;
-};
-
-type ReviewTypeDefinitionInteraction = {
-  onClick: ReviewTypeDefinitionRequest;
-  onEnter: (
-    chunk: GitReviewChunk,
-    token: DiffTokenEventBaseProps,
-    event: PointerEvent
-  ) => void;
-  onLeave: (token: DiffTokenEventBaseProps) => void;
-};
 
 export function ReviewView({
   repoPath,
@@ -380,13 +324,21 @@ export function ReviewView({
   closeLabel = 'Close review',
   showCloseButton = true,
   layout = 'standard',
-  fileTreePanel,
   initialViewState,
   onViewStateChange,
   navigationRequest,
   guideReferences = NO_GUIDE_NOTES,
-  guideStops
+  fileScope = ALL_FILES_SCOPE,
+  sidebar,
+  sidebarCollapsed = false,
+  progressLead,
+  active = true,
+  onComposerOpenChange,
+  onUnsavedTextChange,
+  onScopeLockRefused,
+  onFilesChange
 }: ReviewViewProps): ReactElement {
+  const isPullRequest = layout === 'pull-request';
   const sectionRef = useRef<HTMLElement>(null);
   const viewStateRef = useRef(createReviewViewState(initialViewState));
   const workerPool = useWorkerPool();
@@ -401,8 +353,6 @@ export function ReviewView({
   const previousReviewTitleId = useId();
   const [isPatternEditorOpen, setIsPatternEditorOpen] = useState(false);
   const [revealedFilePath, setRevealedFilePath] = useState<string>();
-  // Keyboard line cursor (PR layout): ↑/↓ move, Shift extends, C comments.
-  const [lineCursor, setLineCursor] = useState<ReviewLineCursor>();
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(() =>
     loadReviewFileTreeOpen(window.localStorage, repoPath)
   );
@@ -533,7 +483,6 @@ export function ReviewView({
       visibleChunks: rankReviewChunksByGuide(unit.visibleChunks, reviewGuideUnits.get(unit.unit.id))
     })) };
   }, [basePresentation, guidePlan, reviewGuide, preferences, reviewedChunkIds, revealedFilePath, reviewGuideUnits, continuityHiddenIds]);
-  const unitTitles = useMemo(() => guideUnitTitles(reviewPlan?.units ?? [], guideStops), [reviewPlan, guideStops]);
   const activeFilterCount = [
     continuity.hideSeen && continuity.hiddenIds.size > 0,
     preferences.skipTests,
@@ -600,14 +549,22 @@ export function ReviewView({
     ]
   );
   const preparedDiffCacheKeyPrefix = `${repoPath}:${reviewPlan?.targetKey ?? targetKey(target)}`;
-  const selectedPreparedDiffs = useMemo(
-    () => prepareReviewUnitDiffs(
+  // The pull-request layout prepares each file's diffs when that file mounts (ReviewFilesView).
+  const selectedPreparedDiffs = useMemo<ReadonlyMap<string, PreparedReviewDiff>>(
+    () => isPullRequest ? NO_PREPARED_DIFFS : prepareReviewUnitDiffs(
       selectedUnit,
       fileContexts,
       preparedDiffCacheKeyPrefix
     ),
-    [fileContexts, preparedDiffCacheKeyPrefix, selectedUnit]
+    [fileContexts, isPullRequest, preparedDiffCacheKeyPrefix, selectedUnit]
   );
+  const scopePaths = fileScope.paths;
+  const scopeFiles = useMemo(() => {
+    if (!isPullRequest || !reviewPlan || !presentation) return [];
+    const visibleChunkIds = new Set(presentation.units.flatMap((unit) => unit.visibleChunks.map((chunk) => chunk.id)));
+    return createReviewFileScope({ units: reviewPlan.units, visibleChunkIds, reviewedChunkIds, paths: scopePaths });
+  }, [isPullRequest, reviewPlan, presentation, reviewedChunkIds, scopePaths]);
+  const filesViewRef = useRef<ReviewFilesViewHandle>(null);
   const reviewSearchPreparedDiffs = useMemo(
     () => prepareReviewChunkDiffs(
       reviewSearchResults.files.map((file) => file.chunk),
@@ -621,13 +578,41 @@ export function ReviewView({
     [lineComments]
   );
   const diffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
-    () => ({
-      ...createDiffOptionsBase<ReviewDiffAnnotation>(diffSyntaxTheme),
-      diffStyle,
-      disableFileHeader: true
-    }),
-    [diffStyle, diffSyntaxTheme]
+    () => {
+      const base = createDiffOptionsBase<ReviewDiffAnnotation>(diffSyntaxTheme);
+      return {
+        ...base,
+        diffStyle,
+        disableFileHeader: true,
+        unsafeCSS: isPullRequest ? `${base.unsafeCSS ?? ''}\n${PULL_REQUEST_DIFF_CSS}` : base.unsafeCSS
+      };
+    },
+    [diffStyle, diffSyntaxTheme, isPullRequest]
   );
+
+  useEffect(() => {
+    if (isPullRequest) onFilesChange?.(scopeFiles.map(({ path, additions, deletions, viewed, hidden }) => ({ path, additions, deletions, viewed, hidden })));
+  }, [isPullRequest, onFilesChange, scopeFiles]);
+
+  // Unsaved text is reported by each editor (composer, reply, edit); the owner hears only the aggregate.
+  const unsavedEditorsRef = useRef(new Set<string>());
+  const [hasUnsavedEditorText, setHasUnsavedEditorText] = useState(false);
+  const onUnsavedTextChangeRef = useRef(onUnsavedTextChange);
+  useLayoutEffect(() => { onUnsavedTextChangeRef.current = onUnsavedTextChange; });
+  const reportUnsavedText = useCallback((id: string, unsaved: boolean) => {
+    const editors = unsavedEditorsRef.current;
+    const before = editors.size > 0;
+    if (unsaved) editors.add(id);
+    else editors.delete(id);
+    if (before === editors.size > 0) return;
+    setHasUnsavedEditorText(editors.size > 0);
+    onUnsavedTextChangeRef.current?.(editors.size > 0);
+  }, []);
+
+  const isComposerOpen = selectedCommentTarget !== undefined;
+  // Filters and the Show scope can hide a file, which would unmount an open composer or a typed reply or edit.
+  const isScopeLocked = isComposerOpen || hasUnsavedEditorText;
+  useEffect(() => { onComposerOpenChange?.(isComposerOpen); }, [isComposerOpen, onComposerOpenChange]);
   const progressMutation = useMutation({
     mutationFn: async ({ chunkIds, viewed }: { chunkIds: string[]; viewed: boolean }) => {
       if (embeddedPlan) {
@@ -683,36 +668,24 @@ export function ReviewView({
     onSuccess: () => {
       setSelectedCommentTarget(undefined);
       lineCommentBody.clear();
-      // The composer unmounts; return focus so J/K/V keep working.
-      sectionRef.current?.focus({ preventScroll: true });
+      // The composer unmounts; return focus so the review's keys keep working.
+      focusReview();
     }
   });
 
-  useEffect(() => {
-    sectionRef.current?.focus({ preventScroll: true });
-  }, []);
-
-  useEffect(() => {
-    if (sectionRef.current) paintReviewLineCursor(sectionRef.current, lineCursor);
-  }, [lineCursor]);
-
-  // The first chunk at least partly on screen, where a fresh cursor starts.
-  function firstVisibleChunkId(): string | undefined {
-    const section = sectionRef.current;
-    if (!section) return undefined;
-    const top = section.getBoundingClientRect().top;
-    return reviewChunkElements(section).find((chunk) => chunk.getBoundingClientRect().bottom > top + 80)?.dataset.reviewChunkId;
+  // A hidden tab's review never takes focus.
+  function focusReview(): void {
+    if (active) sectionRef.current?.focus({ preventScroll: true });
   }
 
-  function commentOnLineCursor(): void {
-    const section = sectionRef.current;
-    if (!section || !lineCursor) return;
-    const range = reviewLineCursorRange(section, lineCursor);
-    const path = allFileUnits.flatMap((unit) => unit.visibleChunks).find((chunk) => chunk.id === lineCursor.chunkId)?.path;
-    if (!range || !path) return;
-    setLineCursor(undefined);
-    handleSelectCommentLines(lineCursor.chunkId, path, range);
-  }
+  // Mounting (a new pull request after J/K, a new head) leaves focus where the reader put it inside the
+  // pull request workspace, such as on the rail, so the rail's arrows keep working.
+  const focusOnMount = useEffectEvent(() => {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused !== document.body && focused.closest('[data-pull-request-workspace]')) return;
+    focusReview();
+  });
+  useEffect(() => focusOnMount(), []);
 
   useEffect(() => {
     if (!selectedUnit) {
@@ -807,7 +780,10 @@ export function ReviewView({
   ]);
 
   useEffect(() => {
-    if (!workerPool || !selectedUnit || !presentation) {
+    if (workerPool && isPullRequest && isReviewSearchSelected) {
+      for (const prepared of reviewSearchPreparedDiffs.values()) workerPool.primeDiffHighlightCache(prepared.fileDiff);
+    }
+    if (!workerPool || !selectedUnit || !presentation || isPullRequest) {
       return;
     }
 
@@ -840,6 +816,7 @@ export function ReviewView({
     return () => window.cancelIdleCallback(idleCallback);
   }, [
     fileContexts,
+    isPullRequest,
     preparedDiffCacheKeyPrefix,
     presentation,
     isReviewSearchSelected,
@@ -850,7 +827,7 @@ export function ReviewView({
   ]);
 
   function updatePreferences(next: ReviewPreferences): void {
-    if (selectedCommentTarget) {
+    if (isScopeLocked) {
       return;
     }
     setPreferences(next);
@@ -885,7 +862,7 @@ export function ReviewView({
     setSelectedCommentTarget(undefined);
     lineCommentBody.clear();
     commentMutation.reset();
-    sectionRef.current?.focus({ preventScroll: true });
+    focusReview();
   }
 
   function selectReviewUnit(
@@ -942,7 +919,7 @@ export function ReviewView({
     setReviewSearch(undefined);
     setIsReviewSearchSelected(false);
     setActiveReviewSearchLocationIndex(0);
-    window.requestAnimationFrame(() => sectionRef.current?.focus({ preventScroll: true }));
+    window.requestAnimationFrame(() => focusReview());
   }
 
   function updateReviewSearch(
@@ -1034,14 +1011,6 @@ export function ReviewView({
     }
   }
 
-  // A file opened from an expanded, unselected block stays in that block even when others share the path.
-  function selectUnitFile(unitId: string, path: string): void {
-    if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
-    setRequestedFilePath(path);
-    setFileNavigationSignal((signal) => signal + 1);
-    selectReviewUnit(unitId, 'file');
-  }
-
   function selectFile(path: string | undefined): void {
     if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
     setRequestedFilePath(path);
@@ -1079,30 +1048,6 @@ export function ReviewView({
     selectReviewUnit(unitId, 'file');
     return true;
   }
-
-  // Wait for the plan before honoring an outside request, then handle each signal once.
-  const handledNavigationSignal = useRef<number | undefined>(undefined);
-  const [externalGuideLocation, setExternalGuideLocation] = useState<ExternalGuideLocation>();
-  const openRequestedLocation = useEffectEvent((request: NonNullable<ReviewViewProps['navigationRequest']>) => {
-    if (handledNavigationSignal.current === request.signal) return;
-    handledNavigationSignal.current = request.signal;
-    const { path, line, endLine, side = 'right' } = request;
-    // A file can span several sections; open the one holding the requested line.
-    const unitId = line === undefined ? undefined : allFileUnits.find((candidate) => candidate.unit.chunks.some((chunk) =>
-      chunk.path === path && reviewGuidePatchContainsLine(chunk.patch, line, side)))?.unit.id;
-    if (!selectAllFile(path, unitId) || line === undefined) return;
-    setExternalGuideLocation({
-      file: { path, line, endLine, side, priority: 'review', reason: '' },
-      navigationSignal: fileNavigationSignal + 1,
-      unitId: unitId ?? findReviewUnitIdForPath(allFileUnits, path) ?? ''
-    });
-  });
-  const isPlanReady = Boolean(presentation);
-  useEffect(() => {
-    // A one-shot reaction to an outside request once the plan exists; it cannot run during render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (navigationRequest && isPlanReady) openRequestedLocation(navigationRequest);
-  }, [navigationRequest, isPlanReady]);
 
   function navigateFiles(direction: -1 | 1): void {
     if (
@@ -1143,7 +1088,42 @@ export function ReviewView({
     onViewStateChange?.(nextState);
   }
 
+  // The diff keys are advertised for the whole Tour and Code tab, but React only delivers them while
+  // focus is inside this section. After H/L or a tab click focus sits on `body` or the tab, and after J/K
+  // on the rail, so those presses are forwarded here (from the rail only `[` `]` V C: it owns the arrows).
+  // Keys pressed inside the section arrive through `handleKeyDown`.
+  const forwardOutsideDiffKey = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    const target = event.target;
+    if (!(target instanceof Element) || sectionRef.current?.contains(target)) return;
+    const outsideTarget = target === document.body || target.closest('[id^="pr-detail-tab-"]') !== null;
+    // A rail row, not the rail's search field, which keeps its own typing.
+    const inRail = target.closest('.pr-rail') !== null && !isEditableTarget(target);
+    // Mod+F opens the diff search from the tab, `body` or a rail row too, as it does inside the section.
+    if ((outsideTarget || inRail) && isFindShortcut(event) && !event.defaultPrevented) {
+      if (selectedCommentTarget !== undefined || commentMutation.isPending) return;
+      event.preventDefault();
+      openReviewSearch(readSelectedReviewText());
+      return;
+    }
+    const fromRail = inRail && RAIL_FORWARDED_DIFF_KEYS.has(event.key.toLowerCase());
+    if (!outsideTarget && !fromRail) return;
+    if (selectedCommentTarget !== undefined || commentMutation.isPending || isReviewSearchSelected) return;
+    filesViewRef.current?.handleKeyDown({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      preventDefault: () => event.preventDefault(),
+      nativeEvent: event
+    });
+  });
+  useEffect(() => {
+    if (!isPullRequest || !active) return;
+    const listener = (event: globalThis.KeyboardEvent): void => forwardOutsideDiffKey(event);
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, [isPullRequest, active]);
+
   function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (!active) return;
     // Portaled menus still bubble through React; their keys must not navigate or close the review.
     if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('[role="menu"]'))) return;
     if (selectedCommentTarget !== undefined || commentMutation.isPending) {
@@ -1185,16 +1165,13 @@ export function ReviewView({
       return;
     }
 
-    const isPlainTarget = !isEditableTarget(event.target) && !isReviewFileTreeTarget(event.target);
-    if (
-      layout === 'pull-request' && isPlainTarget && !event.metaKey && !event.ctrlKey && !event.altKey &&
-      (event.key === 'ArrowDown' || event.key === 'ArrowUp') && sectionRef.current
-    ) {
-      event.preventDefault();
-      const section = sectionRef.current;
-      setLineCursor((current) => moveReviewLineCursor(section, current, event.key === 'ArrowDown' ? 1 : -1, event.shiftKey, firstVisibleChunkId()));
+    if (isPullRequest) {
+      // A pull request closes from its header, so Escape never discards the reader's place here.
+      if (active) filesViewRef.current?.handleKeyDown(event);
       return;
     }
+
+    const isPlainTarget = !isEditableTarget(event.target) && !isReviewFileTreeTarget(event.target);
 
     if (
       event.metaKey ||
@@ -1206,16 +1183,7 @@ export function ReviewView({
       return;
     }
 
-    if (layout === 'pull-request' && lineCursor && (event.key === 'c' || event.key === 'Escape')) {
-      event.preventDefault();
-      if (event.key === 'c') commentOnLineCursor();
-      else setLineCursor(undefined);
-      return;
-    }
-
     if (event.key === 'Escape') {
-      // A pull request closes from its header; Escape must not discard the reviewer's place.
-      if (layout === 'pull-request') return;
       event.preventDefault();
       onClose();
     } else if (event.key === 'j' || event.key === 'ArrowDown') {
@@ -1554,11 +1522,74 @@ export function ReviewView({
     </div>
   ) : null;
 
+  const filterMenu = (
+    <ReviewFilterMenu
+      preferences={preferences}
+      activeCount={activeFilterCount}
+      disabled={isScopeLocked}
+      onChange={updatePreferences}
+      onConfigurePatterns={() => setIsPatternEditorOpen(true)}
+      continuity={continuity}
+      onInspectPrevious={() => setPreviousReviewOpen(true)}
+    />
+  );
+  const diffLayoutSwitch = (
+    <div className="segmented shrink-0" role="group" aria-label="Diff layout">
+      <button type="button" aria-label="Unified diff" aria-pressed={diffStyle === 'unified'} data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
+        <Rows3 size={12} />
+      </button>
+      <button type="button" aria-label="Split diff" aria-pressed={diffStyle === 'split'} data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
+        <Columns2 size={12} />
+      </button>
+    </div>
+  );
+
+  const continuityEmpty = (continuity.hideSeen && continuity.hiddenIds.size > 0) || continuity.previousChanges.length > 0 ? (
+    <div className="grid h-full place-content-center gap-3 p-6 text-center text-xs text-[var(--text-2)]">
+      <p>{continuity.hiddenIds.size > 0 && continuity.hideSeen ? 'Previously seen, unchanged code is hidden.' : 'The current PR has no visible changes. Previous changes were replaced or removed.'}</p>
+      {continuity.hideSeen && continuity.hiddenIds.size > 0 ? <button className="btn-subtle justify-self-center" type="button" onClick={() => continuity.setHideSeen(false)}>Show previously seen code</button> : null}
+      {continuity.previousChanges.length > 0 ? <button className="btn-subtle justify-self-center" type="button" onClick={() => setPreviousReviewOpen(true)}>Inspect replaced or removed changes ({continuity.previousChanges.length})</button> : null}
+    </div>
+  ) : undefined;
+  const emptyReviewMessage = target.kind === 'branch'
+    ? `${target.name} has no changes compared with the default branch.`
+    : 'There are no changes to review.';
+  const isLoading = embeddedPlan ? false : reviewQuery.isLoading;
+  const loadErrorMessage = !embeddedPlan && reviewQuery.error instanceof Error ? reviewQuery.error.message : undefined;
+  const mutationError = progressMutation.error instanceof Error ? progressMutation.error.message : undefined;
+
+  const reviewSearchView: ReviewSearchViewState | undefined = currentReviewSearch
+    ? {
+        ...currentReviewSearch,
+        activeLocationIndex:
+          reviewSearchResults.locationCount === 0
+            ? 0
+            : Math.min(
+                activeReviewSearchLocationIndex,
+                reviewSearchResults.locationCount - 1
+              ),
+        focusSignal: reviewSearchFocusSignal,
+        isSearching: deferredReviewSearchQuery !== currentReviewSearch.query,
+        isSelected: isReviewSearchSelected,
+        preparedDiffs: reviewSearchPreparedDiffs,
+        results: reviewSearchResults,
+        onActiveLocationIndexChange: setActiveReviewSearchLocationIndex,
+        onClose: closeReviewSearch,
+        onInclusionChange: (inclusion) => updateReviewSearch({ inclusion }),
+        onQueryChange: (query) => updateReviewSearch({ query }),
+        onScopeChange: (scope) => updateReviewSearch({ scope }),
+        onSelect: () => {
+          setIsReviewSearchSelected(true);
+          setReviewSearchFocusSignal((signal) => signal + 1);
+        }
+      }
+    : undefined;
+
   const toolbar = (
     <>
       <div className="review-toolbar">
         <div className="review-toolbar-primary">
-          {layout === 'standard' && target.kind === 'branch' ? (
+          {target.kind === 'branch' ? (
             <span
               className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-field)] px-2.5 text-[11px] font-semibold text-[var(--text-2)]"
               title={`Review all changes on ${target.name}`}
@@ -1567,29 +1598,13 @@ export function ReviewView({
               <span className="max-w-48 truncate">{target.name}</span>
             </span>
           ) : null}
-          <ReviewFilterMenu
-            preferences={preferences}
-            activeCount={activeFilterCount}
-            disabled={selectedCommentTarget !== undefined}
-            onChange={updatePreferences}
-            onConfigurePatterns={() => setIsPatternEditorOpen(true)}
-            continuity={continuity}
-            onInspectPrevious={() => setPreviousReviewOpen(true)}
-          />
-          {layout === 'standard' ? <ReviewProgress presentation={presentation} /> : null}
+          {filterMenu}
+          <ReviewProgress presentation={presentation} />
         </div>
 
         <div className="review-toolbar-actions">
-          {layout === 'standard' ? guideControls : null}
-          <div className="segmented shrink-0" role="group" aria-label="Diff layout">
-            <button type="button" aria-label="Unified diff" aria-pressed={diffStyle === 'unified'} data-active={diffStyle === 'unified'} onClick={() => onSetDiffStyle('unified')} title="Unified diff">
-              <Rows3 size={12} />
-            </button>
-            <button type="button" aria-label="Split diff" aria-pressed={diffStyle === 'split'} data-active={diffStyle === 'split'} onClick={() => onSetDiffStyle('split')} title="Split diff">
-              <Columns2 size={12} />
-            </button>
-          </div>
-          {layout === 'standard' ? (
+          {guideControls}
+          {diffLayoutSwitch}
           <button
             className="icon-btn icon-btn-compact shrink-0"
             type="button"
@@ -1601,7 +1616,6 @@ export function ReviewView({
           >
             {isFileTreeOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
           </button>
-          ) : null}
           {showCloseButton ? (
             <button
               className="icon-btn icon-btn-compact shrink-0"
@@ -1622,119 +1636,140 @@ export function ReviewView({
     </>
   );
 
+  const filesMessage = isLoading ? (
+    <ReviewMessage icon={<Loader2 size={16} className="animate-spin" />} text="Building contextual review…" />
+  ) : loadErrorMessage ? (
+    <ReviewMessage icon={<AlertTriangle size={16} />} text={loadErrorMessage} tone="danger" />
+  ) : scopeFiles.some((file) => !file.hidden) ? undefined : fileScope.paths ? (
+    <ReviewMessage icon={<Check size={16} />} text="No changed files in this part of the review." />
+  ) : continuityEmpty ?? (reviewPlan?.units.length ? (
+    <ReviewMessage icon={<SkipForward size={16} />} text="All changes are skipped by the current review filters." />
+  ) : (
+    <ReviewMessage icon={<Check size={16} />} text={emptyReviewMessage} />
+  ));
+
   return (
     <section ref={sectionRef} className="review-view" data-layout={layout} tabIndex={0} onKeyDown={handleKeyDown}>
-      {layout === 'standard' ? toolbar : null}
-
-      <ReviewBody
-        compact={layout === 'pull-request'}
-        navigationTools={toolbar}
-        navigationHeader={<>
-          {/* Scope (whole PR vs since last review) lives in the Show menu with the other filters. */}
-          <strong className="review-sidebar-heading">{reviewGuide ? 'AI layers' : 'Blocks'}</strong>
-          {fileTreePanel ? <ReviewToolTooltip content="All files. Browse every changed file in this PR, including files hidden by review filters.">
-            <button type="button" className="icon-btn review-sidebar-tool" aria-label="All files"
-              aria-expanded={fileTreePanel.open} aria-pressed={fileTreePanel.open} onClick={fileTreePanel.onToggle}>
-              <FolderTree size={14} />
+      <ReviewUnsavedTextContext value={reportUnsavedText}>
+      {isPullRequest ? (
+        <ReviewFilesView
+          ref={filesViewRef}
+          repoPath={repoPath}
+          files={scopeFiles}
+          scopeKey={fileScope.key}
+          sidebar={sidebar}
+          sidebarCollapsed={sidebarCollapsed}
+          sidebarActions={sidebarActions}
+          progressLead={progressLead}
+          active={active}
+          coverage={presentation}
+          footerControls={<>{filterMenu}{diffLayoutSwitch}</>}
+          message={filesMessage}
+          searchEntry={currentReviewSearch ? (
+            <button className="review-files-search-entry" type="button" data-active={isReviewSearchSelected}
+              aria-disabled={selectedCommentTarget !== undefined || undefined}
+              onClick={() => {
+                if (selectedCommentTarget !== undefined) return;
+                setIsReviewSearchSelected(true);
+                setReviewSearchFocusSignal((signal) => signal + 1);
+              }}>
+              <Search size={14} aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate" title={currentReviewSearch.query || 'Review search'}>
+                Search · {compactReviewSearchQuery(currentReviewSearch.query)}
+              </span>
+              <span className="review-files-search-count">{formatReviewSearchResultCount(reviewSearchResults.locationCount)}</span>
             </button>
-          </ReviewToolTooltip> : null}
-          {isReviewGuideEnabled && reviewPlan?.units.length ? <ReviewGuideControl
-            compact state={currentReviewGuideState} open={isGuideOpen}
-            onToggle={() => setGuideOpen(!isGuideOpen)} onStart={() => void startReviewGuide()} /> : null}
-          {sidebarActions}
-        </>}
-        repoPath={repoPath}
-        isLoading={embeddedPlan ? false : reviewQuery.isLoading}
-        errorMessage={
-          !embeddedPlan && reviewQuery.error instanceof Error
-            ? reviewQuery.error.message
-            : undefined
-        }
-        hasReviewUnits={Boolean(reviewPlan?.units.length)}
-        resumePosition={continuity.resumePosition}
-        continuityEmpty={(continuity.hideSeen && continuity.hiddenIds.size > 0) || continuity.previousChanges.length > 0 ? (
-          <div className="grid h-full place-content-center gap-3 p-6 text-center text-xs text-[var(--text-2)]">
-            <p>{continuity.hiddenIds.size > 0 && continuity.hideSeen ? 'Previously seen, unchanged code is hidden.' : 'The current PR has no visible changes. Previous changes were replaced or removed.'}</p>
-            {continuity.hideSeen && continuity.hiddenIds.size > 0 ? <button className="btn-subtle justify-self-center" type="button" onClick={() => continuity.setHideSeen(false)}>Show previously seen code</button> : null}
-            {continuity.previousChanges.length > 0 ? <button className="btn-subtle justify-self-center" type="button" onClick={() => setPreviousReviewOpen(true)}>Inspect replaced or removed changes ({continuity.previousChanges.length})</button> : null}
-          </div>
-        ) : undefined}
-        emptyReviewMessage={
-          target.kind === 'branch'
-            ? `${target.name} has no changes compared with the default branch.`
-            : 'There are no changes to review.'
-        }
-        units={presentation?.units ?? []}
-        selectedUnit={selectedUnit}
-        preparedDiffs={selectedPreparedDiffs}
-        diffOptions={diffOptions}
-        isMutating={progressMutation.isPending}
-        mutationError={progressMutation.error instanceof Error ? progressMutation.error.message : undefined}
-        coverage={presentation}
-        unitTitles={unitTitles}
-        lineCollaboration={lineCollaboration}
-        agentNotes={agentNotes}
-        hiddenAgentNoteIds={hiddenAgentNoteIds}
-        onSetAgentNoteHidden={setAgentNoteHidden}
-        reviewGuide={reviewGuide}
-        reviewGuideUnits={reviewGuideUnits}
-        isGuideOpen={isGuideOpen}
-        isGuideRanked={isGuideRanked}
-        isGuideRebuilding={currentReviewGuideState?.status === 'running'}
-        onCloseGuide={() => setGuideOpen(false)}
-        onGuideSelectUnit={selectGuideUnit}
-        isFileTreeOpen={isFileTreeOpen}
-        fileTreePanel={fileTreePanel}
-        allFileUnits={allFileUnits}
-        onSelectAllFile={selectAllFile}
-        externalGuideLocation={externalGuideLocation}
-        guideReferences={guideReferences}
-        selectedFilePath={selectedFilePath}
-        restoredScrollTop={
-          selectedUnit &&
-          scrollRestoration &&
-          selectedUnit.unit.id === scrollRestoration.unitId
-            ? scrollRestoration.scrollTop
-            : undefined
-        }
-        fileNavigationSignal={fileNavigationSignal}
-        reviewSearch={
-          currentReviewSearch
-            ? {
-                ...currentReviewSearch,
-                activeLocationIndex:
-                  reviewSearchResults.locationCount === 0
-                    ? 0
-                    : Math.min(
-                        activeReviewSearchLocationIndex,
-                        reviewSearchResults.locationCount - 1
-                      ),
-                focusSignal: reviewSearchFocusSignal,
-                isSearching: deferredReviewSearchQuery !== currentReviewSearch.query,
-                isSelected: isReviewSearchSelected,
-                preparedDiffs: reviewSearchPreparedDiffs,
-                results: reviewSearchResults,
-                onActiveLocationIndexChange: setActiveReviewSearchLocationIndex,
-                onClose: closeReviewSearch,
-                onInclusionChange: (inclusion) => updateReviewSearch({ inclusion }),
-                onQueryChange: (query) => updateReviewSearch({ query }),
-                onScopeChange: (scope) => updateReviewSearch({ scope }),
-                onSelect: () => {
-                  setIsReviewSearchSelected(true);
-                  setReviewSearchFocusSignal((signal) => signal + 1);
-                }
-              }
-            : undefined
-        }
-        typeDefinitionPaths={typeDefinitionPaths}
-        typeDefinitionInteraction={typeDefinitionInteraction}
-        onSelectUnit={selectReviewUnit}
-        onSelectFile={selectFile}
-        onSelectUnitFile={selectUnitFile}
-        onScrollTopChange={saveReviewScrollTop}
-        onStartReviewGuide={() => void startReviewGuide()}
-        onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
-      />
+          ) : undefined}
+          searchPanel={reviewSearchView ? (
+            <ReviewSearchPanel
+              search={reviewSearchView}
+              filesWording
+              diffOptions={diffOptions}
+              typeDefinitionPaths={typeDefinitionPaths}
+              typeDefinitionInteraction={typeDefinitionInteraction}
+            />
+          ) : undefined}
+          isSearchSelected={Boolean(currentReviewSearch) && isReviewSearchSelected}
+          diffOptions={diffOptions}
+          lineCollaboration={lineCollaboration}
+          agentNotes={agentNotes}
+          hiddenAgentNoteIds={hiddenAgentNoteIds}
+          onSetAgentNoteHidden={setAgentNoteHidden}
+          guideNotes={guideReferences}
+          typeDefinitionPaths={typeDefinitionPaths}
+          typeDefinitionInteraction={typeDefinitionInteraction}
+          fileContexts={fileContexts}
+          preparedDiffCacheKeyPrefix={preparedDiffCacheKeyPrefix}
+          navigationRequest={navigationRequest}
+          resumePosition={continuity.resumePosition}
+          isMutating={progressMutation.isPending}
+          mutationError={mutationError}
+          onSetViewed={(file, viewed) => {
+            if (!progressMutation.isPending) progressMutation.mutate({ chunkIds: file.chunks.map((chunk) => chunk.id), viewed });
+          }}
+          onReveal={(path) => {
+            if (selectedCommentTarget !== undefined || commentMutation.isPending) return false;
+            // Only one hidden file is revealed at a time; replacing it would unmount a typed reply or edit there.
+            if (isScopeLocked && revealedFilePath !== undefined && revealedFilePath !== path) {
+              onScopeLockRefused?.();
+              return false;
+            }
+            setRevealedFilePath(path);
+            return true;
+          }}
+        />
+      ) : (
+        <>
+          {toolbar}
+          <ReviewBody
+            repoPath={repoPath}
+            isLoading={isLoading}
+            errorMessage={loadErrorMessage}
+            hasReviewUnits={Boolean(reviewPlan?.units.length)}
+            resumePosition={continuity.resumePosition}
+            continuityEmpty={continuityEmpty}
+            emptyReviewMessage={emptyReviewMessage}
+            units={presentation?.units ?? []}
+            selectedUnit={selectedUnit}
+            preparedDiffs={selectedPreparedDiffs}
+            diffOptions={diffOptions}
+            isMutating={progressMutation.isPending}
+            mutationError={mutationError}
+            lineCollaboration={lineCollaboration}
+            agentNotes={agentNotes}
+            hiddenAgentNoteIds={hiddenAgentNoteIds}
+            onSetAgentNoteHidden={setAgentNoteHidden}
+            reviewGuide={reviewGuide}
+            reviewGuideUnits={reviewGuideUnits}
+            isGuideOpen={isGuideOpen}
+            isGuideRanked={isGuideRanked}
+            isGuideRebuilding={currentReviewGuideState?.status === 'running'}
+            onCloseGuide={() => setGuideOpen(false)}
+            onGuideSelectUnit={selectGuideUnit}
+            isFileTreeOpen={isFileTreeOpen}
+            allFileUnits={allFileUnits}
+            onSelectAllFile={selectAllFile}
+            selectedFilePath={selectedFilePath}
+            restoredScrollTop={
+              selectedUnit &&
+              scrollRestoration &&
+              selectedUnit.unit.id === scrollRestoration.unitId
+                ? scrollRestoration.scrollTop
+                : undefined
+            }
+            fileNavigationSignal={fileNavigationSignal}
+            reviewSearch={reviewSearchView}
+            typeDefinitionPaths={typeDefinitionPaths}
+            typeDefinitionInteraction={typeDefinitionInteraction}
+            onSelectUnit={selectReviewUnit}
+            onSelectFile={selectFile}
+            onScrollTopChange={saveReviewScrollTop}
+            onStartReviewGuide={() => void startReviewGuide()}
+            onToggleViewed={() => markSelectedUnit(!(selectedUnit?.isViewed ?? false))}
+          />
+        </>
+      )}
+      </ReviewUnsavedTextContext>
 
       {isPatternEditorOpen ? (
         <ReviewPatternsDialog
@@ -1882,12 +1917,12 @@ function ReviewFilterMenu({
           <DropdownMenuLabel>Changes</DropdownMenuLabel>
           <DropdownMenuItem role="menuitemradio" aria-checked={!continuity.hideSeen || !canResumeContinuity(continuity)}
             onSelect={() => continuity.setHideSeen(false)}>
-            <Check size={13} className={!continuity.hideSeen || !canResumeContinuity(continuity) ? 'shrink-0' : 'invisible shrink-0'} />
+            <Check size={14} className={!continuity.hideSeen || !canResumeContinuity(continuity) ? 'shrink-0' : 'invisible shrink-0'} />
             <span>Whole pull request</span>
           </DropdownMenuItem>
           <DropdownMenuItem role="menuitemradio" aria-checked={continuity.hideSeen && canResumeContinuity(continuity)}
             disabled={!canResumeContinuity(continuity)} onSelect={() => continuity.setHideSeen(true)}>
-            <Check size={13} className={continuity.hideSeen && canResumeContinuity(continuity) ? 'shrink-0' : 'invisible shrink-0'} />
+            <Check size={14} className={continuity.hideSeen && canResumeContinuity(continuity) ? 'shrink-0' : 'invisible shrink-0'} />
             <span>Since my last review{canResumeContinuity(continuity) ? ` (${continuity.hiddenIds.size} seen hidden)` : ''}
               <small className="block text-[var(--text-3)]">
                 {continuity.baseChanged ? 'The comparison base changed; all code stays visible' : !continuity.hasSavedCheckpoint
@@ -1908,44 +1943,44 @@ function ReviewFilterMenu({
         <DropdownMenuLabel>Hide from review</DropdownMenuLabel>
         <ReviewFilterMenuItem
           checked={preferences.skipTests}
-          icon={<TestTube2 size={13} />}
+          icon={<TestTube2 size={14} />}
           label="Tests and specs"
           onChange={(skipTests) => onChange({ ...preferences, skipTests })}
         />
         <ReviewFilterMenuItem
           checked={preferences.skipImports}
-          icon={<PackageOpen size={13} />}
+          icon={<PackageOpen size={14} />}
           label="Import-only changes"
           onChange={(skipImports) => onChange({ ...preferences, skipImports })}
         />
         <ReviewFilterMenuItem
           checked={preferences.skipGenerated}
-          icon={<FileCog size={13} />}
+          icon={<FileCog size={14} />}
           label="Generated files"
           onChange={(skipGenerated) => onChange({ ...preferences, skipGenerated })}
         />
         <ReviewFilterMenuItem
           checked={preferences.skipDeletions}
-          icon={<Trash2 size={13} />}
+          icon={<Trash2 size={14} />}
           label="Deletions"
           onChange={(skipDeletions) => onChange({ ...preferences, skipDeletions })}
         />
         <ReviewFilterMenuItem
           checked={preferences.skipEmptyLines}
-          icon={<Pilcrow size={13} />}
+          icon={<Pilcrow size={14} />}
           label="Empty line changes"
           onChange={(skipEmptyLines) => onChange({ ...preferences, skipEmptyLines })}
         />
         <ReviewFilterMenuItem
           checked={preferences.skipFilePatterns}
           disabled={preferences.filePatterns.length === 0}
-          icon={<Settings2 size={13} />}
+          icon={<Settings2 size={14} />}
           label="Configured patterns"
           onChange={(skipFilePatterns) => onChange({ ...preferences, skipFilePatterns })}
         />
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onConfigurePatterns}>
-          <Settings2 size={13} />
+          <Settings2 size={14} />
           <span>Configure file patterns…</span>
           {preferences.filePatterns.length > 0 ? (
             <span className="ml-auto text-[10px] text-[var(--text-3)]">
@@ -1990,10 +2025,8 @@ function ReviewFilterMenuItem({
   );
 }
 
+// The standard (local branch, commit, WIP) review: blocks on the left, the selected block's files on the right.
 function ReviewBody({
-  compact,
-  navigationTools,
-  navigationHeader,
   repoPath,
   isLoading,
   errorMessage,
@@ -2002,8 +2035,6 @@ function ReviewBody({
   continuityEmpty,
   resumePosition,
   units,
-  coverage,
-  unitTitles,
   selectedUnit,
   preparedDiffs,
   diffOptions,
@@ -2021,11 +2052,8 @@ function ReviewBody({
   onCloseGuide,
   onGuideSelectUnit,
   isFileTreeOpen,
-  fileTreePanel,
   allFileUnits,
   onSelectAllFile,
-  externalGuideLocation,
-  guideReferences,
   selectedFilePath,
   restoredScrollTop,
   fileNavigationSignal,
@@ -2034,14 +2062,10 @@ function ReviewBody({
   typeDefinitionInteraction,
   onSelectUnit,
   onSelectFile,
-  onSelectUnitFile,
   onScrollTopChange,
   onStartReviewGuide,
   onToggleViewed
 }: {
-  compact: boolean;
-  navigationTools: ReactNode;
-  navigationHeader: ReactNode;
   repoPath: string;
   isLoading: boolean;
   errorMessage?: string;
@@ -2050,8 +2074,6 @@ function ReviewBody({
   continuityEmpty?: ReactNode;
   resumePosition?: { chunkId: string; path: string; offset: number };
   units: VisibleReviewUnit[];
-  coverage?: Pick<ReviewPresentation, 'fileCount' | 'viewedFileCount' | 'hiddenFileCount'>;
-  unitTitles?: ReadonlyMap<string, string>;
   selectedUnit?: VisibleReviewUnit;
   preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
@@ -2069,11 +2091,8 @@ function ReviewBody({
   onCloseGuide: () => void;
   onGuideSelectUnit: (unitId: string) => void;
   isFileTreeOpen: boolean;
-  fileTreePanel?: ReviewViewProps['fileTreePanel'];
   allFileUnits: VisibleReviewUnit[];
   onSelectAllFile: (path: string | undefined) => void;
-  externalGuideLocation?: ExternalGuideLocation;
-  guideReferences: readonly ReviewInlineGuideNote[];
   selectedFilePath?: string;
   restoredScrollTop?: number;
   fileNavigationSignal: number;
@@ -2082,50 +2101,25 @@ function ReviewBody({
   typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
   onSelectUnit: (unitId: string) => void;
   onSelectFile: (path: string | undefined) => void;
-  onSelectUnitFile: (unitId: string, path: string) => void;
   onScrollTopChange: (unitId: string, scrollTop: number, visiblePath?: string) => void;
   onStartReviewGuide: () => void;
   onToggleViewed: () => void;
 }): ReactElement {
   const reviewChunksRef = useRef<HTMLDivElement>(null);
-  const [briefLocation, setGuideLocation] = useState<ExternalGuideLocation & { commentId?: string | number }>();
+  const [guideLocation, setGuideLocation] = useState<GuideLocation>();
   const [briefTab, setBriefTab] = useState<'summaries' | 'findings'>('summaries');
   const guideFindings = useMemo(() => createReviewGuideFindings(reviewGuide ? allFileUnits : [], lineCollaboration?.threads ?? []), [reviewGuide, allFileUnits, lineCollaboration?.threads]);
   const selectedFindings = guideFindings.get(selectedUnit?.unit.id ?? '') ?? NO_GUIDE_FINDINGS;
-  if (briefLocation && (!reviewGuide || briefLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
+  if (guideLocation && (!reviewGuide || guideLocation.unitId !== selectedUnit?.unit.id || reviewSearch?.isSelected)) {
     setGuideLocation(undefined);
   }
-  // AI brief jumps take precedence; otherwise honor a jump requested from outside the review.
-  const guideLocation: typeof briefLocation = briefLocation ??
-    (externalGuideLocation?.unitId === selectedUnit?.unit.id && !reviewSearch?.isSelected ? externalGuideLocation : undefined);
   const consumedGuideLocation = useRef<typeof guideLocation>(undefined);
-  const reviewQueueRef = useRef<HTMLElement>(null);
-  const queueResize = usePanelResize({
-    storageKey: `git-gud:review-queue-width:v1:${encodeURIComponent(repoPath)}`,
-    defaultWidth: 280,
-    expandedWidth: 410,
-    minWidth: 220,
-    maxWidth: 640,
-    minRemainingWidth: compact && fileTreePanel?.open ? 600 : 360,
-    edge: 'right'
-  });
   const renderedLocationRef = useRef<{
     fileNavigationSignal: number;
     filePath?: string;
     unitId?: string;
   }>({ fileNavigationSignal: 0 });
   const [collapsedFileKeys, setCollapsedFileKeys] = useState<ReadonlySet<string>>(() => new Set());
-  // A jump from outside the review must show its file even if the reader collapsed it earlier.
-  const [expandedForLocation, setExpandedForLocation] = useState(externalGuideLocation);
-  if (externalGuideLocation !== expandedForLocation) {
-    setExpandedForLocation(externalGuideLocation);
-    const path = externalGuideLocation?.file.path;
-    if (path) {
-      const keys = new Set(allFileUnits.flatMap((unit) => unit.unit.chunks)
-        .filter((chunk) => chunk.path === path).map((chunk) => chunk.id));
-      setCollapsedFileKeys((current) => new Set([...current].filter((key) => !keys.has(key))));
-    }
-  }
   const agentNotesByPath = useMemo(() => {
     const notesByPath = new Map<string, GitAgentNote[]>();
 
@@ -2138,18 +2132,6 @@ function ReviewBody({
     return notesByPath;
   }, [agentNotes]);
   const selectedGuideUnit = selectedUnit ? reviewGuideUnits.get(selectedUnit.unit.id) : undefined;
-  const selectedTreeUnits = useMemo(() => (selectedUnit ? [selectedUnit] : []), [selectedUnit]);
-  // Stable one-block lists, so an expanded block's file tree keeps its model across renders.
-  const blockTreeUnits = useMemo(() => new Map(units.map((unit) => [unit.unit.id, [unit]])), [units]);
-  // Only the selected block lists its files until a block's chevron says otherwise.
-  const [blockFilesOpen, setBlockFilesOpen] = useState<ReadonlyMap<string, boolean>>(() => new Map());
-
-  useEffect(() => {
-    if (compact) {
-      reviewQueueRef.current?.querySelector('[data-active="true"]')
-        ?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [compact, selectedUnit?.unit.id]);
 
   useLayoutEffect(() => {
     const scroller = reviewChunksRef.current;
@@ -2168,7 +2150,7 @@ function ReviewBody({
     if (
       !scroller ||
       !unitId ||
-      (!unitChanged && (compact || !fileChanged) && !fileNavigationRequested)
+      (!unitChanged && !fileChanged && !fileNavigationRequested)
     ) {
       return;
     }
@@ -2200,7 +2182,7 @@ function ReviewBody({
         target.getBoundingClientRect().top -
         scroller.getBoundingClientRect().top
     });
-  }, [compact, fileNavigationSignal, restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
+  }, [fileNavigationSignal, restoredScrollTop, selectedFilePath, selectedUnit?.unit.id]);
 
 
   useEffect(() => {
@@ -2326,18 +2308,11 @@ function ReviewBody({
     ));
   }
 
-  if (!compact && bodyMessage) return <>{bodyMessage}</>;
+  if (bodyMessage) return <>{bodyMessage}</>;
 
   return (
     <div className="review-layout">
-      <nav ref={(node) => { reviewQueueRef.current = node; queueResize.attachPanel(node); }} className="review-queue" style={compact ? { width: queueResize.width, flexBasis: queueResize.width } : undefined} data-nested={compact} aria-label="Context review units">
-        {compact ? (
-          <header className="review-block-progress">
-            {navigationHeader}
-            <PanelExpandButton resize={queueResize} label="review sidebar" />
-          </header>
-        ) : null}
-        {compact ? <PanelResizeHandle resize={queueResize} label="review sidebar" /> : null}
+      <nav className="review-queue" aria-label="Context review units">
         {reviewGuide ? <p className="review-ai-layer-overview">{reviewGuide.summary}</p> : null}
         <div className="review-queue-items">
           {reviewSearch ? (
@@ -2367,11 +2342,8 @@ function ReviewBody({
           ) : null}
           {units.map((candidate, index) => {
             const isSelected = !reviewSearch?.isSelected && candidate.unit.id === selectedUnit?.unit.id;
-            const title = unitTitles?.get(candidate.unit.id) ?? (compact ? candidate.unit.title.replace(/^Changes in /u, '') : candidate.unit.title);
-            const filesOpen = compact && !reviewSearch?.isSelected && (blockFilesOpen.get(candidate.unit.id) ?? isSelected);
+            const title = candidate.unit.title;
             const guideUnit = reviewGuideUnits.get(candidate.unit.id);
-            // The selected block keeps the guide's line-precise jumps; another block opens its file first.
-            const openFile = (path: string) => isSelected ? onSelectFile(path) : onSelectUnitFile(candidate.unit.id, path);
             return (
             <div className="review-block-entry" key={candidate.unit.id}>
               <ReviewLayerTooltip enabled={Boolean(reviewGuide)} title={candidate.unit.title} description={candidate.unit.explanation}
@@ -2399,106 +2371,18 @@ function ReviewBody({
                   <span className="flex min-w-0 items-center gap-1.5">
                     {guideUnit ? <ReviewGuidePriority priority={guideUnit.priority} /> : null}
                     <span className="review-unit-meta min-w-0 truncate">
-                      {compact
-                        ? formatReviewBlockSize(candidate)
-                        : candidate.unit.reason}
+                      {candidate.unit.reason}
                     </span>
                   </span>
                 </span>
                 {reviewGuide ? <ReviewFindingDot findings={guideFindings.get(candidate.unit.id) ?? NO_GUIDE_FINDINGS} /> : null}
-                {!compact ? (
-                  <span className="badge-mini">{candidate.visibleChunks.length}</span>
-                ) : null}
+                <span className="badge-mini">{candidate.visibleChunks.length}</span>
               </button>
               </ReviewLayerTooltip>
-              {compact && !reviewSearch?.isSelected ? (
-                <button type="button" className="review-block-toggle" aria-expanded={filesOpen}
-                  aria-label={`${filesOpen ? 'Hide' : 'Show'} files in ${title}`} title={filesOpen ? 'Hide files' : 'Show files'}
-                  onClick={() => setBlockFilesOpen((current) => new Map(current).set(candidate.unit.id, !filesOpen))}>
-                  <ChevronRight size={14} aria-hidden="true" />
-                </button>
-              ) : null}
-              {filesOpen ? (
-                guideUnit ? (
-                  <div className="review-guide-ranked-files" aria-label={`Ranked files in ${title}`}>
-                    {[...new Set(candidate.visibleChunks.map((chunk) => chunk.path))].map((path) => {
-                      const file = visibleReviewGuideFiles(candidate, guideUnit).find((item) => item.path === path);
-                      return <button type="button" key={path} data-active={isSelected && selectedFilePath === path}
-                        disabled={Boolean(lineCollaboration?.selectedChunkId)} title={file?.reason || path}
-                        onClick={() => isSelected && file ? selectGuideFile(file) : openFile(path)}>
-                        <span title={path}>{path.split('/').pop()}</span>
-                        {file ? <ReviewGuidePriority priority={file.priority} reason={file.reason} /> : null}
-                      </button>;
-                    })}
-                  </div>
-                ) : (
-                  <ReviewFileTree embedded repoPath={repoPath}
-                    units={isSelected ? selectedTreeUnits : blockTreeUnits.get(candidate.unit.id) ?? NO_UNITS}
-                    selectedPath={isSelected ? selectedFilePath : undefined}
-                    onSelectPath={(path) => { if (path) openFile(path); }} />
-                )
-              ) : null}
             </div>
             );
           })}
         </div>
-        {compact ? (
-          <footer className="review-navigation-footer">
-            <div className="review-navigation-scroll">
-              {selectedUnit ? (
-                <>
-                  <details className="review-block-explanation">
-                    <summary>Why grouped?</summary>
-                    <p>{selectedUnit.unit.explanation}</p>
-                    <small>
-                      {REVIEW_CONFIDENCE_LABELS[selectedUnit.unit.confidence] ?? selectedUnit.unit.confidence}
-                      {selectedUnit.skippedCount > 0 ? ` · ${selectedUnit.skippedCount} ${selectedUnit.skippedCount === 1 ? 'change' : 'changes'} hidden by filters` : ''}
-                    </small>
-                  </details>
-                  <div className="review-block-position">
-                    <span>
-                      {reviewGuide ? 'Layer' : 'Block'} {units.findIndex((unit) => unit.unit.id === selectedUnit.unit.id) + 1} of{' '}
-                      {units.length}
-                    </span>
-                  </div>
-                  {coverage ? (
-                    <div className="review-coverage" title="Hidden files never count as viewed. Open a dimmed file to review it.">
-                      <span className="review-coverage-bar" aria-hidden="true">
-                        <i style={{ width: `${coverage.fileCount ? (coverage.viewedFileCount / coverage.fileCount) * 100 : 0}%` }} />
-                      </span>
-                      <span>
-                        {coverage.viewedFileCount} of {coverage.fileCount} files viewed
-                        {coverage.hiddenFileCount > 0 ? ` · ${coverage.hiddenFileCount} hidden by filters` : ''}
-                      </span>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-              {navigationTools}
-              <span className="review-navigation-shortcuts" data-disabled={lineCollaboration?.selectedChunkId !== undefined || undefined}>
-                J / K {reviewGuide ? 'layers' : 'blocks'} · [ / ] files · V viewed{compact ? ' · ↑ / ↓ lines · C comment' : ''}
-              </span>
-            </div>
-            {selectedUnit ? (
-              <div className="review-navigation-terminal">
-                <button
-                  className="btn-subtle btn-regular review-viewed-next"
-                  type="button"
-                  disabled={isMutating || lineCollaboration?.selectedChunkId !== undefined}
-                  onClick={onToggleViewed}
-                >
-                  <CheckCheck size={13} />
-                  {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed & next'}
-                </button>
-                {mutationError ? (
-                  <p className="review-navigation-error" role="alert">
-                    {mutationError}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </footer>
-        ) : null}
       </nav>
 
       <div className="review-content">
@@ -2512,7 +2396,7 @@ function ReviewBody({
             />
           ) : selectedUnit ? (
             <>
-              {!compact ? (
+              {(
                 <header className="review-unit-header">
                   <div className="review-unit-heading">
                     <h2 title={selectedUnit.unit.title}>{selectedUnit.unit.title}</h2>
@@ -2542,17 +2426,17 @@ function ReviewBody({
                     onClick={onToggleViewed}
                   >
                     {isMutating ? (
-                      <Loader2 size={13} className="animate-spin" />
+                      <Loader2 size={14} className="animate-spin" />
                     ) : selectedUnit.isViewed ? (
-                      <X size={13} />
+                      <X size={14} />
                     ) : (
-                      <CheckCheck size={13} />
+                      <CheckCheck size={14} />
                     )}
                     {selectedUnit.isViewed ? 'Mark unviewed' : 'Viewed'}
                   </button>
                 </header>
-              ) : null}
-              {!compact && mutationError ? (
+              )}
+              {mutationError ? (
                 <p className="border-b border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-xs text-[var(--danger-text)]">
                   {mutationError}
                 </p>
@@ -2562,13 +2446,7 @@ function ReviewBody({
                 className="review-chunks"
                 onScroll={(event) => {
                   const scroller = event.currentTarget;
-                  const top = scroller.getBoundingClientRect().top + 40;
-                  const visiblePath = compact
-                    ? [...scroller.querySelectorAll<HTMLElement>('[data-review-path]')].find(
-                        (file) => file.getBoundingClientRect().bottom > top
-                      )?.dataset.reviewPath
-                    : undefined;
-                  onScrollTopChange(selectedUnit.unit.id, scroller.scrollTop, visiblePath);
+                  onScrollTopChange(selectedUnit.unit.id, scroller.scrollTop);
                 }}
               >
                 {(isGuideRanked
@@ -2594,7 +2472,7 @@ function ReviewBody({
                           diffOptions={diffOptions}
                           lineCollaboration={lineCollaboration}
                           agentNotes={agentNotesByPath.get(file.chunks[0]!.path) ?? []}
-                          guideNotes={combineGuideNotes(selectedGuideUnit?.summaries ? NO_GUIDE_NOTES : selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES, guideReferences)}
+                          guideNotes={selectedGuideUnit?.summaries ? NO_GUIDE_NOTES : selectedGuideUnit?.inlineNotes ?? NO_GUIDE_NOTES}
                           guideFile={selectedGuideUnit?.files.find((item) => item.path === file.chunks[0].path)}
                           guideSide={guideLocation?.file.side}
                           guideEndLine={guideLocation?.file.endLine}
@@ -2625,18 +2503,7 @@ function ReviewBody({
           onClose={onCloseGuide} onRebuild={onStartReviewGuide} />
       ) : null}
 
-      {compact && fileTreePanel ? (
-        <ReviewFileTree
-          allFiles
-          minRemainingWidth={queueResize.width + 360}
-          hidden={!fileTreePanel.open}
-          repoPath={repoPath}
-          units={allFileUnits}
-          selectedPath={selectedFilePath}
-          onSelectPath={onSelectAllFile}
-          onClose={fileTreePanel.onClose}
-        />
-      ) : !compact && isFileTreeOpen ? (
+      {isFileTreeOpen ? (
         <ReviewFileTree
           key={repoPath}
           repoPath={repoPath}
@@ -2651,11 +2518,14 @@ function ReviewBody({
 
 function ReviewSearchPanel({
   search,
+  filesWording = false,
   diffOptions,
   typeDefinitionPaths,
   typeDefinitionInteraction
 }: {
   search: ReviewSearchViewState;
+  // The pull-request layout has files, not blocks: no "temporary block", and results sit under their file.
+  filesWording?: boolean;
   diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
   typeDefinitionPaths: ReadonlySet<string>;
   typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
@@ -2797,7 +2667,7 @@ function ReviewSearchPanel({
       <header className="review-unit-header review-search-header">
         <div className="review-unit-heading">
           <h2>Search results</h2>
-          <span className="badge-mini review-search-temporary-badge">temporary block</span>
+          {filesWording ? null : <span className="badge-mini review-search-temporary-badge">temporary block</span>}
           <span className="review-unit-summary">
             {formatReviewSearchResultCount(search.results.locationCount)}
             {search.results.limitReached ? ' · first 200 shown' : ''}
@@ -2838,7 +2708,7 @@ function ReviewSearchPanel({
             title="Previous result (Shift Enter)"
             onClick={() => navigate(-1)}
           >
-            <ChevronUp size={13} />
+            <ChevronUp size={14} />
           </button>
           <button
             className="review-search-nav-button"
@@ -2848,7 +2718,7 @@ function ReviewSearchPanel({
             title="Next result (Enter)"
             onClick={() => navigate(1)}
           >
-            <ChevronDown size={13} />
+            <ChevronDown size={14} />
           </button>
         </div>
 
@@ -2873,7 +2743,7 @@ function ReviewSearchPanel({
                 search.onInclusionChange(event.currentTarget.value as ReviewSearchInclusion)
               }
             >
-              <option value="visible-blocks">Visible blocks</option>
+              <option value="visible-blocks">{filesWording ? 'Visible files' : 'Visible blocks'}</option>
               <option value="whole-review">Whole PR</option>
             </select>
           </label>
@@ -2921,8 +2791,12 @@ function ReviewSearchPanel({
                 key={file.id}
               >
                 <div className="review-search-file-context">
-                  <span title={file.ownerUnitTitle}>{file.ownerUnitTitle}</span>
-                  <span title={file.relationship}>{file.relationship}</span>
+                  {filesWording ? null : (
+                    <>
+                      <span title={file.ownerUnitTitle}>{file.ownerUnitTitle}</span>
+                      <span title={file.relationship}>{file.relationship}</span>
+                    </>
+                  )}
                   {file.isFiltered ? <span className="badge-mini">filtered</span> : null}
                   {file.usedChangedLinesFallback
                     ? <span className="badge-mini">changed lines</span>
@@ -2966,992 +2840,8 @@ function createReviewSearchLineSelector(line: ReviewSearchLine): string {
   return `[data-line="${line.number}"]${lineType}`;
 }
 
-function createReviewSearchHighlightCSS(
-  lines: readonly ReviewSearchLine[] | undefined
-): string {
-  if (!lines?.length) {
-    return '';
-  }
 
-  const lineSelectors = new Set<string>();
-  const gutterSelectors = new Set<string>();
 
-  for (const line of lines) {
-    const lineType = line.kind === 'addition'
-      ? '[data-line-type="change-addition"]'
-      : line.kind === 'deletion'
-        ? '[data-line-type="change-deletion"]'
-        : '';
-
-    lineSelectors.add(`[data-line="${line.number}"]${lineType}`);
-    gutterSelectors.add(`[data-column-number="${line.number}"]${lineType}`);
-  }
-
-  const selectors = [...lineSelectors, ...gutterSelectors].join(',\n');
-
-  return `
-    ${selectors} {
-      background-color: light-dark(rgb(214 159 34 / 0.24), rgb(235 182 60 / 0.2)) !important;
-    }
-  `;
-}
-
-function formatReviewBlockSize(unit: VisibleReviewUnit): string {
-  const files = new Set(unit.visibleChunks.map((chunk) => chunk.path)).size;
-  const changes = unit.visibleChunks.length;
-  return `${files} ${files === 1 ? 'file' : 'files'} · ${changes} ${changes === 1 ? 'change' : 'changes'}`;
-}
-
-function ReviewFile({
-  file,
-  preparedDiffs,
-  diffOptions,
-  lineCollaboration,
-  agentNotes,
-  guideNotes = NO_GUIDE_NOTES,
-  guideFile,
-  guideLine,
-  guideSide,
-  guideEndLine,
-  hiddenAgentNoteIds,
-  onSetAgentNoteHidden,
-  typeDefinitionPaths,
-  typeDefinitionInteraction,
-  isCollapsed,
-  searchHighlightsByChunk,
-  onToggleCollapsed
-}: {
-  file: VisibleReviewFile;
-  preparedDiffs: ReadonlyMap<string, PreparedReviewDiff>;
-  diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
-  lineCollaboration?: ReviewLineCollaboration;
-  agentNotes: readonly GitAgentNote[];
-  guideNotes?: readonly ReviewInlineGuideNote[];
-  guideFile?: GitReviewGuideFile;
-  guideLine?: number;
-  guideSide?: 'left' | 'right';
-  guideEndLine?: number;
-  hiddenAgentNoteIds: ReadonlySet<string>;
-  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
-  typeDefinitionPaths: ReadonlySet<string>;
-  typeDefinitionInteraction: ReviewTypeDefinitionInteraction;
-  isCollapsed: boolean;
-  searchHighlightsByChunk?: ReadonlyMap<string, readonly ReviewSearchLine[]>;
-  onToggleCollapsed: () => void;
-}): ReactElement {
-  const fileComposerId = useId();
-  const guideDiffOptions = useMemo(() => guideLine ? {
-    ...diffOptions,
-    unsafeCSS: `${diffOptions.unsafeCSS ?? ''}\n${Array.from({ length: Math.min((guideEndLine ?? guideLine) - guideLine + 1, 1000) }, (_, index) => `[data-line="${guideLine + index}"][data-line-type="${guideSide === 'left' ? 'change-deletion' : 'change-addition'}"]`).join(',')} { background-color: color-mix(in srgb, var(--accent-2) 14%, transparent) !important; }`
-  } : diffOptions, [diffOptions, guideLine, guideSide, guideEndLine]);
-  const firstChunk = file.chunks[0]!;
-  const fileThreads = lineCollaboration?.threads.filter(
-    (thread) => thread.subjectType === 'file' && thread.path === firstChunk.path
-  ) ?? [];
-  const isFileComposerOpen =
-    lineCollaboration?.selectedChunkId === firstChunk.id &&
-    lineCollaboration.selectedSubject === 'file';
-  const { directory, basename } = splitPath(firstChunk.path);
-
-  return (
-    <section
-      className="review-file"
-      data-collapsed={isCollapsed}
-      data-review-path={firstChunk.path}
-    >
-      <div className="review-file-header">
-        <ReviewFilePathContextMenu path={firstChunk.path}>
-          <button
-            className="review-chunk-toggle"
-            type="button"
-            aria-expanded={!isCollapsed}
-            aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${firstChunk.path}`}
-            onClick={onToggleCollapsed}
-          >
-            {isCollapsed ? (
-              <ChevronRight size={13} className="shrink-0 text-[var(--text-3)]" />
-            ) : (
-              <ChevronDown size={13} className="shrink-0 text-[var(--text-3)]" />
-            )}
-            <FileCode2 size={13} className="shrink-0 text-[var(--accent-2)]" />
-            <span className="review-file-path" title={firstChunk.path}>
-              {directory ? <span className="review-file-directory">{directory}</span> : null}
-              <span className="review-file-basename">{basename}</span>
-            </span>
-            {guideFile ? <ReviewGuidePriority priority={guideFile.priority} reason={guideFile.reason} /> : null}
-            <span className="badge-mini" title={firstChunk.relationship}>{REVIEW_ROLE_LABELS[firstChunk.role] ?? firstChunk.role}</span>
-            {firstChunk.source !== 'commit' ? <span className="badge-mini">{firstChunk.source}</span> : null}
-            <span className="text-[var(--success-text)]">+{file.additions}</span>
-            <span className="text-[var(--danger-text)]">-{file.deletions}</span>
-          </button>
-        </ReviewFilePathContextMenu>
-        {lineCollaboration ? (
-          <button
-            className="review-comment-action review-file-comment-action"
-            type="button"
-            data-active={isFileComposerOpen}
-            aria-controls={fileComposerId}
-            aria-expanded={isFileComposerOpen}
-            onClick={() => {
-              if (isFileComposerOpen) {
-                lineCollaboration.onCancel();
-                return;
-              }
-              if (isCollapsed) {
-                onToggleCollapsed();
-              }
-              lineCollaboration.onSelectFile(firstChunk.id, firstChunk.path);
-            }}
-          >
-            <MessageSquare size={11} />
-            Comment on file
-          </button>
-        ) : null}
-      </div>
-      {!isCollapsed && (fileThreads.length > 0 || isFileComposerOpen) ? (
-        <div className="review-file-comments">
-          {fileThreads.map((thread) => (
-            <ReviewCommentAnnotation
-              key={thread.id}
-              thread={thread}
-              onAddDraftReply={lineCollaboration?.onAddDraftReply}
-              onUpdateComment={lineCollaboration?.onUpdateComment}
-              onUpdateDraftComment={lineCollaboration?.onUpdateDraftComment}
-              onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
-            />
-          ))}
-          {isFileComposerOpen && lineCollaboration ? (
-            <div id={fileComposerId}>
-              <ReviewInlineComposer collaboration={lineCollaboration} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {!isCollapsed
-        ? file.chunks.map((chunk, chunkIndex) => (
-            <ReviewChunk
-              key={chunk.id}
-              chunk={chunk}
-              preparedDiff={preparedDiffs.get(chunk.id)}
-              diffOptions={guideDiffOptions}
-              lineCollaboration={lineCollaboration}
-              agentNotes={agentNotes}
-              guideNotes={guideNotes}
-              hiddenAgentNoteIds={hiddenAgentNoteIds}
-              onSetAgentNoteHidden={onSetAgentNoteHidden}
-              typeDefinitionInteraction={
-                typeDefinitionPaths.has(chunk.path) ? typeDefinitionInteraction : undefined
-              }
-              hideLeadingExpansion={shareReviewExpansionBoundary(
-                chunkIndex > 0
-                  ? preparedDiffs.get(file.chunks[chunkIndex - 1]!.id)?.expandable
-                  : undefined,
-                preparedDiffs.get(chunk.id)?.expandable
-              )}
-              searchHighlights={searchHighlightsByChunk?.get(chunk.id)}
-            />
-          ))
-        : null}
-    </section>
-  );
-}
-
-function ReviewChunk({
-  chunk,
-  preparedDiff,
-  diffOptions,
-  lineCollaboration,
-  agentNotes,
-  guideNotes = NO_GUIDE_NOTES,
-  hiddenAgentNoteIds,
-  onSetAgentNoteHidden,
-  typeDefinitionInteraction,
-  hideLeadingExpansion = false,
-  searchHighlights
-}: {
-  chunk: GitReviewChunk;
-  preparedDiff?: PreparedReviewDiff;
-  diffOptions: FileDiffOptions<ReviewDiffAnnotation>;
-  lineCollaboration?: ReviewLineCollaboration;
-  agentNotes: readonly GitAgentNote[];
-  guideNotes?: readonly ReviewInlineGuideNote[];
-  hiddenAgentNoteIds: ReadonlySet<string>;
-  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
-  typeDefinitionInteraction?: ReviewTypeDefinitionInteraction;
-  hideLeadingExpansion?: boolean;
-  searchHighlights?: readonly ReviewSearchLine[];
-}): ReactElement {
-  const isComposing = lineCollaboration?.selectedChunkId === chunk.id;
-  const [displayedDiff, setDisplayedDiff] = useState(preparedDiff);
-
-  // Keep the renderer and its annotation nodes stable while someone is typing.
-  if (!isComposing && displayedDiff !== preparedDiff) {
-    setDisplayedDiff(preparedDiff);
-  }
-
-  const expandableDiff = displayedDiff?.expandable;
-  const contextualDiffOptions = useMemo<FileDiffOptions<ReviewDiffAnnotation>>(
-    () => {
-      const options = expandableDiff
-        ? createReviewContextOptions(
-            diffOptions,
-            expandableDiff,
-            chunk.path,
-            hideLeadingExpansion
-          )
-        : diffOptions;
-      const interactiveOptions = typeDefinitionInteraction
-        ? {
-            ...options,
-            onTokenClick: (token: DiffTokenEventBaseProps, event: MouseEvent) =>
-              typeDefinitionInteraction.onClick(chunk, token, event),
-            onTokenEnter: (token: DiffTokenEventBaseProps, event: PointerEvent) =>
-              typeDefinitionInteraction.onEnter(chunk, token, event),
-            onTokenLeave: (token: DiffTokenEventBaseProps) =>
-              typeDefinitionInteraction.onLeave(token),
-            unsafeCSS: `${options.unsafeCSS ?? ''}\n${REVIEW_TYPE_DEFINITION_HOVER_CSS}`
-          }
-        : options;
-      const highlightCSS = createReviewSearchHighlightCSS(searchHighlights);
-
-      return highlightCSS
-        ? {
-            ...interactiveOptions,
-            unsafeCSS: `${interactiveOptions.unsafeCSS ?? ''}\n${highlightCSS}`
-          }
-        : interactiveOptions;
-    },
-    [
-      chunk,
-      diffOptions,
-      expandableDiff,
-      hideLeadingExpansion,
-      typeDefinitionInteraction,
-      searchHighlights
-    ]
-  );
-  const selectedLines =
-    lineCollaboration?.selectedChunkId === chunk.id &&
-    lineCollaboration.selectedSubject === 'line'
-      ? lineCollaboration.selectedLines
-      : null;
-  const normalizedSelection = normalizeReviewLineSelection(selectedLines);
-  const lineAnnotations = useMemo<DiffLineAnnotation<ReviewDiffAnnotation>[]>(
-    () => [
-      ...(lineCollaboration?.threads.flatMap((thread) =>
-        thread.subjectType === 'line' &&
-        thread.path === chunk.path &&
-        thread.line &&
-        thread.side &&
-        patchContainsLine(chunk.patch, thread.line, thread.side)
-          ? [{
-              lineNumber: thread.line,
-              side: thread.side === 'right' ? 'additions' as const : 'deletions' as const,
-              metadata: { kind: 'thread' as const, thread }
-            }]
-          : []
-      ) ?? []),
-      ...guideNotes.flatMap((note) =>
-        note.path === chunk.path && patchContainsLine(chunk.patch, note.line, 'right')
-          ? [{ lineNumber: note.line, side: 'additions' as const, metadata: { kind: 'guide-note' as const, note } }]
-          : []
-      ),
-      ...agentNotes.flatMap((note) =>
-        note.path === chunk.path && patchContainsLine(chunk.patch, note.line, 'right')
-          ? [{
-              lineNumber: note.line,
-              side: 'additions' as const,
-              metadata: {
-                kind: 'agent-note' as const,
-                note,
-                hidden: hiddenAgentNoteIds.has(note.id)
-              }
-            }]
-          : []
-      ),
-      ...(normalizedSelection
-        ? [{
-            lineNumber: normalizedSelection.line,
-            side: normalizedSelection.side === 'right' ? 'additions' as const : 'deletions' as const,
-            metadata: { kind: 'composer' as const }
-          }]
-        : [])
-    ],
-    [
-      agentNotes,
-      guideNotes,
-      chunk.patch,
-      chunk.path,
-      hiddenAgentNoteIds,
-      lineCollaboration?.threads,
-      normalizedSelection
-    ]
-  );
-  const interactiveDiffOptions: FileDiffOptions<ReviewDiffAnnotation> = lineCollaboration
-    ? createReviewLineSelectionOptions(
-        contextualDiffOptions,
-        (range) => lineCollaboration.onSelectLines(chunk.id, chunk.path, range),
-        lineCollaboration.selectedChunkId !== undefined
-      )
-    : contextualDiffOptions;
-
-  const renderCommentUtility: DiffBasePropsReact<ReviewDiffAnnotation>['renderGutterUtility'] =
-    lineCollaboration && lineCollaboration.selectedChunkId === undefined
-      ? (getHoveredLine) => (
-          <button className="review-gutter-comment" type="button"
-            aria-label={`Comment on line in ${chunk.path}`} title="Comment on line"
-            onClick={() => {
-              const line = getHoveredLine();
-              if (line) lineCollaboration.onSelectLines(chunk.id, chunk.path, {
-                start: line.lineNumber, end: line.lineNumber, side: line.side
-              });
-            }}>
-            <Plus size={14} aria-hidden="true" />
-          </button>
-        )
-      : undefined;
-
-  return (
-    <section className="review-chunk" data-review-chunk-id={chunk.id}
-      data-context-ready={preparedDiff?.expandable !== undefined}
-      data-context-renderer={displayedDiff?.expandable ? 'full' : 'patch'}>
-      {chunk.omittedReason ? (
-        <div className="grid min-h-28 place-items-center px-4 text-center text-xs text-[var(--text-3)]">
-          {chunk.omittedReason === 'binary'
-            ? 'Binary changes cannot be previewed.'
-            : chunk.omittedReason === 'too-large'
-              ? 'This change exceeds the review preview limit.'
-              : 'No textual diff is available for this change.'}
-        </div>
-      ) : (
-        displayedDiff ? (
-          <FileDiff<ReviewDiffAnnotation>
-            className="gg-diff"
-            fileDiff={displayedDiff.fileDiff}
-            options={interactiveDiffOptions}
-            renderGutterUtility={renderCommentUtility}
-            lineAnnotations={lineAnnotations}
-            selectedLines={selectedLines}
-            renderAnnotation={(annotation) => (
-              annotation.metadata.kind === 'composer' && lineCollaboration
-                ? <ReviewInlineComposer collaboration={lineCollaboration} />
-                : annotation.metadata.kind === 'thread'
-                  ? <ReviewCommentAnnotation
-                      thread={annotation.metadata.thread}
-                      onAddDraftReply={lineCollaboration?.onAddDraftReply}
-                      onUpdateComment={lineCollaboration?.onUpdateComment}
-                      onUpdateDraftComment={lineCollaboration?.onUpdateDraftComment}
-                      onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
-                    />
-                  : annotation.metadata.kind === 'guide-note'
-                    ? <ReviewGuideInlineNote note={annotation.metadata.note} />
-                  : annotation.metadata.kind === 'agent-note'
-                    ? <ReviewAgentNoteAnnotation
-                        note={annotation.metadata.note}
-                        hidden={annotation.metadata.hidden}
-                        onSetAgentNoteHidden={onSetAgentNoteHidden}
-                      />
-                    : null
-            )}
-          />
-        ) : (
-          <PatchDiff<ReviewDiffAnnotation>
-            className="gg-diff"
-            patch={chunk.patch}
-            options={interactiveDiffOptions}
-            renderGutterUtility={renderCommentUtility}
-            lineAnnotations={lineAnnotations}
-            selectedLines={selectedLines}
-            renderAnnotation={(annotation) => (
-              annotation.metadata.kind === 'composer' && lineCollaboration
-                ? <ReviewInlineComposer collaboration={lineCollaboration} />
-                : annotation.metadata.kind === 'thread'
-                  ? <ReviewCommentAnnotation
-                      thread={annotation.metadata.thread}
-                      onAddDraftReply={lineCollaboration?.onAddDraftReply}
-                      onUpdateComment={lineCollaboration?.onUpdateComment}
-                      onUpdateDraftComment={lineCollaboration?.onUpdateDraftComment}
-                      onRemoveDraftComment={lineCollaboration?.onRemoveDraftComment}
-                    />
-                  : annotation.metadata.kind === 'guide-note'
-                    ? <ReviewGuideInlineNote note={annotation.metadata.note} />
-                  : annotation.metadata.kind === 'agent-note'
-                    ? <ReviewAgentNoteAnnotation
-                        note={annotation.metadata.note}
-                        hidden={annotation.metadata.hidden}
-                        onSetAgentNoteHidden={onSetAgentNoteHidden}
-                      />
-                    : null
-            )}
-          />
-        )
-      )}
-    </section>
-  );
-}
-
-function ReviewGuideInlineNote({ note }: { note: ReviewInlineGuideNote }): ReactElement {
-  const [hidden, setHidden] = useState(false);
-  if (note.marker) {
-    return <aside className="review-guide-inline-note" data-guide-reference aria-label={`Guide note ${note.marker}`}>
-      <span className="pr-guide-marker" aria-hidden="true">{note.marker}</span>
-      <div>
-        <strong>{note.title}</strong>
-        {note.body ? <ReviewCommentBody body={note.body} compact /> : null}
-      </div>
-      {note.onOpen ? <button type="button" className="review-guide-reference-open" onClick={note.onOpen}>{note.stopLabel ?? 'Open in Guide'}<ArrowUpRight size={11} aria-hidden="true" /></button> : null}
-    </aside>;
-  }
-  return <aside className="review-guide-inline-note" aria-label="AI guide note">
-    <span>AI guide</span>
-    {hidden ? <button type="button" onClick={() => setHidden(false)}>Show note</button> : <>
-      <p>{note.body}</p>
-      <button type="button" aria-label="Hide AI guide note" onClick={() => setHidden(true)}><X size={12} /></button>
-    </>}
-  </aside>;
-}
-
-export function AgentNoteAnnotation({
-  note,
-  hidden,
-  onHiddenChange
-}: {
-  note: GitAgentNote;
-  hidden: boolean;
-  onHiddenChange: (hidden: boolean) => void;
-}): ReactElement {
-  if (hidden) {
-    return (
-      <button
-        className="agent-note-collapsed"
-        type="button"
-        aria-label={`Show Agent Note: ${note.summary}`}
-        onClick={() => onHiddenChange(false)}
-      >
-        <Sparkles size={11} />
-        <span>Agent note</span>
-        <span className="agent-note-read-state">read</span>
-        <span className="agent-note-spacer" />
-        <span>Show</span>
-        <ChevronDown size={11} />
-      </button>
-    );
-  }
-
-  return (
-    <article className="agent-note" data-agent-note-id={note.id}>
-      <header>
-        <span className="agent-note-kicker">
-          <Sparkles size={11} />
-          Agent note
-        </span>
-        <span className="agent-note-author">{note.author}</span>
-        <button
-          className="agent-note-hide"
-          type="button"
-          onClick={() => onHiddenChange(true)}
-        >
-          <EyeOff size={11} />
-          Hide note
-        </button>
-      </header>
-      <div className="agent-note-body">
-        <strong>{note.summary}</strong>
-        {note.detail ? <p>{note.detail}</p> : null}
-      </div>
-      <footer>
-        <code>{note.path}:{note.line}</code>
-        <time dateTime={note.createdAt}>{formatReviewCommentDate(note.createdAt)}</time>
-      </footer>
-    </article>
-  );
-}
-
-function ReviewAgentNoteAnnotation({
-  note,
-  hidden,
-  onSetAgentNoteHidden
-}: {
-  note: GitAgentNote;
-  hidden: boolean;
-  onSetAgentNoteHidden: (noteId: string, hidden: boolean) => void;
-}): ReactElement {
-  return (
-    <AgentNoteAnnotation
-      note={note}
-      hidden={hidden}
-      onHiddenChange={(nextHidden) => onSetAgentNoteHidden(note.id, nextHidden)}
-    />
-  );
-}
-
-function ReviewInlineComposer({
-  collaboration
-}: {
-  collaboration: ReviewLineCollaboration;
-}): ReactElement {
-  const [initialBody] = useState(collaboration.getBody);
-  const [hasBody, setHasBody] = useState(() => Boolean(initialBody.trim()));
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const normalizedSelection = normalizeReviewLineSelection(collaboration.selectedLines);
-  const canSubmitSelection = Boolean(
-    collaboration.selectedSubject === 'file' ||
-      (normalizedSelection && normalizedSelection.side === normalizedSelection.startSide)
-  );
-  const canSubmitLineComment = hasBody && canSubmitSelection;
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      textarea.focus({ preventScroll: true });
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  return (
-    <form
-      className="review-inline-composer"
-      data-subject-type={collaboration.selectedSubject}
-      onSubmit={(event) => collaboration.onSubmit(event, collaboration.getBody())}
-    >
-      <div className="review-inline-composer-label">
-        <MessageSquare size={13} />
-        {collaboration.selectedSubject === 'file'
-          ? `Draft comment on file ${collaboration.selectedPath}`
-          : normalizedSelection
-          ? `Draft comment on ${collaboration.selectedPath}:${formatReviewLineSelection(normalizedSelection)}`
-          : 'Select lines from only one side of the diff to comment.'}
-      </div>
-      <div className="review-inline-composer-input">
-        <textarea
-          ref={textareaRef}
-          rows={3}
-          defaultValue={initialBody}
-          placeholder={collaboration.selectedSubject === 'file'
-            ? 'Leave a whole-file review comment…'
-            : 'Leave an inline review comment…'}
-          aria-label={collaboration.selectedSubject === 'file'
-            ? 'File review comment'
-            : 'Inline review comment'}
-          onChange={(event) => {
-            const nextBody = event.target.value;
-            const nextHasBody = Boolean(nextBody.trim());
-
-            collaboration.onBodyChange(nextBody);
-            if (nextHasBody !== hasBody) {
-              setHasBody(nextHasBody);
-            }
-          }}
-          onKeyDown={(event) => {
-            if (
-              (event.metaKey || event.ctrlKey) &&
-              event.key === 'Enter' &&
-              !event.nativeEvent.isComposing &&
-              canSubmitLineComment &&
-              !collaboration.isSubmitting
-            ) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-        />
-      </div>
-      <p className="review-inline-composer-hint">
-        Saved in Git Gud only. Nothing is posted until you submit the review.
-      </p>
-      {collaboration.errorMessage ? (
-        <p className="review-inline-comment-error">{collaboration.errorMessage}</p>
-      ) : null}
-      <div className="flex items-center justify-end gap-2">
-        <button
-          className="btn-subtle btn-compact"
-          type="button"
-          disabled={collaboration.isSubmitting}
-          onClick={collaboration.onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          className="btn-primary btn-compact"
-          type="submit"
-          disabled={!canSubmitLineComment || collaboration.isSubmitting}
-          aria-keyshortcuts="Meta+Enter Control+Enter"
-          title="Add to review (⌘↵)"
-        >
-          {collaboration.isSubmitting
-            ? <Loader2 size={12} className="animate-spin" />
-            : <Send size={12} />}
-          Add to review
-          <kbd aria-hidden="true" className="text-[11px] text-current">⌘↵</kbd>
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ReviewCommentAnnotation({
-  thread,
-  onAddDraftReply,
-  onUpdateComment,
-  onUpdateDraftComment,
-  onRemoveDraftComment
-}: {
-  thread: ReviewCommentThread;
-  onAddDraftReply?: (input: ReviewLineReplyInput) => Promise<void>;
-  onUpdateComment?: (commentId: number, body: string) => Promise<void>;
-  onUpdateDraftComment?: (id: string, body: string) => void;
-  onRemoveDraftComment?: (id: string) => void;
-}): ReactElement {
-  const articleRef = useRef<HTMLElement>(null);
-  const [isReplying, setIsReplying] = useState(false);
-  const [replyBody, setReplyBody] = useState('');
-  const [editingCommentId, setEditingCommentId] = useState<ReviewLineComment['id']>();
-  const [editBody, setEditBody] = useState('');
-  const [restoreFocusId, setRestoreFocusId] = useState<ReviewLineComment['id']>();
-  const replyMutation = useMutation({
-    mutationFn: async () => {
-      if (
-        typeof thread.id !== 'number' ||
-        !onAddDraftReply ||
-        !replyBody.trim()
-      ) {
-        throw new Error('Replies are unavailable for this comment.');
-      }
-      await onAddDraftReply({
-        body: replyBody.trim(),
-        inReplyToId: thread.id
-      });
-    },
-    onSuccess: () => {
-      setReplyBody('');
-      setIsReplying(false);
-    }
-  });
-  const canReply =
-    !thread.isDraft &&
-    typeof thread.id === 'number' &&
-    Boolean(onAddDraftReply);
-  const editMutation = useMutation({
-    mutationFn: async ({ commentId, body }: { commentId: ReviewLineComment['id']; body: string }) => {
-      if (!body.trim()) {
-        throw new Error('Editing is unavailable for this comment.');
-      }
-      if (typeof commentId === 'string' && onUpdateDraftComment) {
-        onUpdateDraftComment(commentId, body.trim());
-      } else if (typeof commentId === 'number' && onUpdateComment) {
-        await onUpdateComment(commentId, body.trim());
-      } else {
-        throw new Error('Editing is unavailable for this comment.');
-      }
-    },
-    onSuccess: (_result, { commentId }) => {
-      setRestoreFocusId(commentId);
-      setEditingCommentId(undefined);
-      setEditBody('');
-    }
-  });
-
-  useEffect(() => {
-    if (editingCommentId !== undefined || restoreFocusId === undefined) {
-      return;
-    }
-    const frame = window.requestAnimationFrame(() => {
-      articleRef.current
-        ?.querySelector<HTMLButtonElement>(`[data-edit-comment-id="${restoreFocusId}"]`)
-        ?.focus();
-      setRestoreFocusId(undefined);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [editingCommentId, restoreFocusId]);
-
-  function startEditing(comment: ReviewLineComment): void {
-    if (
-      editMutation.isPending ||
-      replyMutation.isPending
-    ) {
-      return;
-    }
-    setIsReplying(false);
-    setReplyBody('');
-    replyMutation.reset();
-    setEditingCommentId(comment.id);
-    setEditBody(comment.body);
-    editMutation.reset();
-  }
-
-  function submitEditing(): void {
-    if (editingCommentId !== undefined) {
-      editMutation.mutate({ commentId: editingCommentId, body: editBody });
-    }
-  }
-
-  function cancelEditing(): void {
-    setRestoreFocusId(editingCommentId);
-    setEditingCommentId(undefined);
-    setEditBody('');
-    editMutation.reset();
-  }
-
-  return (
-    <article
-      ref={articleRef}
-      data-review-comment-id={thread.id}
-      className="review-line-comment"
-      data-draft={thread.isDraft}
-      data-subject-type={thread.subjectType}
-    >
-      <header>
-        <ReviewCommentAvatar comment={thread} />
-        <strong>{thread.author}</strong>
-        {thread.isDraft ? (
-          <span className="review-line-comment-draft">
-            <Clock3 size={10} />
-            Draft
-          </span>
-        ) : null}
-        <time dateTime={thread.createdAt}>{formatReviewCommentDate(thread.createdAt)}</time>
-      </header>
-      {editingCommentId === thread.id ? (
-        <ReviewCommentEditForm
-          author={thread.author}
-          body={editBody}
-          errorMessage={editMutation.error instanceof Error ? editMutation.error.message : undefined}
-          isSaving={editMutation.isPending}
-          onBodyChange={setEditBody}
-          onCancel={cancelEditing}
-          onSubmit={submitEditing}
-        />
-      ) : (
-        <ReviewCommentBody body={thread.body} />
-      )}
-      {thread.replies.length > 0 ? (
-        <div className="review-line-comment-replies">
-          {thread.replies.map((reply) => (
-            <div className="review-line-comment-reply" data-draft={reply.isDraft} key={reply.id}>
-              <div className="review-line-comment-reply-meta">
-                <ReviewCommentAvatar comment={reply} />
-                <strong>{reply.author}</strong>
-                {reply.isDraft ? (
-                  <span className="review-line-comment-draft">
-                    <Clock3 size={10} />
-                    Draft
-                  </span>
-                ) : (
-                  <time dateTime={reply.createdAt}>{formatReviewCommentDate(reply.createdAt)}</time>
-                )}
-                {reply.isDraft && onRemoveDraftComment ? (
-                  <button
-                    className="review-comment-action review-comment-icon-action review-comment-action--danger"
-                    type="button"
-                    onClick={() => onRemoveDraftComment(String(reply.id))}
-                    aria-label="Remove draft reply"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                ) : null}
-                {(reply.isDraft ? onUpdateDraftComment : reply.canEdit && onUpdateComment) && editingCommentId !== reply.id ? (
-                  <button
-                    className="review-comment-action"
-                    type="button"
-                    data-edit-comment-id={reply.id}
-                    disabled={editingCommentId !== undefined || isReplying || editMutation.isPending}
-                    onClick={() => startEditing(reply)}
-                  >
-                    <Pencil size={11} />
-                    Edit
-                  </button>
-                ) : null}
-              </div>
-              {editingCommentId === reply.id ? (
-                <ReviewCommentEditForm
-                  author={reply.author}
-                  body={editBody}
-                  errorMessage={editMutation.error instanceof Error ? editMutation.error.message : undefined}
-                  isSaving={editMutation.isPending}
-                  onBodyChange={setEditBody}
-                  onCancel={cancelEditing}
-                  onSubmit={submitEditing}
-                  compact
-                />
-              ) : (
-                <ReviewCommentBody body={reply.body} compact />
-              )}
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <footer className="review-line-comment-actions">
-        {thread.isDraft && onRemoveDraftComment ? (
-          <button
-            className="review-comment-action review-comment-action--danger"
-            type="button"
-            onClick={() => onRemoveDraftComment(String(thread.id))}
-          >
-            <Trash2 size={11} />
-            Remove draft
-          </button>
-        ) : null}
-        {(thread.isDraft ? onUpdateDraftComment : thread.canEdit && onUpdateComment) && editingCommentId !== thread.id ? (
-          <button
-            className="review-comment-action"
-            type="button"
-            data-edit-comment-id={thread.id}
-            disabled={editingCommentId !== undefined || isReplying || editMutation.isPending}
-            onClick={() => startEditing(thread)}
-          >
-            <Pencil size={11} />
-            Edit
-          </button>
-        ) : null}
-        {canReply ? (
-          <button
-            className="review-comment-action"
-            type="button"
-            disabled={replyMutation.isPending || editMutation.isPending || editingCommentId !== undefined}
-            aria-expanded={isReplying}
-            onClick={() => setIsReplying((current) => !current)}
-          >
-            <Reply size={11} />
-            Reply
-          </button>
-        ) : null}
-      </footer>
-      {isReplying ? (
-        <form
-          className="review-line-comment-reply-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            replyMutation.mutate();
-          }}
-        >
-          <textarea
-            rows={3}
-            value={replyBody}
-            placeholder={`Reply to ${thread.author}…`}
-            aria-label={`Reply to ${thread.author}`}
-            disabled={replyMutation.isPending}
-            onChange={(event) => setReplyBody(event.target.value)}
-          />
-          <p>Saved as a draft until you submit the review.</p>
-          {replyMutation.error instanceof Error ? (
-            <span>{replyMutation.error.message}</span>
-          ) : null}
-          <div>
-            <button
-              className="btn-subtle btn-compact"
-              type="button"
-              disabled={replyMutation.isPending}
-              onClick={() => {
-                setIsReplying(false);
-                setReplyBody('');
-                replyMutation.reset();
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className="btn-primary btn-compact"
-              type="submit"
-              disabled={!replyBody.trim() || replyMutation.isPending}
-            >
-              {replyMutation.isPending
-                ? <Loader2 size={11} className="animate-spin" />
-                : <Reply size={11} />}
-              Add reply
-            </button>
-          </div>
-        </form>
-      ) : null}
-    </article>
-  );
-}
-
-function ReviewCommentEditForm({
-  author,
-  body,
-  errorMessage,
-  isSaving,
-  onBodyChange,
-  onCancel,
-  onSubmit,
-  compact = false
-}: {
-  author: string;
-  body: string;
-  errorMessage?: string;
-  isSaving: boolean;
-  onBodyChange: (body: string) => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-  compact?: boolean;
-}): ReactElement {
-  return (
-    <form
-      className="review-comment-edit-form"
-      data-compact={compact}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
-      <textarea
-        autoFocus
-        rows={3}
-        value={body}
-        aria-label={`Edit ${author}'s review comment`}
-        disabled={isSaving}
-        onChange={(event) => onBodyChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (
-            (event.metaKey || event.ctrlKey) &&
-            event.key === 'Enter' &&
-            !event.nativeEvent.isComposing &&
-            body.trim() &&
-            !isSaving
-          ) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-      />
-      {errorMessage ? <span>{errorMessage}</span> : null}
-      <div>
-        <button className="btn-subtle btn-compact" type="button" disabled={isSaving} onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn-primary btn-compact" type="submit" disabled={!body.trim() || isSaving}>
-          {isSaving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-          Save comment
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ReviewCommentAvatar({
-  comment
-}: {
-  comment: ReviewLineComment;
-}): ReactElement {
-  const [didAvatarFail, setDidAvatarFail] = useState(false);
-
-  return comment.authorAvatarUrl && !didAvatarFail ? (
-    <img
-      className="review-line-comment-avatar"
-      src={comment.authorAvatarUrl}
-      alt=""
-      aria-hidden="true"
-      onError={() => setDidAvatarFail(true)}
-    />
-  ) : (
-    <span className="review-line-comment-avatar" aria-hidden="true">
-      {comment.author.slice(0, 1).toUpperCase()}
-    </span>
-  );
-}
 
 function ReviewProgress({ presentation }: { presentation: ReturnType<typeof createReviewPresentation> | undefined }): ReactElement {
   if (!presentation) {
@@ -4066,16 +2956,6 @@ function saveEmbeddedReviewProgress(
   }
 }
 
-function formatReviewLineSelection(
-  selection: ReturnType<typeof normalizeReviewLineSelection>
-): string {
-  if (!selection) {
-    return '';
-  }
-  return selection.startLine
-    ? `${selection.startLine}-${selection.line}`
-    : String(selection.line);
-}
 
 function createReviewCommentThreads(
   comments: ReviewLineComment[]
@@ -4115,59 +2995,6 @@ function createReviewCommentBodyBuffer(): ReviewCommentBodyBuffer {
   };
 }
 
-function patchContainsLine(
-  patch: string,
-  targetLine: number,
-  side: 'left' | 'right'
-): boolean {
-  let oldLine = 0;
-  let newLine = 0;
-  let inHunk = false;
-
-  for (const line of patch.split('\n')) {
-    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u);
-    if (hunk) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      inHunk = true;
-      continue;
-    }
-    if (!inHunk || line.startsWith('\\')) {
-      continue;
-    }
-    if (line.startsWith('+')) {
-      if (side === 'right' && newLine === targetLine) {
-        return true;
-      }
-      newLine += 1;
-      continue;
-    }
-    if (line.startsWith('-')) {
-      if (side === 'left' && oldLine === targetLine) {
-        return true;
-      }
-      oldLine += 1;
-      continue;
-    }
-    if (
-      (side === 'left' && oldLine === targetLine) ||
-      (side === 'right' && newLine === targetLine)
-    ) {
-      return true;
-    }
-    oldLine += 1;
-    newLine += 1;
-  }
-
-  return false;
-}
-
-function formatReviewCommentDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }).format(new Date(value));
-}
 
 function compactReviewSearchQuery(query: string): string {
   const compact = query.trim().replace(/\s+/g, ' ');
@@ -4187,9 +3014,6 @@ function readSelectedReviewText(): string {
   return readReviewSearchSelection(window.getSelection());
 }
 
-// Plain words for the grouping engine's internal values.
-const REVIEW_CONFIDENCE_LABELS: Record<string, string> = { exact: 'Exact match', strong: 'Strong link', context: 'Nearby context' };
-const REVIEW_ROLE_LABELS: Record<string, string> = { anchor: 'Changed here', usage: 'Uses it', related: 'Related' };
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -4197,6 +3021,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
   }
 
   return target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function isFindShortcut(event: Pick<globalThis.KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): boolean {
+  return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f';
 }
 
 function isReviewSearchInput(target: EventTarget | null): boolean {

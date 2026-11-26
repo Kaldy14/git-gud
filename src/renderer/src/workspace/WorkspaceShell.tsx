@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, SetStateAction } from 'react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
@@ -56,7 +56,8 @@ import { GraphView } from '@renderer/components/graph/GraphView';
 import { branchNameFromRemoteRef } from '@renderer/lib/gitRefs';
 import { suggestNextTagName } from '@renderer/lib/tagSuggestion';
 import { PullRequestInboxView } from '@renderer/components/github/PullRequestInboxView';
-import { PullRequestReviewView } from '@renderer/components/github/PullRequestReviewView';
+import { PullRequestWorkspace } from '@renderer/components/github/workspace/PullRequestWorkspace';
+import { confirmPullRequestLeave, requestPullRequestLeave } from '@renderer/components/github/workspace/pullRequestLeaveGuard';
 import { WorkflowRunView } from '@renderer/components/github/WorkflowRunView';
 import {
   RepositoryInspectorDialog,
@@ -224,6 +225,7 @@ const emptyGraphRows: CommitGraphRow[] = [];
 const emptySelectedShas: string[] = [];
 const EMPTY_MACHINES: RemoteMachine[] = [];
 const EMPTY_MACHINE_SNAPSHOTS: RemoteMachineRepository[] = [];
+const PULL_REQUEST_DIFF_STYLE_KEY = 'github:pull-requests';
 const FileFocusView = lazy(async () => {
   const module = await import('@renderer/components/diff/FileFocusView');
   return { default: module.FileFocusView };
@@ -267,6 +269,8 @@ type TabCommandState = {
 
 type ShortcutState = {
   isBlocked: boolean;
+  // A GitHub view covers the graph, so Mod+F belongs to that view (the pull request diff search).
+  isGitHubViewOpen: boolean;
   onFetch: () => void;
   onPush: () => void;
   onToggleDiffStyle: () => void;
@@ -454,7 +458,16 @@ export function WorkspaceShell(): ReactElement {
   const [compactDetail, setCompactDetail] = useState<CompactDetailChoice>(NO_COMPACT_DETAIL_CHOICE);
   const [sidebarFilterFocusSignal, setSidebarFilterFocusSignal] = useState(0);
   const [profileTransition, setProfileTransition] = useState<ProfileTransitionState>();
-  const [gitHubWorkspaceView, setGitHubWorkspaceView] = useState<GitHubWorkspaceView>();
+  const [gitHubWorkspaceView, setGitHubWorkspaceViewNow] = useState<GitHubWorkspaceView>();
+  // Every change of view can take the reader out of an open pull request (title-bar tabs, Start,
+  // dashboards, deep links, profile switch), so it asks first when one of its editors holds unsaved text.
+  // A handler that changes more than the view asks once for its whole body (`leavePullRequestThen`) and
+  // then uses `setGitHubWorkspaceViewNow`, so "Keep editing" cancels all of it and nothing asks twice.
+  const setGitHubWorkspaceView = useCallback(
+    (next: SetStateAction<GitHubWorkspaceView | undefined>) =>
+      requestPullRequestLeave(() => setGitHubWorkspaceViewNow(next)),
+    []
+  );
   const [isStartTabOpen, setIsStartTabOpen] = useState(true);
   const [isStartTabActive, setIsStartTabActive] = useState(true);
   const [isReviewBenchmarkOpen, setIsReviewBenchmarkOpen] = useState(false);
@@ -479,6 +492,7 @@ export function WorkspaceShell(): ReactElement {
   const operationStartGuardRef = useRef(new Set<string>());
   const shortcutStateRef = useRef<ShortcutState>({
     isBlocked: false,
+    isGitHubViewOpen: false,
     onFetch: () => {},
     onPush: () => {},
     onToggleDiffStyle: () => {},
@@ -793,7 +807,9 @@ export function WorkspaceShell(): ReactElement {
   const activeMachineFile = repositoryMachineFile && machineFileGroups(selectedMachineSnapshot?.status?.files ?? []).some((group) =>
     group.staged === repositoryMachineFile.staged && group.untracked === repositoryMachineFile.untracked &&
     group.files.some((file) => file.path === repositoryMachineFile.path && file.originalPath === repositoryMachineFile.originalPath)) ? repositoryMachineFile : undefined;
-  const activeDiffStyle = activeTab ? (diffStyleByTab[activeTab.id] ?? settings.defaultDiffStyle) : settings.defaultDiffStyle;
+  // The pull request area has no repository tab of its own, so its unified/split choice gets its own key.
+  const diffStyleKey = gitHubWorkspaceView?.kind === 'review' ? PULL_REQUEST_DIFF_STYLE_KEY : activeTab?.id;
+  const activeDiffStyle = (diffStyleKey ? diffStyleByTab[diffStyleKey] : undefined) ?? settings.defaultDiffStyle;
   const activeWipScopeByPath = activeTab ? (wipScopeByTab[activeTab.id] ?? {}) : {};
   const activeReviewTarget = activeTab ? reviewTargetByTab[activeTab.id] : undefined;
   const isReviewOpen = Boolean(activeReviewTarget);
@@ -1048,6 +1064,7 @@ export function WorkspaceShell(): ReactElement {
           repositoryMaintenance ||
           isOperationBusy
       ),
+      isGitHubViewOpen: Boolean(gitHubWorkspaceView),
       onFetch: handleFetch,
       onPush: handlePush,
       onToggleDiffStyle: () => handleSetDiffStyle(activeDiffStyle === 'unified' ? 'split' : 'unified'),
@@ -1094,6 +1111,7 @@ export function WorkspaceShell(): ReactElement {
       const key = event.key.toLowerCase();
 
       if (!event.altKey && !event.shiftKey && key === 'f') {
+        if (shortcutState.isGitHubViewOpen) return;
         event.preventDefault();
         shortcutState.onOpenCommitSearch();
         return;
@@ -1334,10 +1352,19 @@ export function WorkspaceShell(): ReactElement {
     void setSidebarCollapsed(!workspace.sidebarCollapsed);
   }
 
-  function handleOpenPullRequestInbox(): void {
+  function leavePullRequestThen(body: () => void): void {
+    requestPullRequestLeave(body);
+  }
+
+  // Unguarded: the pull request workspace calls it after asking itself.
+  function openPullRequestInboxNow(): void {
     setIsStartTabActive(false);
-    setGitHubWorkspaceView({ kind: 'inbox' });
+    setGitHubWorkspaceViewNow({ kind: 'inbox' });
     setCompactSidebarOpen(false);
+  }
+
+  function handleOpenPullRequestInbox(): void {
+    leavePullRequestThen(openPullRequestInboxNow);
   }
 
   function handleTogglePullRequestInbox(): void {
@@ -1349,22 +1376,27 @@ export function WorkspaceShell(): ReactElement {
     handleOpenPullRequestInbox();
   }
 
-  function handleViewPullRequest(pullRequest: GitHubPullRequestSummary): void {
-    setGitHubWorkspaceView({ kind: 'review', pullRequest });
+  // Unguarded: the pull request workspace calls it after asking itself.
+  function viewPullRequestNow(pullRequest: GitHubPullRequestSummary): void {
+    setGitHubWorkspaceViewNow({ kind: 'review', pullRequest });
     setCompactSidebarOpen(false);
+  }
+
+  function handleViewPullRequest(pullRequest: GitHubPullRequestSummary): void {
+    leavePullRequestThen(() => viewPullRequestNow(pullRequest));
   }
 
   async function handleOpenPullRequestCommit(sha: string): Promise<void> {
     const tab = workspace.tabs.find((candidate) => candidate.path === pullRequestCodexRepoPath);
 
-    if (!tab) {
+    if (!tab || !(await confirmPullRequestLeave())) {
       return;
     }
 
     setBulkSelectionByTab((value) => ({ ...value, [tab.id]: [] }));
     setReviewTargetByTab((value) => withoutRecordKey(value, tab.id));
     delete reviewViewStateByTabRef.current[tab.id];
-    setGitHubWorkspaceView(undefined);
+    setGitHubWorkspaceViewNow(undefined);
     setIsStartTabActive(false);
     setCompactSidebarOpen(false);
 
@@ -1376,8 +1408,9 @@ export function WorkspaceShell(): ReactElement {
     await selectCommit(tab.id, sha);
   }
 
-  function handleClosePullRequestWorkspace(): void {
-    setGitHubWorkspaceView(undefined);
+  // Unguarded: the pull request workspace calls it after asking itself.
+  function closePullRequestWorkspaceNow(): void {
+    setGitHubWorkspaceViewNow(undefined);
     setCompactSidebarOpen(false);
 
     if (!workspace.activeTabId) {
@@ -1386,10 +1419,16 @@ export function WorkspaceShell(): ReactElement {
     }
   }
 
+  function handleClosePullRequestWorkspace(): void {
+    leavePullRequestThen(closePullRequestWorkspaceNow);
+  }
+
   function openDashboardSurface(dashboardId?: string): void {
-    setIsStartTabActive(false);
-    setGitHubWorkspaceView({ kind: 'dashboard', dashboardId });
-    setCompactSidebarOpen(false);
+    leavePullRequestThen(() => {
+      setIsStartTabActive(false);
+      setGitHubWorkspaceViewNow({ kind: 'dashboard', dashboardId });
+      setCompactSidebarOpen(false);
+    });
   }
 
   function handleActivateDashboardsTab(): void {
@@ -1534,8 +1573,13 @@ export function WorkspaceShell(): ReactElement {
 
   const handleActivateProfile = useCallback(async (
     profileId: string | undefined,
-    targetProfile?: GitProfile
+    targetProfile?: GitProfile,
+    { leaveConfirmed = false }: { leaveConfirmed?: boolean } = {}
   ): Promise<void> => {
+    // Switching profiles closes the open pull request, so unsaved text is asked about before anything changes.
+    if (!leaveConfirmed && profileId !== activeWorkspaceProfile?.id && !(await confirmPullRequestLeave())) {
+      return;
+    }
     const startedAt = window.performance.now();
     const nextProfile = targetProfile ?? profiles.find((profile) => profile.id === profileId);
     setProfileTransition({
@@ -1553,7 +1597,7 @@ export function WorkspaceShell(): ReactElement {
 
       const connectedProfileId =
         nextProfile?.ghConfigDir && nextProfile.githubLogin ? nextProfile.id : undefined;
-      setGitHubWorkspaceView((view) =>
+      setGitHubWorkspaceViewNow((view) =>
         view?.kind === 'review' && view.pullRequest.profileId !== connectedProfileId
           ? { kind: 'inbox' }
           : view
@@ -1675,12 +1719,14 @@ export function WorkspaceShell(): ReactElement {
         );
       }
 
+      // Asked once for the whole link; declining to discard unsaved text drops it.
+      if (!(await confirmPullRequestLeave())) return;
       if (workspace.activeProfileId !== match.profile.id) {
-        await handleActivateProfile(match.profile.id, match.profile);
+        await handleActivateProfile(match.profile.id, match.profile, { leaveConfirmed: true });
       }
 
       setIsStartTabActive(false);
-      setGitHubWorkspaceView({ kind: 'review', pullRequest: match.pullRequest });
+      setGitHubWorkspaceViewNow({ kind: 'review', pullRequest: match.pullRequest });
       setCompactSidebarOpen(false);
     })()
       .catch((error: unknown) => {
@@ -1758,14 +1804,18 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleOpenStartTab(): void {
-    setGitHubWorkspaceView(undefined);
-    setIsStartTabOpen(true);
-    setIsStartTabActive(true);
+    leavePullRequestThen(() => {
+      setGitHubWorkspaceViewNow(undefined);
+      setIsStartTabOpen(true);
+      setIsStartTabActive(true);
+    });
   }
 
   function handleActivateStartTab(): void {
-    setGitHubWorkspaceView(undefined);
-    setIsStartTabActive(true);
+    leavePullRequestThen(() => {
+      setGitHubWorkspaceViewNow(undefined);
+      setIsStartTabActive(true);
+    });
   }
 
   function handleCloseStartTab(): void {
@@ -1851,12 +1901,15 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function showOpenedRepository(): void {
-    setGitHubWorkspaceView(undefined);
-    setIsStartTabActive(false);
+    leavePullRequestThen(() => {
+      setGitHubWorkspaceViewNow(undefined);
+      setIsStartTabActive(false);
+    });
   }
 
   async function handleActivateRepositoryTab(tabId: string): Promise<void> {
-    setGitHubWorkspaceView(undefined);
+    if (!(await confirmPullRequestLeave())) return;
+    setGitHubWorkspaceViewNow(undefined);
     setIsStartTabActive(false);
     await activateTab(tabId);
   }
@@ -1928,11 +1981,11 @@ export function WorkspaceShell(): ReactElement {
   }
 
   function handleSetDiffStyle(style: DiffStyle): void {
-    if (!activeTab) {
+    if (!diffStyleKey) {
       return;
     }
 
-    setDiffStyleByTab((value) => ({ ...value, [activeTab.id]: style }));
+    setDiffStyleByTab((value) => ({ ...value, [diffStyleKey]: style }));
   }
 
   async function handleSaveSettings(nextSettings: AppSettings): Promise<void> {
@@ -4199,22 +4252,24 @@ export function WorkspaceShell(): ReactElement {
         ) : gitHubWorkspaceView ? (
           <>
             {gitHubWorkspaceView.kind === 'review' ? (
-              <PullRequestReviewView
-                key={`${gitHubWorkspaceView.pullRequest.profileId}:${gitHubWorkspaceView.pullRequest.id}`}
+              <PullRequestWorkspace
+                key={gitHubWorkspaceView.pullRequest.profileId}
+                inbox={pullRequestInboxQuery}
                 pullRequest={gitHubWorkspaceView.pullRequest}
-                initialGuideOpen={gitHubWorkspaceView.openGuide}
-                initialBugFinderOpen={gitHubWorkspaceView.openBugFinder}
+                openTour={gitHubWorkspaceView.openGuide}
+                openBugFinder={gitHubWorkspaceView.openBugFinder}
+                onSelectPullRequest={viewPullRequestNow}
                 codexRepoPath={pullRequestCodexRepoPath}
                 diffStyle={activeDiffStyle}
                 diffSyntaxTheme={settings.diffSyntaxTheme}
                 onSetDiffStyle={handleSetDiffStyle}
-                onBackToInbox={handleOpenPullRequestInbox}
+                onBackToInbox={openPullRequestInboxNow}
                 onOpenCommit={
                   pullRequestCodexRepoPath
                     ? (sha) => void handleOpenPullRequestCommit(sha)
                     : undefined
                 }
-                onClose={handleClosePullRequestWorkspace}
+                onClose={closePullRequestWorkspaceNow}
                 onMerged={handleOpenPullRequestInbox}
               />
             ) : (

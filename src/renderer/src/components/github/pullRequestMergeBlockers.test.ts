@@ -3,7 +3,7 @@ import type { GitHubPullRequestSummary } from '@shared/types';
 import { pullRequestMergeBlockers } from './pullRequestMergeBlockers';
 
 const base = {
-  state: 'open', isDraft: false, mergeable: 'mergeable', mergeState: 'clean', baseRefName: 'main',
+  state: 'open', isDraft: false, mergeable: 'mergeable', mergeState: 'clean', baseRefName: 'main', reviewDecision: 'unknown', reviewers: [],
   checks: { state: 'success', total: 3, passed: 3, failed: 0, pending: 0 }
 } as const;
 const blockers = (overrides: Partial<GitHubPullRequestSummary>) =>
@@ -25,6 +25,19 @@ describe('pull request merge blockers', () => {
   it('reports running checks but not skipped ones', () => {
     expect(blockers({ checks: { state: 'pending', total: 5, passed: 2, failed: 0, pending: 1 } })).toEqual(['checks-running']);
     expect(blockers({ checks: { state: 'success', total: 5, passed: 2, failed: 0, pending: 0 } })).toEqual([]);
+  });
+
+  it('lists requested changes and names who asked', () => {
+    const result = pullRequestMergeBlockers({
+      ...base,
+      reviewers: [{ author: 'ana', state: 'changes-requested' }]
+    } as GitHubPullRequestSummary);
+    expect(result.map((blocker) => [blocker.id, blocker.label])).toEqual([['changes-requested', 'Changes requested by ana']]);
+  });
+
+  it('says an approval is missing when branch rules require one', () => {
+    expect(blockers({ mergeState: 'blocked', reviewDecision: 'review-required' })).toEqual(['review-required']);
+    expect(blockers({ mergeState: 'blocked' })).toEqual(['blocked']);
   });
 
   it('ignores merged and closed pull requests', () => {

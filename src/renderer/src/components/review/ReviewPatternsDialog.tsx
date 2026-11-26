@@ -40,7 +40,7 @@ export function ReviewPatternsDialog({
       <form onSubmit={handleSubmit}>
         <header className="flex items-start gap-3 border-b border-[var(--border)] px-5 py-4">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-[var(--control-active-border)] bg-[var(--control-active-bg)] text-[var(--accent-2)]">
-            <Settings2 size={17} />
+            <Settings2 size={16} />
           </span>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-[15px] font-semibold text-[var(--text-1)]">

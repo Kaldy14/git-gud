@@ -1,0 +1,58 @@
+/* Pull request Conversation tab: the description card, the composer, then the timeline. Avatars sit
+   on a quiet rail on the left; comment cards carry the content beside it. */
+
+.pr-conversation { padding-top: 20px; }
+.pr-conversation-description { margin-bottom: 16px; }
+.pr-conversation .pr-conversation-description > .pr-timeline-comment { background: var(--bg-graph-header); }
+.pr-conversation .pr-conversation-description .review-line-comment-body { padding: 14px 16px 16px; color: var(--text-1); }
+.pr-conversation-description-body { position: relative; border-top: 1px solid var(--border); }
+.pr-conversation-description-body > .review-line-comment-body { max-height: none; overflow: visible; }
+/* Long descriptions fold; a static fade marks that more follows. */
+.pr-conversation-description-body[data-clamped] { max-height: 480px; overflow: hidden; }
+.pr-conversation-description-body[data-clamped]::after {
+  position: absolute;
+  inset: auto 0 0;
+  height: 72px;
+  background: linear-gradient(to bottom, transparent, var(--bg-graph-header));
+  content: '';
+  pointer-events: none;
+}
+.pr-conversation-description-toggle {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.pr-conversation-description-toggle:hover { background: var(--bg-hover-subtle); color: var(--text-1); }
+.pr-conversation-description-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+/* The composer lines up with the cards, past the avatar rail. */
+.pr-conversation-composer { margin: 0 0 24px 40px; }
+.pr-conversation-composer > .pr-activity-add-comment { margin-bottom: 0; }
+.pr-conversation-composer > .pr-comment-composer { padding: 0; border-bottom: 0; }
+
+/* Bots speak in a lighter voice: no card fill, quieter text, smaller avatar. */
+.pr-conversation .pr-timeline-event[data-bot] > .pr-timeline-comment,
+.pr-conversation .pr-timeline-event[data-bot] > .pr-timeline-review { border-style: dashed; }
+.pr-conversation .pr-timeline-event[data-bot] .review-line-comment-body { color: var(--text-3); }
+.pr-conversation .pr-timeline-event[data-bot] > .pr-timeline-avatar { opacity: 0.8; }
+
+/* A comment opened from Overview flashes once. */
+.pr-conversation [data-comment-id] { transition: background-color 600ms ease-out, box-shadow 600ms ease-out; }
+.pr-conversation [data-comment-id][data-flash] > .pr-timeline-comment,
+.pr-conversation .pr-timeline-thread-message[data-flash] {
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--select-border);
+  transition: none;
+}
+.pr-conversation [data-comment-id] > .pr-timeline-comment { transition: background-color 600ms ease-out, box-shadow 600ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .pr-conversation [data-comment-id],
+  .pr-conversation [data-comment-id] > .pr-timeline-comment { transition: none; }
+}

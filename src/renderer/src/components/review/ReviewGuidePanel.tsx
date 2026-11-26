@@ -89,7 +89,7 @@ export function ReviewGuidePanel({ repoPath, guide, units, selectedUnit, finding
 
   return <aside className="review-guide-panel review-ai-brief" aria-label="AI brief" ref={(node) => resize.attachPanel(node)} style={{ width: resize.width, flexBasis: resize.width }}>
     <PanelResizeHandle resize={resize} label="AI brief" />
-    <header><strong><Sparkles size={13} /> AI brief</strong><div className="review-brief-header-actions"><PanelExpandButton resize={resize} label="AI brief" /><button type="button" className="icon-btn icon-btn-compact" aria-label="Close AI brief" disabled={disabled} onClick={onClose}><X size={14} /></button></div></header>
+    <header><strong><Sparkles size={14} /> AI brief</strong><div className="review-brief-header-actions"><PanelExpandButton resize={resize} label="AI brief" /><button type="button" className="icon-btn icon-btn-compact" aria-label="Close AI brief" disabled={disabled} onClick={onClose}><X size={14} /></button></div></header>
     <div className="review-brief-intro">
       <div className="review-guide-position"><span>{index >= 0 ? `Layer ${index + 1} of ${units.length}` : 'No visible layers'}</span><span>{files.length} {files.length === 1 ? 'file' : 'files'}</span></div>
       {selectedUnit ? <h2>{layer?.title || selectedUnit.unit.title.replace(/^Changes in /u, '')}</h2> : null}
@@ -100,7 +100,7 @@ export function ReviewGuidePanel({ repoPath, guide, units, selectedUnit, finding
         if (!prerequisite) return null;
         const visible = units.some((unit) => unit.unit.id === id);
         return <button className="review-layer-dependency" key={id} disabled={disabled || !visible} title={visible ? 'Open prerequisite layer' : 'Layer hidden by review filters'} onClick={() => onSelectUnit(id)}>
-          Read after: {prerequisite.title || 'Previous layer'} <ArrowRight size={11} />{visible ? null : ' · hidden'}
+          Read after: {prerequisite.title || 'Previous layer'} <ArrowRight size={12} />{visible ? null : ' · hidden'}
         </button>;
       })}
     </div>
@@ -124,7 +124,7 @@ export function ReviewGuidePanel({ repoPath, guide, units, selectedUnit, finding
               setSelectedSummary(key);
               setReadSummaries((current) => new Set([...current, key]));
               onSelectFile({ ...summary, priority: layer?.priority ?? 'review', reason: summary.body });
-            }}><Code2 size={12} /><span>{reviewGuideFileLabel(summary.path, guideFiles)}:{summary.line}{summary.endLine !== summary.line ? `-${summary.endLine}` : ''}</span><ArrowRight size={11} /></button>{readSummaries.has(key) ? <Eye size={12} aria-label="Summary read" /> : null}</div>
+            }}><Code2 size={12} /><span>{reviewGuideFileLabel(summary.path, guideFiles)}:{summary.line}{summary.endLine !== summary.line ? `-${summary.endLine}` : ''}</span><ArrowRight size={12} /></button>{readSummaries.has(key) ? <Eye size={12} aria-label="Summary read" /> : null}</div>
             {hidden ? <small>Hidden by review filters. Open the location to reveal it.</small> : null}
           </details>;
         })}
@@ -135,13 +135,13 @@ export function ReviewGuidePanel({ repoPath, guide, units, selectedUnit, finding
         {findings.map((finding) => <article className="review-brief-finding" key={finding.comment.id}>
           <header><ReviewFindingBadges findings={[finding]} /><span>{finding.comment.author}</span></header>
           <ReviewCommentBody body={finding.comment.body} compact />
-          <button type="button" className="review-summary-link" disabled={disabled} onClick={() => onSelectFinding(finding)}><Code2 size={12} /><span>{reviewGuideFileLabel(finding.comment.path, guideFiles)}{finding.comment.line ? `:${finding.comment.line}` : ''}</span><ArrowRight size={11} /> Jump to comment</button>
+          <button type="button" className="review-summary-link" disabled={disabled} onClick={() => onSelectFinding(finding)}><Code2 size={12} /><span>{reviewGuideFileLabel(finding.comment.path, guideFiles)}{finding.comment.line ? `:${finding.comment.line}` : ''}</span><ArrowRight size={12} /> Jump to comment</button>
         </article>)}
         {!findings.length ? <p className="review-brief-empty">No current severity-labelled findings in this layer.</p> : null}
       </>}
     </div>
     <footer><span className="review-brief-read-count">{summaries.filter((summary) => readSummaries.has(summaryKey(summary))).length} / {summaries.length} summaries read</span>
-      <div className="review-brief-navigation"><button type="button" className="icon-btn icon-btn-compact" aria-label="Previous layer" disabled={disabled || index <= 0} onClick={() => onSelectUnit(units[index - 1]!.unit.id)}><ArrowLeft size={13} /></button><button type="button" className="btn-subtle btn-compact" disabled={disabled || index < 0 || index >= units.length - 1} onClick={() => onSelectUnit(units[index + 1]!.unit.id)}>Next layer <ArrowRight size={13} /></button><button type="button" className="icon-btn icon-btn-compact" aria-label="Rebuild AI brief" title="Rebuild AI brief" disabled={disabled || rebuilding} onClick={onRebuild}><RefreshCw size={12} /></button></div>
+      <div className="review-brief-navigation"><button type="button" className="icon-btn icon-btn-compact" aria-label="Previous layer" disabled={disabled || index <= 0} onClick={() => onSelectUnit(units[index - 1]!.unit.id)}><ArrowLeft size={14} /></button><button type="button" className="btn-subtle btn-compact" disabled={disabled || index < 0 || index >= units.length - 1} onClick={() => onSelectUnit(units[index + 1]!.unit.id)}>Next layer <ArrowRight size={14} /></button><button type="button" className="icon-btn icon-btn-compact" aria-label="Rebuild AI brief" title="Rebuild AI brief" disabled={disabled || rebuilding} onClick={onRebuild}><RefreshCw size={12} /></button></div>
       <small>Reading summaries does not mark code viewed.</small>
     </footer>
   </aside>;

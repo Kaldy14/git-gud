@@ -1,36 +1,52 @@
 import { reviewGuidePatchLines } from './reviewGuide';
 import type { GitReviewPlan } from './types';
 
-// The pull-request Guide: an AI-written tour of the change in reading order.
-// Its shape follows T3 Code's review guide so prompts and UI stay comparable.
+// The pull-request Tour: one AI run writes the Overview text and a walk through the change as steps.
+// Each step states behaviour through points anchored to the lines that make it true.
 
+export const PULL_REQUEST_TOUR_VERSION = 2;
+export const PULL_REQUEST_TOUR_RISKS = ['low', 'medium', 'high'] as const;
+export type PullRequestTourRisk = (typeof PULL_REQUEST_TOUR_RISKS)[number];
 export const PULL_REQUEST_TOUR_ATTENTION_KINDS = ['tradeoff', 'contract', 'product', 'risk', 'accessibility'] as const;
 export type PullRequestTourAttentionKind = (typeof PULL_REQUEST_TOUR_ATTENTION_KINDS)[number];
 
-export type PullRequestTourExcerpt = {
+// A point with null `start`/`end` is text only: it could not be placed on the diff.
+export type PullRequestTourPoint = {
+  body: string;
   path: string;
   side: 'new' | 'old';
-  start: number;
-  end: number;
-  caption: string;
+  start: number | null;
+  end: number | null;
 };
-
-export type PullRequestTourNote = { path: string; line: number; title: string; body: string };
 
 export type PullRequestTourStop = {
   title: string;
   summary: string;
+  kind: 'behavior' | 'mechanical';
+  risk: PullRequestTourRisk | null;
   attention: { kind: PullRequestTourAttentionKind; note: string } | null;
-  excerpts: PullRequestTourExcerpt[];
+  points: PullRequestTourPoint[];
+  // Files this step owns; a file with points elsewhere may also show in those steps.
   files: Array<{ path: string; note: string }>;
-  notes: PullRequestTourNote[];
   questions: string[];
 };
 
+export type PullRequestTourOverview = {
+  risk: PullRequestTourRisk | null;
+  summary: string;
+  highlights: string[];
+  // Some changed file was omitted or truncated in the prompt, so the text rests on part of the diff.
+  partial: boolean;
+};
+
 export type PullRequestTour = {
+  version: typeof PULL_REQUEST_TOUR_VERSION;
   headSha: string;
+  // Absent on tours written before the base was recorded.
+  baseSha?: string;
   sourceFingerprint: string;
   generatedAt: string;
+  overview: PullRequestTourOverview;
   stops: PullRequestTourStop[];
 };
 
@@ -39,24 +55,25 @@ export type PullRequestTourState = {
   tour: PullRequestTour | null;
   running: boolean;
   errorMessage?: string;
+  // A tour is stored in a format this version no longer shows.
+  outdatedFormat?: boolean;
 };
 
 // Pull-request text the prompt needs but the review plan does not carry.
 export type PullRequestTourContext = {
   body: string;
   baseRefName: string;
+  baseSha: string;
   settledReview: string;
 };
 
-const MAX_STOPS = 8;
-const MAX_EXCERPT_LINES = 60;
-const MAX_NOTES = 3;
+const MAX_STOPS = 10;
+const MAX_POINTS = 6;
+const MAX_HIGHLIGHTS = 4;
 const MAX_QUESTIONS = 2;
 
 type PatchRow = ReturnType<typeof reviewGuidePatchLines>[number];
 type Hunk = { rows: PatchRow[] };
-
-const sideKey = (side: PullRequestTourExcerpt['side']) => (side === 'new' ? 'right' : 'left');
 
 // Every hunk of each changed path, keyed by path. Chunk hunks are numbered per chunk.
 export function pullRequestTourHunks(plan: Pick<GitReviewPlan, 'units'>): Map<string, Hunk[]> {
@@ -75,32 +92,20 @@ export function pullRequestTourHunks(plan: Pick<GitReviewPlan, 'units'>): Map<st
   return hunks;
 }
 
-function excerptRowRange(hunk: Hunk, excerpt: Pick<PullRequestTourExcerpt, 'side' | 'start' | 'end'>) {
-  const key = sideKey(excerpt.side);
-  const indexes = hunk.rows.flatMap((row, index) => {
+// Trim a range to the single hunk holding its start line (or, failing that, any of its lines).
+function fitRange(
+  range: { side: PullRequestTourPoint['side']; start: number; end: number },
+  hunks: readonly Hunk[]
+): { start: number; end: number } | undefined {
+  const key = range.side === 'new' ? 'right' : 'left';
+  const inRange = (row: PatchRow) => {
     const line = row[key];
-    return line !== undefined && line >= excerpt.start && line <= excerpt.end ? [index] : [];
-  });
-  return indexes.length ? { first: indexes[0]!, last: indexes.at(-1)! } : undefined;
-}
-
-// Clamp an excerpt to the single hunk holding its start line, or drop it.
-function fitExcerpt(excerpt: PullRequestTourExcerpt, hunks: readonly Hunk[]): PullRequestTourExcerpt | undefined {
-  const key = sideKey(excerpt.side);
-  const hunk = hunks.find((candidate) => candidate.rows.some((row) => row[key] === excerpt.start)) ??
-    hunks.find((candidate) => candidate.rows.some((row) => {
-      const line = row[key];
-      return line !== undefined && line >= excerpt.start && line <= excerpt.end;
-    }));
-  if (!hunk) return undefined;
-  const lines = hunk.rows.flatMap((row) => {
-    const line = row[key];
-    return line !== undefined && line >= excerpt.start && line <= excerpt.end ? [line] : [];
-  });
-  if (!lines.length) return undefined;
-  const start = Math.min(...lines);
-  const end = Math.min(Math.max(...lines), start + MAX_EXCERPT_LINES - 1);
-  return { ...excerpt, start, end };
+    return line !== undefined && line >= range.start && line <= range.end;
+  };
+  const hunk = hunks.find((candidate) => candidate.rows.some((row) => row[key] === range.start)) ??
+    hunks.find((candidate) => candidate.rows.some(inRange));
+  const lines = hunk?.rows.filter(inRange).map((row) => row[key]!) ?? [];
+  return lines.length ? { start: Math.min(...lines), end: Math.max(...lines) } : undefined;
 }
 
 const text = (value: unknown, max: number): string =>
@@ -110,132 +115,100 @@ const integer = (value: unknown): number | undefined =>
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+const risk = (value: unknown): PullRequestTourRisk | null =>
+  PULL_REQUEST_TOUR_RISKS.find((candidate) => candidate === value) ?? null;
 
-// Keep what can be shown faithfully: excerpts inside one real hunk, notes inside an excerpt,
-// and every changed file placed in exactly one stop.
-export function normalizePullRequestTour(raw: unknown, plan: Pick<GitReviewPlan, 'units'>): PullRequestTourStop[] {
+function highestRisk(risks: ReadonlyArray<PullRequestTourRisk | null>): PullRequestTourRisk | null {
+  const rank = Math.max(-1, ...risks.map((value) => (value ? PULL_REQUEST_TOUR_RISKS.indexOf(value) : -1)));
+  return rank < 0 ? null : PULL_REQUEST_TOUR_RISKS[rank]!;
+}
+
+// Keep what can be shown faithfully: points inside one real hunk (or text-only on a changed file)
+// and every changed file owned by exactly one step.
+export function normalizePullRequestTour(
+  raw: unknown,
+  plan: Pick<GitReviewPlan, 'units'>
+): Pick<PullRequestTour, 'overview' | 'stops'> {
   const hunks = pullRequestTourHunks(plan);
-  const changedPaths = [...new Set(plan.units.flatMap((unit) => unit.chunks.map((chunk) => chunk.path)))];
-  const placed = new Set<string>();
+  const owned = new Set<string>();
 
   const stops = list(record(raw).stops).slice(0, MAX_STOPS).flatMap((value): PullRequestTourStop[] => {
     const stop = record(value);
-    const title = text(stop.title, 160);
+    const title = text(stop.title, 200);
     if (!title) return [];
     const attentionRecord = record(stop.attention);
-    const kind = PULL_REQUEST_TOUR_ATTENTION_KINDS.find((candidate) => candidate === attentionRecord.kind);
+    const attentionKind = PULL_REQUEST_TOUR_ATTENTION_KINDS.find((candidate) => candidate === attentionRecord.kind);
     const attentionNote = text(attentionRecord.note, 600);
-    const excerpts = list(stop.excerpts).flatMap((item): PullRequestTourExcerpt[] => {
-      const excerpt = record(item);
-      const path = text(excerpt.path, 1000);
-      const start = integer(excerpt.start);
-      const end = integer(excerpt.end) ?? start;
-      const side = excerpt.side === 'old' ? 'old' : 'new';
-      if (!path || start === undefined || end === undefined) return [];
-      const fitted = fitExcerpt({ path, side, start, end: Math.max(start, end), caption: text(excerpt.caption, 200) }, hunks.get(path) ?? []);
-      return fitted ? [fitted] : [];
-    });
-    const excerptPaths = new Set(excerpts.map((excerpt) => excerpt.path));
+    const points = list(stop.points).flatMap((item): PullRequestTourPoint[] => {
+      const point = record(item);
+      const body = text(point.body, 600);
+      const path = text(point.path, 1000);
+      if (!body || !hunks.has(path)) return [];
+      const side = point.side === 'old' ? 'old' : 'new';
+      const start = integer(point.start);
+      const end = Math.max(start ?? 0, integer(point.end) ?? 0);
+      const fitted = start === undefined ? undefined : fitRange({ side, start, end }, hunks.get(path)!);
+      return [{ body, path, side, start: fitted?.start ?? null, end: fitted?.end ?? null }];
+    }).slice(0, MAX_POINTS);
+    // A file listed by an earlier step stays there.
     const files = list(stop.files).flatMap((item) => {
       const file = record(item);
       const path = text(file.path, 1000);
-      return path && hunks.has(path) && !excerptPaths.has(path) ? [{ path, note: text(file.note, 200) }] : [];
+      if (!hunks.has(path) || owned.has(path)) return [];
+      owned.add(path);
+      return [{ path, note: text(file.note, 240) }];
     });
-    // Excerpts the model placed outside the diff fall back to file rows.
-    for (const item of list(stop.excerpts)) {
-      const path = text(record(item).path, 1000);
-      if (hunks.has(path) && !excerptPaths.has(path) && !files.some((file) => file.path === path)) files.push({ path, note: '' });
-    }
-    const notes = list(stop.notes).flatMap((item): PullRequestTourNote[] => {
-      const note = record(item);
-      const path = text(note.path, 1000);
-      const line = integer(note.line);
-      const noteTitle = text(note.title, 120);
-      if (!noteTitle || line === undefined) return [];
-      const inside = excerpts.some((excerpt) => excerpt.path === path && line >= excerpt.start && line <= excerpt.end);
-      return inside ? [{ path, line, title: noteTitle, body: text(note.body, 600) }] : [];
-    }).slice(0, MAX_NOTES);
-    const questions = list(stop.questions).map((question) => text(question, 240)).filter(Boolean).slice(0, MAX_QUESTIONS);
-    for (const path of [...excerptPaths, ...files.map((file) => file.path)]) placed.add(path);
     return [{
       title,
       summary: text(stop.summary, 1200),
-      attention: kind && attentionNote ? { kind, note: attentionNote } : null,
-      excerpts,
-      files: files.filter((file, index) => files.findIndex((other) => other.path === file.path) === index),
-      notes,
-      questions
+      kind: stop.kind === 'mechanical' ? 'mechanical' : 'behavior',
+      risk: risk(stop.risk),
+      attention: attentionKind && attentionNote ? { kind: attentionKind, note: attentionNote } : null,
+      points,
+      files,
+      questions: list(stop.questions).map((question) => text(question, 240)).filter(Boolean).slice(0, MAX_QUESTIONS)
     }];
   });
 
-  // A file excerpted anywhere needs no file row; a listed file stays in its first stop.
-  const listed = new Set<string>();
-  for (const stop of stops) {
-    stop.files = stop.files.filter((file) => {
-      const excerptedAnywhere = stops.some((other) => other.excerpts.some((excerpt) => excerpt.path === file.path));
-      if (listed.has(file.path) || excerptedAnywhere) return false;
-      listed.add(file.path);
-      return true;
+  // A file no step lists is owned by the first step with a point on it; anything left joins the last step.
+  for (const stop of stops) for (const point of stop.points) owned.add(point.path);
+  const unplaced = [...hunks.keys()].filter((path) => !owned.has(path)).map((path) => ({ path, note: '' }));
+  if (unplaced.length) {
+    if (stops.length) stops.at(-1)!.files.push(...unplaced);
+    else stops.push({
+      title: 'The change', summary: '', kind: 'behavior', risk: null, attention: null, points: [], files: unplaced, questions: []
     });
   }
 
-  const unplaced = changedPaths.filter((path) => !placed.has(path));
-  if (unplaced.length) {
-    const rest = unplaced.map((path) => ({ path, note: '' }));
-    if (stops.length) stops.at(-1)!.files.push(...rest);
-    else stops.push({ title: 'The change', summary: '', attention: null, excerpts: [], files: rest, notes: [], questions: [] });
-  }
-  return stops;
+  const overview = record(record(raw).overview);
+  return {
+    overview: {
+      risk: highestRisk([risk(overview.risk), ...stops.map((stop) => stop.risk)]),
+      summary: text(overview.summary, 600),
+      highlights: list(overview.highlights).map((item) => text(item, 400)).filter(Boolean).slice(0, MAX_HIGHLIGHTS),
+      partial: false
+    },
+    stops
+  };
 }
 
-// Lettered markers (A, B, …) tie each note to its line in the stop's excerpts.
-export function letterTourNotes(stop: Pick<PullRequestTourStop, 'notes'>) {
-  return stop.notes.map((note, index) => ({ marker: String.fromCharCode(65 + (index % 26)), note }));
+/** A step's files in display order: the files its points reference (in point order), then the files it owns. */
+export function tourStepPaths(stop: Pick<PullRequestTourStop, 'points' | 'files'>): string[] {
+  return [...new Set([...stop.points.map((point) => point.path), ...stop.files.map((file) => file.path)])];
 }
 
-export type PullRequestTourExcerptSlice = {
-  patch: string;
-  additions: number;
-  deletions: number;
-};
-
-// Build a one-hunk unified patch with only the excerpt's rows, so the diff renderer shows
-// real line numbers without the surrounding hunk.
-export function pullRequestTourExcerptPatch(
-  plan: Pick<GitReviewPlan, 'units'>,
-  excerpt: Pick<PullRequestTourExcerpt, 'path' | 'side' | 'start' | 'end'>,
-  hunks = pullRequestTourHunks(plan)
-): PullRequestTourExcerptSlice | undefined {
-  for (const hunk of hunks.get(excerpt.path) ?? []) {
-    const range = excerptRowRange(hunk, excerpt);
-    if (!range) continue;
-    const rows = hunk.rows.slice(range.first, range.last + 1);
-    const before = hunk.rows.slice(0, range.first);
-    const nextLine = (key: 'left' | 'right') =>
-      rows.find((row) => row[key] !== undefined)?.[key] ??
-      ([...before].reverse().find((row) => row[key] !== undefined)?.[key] ?? 0) + 1;
-    const oldCount = rows.filter((row) => row.left !== undefined).length;
-    const newCount = rows.filter((row) => row.right !== undefined).length;
-    // Git writes the line before an empty side as its start.
-    const oldStart = oldCount ? nextLine('left') : nextLine('left') - 1;
-    const newStart = newCount ? nextLine('right') : nextLine('right') - 1;
-    const patch = [
-      `--- a/${excerpt.path}`,
-      `+++ b/${excerpt.path}`,
-      `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
-      ...rows.map((row) => row.text),
-      ''
-    ].join('\n');
-    return {
-      patch,
-      additions: rows.filter((row) => row.text.startsWith('+')).length,
-      deletions: rows.filter((row) => row.text.startsWith('-')).length
-    };
-  }
-  return undefined;
+/** Every point as text only, for a tour written before the latest push whose line numbers may have moved. */
+export function unanchorTourPoints(tour: PullRequestTour): PullRequestTour {
+  return {
+    ...tour,
+    stops: tour.stops.map((stop) => ({
+      ...stop,
+      points: stop.points.map((point) => ({ ...point, start: null, end: null }))
+    }))
+  };
 }
 
-// Resolved or outdated threads, one line each, so the guide does not re-raise settled points.
+// Resolved or outdated threads, one line each, so the tour does not re-raise settled points.
 export function settledReviewSummary(comments: ReadonlyArray<{
   path: string; author: string; body: string; inReplyToId?: number; isResolved?: boolean; isOutdated?: boolean;
 }>): string {

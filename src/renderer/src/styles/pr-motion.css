@@ -1,0 +1,113 @@
+/* Pull request motion: small one-shot movements that say what just happened or where you moved. Nothing
+   here loops for long, nothing runs on a background poll, every one-shot is under 400ms (the one exception is the refresh glyph, which turns at most three
+   times for a refresh the user clicked), entrances use
+   --ease-out (exits a short ease-in), and the block at the end turns it off for reduced motion. Movement started from script
+   (key caps, drawn checks, tour steps, the landing highlight) lives in lib/motion.ts and its callers.
+   Add a new entrance here rather than beside its component, so the set stays visible as a whole. */
+
+/* Menus across the app and the AI confirm popover grow out of their trigger and shrink back into it.
+   Radix keeps a closing menu mounted until its exit animation ends. */
+[data-slot='dropdown-menu-content'],
+[data-slot='dropdown-menu-sub-content'],
+.context-menu-surface[data-state],
+.pr-job-confirm {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin, var(--radix-popover-content-transform-origin)));
+}
+[data-slot='dropdown-menu-content'][data-state='open'],
+[data-slot='dropdown-menu-sub-content'][data-state='open'],
+.context-menu-surface[data-state='open'],
+.pr-job-confirm[data-state='open'] { animation: pr-pop-in 140ms var(--ease-out); }
+[data-slot='dropdown-menu-content'][data-state='closed'],
+[data-slot='dropdown-menu-sub-content'][data-state='closed'],
+.context-menu-surface[data-state='closed'],
+.pr-job-confirm[data-state='closed'] { animation: pr-pop-out 90ms ease-in forwards; }
+/* The app's own context menus (not Radix) mount where the pointer is and unmount at once: they get the
+   entrance only. */
+.context-menu-surface:not([data-state]) { animation: pr-pop-in 140ms var(--ease-out); transform-origin: top left; }
+@keyframes pr-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+@keyframes pr-pop-out {
+  to { opacity: 0; transform: scale(0.98); }
+}
+
+/* The review and merge panel slides in from its edge while it overlays the code. Docked (wide windows) it
+   takes its place in the row at once and only fades, so it never moves against the code it pushes. */
+.pr-side-panel:not([hidden]) { animation: pr-panel-in 220ms var(--ease-out); }
+@keyframes pr-panel-in {
+  from { opacity: 0; transform: translateX(16px); }
+}
+@container pr-workspace (min-width: 1400px) {
+  .pr-side-panel:not([hidden]) { animation: pr-content-arrive 180ms var(--ease-out); }
+}
+.pr-rail-slot[data-floating] { animation: pr-rail-in 180ms var(--ease-out); }
+@keyframes pr-rail-in {
+  from { opacity: 0; transform: translateX(-12px); }
+}
+
+/* The notice rises into place (it is centred with translateX, so the keyframe keeps that). */
+.pr-review-view > .pr-review-notice { animation: pr-notice-in 220ms var(--ease-out); }
+@keyframes pr-notice-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+}
+
+/* Checks that mean "this just happened" (a step marked reviewed, a file ticked viewed, a verdict that
+   turned ready) are drawn from script on that change: see drawStroke in lib/motion.ts. */
+
+/* A step marked reviewed fills its segment from the left. */
+.pr-tour-segment > i { position: relative; overflow: hidden; }
+.pr-tour-segment > i::after {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent-2) 50%, var(--bg-surface-2));
+  content: '';
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 360ms var(--ease-out);
+}
+.pr-tour-segment[data-reviewed] > i::after { transform: none; }
+.pr-tour-segment[data-reviewed]:hover > i::after { background: color-mix(in srgb, var(--accent-2) 72%, var(--bg-surface-2)); }
+.pr-tour-segment[data-current] > i::after { opacity: 0; }
+
+/* A refresh the user clicked turns its glyph: three turns at most, then it rests while a slow request
+   finishes. */
+.pr-refresh-spin { animation: pr-refresh-turn 0.9s linear 3; }
+@keyframes pr-refresh-turn {
+  to { transform: rotate(360deg); }
+}
+
+/* The Live dot sends one ring out when a refresh the user asked for succeeds, or new activity arrives.
+   Background polls are silent. */
+.pr-refresh-live > i[data-pinged]::after {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-pill);
+  background: currentcolor;
+  color: var(--success-text);
+  content: '';
+  opacity: 0;
+  animation: pr-live-ping 360ms var(--ease-out);
+}
+.pr-refresh-control[data-state='activity'] .pr-refresh-live > i[data-pinged]::after { color: var(--accent-2); }
+.pr-refresh-control[data-state='error'] .pr-refresh-live > i[data-pinged]::after { display: none; }
+@keyframes pr-live-ping {
+  from { opacity: 0.5; transform: scale(1); }
+  to { opacity: 0; transform: scale(2.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='dropdown-menu-content'],
+  [data-slot='dropdown-menu-sub-content'],
+  .context-menu-surface,
+  .pr-job-confirm,
+  .pr-refresh-spin,
+  .pr-side-panel:not([hidden]),
+  .pr-rail-slot[data-floating],
+  .pr-review-view > .pr-review-notice,
+  .pr-refresh-live > i[data-pinged]::after { animation: none !important; }
+  .pr-tour-segment > i,
+  .pr-tour-segment > i::after,
+  .pr-rail-row,
+  .pr-rail-tree[data-highlight-slide] > .pr-rail-highlight,
+  .review-files-progress-bar > i { transition: none !important; }
+}

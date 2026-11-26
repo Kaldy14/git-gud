@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizePullRequestTour, pullRequestTourExcerptPatch } from './pullRequestTour';
+import { normalizePullRequestTour, tourStepPaths, unanchorTourPoints, type PullRequestTour } from './pullRequestTour';
 import type { GitReviewChunk, GitReviewPlan } from './types';
 
 const clientPatch = [
@@ -13,7 +13,11 @@ const clientPatch = [
   '+const retries = 3;',
   ' connect(a);',
   '+log(timeout);',
-  ' return a;'
+  ' return a;',
+  '@@ -40,2 +42,3 @@ export function close() {',
+  ' flush();',
+  '+wait();',
+  ' end();'
 ].join('\n');
 
 function chunk(path: string, patch: string): GitReviewChunk {
@@ -26,68 +30,88 @@ function chunk(path: string, patch: string): GitReviewChunk {
 const plan: Pick<GitReviewPlan, 'units'> = {
   units: [{
     id: 'u1', title: '', reason: '', explanation: '', confidence: 'exact',
-    chunks: [chunk('src/client.ts', clientPatch), chunk('docs/readme.md', '@@ -1 +1 @@\n-old\n+new')]
+    chunks: [
+      chunk('src/client.ts', clientPatch),
+      chunk('src/server.ts', '@@ -1 +1 @@\n-old\n+new'),
+      chunk('docs/readme.md', '@@ -1 +1 @@\n-old\n+new')
+    ]
   }]
 };
 
-describe('pull-request guide', () => {
-  it('slices only the excerpt rows into a renderable one-hunk patch with real line numbers', () => {
-    const slice = pullRequestTourExcerptPatch(plan, { path: 'src/client.ts', side: 'new', start: 11, end: 12 });
-    expect(slice?.patch).toBe([
-      '--- a/src/client.ts',
-      '+++ b/src/client.ts',
-      '@@ -11,0 +11,2 @@',
-      '+const timeout = options.timeout;',
-      '+const retries = 3;',
-      ''
-    ].join('\n'));
-    expect(slice).toMatchObject({ additions: 2, deletions: 0 });
+const point = (path: string, start?: number, end?: number, side = 'new') =>
+  ({ body: `About ${path}`, path, side, start, end });
+const step = (title: string, extra: Record<string, unknown> = {}) =>
+  ({ title, summary: '', points: [], files: [], ...extra });
+
+describe('normalizePullRequestTour', () => {
+  it('trims a point to the hunk holding its start, on either side', () => {
+    const { stops } = normalizePullRequestTour({
+      stops: [step('Timeouts reach the connection', {
+        points: [point('src/client.ts', 11, 45), point('src/client.ts', 11, undefined, 'old'), point('src/client.ts', 43)]
+      })]
+    }, plan);
+    expect(stops[0]!.points.map(({ side, start, end }) => ({ side, start, end }))).toEqual([
+      { side: 'new', start: 11, end: 15 },
+      { side: 'old', start: 11, end: 11 },
+      { side: 'new', start: 43, end: 43 }
+    ]);
   });
 
-  it('keeps deleted rows between excerpted new lines and old-side excerpts', () => {
-    expect(pullRequestTourExcerptPatch(plan, { path: 'src/client.ts', side: 'new', start: 10, end: 11 })?.patch)
-      .toContain('@@ -10,2 +10,2 @@\n const a = 1;\n-const timeout = 0;\n+const timeout = options.timeout;');
-    expect(pullRequestTourExcerptPatch(plan, { path: 'src/client.ts', side: 'old', start: 11, end: 11 })?.patch)
-      .toContain('@@ -11,1 +10,0 @@\n-const timeout = 0;');
+  it('keeps an unplaceable point on a changed file as text only and drops one on an unknown file', () => {
+    const { stops } = normalizePullRequestTour({
+      stops: [step('Servers answer', {
+        points: [point('src/server.ts', 90), point('src/server.ts'), point('src/missing.ts', 1), { path: 'src/server.ts', start: 1 }]
+      })]
+    }, plan);
+    expect(stops[0]!.points).toEqual([
+      { body: 'About src/server.ts', path: 'src/server.ts', side: 'new', start: null, end: null },
+      { body: 'About src/server.ts', path: 'src/server.ts', side: 'new', start: null, end: null }
+    ]);
   });
 
-  it('clamps excerpts to the diff, drops notes outside them, and places every changed file', () => {
-    const stops = normalizePullRequestTour({
+  it('gives every changed file one owning step and lets points show a file in several steps', () => {
+    const { stops } = normalizePullRequestTour({
       stops: [
-        {
-          title: 'Timeouts reach the connection',
-          summary: 'Before, the timeout was ignored.',
-          attention: { kind: 'contract', note: 'Callers now must pass a timeout.' },
-          excerpts: [
-            { path: 'src/client.ts', side: 'new', start: 11, end: 40, caption: 'Timeout' },
-            { path: 'src/missing.ts', side: 'new', start: 1, end: 3, caption: '' }
-          ],
-          files: [{ path: 'src/client.ts', note: 'duplicate of an excerpt' }],
-          notes: [
-            { path: 'src/client.ts', line: 12, title: 'Retries', body: 'Fixed at three.' },
-            { path: 'src/client.ts', line: 99, title: 'Outside', body: '' }
-          ],
-          questions: ['Why three retries?', 'Second?', 'Third is dropped']
-        },
-        { title: '', summary: 'Untitled stops are dropped.' }
+        step('Clients time out', { points: [point('src/client.ts', 11)], files: [{ path: 'src/server.ts', note: 'first' }] }),
+        step('Servers wait', {
+          points: [point('src/client.ts', 43)],
+          files: [{ path: 'src/server.ts', note: 'again' }, { path: 'src/unknown.ts', note: '' }]
+        })
       ]
     }, plan);
-
-    expect(stops).toHaveLength(1);
-    expect(stops[0]).toMatchObject({
-      attention: { kind: 'contract' },
-      excerpts: [{ path: 'src/client.ts', start: 11, end: 15 }],
-      notes: [{ title: 'Retries', line: 12 }],
-      questions: ['Why three retries?', 'Second?'],
-      // The docs file was never placed, so it joins the last stop.
-      files: [{ path: 'docs/readme.md', note: '' }]
-    });
+    expect(stops[0]!.files).toEqual([{ path: 'src/server.ts', note: 'first' }]);
+    // The docs file was never placed, so it joins the last step.
+    expect(stops[1]!.files).toEqual([{ path: 'docs/readme.md', note: '' }]);
+    expect(tourStepPaths(stops[0]!)).toEqual(['src/client.ts', 'src/server.ts']);
+    expect(tourStepPaths(stops[1]!)).toEqual(['src/client.ts', 'docs/readme.md']);
   });
 
-  it('builds a single stop when the response has none', () => {
-    expect(normalizePullRequestTour({ stops: 'nope' }, plan)).toEqual([{
-      title: 'The change', summary: '', attention: null, excerpts: [], notes: [], questions: [],
-      files: [{ path: 'src/client.ts', note: '' }, { path: 'docs/readme.md', note: '' }]
+  it('takes the highest valid risk for the overview and never defaults one', () => {
+    const tour = normalizePullRequestTour({
+      overview: { risk: 'low', summary: ' One sentence. ', highlights: ['a', '', 'b', 'c', 'd', 'e'] },
+      stops: [step('A', { risk: 'medium', kind: 'mechanical' }), step('B', { risk: 'severe' })]
+    }, plan);
+    expect(tour.overview).toEqual({ risk: 'medium', summary: 'One sentence.', highlights: ['a', 'b', 'c', 'd'], partial: false });
+    expect(tour.stops.map((stop) => [stop.kind, stop.risk])).toEqual([['mechanical', 'medium'], ['behavior', null]]);
+    expect(normalizePullRequestTour({ overview: { risk: 'unknown' }, stops: [step('A')] }, plan).overview.risk).toBeNull();
+  });
+
+  it('builds a single step holding every file when the response has none', () => {
+    expect(normalizePullRequestTour({ stops: 'nope' }, plan).stops).toEqual([{
+      title: 'The change', summary: '', kind: 'behavior', risk: null, attention: null, points: [], questions: [],
+      files: ['src/client.ts', 'src/server.ts', 'docs/readme.md'].map((path) => ({ path, note: '' }))
     }]);
+  });
+});
+
+describe('unanchorTourPoints', () => {
+  it('turns every point into text', () => {
+    const tour: PullRequestTour = {
+      version: 2, headSha: 'a', sourceFingerprint: 'f', generatedAt: '',
+      overview: { risk: null, summary: '', highlights: [], partial: false },
+      stops: [{ ...step('A'), kind: 'behavior', risk: null, attention: null, questions: [],
+        points: [{ body: 'b', path: 'src/client.ts', side: 'new', start: 11, end: 12 }] }]
+    };
+    expect(unanchorTourPoints(tour).stops[0]!.points[0]).toMatchObject({ start: null, end: null });
   });
 });

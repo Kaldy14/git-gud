@@ -1,0 +1,130 @@
+/* Pull request look: one canvas, one left edge, a reading scale. Loaded after the other pull request
+   stylesheets and holding only the decisions that give the workspace its overall impression, so they
+   can be read (and changed) in one place:
+   1. Panels share the canvas. The list, the files tree and the tour sit on the same dark surface as the
+      content and are separated by a divider, not by a lighter slab of grey.
+   2. One left edge at 24px: the header, the tabs, the progress strip and the reading column.
+   3. Reading tabs are a page, not a form: prose at 14px, sections on the canvas, and one tinted band
+      (the merge verdict) as the focal point.
+   4. Teal marks position and the one action that completes the work (Merge when it can merge, the
+      tour's Reviewed & next). Review is a neutral button. */
+
+/* 1. One canvas */
+.pr-workspace-shell .pr-rail-slot,
+.pr-workspace-shell .review-files-panel,
+.pr-inbox-view .pr-inbox-scopes { background: var(--bg-app); }
+.pr-workspace-shell .pr-rail-slot,
+.pr-workspace-shell .review-files-panel,
+.pr-inbox-view .pr-inbox-scopes { border-right-color: var(--border-strong); }
+.pr-inbox-results .pr-group-heading-row,
+.pr-inbox-loading-group > div:first-child { background: transparent; }
+
+/* 2. One left edge, and a header that never changes height */
+.pr-workspace-shell .pr-detail-crumbs { min-height: 44px; padding-left: 20px; }
+.pr-workspace-shell .pr-detail-tabs { padding-left: 14px; }
+.pr-workspace-shell .review-files-progress { padding-inline: 24px; }
+.pr-workspace-shell .pr-tour-panel-body,
+.pr-workspace-shell .pr-tour-foot,
+.pr-workspace-shell .review-files-panel-header,
+.pr-workspace-shell .review-files-coverage { padding-left: 24px; }
+.pr-workspace-shell .review-files-filter { margin-left: 24px; }
+/* Rows carry 6px of their own, so the tree's first chevron lands on the edge too. */
+.pr-workspace-shell .review-files-tree { padding-left: 18px; }
+.pr-review-workspace > .pr-detail-pane { scrollbar-gutter: stable; }
+.pr-review-workspace .pr-summary-column,
+.pr-review-workspace .pr-activity-column { max-width: 904px; margin: 0; padding: 14px 24px 56px; }
+/* The title is the page's heading on the reading tabs and a compact crumb beside the diff. */
+.pr-workspace-shell .pr-detail-header[data-condensed='false'] .pr-detail-crumb-title { font-size: var(--text-xl); line-height: var(--leading-title); }
+/* Who, when and which branches opens Overview and Conversation (PullRequestMeta). */
+.pr-review-workspace .pr-detail-meta { padding: 0; }
+.pr-activity-column > .pr-detail-meta { margin-bottom: 14px; }
+/* Overview carries the verdict in its band, so the tab row does not say it a second time there. */
+.pr-review-view[data-tab='overview'] .pr-tabs-status { display: none; }
+
+/* 3. Reading scale */
+.pr-overview { gap: 16px; }
+.pr-overview-card,
+.pr-activity-column .review-line-comment-body { font-size: var(--text-base); }
+/* The tour panel is a narrow column: its prose stays at 13px so the points and the step's files fit. */
+.pr-tour-panel-step { gap: var(--space-3); }
+.pr-tour-point { padding-block: 8px; }
+/* Sections sit on the canvas. The card's own inner padding is kept and pulled back by the same amount,
+   so their content starts on the page's left edge under its heading. */
+.pr-overview-card:not(.pr-overview-merge) {
+  overflow: visible;
+  margin-inline: calc(-1 * var(--space-4));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.pr-overview-section + .pr-overview-section { border-top: 1px solid var(--border); padding-top: 16px; }
+/* One hairline between sections and no padding left over from the card each used to be. */
+.pr-overview-card:is(.pr-overview-risk, .pr-overview-author) { padding-block: 4px 0; }
+/* Prose keeps a readable measure inside the wider column. */
+.pr-overview-lead,
+.pr-overview-highlights,
+.pr-overview-description { max-width: 78ch; }
+/* The author's excerpt ends on a whole line: the fade covers the last one and hides any line it cuts. */
+.pr-overview-description[data-clamped] { mask-image: linear-gradient(to bottom, #000 calc(100% - 3em), transparent calc(100% - 0.5em)); }
+.pr-overview-card:not(.pr-overview-merge) .pr-overview-provenance { margin-top: 12px; border-top: 0; padding-top: 0; }
+/* Inner rules keep to the page's edges like the section hairlines do. */
+.pr-overview-card:not(.pr-overview-merge) .pr-overview-tabs { margin-inline: var(--space-4); padding-inline: 0; }
+.pr-overview-section-head { margin-bottom: 6px; }
+/* A blocked pull request says what blocks it once: the band names the verdict and the list beneath it
+   names each blocker with its action. The check counts row and the list's heading would repeat them, so
+   the row is dropped and the heading is kept for screen readers only. */
+.pr-overview-merge:has(.pr-merge-checklist) .pr-overview-checks-counts { display: none; }
+.pr-overview-merge .pr-merge-checklist { margin-top: var(--space-2); border-top: 0; }
+.pr-overview-merge .pr-merge-checklist > h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  margin: -1px;
+  padding: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Rows keep their 16px inset for hover and focus, but the line between them stops at the page's edges. */
+.pr-overview-card:not(.pr-overview-merge) .pr-overview-rows > li + li {
+  border-top: 0;
+  background: linear-gradient(var(--border), var(--border)) var(--space-4) 0 / calc(100% - 2 * var(--space-4)) 1px no-repeat;
+}
+/* The merge verdict is the one tinted band: the verdict in its tone, the facts beneath it. The band is
+   the object; the rows under it (checks, what blocks merging, reviewers) sit on the canvas. */
+.pr-overview-merge { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+.pr-overview-merge > .pr-overview-facts { border-radius: var(--radius-container); }
+.pr-overview-merge > .pr-overview-facts + * { border-top: 0; }
+.pr-overview-facts { min-height: 0; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px var(--space-4); }
+.pr-overview-facts > .pr-overview-verdict { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: var(--leading-title); }
+.pr-overview-facts[data-tone='merged'] > .pr-overview-verdict,
+.pr-overview-facts[data-tone='muted'] > .pr-overview-verdict { color: var(--text-1); }
+.pr-overview-facts > p { flex: none; color: var(--text-2); font-size: var(--text-md); }
+/* Conversation: the description shows its start; the discussion is what the tab is for. */
+.pr-conversation-description-body[data-clamped] { max-height: 280px; }
+
+/* 4. Quiet controls */
+/* Review is neutral and joined to its decision menu; teal is left for Merge when it can merge. */
+.pr-review-decision-split > .btn-subtle { border-color: var(--border-strong); }
+/* Merge on Tour and Code: neutral, with a teal mark when it can merge. */
+.pr-header-merge.btn-subtle[data-ready] > svg { color: var(--accent-2); }
+/* Inbox: groups are set apart by space, the status and checks columns sit beside a title column of at
+   most 760px instead of at the far edge, and a count of zero comments is left out. */
+@media (min-width: 1001px) {
+  .pr-inbox-results .pr-inbox-row { grid-template-columns: 22px minmax(0, 760px) 160px 64px auto auto auto; justify-content: start; }
+}
+.pr-inbox-results .pr-inbox-group + .pr-inbox-group { margin-top: 12px; }
+.pr-inbox-results .pr-group-heading { font-size: var(--text-sm); }
+.pr-inbox-row .pr-row-comments[data-empty] { display: none; }
+/* Inbox rows: a tour or bug scan that has not run shows its icon when the row is pointed at or focused. */
+.pr-inbox-row .pr-row-guide:is([data-status='idle'], [data-status='loading']) { opacity: 0; transition: opacity 120ms ease; }
+.pr-inbox-row:is(:hover, :focus-within) .pr-row-guide,
+.pr-inbox-row .pr-row-guide:is(:focus-visible, [aria-expanded='true']) { opacity: 1; }
+.pr-row-label[data-tone='success'] { color: var(--success-text); }
+.pr-row-label[data-tone='danger'] { color: var(--danger-text); }
+.pr-row-label[data-tone='pending'] { color: var(--info-text); }
+.pr-row-label[data-tone='warning'] { color: var(--warning-text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pr-inbox-row .pr-row-guide { transition: none; }
+}

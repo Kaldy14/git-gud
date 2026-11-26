@@ -33,6 +33,7 @@ import {
   parseGitHubRepositoriesResponse,
   parseGitHubRepositoryMergeSettings,
   parseReviewComment,
+  pullRequestLoadDescribesOneRevision,
   reviewCommentBelongsToPullRequest,
   searchGitHubActionsRunPages,
   selectGitHubReviewContextFiles
@@ -930,6 +931,46 @@ describe('GitHub pull request inbox', () => {
       failed: 0,
       pending: 2
     });
+    // The listed runs are grouped by the same rules, so each group matches its count.
+    expect(response.checkRuns.runs.map((run) => run.outcome)).toEqual(['passed', 'skipped', 'skipped', 'running', 'running']);
+  });
+
+  it('lists check runs with names, links and durations and says when GitHub returned only part', () => {
+    const response = parseGitHubPullRequestResponse(
+      {
+        data: {
+          viewer: { login: 'octocat' },
+          repository: {
+            pullRequest: pullRequestNode({
+              statusCheckRollup: {
+                state: 'FAILURE',
+                contexts: {
+                  totalCount: 120,
+                  nodes: [
+                    {
+                      __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'TIMED_OUT',
+                      url: 'https://github.com/o/r/runs/1', startedAt: '2026-07-23T09:00:00Z', completedAt: '2026-07-23T09:01:30Z'
+                    },
+                    { __typename: 'CheckRun', name: 'lint', status: 'IN_PROGRESS', conclusion: null, startedAt: '2026-07-23T09:00:00Z' },
+                    { __typename: 'StatusContext', context: 'ci/legacy', state: 'ERROR' }
+                  ]
+                }
+              }
+            })
+          }
+        }
+      },
+      'work'
+    );
+
+    expect(response.checkRuns).toEqual({
+      runs: [
+        { name: 'test', outcome: 'failed', url: 'https://github.com/o/r/runs/1', durationSeconds: 90 },
+        { name: 'lint', outcome: 'running' },
+        { name: 'ci/legacy', outcome: 'failed' }
+      ],
+      truncated: true
+    });
   });
 
   it('parses a merged pull request outside the open inbox', () => {
@@ -1491,5 +1532,52 @@ describe('recently pushed branch lookups', () => {
     expect(isPermanentGitHubLookupFailure(new Error('gh: No commit found for SHA (HTTP 422)'))).toBe(true);
     expect(isPermanentGitHubLookupFailure(new Error('connect ETIMEDOUT'))).toBe(false);
     expect(isPermanentGitHubLookupFailure(new Error('gh: Server Error (HTTP 502)'))).toBe(false);
+  });
+});
+
+describe('pullRequestLoadDescribesOneRevision', () => {
+  const head = 'eb06b28fd0297e0c804ce1e2ce194cc40f397259';
+  const base = '3c1ae1fbe4c32ed07cde3bad3096dda66b6d5c54';
+  const otherBase = '9d1f5c2f0a4be1b7d6a3c8e2f4b6a8c0d2e4f6a8';
+  const revision = { headSha: head, baseSha: base, baseRefName: 'main' };
+  const file = (status: string, ref: string) => ({
+    status,
+    contents_url: `https://api.github.com/repos/o/r/contents/src%2Fa.ts?ref=${ref}`
+  });
+  const load = (
+    overrides: Partial<Parameters<typeof pullRequestLoadDescribesOneRevision>[0]> = {}
+  ): boolean => pullRequestLoadDescribesOneRevision({
+    before: revision,
+    after: revision,
+    rawFiles: [file('modified', head)],
+    summary: { headSha: head, baseRefName: 'main' },
+    ...overrides
+  });
+
+  it('accepts a load whose reads all name one revision, ignoring removed files at the base', () => {
+    expect(load({
+      rawFiles: [file('added', head), file('modified', head), file('renamed', head), file('removed', base)]
+    })).toBe(true);
+    // A summary that does not say which head it read, and files that name no commit, prove nothing against it.
+    expect(load({ summary: { baseRefName: 'main' }, rawFiles: [{ status: 'modified' }, file('modified', 'main')] })).toBe(true);
+  });
+
+  it('rejects a push or a retarget that landed while the files loaded', () => {
+    expect(load({ after: { ...revision, headSha: base } })).toBe(false);
+    // Same head, new base: the files still name the head, so only the second metadata read shows it.
+    expect(load({ after: { ...revision, baseSha: otherBase, baseRefName: 'release' } })).toBe(false);
+    expect(load({ after: { ...revision, baseSha: otherBase } })).toBe(false);
+    // A deletions-only pull request has no file that names the head.
+    expect(load({ rawFiles: [file('removed', base)], after: { ...revision, baseSha: otherBase } })).toBe(false);
+  });
+
+  it('rejects files loaded for another head, even when only one page moved', () => {
+    expect(load({ rawFiles: [file('modified', base)] })).toBe(false);
+    expect(load({ rawFiles: [file('modified', head), file('added', base)] })).toBe(false);
+  });
+
+  it('rejects a GraphQL summary read for another head or another base branch', () => {
+    expect(load({ summary: { headSha: base, baseRefName: 'main' } })).toBe(false);
+    expect(load({ summary: { headSha: head, baseRefName: 'release' } })).toBe(false);
   });
 });
