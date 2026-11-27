@@ -19,6 +19,7 @@ import { WriteTourButton } from './PullRequestTourTab';
 import type { PullRequestTourQueryState } from './pullRequestTourQuery';
 import { ActivePointStyle, TourBanner, TourStepPanel, type TourFinishCheck } from './TourStepPanel';
 import { TourProgress } from './TourProgress';
+import { TourStepMap } from './TourStepMap';
 import { plainTourText } from './tourText';
 import { tourFileStats, tourSegmentWeight, tourStepLines } from './tourVisuals';
 import { pullRequestLocator } from './pullRequestTourQuery';
@@ -244,7 +245,8 @@ export function useTourDiffSurface({
   }, [tour, isTour, step]);
 
   const stats = useMemo(() => tourFileStats(detail.reviewPlan), [detail.reviewPlan]);
-  const weights = useMemo(() => tour ? tourStepLines(tour, stats).map(tourSegmentWeight) : [], [tour, stats]);
+  const stepLines = useMemo(() => tour ? tourStepLines(tour, stats) : [], [tour, stats]);
+  const weights = useMemo(() => stepLines.map(tourSegmentWeight), [stepLines]);
 
   const changedPaths = useMemo(
     () => [...new Set(detail.reviewPlan.units.flatMap((unit) => unit.chunks.map((chunk) => chunk.path)))],
@@ -287,7 +289,10 @@ export function useTourDiffSurface({
       fileScope: scope,
       sidebarCollapsed: collapsed,
       onFilesChange: setFiles,
-      progressLead: <TourProgress stops={tour.stops} step={step} reviewed={walk.reviewed} weights={weights} onGo={(target) => go(target)} />,
+      progressLead: (
+        <TourProgress stops={tour.stops} step={step} reviewed={walk.reviewed} weights={weights} onGo={(target) => go(target)}
+          lead={<TourStepMap stops={tour.stops} step={step} reviewed={walk.reviewed} lines={stepLines} onGo={(target) => go(target)} />} />
+      ),
       sidebar: (
         <>
           {walk.point !== null ? <ActivePointStyle marker={walk.point + 1} /> : null}

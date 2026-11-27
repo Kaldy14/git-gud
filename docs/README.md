@@ -114,21 +114,25 @@ The description first (folded when long), then the comment box and the timeline 
 
 ### Tour
 
-A guided walk through the change on the real diff. An AI run (Pi; the Claude Code CLI when Pi is not installed or signed in) writes ordered steps. Each step has a title that states a behaviour, a summary, a risk, an optional attention call (tradeoff, contract, product, risk, accessibility), numbered **points** anchored to line ranges, the files it owns and optional questions. `src/shared/pullRequestTour.ts` validates the result: a point is trimmed to one real hunk, a point that cannot be placed is kept as text, and every changed file belongs to exactly one step.
+A guided walk through the change on the real diff, made to be scanned rather than read. An AI run (Pi on its flagship model with high thinking; the Claude Code CLI on the `opus` alias when Pi is not installed or signed in) writes ordered steps with word budgets. Each step has a title that states a behaviour, a **Before / Now** pair, a one-sentence reason it matters, a risk, an optional call to make (tradeoff, contract, product, risk, accessibility), numbered **points** (a short headline plus one sentence, anchored to line ranges), the files it owns and, when the step crosses three or more parts of the system, a small **flow**. `src/shared/pullRequestTour.ts` validates the result: a point is trimmed to one real hunk, a point that cannot be placed is kept as text, every changed file belongs to exactly one step, and a flow survives only where its boxes name a point or a changed file.
 
 ```text
-Step 2 of 5  ▰▰▱▱▱                                             ‹ ›
+[Map] Step 2 of 5  ▰▰▰▱▱▱▱▱▱▱◆▱▱▱▱▱▱▱▱      (width = changed lines, ‾ amber/red = risk, ◆ = call)  ‹ ›
 ┌ step ────────────────────────┐ ┌ this step's files ─────────────────────────┐
 │ [Med risk] What it does      │ │ src/a.ts  +40 −5                 ☐ Viewed  │
-│ summary                      │ │  …diff, ① marked on its lines…             │
-│ ① point (selected)           │ │ src/b.ts  +6 −3                            │
-│ ② point                      │ └────────────────────────────────────────────┘
-│ Files (2)                    │
+│ BEFORE  old behaviour        │ │  …diff…                                    │
+│ NOW     new behaviour        │ │  ① the point's sentence, under its lines   │
+│ ▌RISK TO JUDGE one sentence  │ │ src/b.ts  +6 −3                            │
+│   [Poll] → [Mirror] → [Refs] │ └────────────────────────────────────────────┘
+│ a.ts  ▬▬▬①▬▬▬▬②   ☐          │
+│ b.ts  ▬▬          ☐          │
+│ ① Headline          36–47    │
+│ ② Headline             12    │
 │ [ Reviewed & next ]          │
 └──────────────────────────────┘
 ```
 
-Selecting a point scrolls the diff to its lines and tints them; the number on the line selects the point; scrolling the diff moves the selection. ←/→ change step, R marks the step reviewed and moves on, and the last step offers **Finish review**. Comments, the line cursor and Viewed work as in Code, because Tour and Code are the same diff view with a different left panel. A step's Reviewed state is separate from a file's Viewed state. The tour is kept in the `git-gud-pull-request-guides` store, survives restarts, and when the branch moves it says "written before the latest push", drops its line marks and offers Rewrite. In Code the same points appear inline, labelled `step.point`, each linking back to its step.
+The panel holds only headlines; each point's sentence sits beside its lines in the diff. The footprint draws each file as a +/− bar with the step's points placed where their lines fall, and a viewed tick. Flow boxes are outlined by what the change did (copper changed, green new, red removed, dashed unchanged) and select their point or open their file. Selecting a point scrolls the diff to its lines and tints them; the number on the line selects the point; scrolling the diff moves the selection. **Map** lists every step with its change volume, risk, call and reviewed state. ←/→ change step, R marks the step reviewed and moves on, and the last step offers **Finish review**. Comments, the line cursor and Viewed work as in Code, because Tour and Code are the same diff view with a different left panel. A step's Reviewed state is separate from a file's Viewed state. The tour is kept in the `git-gud-pull-request-guides` store, survives restarts, and when the branch moves it says "written before the latest push", drops its line marks and offers Rewrite. A tour stored in an older format asks to be written again. In Code the same points appear inline, labelled `step.point`, each linking back to its step.
 
 ### Code
 

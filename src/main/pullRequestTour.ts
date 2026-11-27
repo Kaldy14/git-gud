@@ -197,7 +197,7 @@ export function buildPullRequestTourPrompt({ plan, number, context }: PullReques
     '</files>',
     '',
     '<flow>',
-    'A flow draws how data or control moves through the step, left to right. Give one only for a behavior step whose change crosses at least three parts of the system (a producer, a store, a consumer; a request, a handler, a UI); otherwise null. Never invent parts the diff does not show.',
+    'A flow draws how data or control moves through the step, in the direction it moves. Give one only for a behavior step whose change crosses at least three parts of the system (a producer, a store, a consumer; a request, a handler, a UI); otherwise null. Never invent parts the diff does not show.',
     '- nodes: 3 to 5, each { "id": "short-id", "label": "at most 3 words", "state": "changed" | "added" | "removed" | "context", "point": index into this step\'s points, or "path": a changed file }. A changed, added or removed node must name a point or a changed file. At most two "context" nodes for unchanged parts, each connected to a node that names code.',
     '- edges: up to 6, each { "from": "id", "to": "id", "label": "at most 3 words, or empty" }, following the direction data or control flows. No cycles.',
     '</flow>',

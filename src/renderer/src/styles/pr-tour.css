@@ -109,6 +109,48 @@
 .pr-tour-progress-nav { display: flex; flex: 0 0 auto; gap: 2px; }
 .pr-tour-progress-nav [aria-disabled] { opacity: 0.4; cursor: default; }
 
+/* Tour map: every step as one row, opened from the progress strip. Teal marks the current step only. */
+.pr-tour-map-toggle { flex: 0 0 auto; }
+.pr-tour-map {
+  z-index: 60;
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-container);
+  padding: 4px;
+  background: var(--bg-popover);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+.pr-tour-map ol { display: flex; flex-direction: column; gap: 1px; }
+.pr-tour-map-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 18px minmax(0, 1fr) 96px 14px 10px 14px;
+  min-height: 30px;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-row);
+  padding: 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.pr-tour-map-row:hover { background: var(--bg-hover); color: var(--text-1); }
+.pr-tour-map-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.pr-tour-map-row[data-current] { background: var(--select-row-focused); box-shadow: inset 2px 0 0 var(--accent-2); color: var(--text-1); }
+.pr-tour-map-row[data-kind='mechanical'] { color: var(--text-3); }
+.pr-tour-map-number { color: var(--text-3); font: var(--text-xs) / 1 var(--font-mono); text-align: right; }
+.pr-tour-map-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-tour-map-volume > span { display: flex; height: 6px; overflow: hidden; border-radius: var(--radius-pill); }
+.pr-tour-map-volume i { display: block; height: 100%; }
+.pr-tour-map-volume i[data-kind='added'] { background: var(--success-text); }
+.pr-tour-map-volume i[data-kind='deleted'] { background: var(--danger-text); }
+.pr-tour-map-risk[data-risk] { height: 3px; border-radius: var(--radius-pill); background: var(--warning-text); }
+.pr-tour-map-risk[data-risk='high'] { background: var(--danger-text); }
+.pr-tour-map-attention[data-attention] { width: 6px; height: 6px; background: var(--guide-annotation); transform: rotate(45deg); }
+.pr-tour-map-reviewed { display: inline-grid; place-items: center; color: var(--accent-2); }
+
 /* The narrative panel replaces the files panel in the same resizable column. */
 .pr-tour-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; }
 .pr-tour-panel-body {
@@ -198,8 +240,7 @@
 .pr-tour-footprint-bar > i { display: block; height: 100%; }
 .pr-tour-footprint-bar > i[data-kind='added'] { background: var(--success-text); }
 .pr-tour-footprint-bar > i[data-kind='deleted'] { background: var(--danger-text); }
-.pr-tour-footprint-track .pr-guide-marker { position: absolute; top: 1px; min-width: 16px; height: 16px; padding: 0 3px; font-size: var(--text-2xs); transform: translateX(-50%); }
-.pr-tour-footprint-track .pr-guide-marker:not([data-active]) { background: color-mix(in srgb, var(--guide-annotation) 30%, var(--bg-surface-2)); color: var(--guide-annotation); }
+.pr-tour-footprint-track .pr-guide-marker { position: absolute; top: 1px; width: auto; min-width: 16px; height: 16px; padding: 0 3px; font-size: var(--text-2xs); transform: translateX(-50%); }
 .pr-tour-file-viewed {
   display: inline-grid;
   width: 14px;
@@ -251,6 +292,56 @@
 .pr-tour-inline code { border-radius: var(--radius-xs); padding: 0 3px; background: var(--bg-surface); font: 0.92em var(--font-mono); }
 
 .pr-tour-section { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Flow: boxes in rows, lines drawn behind them. Outline = what the change did to the part: copper changed,
+   green new, red removed, dashed unchanged. Positions come from layoutTourFlow (x in %, y in px). */
+.pr-tour-flow { position: relative; margin: 2px 0; }
+.pr-tour-flow-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.pr-tour-flow-lines path { fill: none; stroke: var(--text-3); stroke-width: 1.25; }
+.pr-tour-flow-head {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-top: 5px solid var(--text-3);
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  transform: translateX(-50%);
+}
+.pr-tour-flow-edge-label {
+  position: absolute;
+  max-width: 45%;
+  overflow: hidden;
+  padding: 0 4px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-tour-flow-edge-label[data-side='left'] { transform: translateX(-100%); }
+.pr-tour-flow-node {
+  position: absolute;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--guide-annotation);
+  border-radius: var(--radius-row);
+  padding: 0 6px;
+  background: var(--bg-app);
+  color: var(--text-1);
+  font-size: var(--text-sm);
+}
+.pr-tour-flow-node[data-state='added'] { border-color: var(--success-text); }
+.pr-tour-flow-node[data-state='removed'] { border-color: var(--danger-text); color: var(--text-2); text-decoration: line-through; }
+.pr-tour-flow-node[data-state='context'] { border-style: dashed; border-color: var(--border-control); color: var(--text-2); }
+button.pr-tour-flow-node:hover { background: var(--bg-hover); }
+button.pr-tour-flow-node:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.pr-tour-flow-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-tour-flow-node .pr-guide-marker { width: auto; min-width: 16px; height: 16px; flex: none; padding: 0 3px; font-size: var(--text-2xs); }
+.pr-tour-flow-node .pr-guide-marker:not([data-active]),
+.pr-tour-footprint-track .pr-guide-marker:not([data-active]) { background: color-mix(in srgb, var(--guide-annotation) 30%, var(--bg-surface-2)); color: var(--guide-annotation); }
 
 /* The step's terminal action stays pinned to the panel's foot. */
 .pr-tour-foot { display: flex; flex: 0 0 auto; flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--border); padding: var(--space-3) var(--space-4); }

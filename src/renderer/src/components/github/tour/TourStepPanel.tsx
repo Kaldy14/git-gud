@@ -10,6 +10,7 @@ import type { ReviewScopeFileSummary } from '@renderer/components/review/ReviewV
 import { InlineCodeText } from '../overview/overviewParts';
 import { PullRequestRiskChip } from '../PullRequestRiskChip';
 import { isAnchoredPoint } from './pullRequestTourWalk';
+import { TourFlow } from './TourFlow';
 import { tourPointPosition, type TourFileStat } from './tourVisuals';
 import { listTourSteps, plainTourText } from './tourText';
 
@@ -194,6 +195,10 @@ export function TourStepPanel({
             <span className="pr-tour-eyebrow">{ATTENTION_LABELS[stop.attention.kind]}</span>
             <span><InlineCodeText text={stop.attention.note} /></span>
           </div>
+        ) : null}
+
+        {stop.flow ? (
+          <TourFlow flow={stop.flow} points={stop.points} activePoint={activePoint} onSelectPoint={onSelectPoint} onOpenFile={onOpenFile} />
         ) : null}
 
         <TourFootprint stop={stop} files={files} stats={stats} activePoint={activePoint} onSelectPoint={onSelectPoint} onOpenFile={onOpenFile} />

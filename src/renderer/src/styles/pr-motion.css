@@ -10,17 +10,20 @@
 [data-slot='dropdown-menu-content'],
 [data-slot='dropdown-menu-sub-content'],
 .context-menu-surface[data-state],
-.pr-job-confirm {
+.pr-job-confirm,
+.pr-tour-map {
   transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-context-menu-content-transform-origin, var(--radix-popover-content-transform-origin)));
 }
 [data-slot='dropdown-menu-content'][data-state='open'],
 [data-slot='dropdown-menu-sub-content'][data-state='open'],
 .context-menu-surface[data-state='open'],
-.pr-job-confirm[data-state='open'] { animation: pr-pop-in 140ms var(--ease-out); }
+.pr-job-confirm[data-state='open'],
+.pr-tour-map[data-state='open'] { animation: pr-pop-in 140ms var(--ease-out); }
 [data-slot='dropdown-menu-content'][data-state='closed'],
 [data-slot='dropdown-menu-sub-content'][data-state='closed'],
 .context-menu-surface[data-state='closed'],
-.pr-job-confirm[data-state='closed'] { animation: pr-pop-out 90ms ease-in forwards; }
+.pr-job-confirm[data-state='closed'],
+.pr-tour-map[data-state='closed'] { animation: pr-pop-out 90ms ease-in forwards; }
 /* The app's own context menus (not Radix) mount where the pointer is and unmount at once: they get the
    entrance only. */
 .context-menu-surface:not([data-state]) { animation: pr-pop-in 140ms var(--ease-out); transform-origin: top left; }

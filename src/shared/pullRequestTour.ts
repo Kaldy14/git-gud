@@ -36,7 +36,7 @@ export type PullRequestTourFlowNode = {
   path: string | null;
 };
 export type PullRequestTourFlowEdge = { from: string; to: string; label: string };
-// A small acyclic graph of how data or control moves through a step, drawn left to right.
+// A small acyclic graph of how data or control moves through a step, drawn in the direction it moves.
 export type PullRequestTourFlow = { nodes: PullRequestTourFlowNode[]; edges: PullRequestTourFlowEdge[] };
 
 export type PullRequestTourStop = {
