@@ -18,16 +18,21 @@ export type PiPromptOptions = {
   finalResponseOnly?: boolean;
   maxOutputCharacters?: number;
   errorLabel: string;
+  // Defaults to the fast model and medium thinking, which suit short jobs such as commit messages.
+  model?: string;
+  thinking?: 'low' | 'medium' | 'high';
 };
+
+export const PI_DEFAULT_MODEL = 'openai/gpt-6-astra';
 
 export async function runPiPrompt(options: PiPromptOptions): Promise<string> {
   const environment = await resolvePiEnvironment();
   const executable = await resolvePiExecutable(process.platform, environment);
   const args = [
     '--model',
-    'openai/gpt-6-astra',
+    options.model ?? PI_DEFAULT_MODEL,
     '--thinking',
-    'medium',
+    options.thinking ?? 'medium',
     '--print',
     '--no-session',
     '--mode',

@@ -14,11 +14,11 @@ import {
 } from './pullRequestTourWalk';
 
 function stop(overrides: Partial<PullRequestTourStop>): PullRequestTourStop {
-  return { title: 'Step', summary: '', kind: 'behavior', risk: null, attention: null, points: [], files: [], questions: [], ...overrides };
+  return { title: 'Step', summary: '', kind: 'behavior', risk: null, change: null, attention: null, points: [], files: [], flow: null, ...overrides };
 }
 
 const tour: PullRequestTour = {
-  version: 2,
+  version: 3,
   headSha: 'abc',
   sourceFingerprint: 'fp',
   generatedAt: '2026-11-01T10:00:00.000Z',
@@ -26,13 +26,13 @@ const tour: PullRequestTour = {
   stops: [
     stop({
       points: [
-        { body: 'Saves first', path: 'src/b.ts', side: 'new', start: 10, end: 14 },
-        { body: 'Old guard removed', path: 'src/a.ts', side: 'old', start: 3, end: null },
-        { body: 'Text only', path: 'src/a.ts', side: 'new', start: null, end: null }
+        { label: 'Saves first', body: 'Saves first', path: 'src/b.ts', side: 'new', start: 10, end: 14 },
+        { label: 'Old guard removed', body: 'Old guard removed', path: 'src/a.ts', side: 'old', start: 3, end: null },
+        { label: 'Text only', body: 'Text only', path: 'src/a.ts', side: 'new', start: null, end: null }
       ],
       files: [{ path: 'src/a.ts', note: '' }, { path: 'src/c.ts', note: 'owned' }]
     }),
-    stop({ points: [{ body: 'Styles', path: 'src/d.css', side: 'new', start: 2, end: 2 }] })
+    stop({ points: [{ label: 'Styles', body: 'Styles', path: 'src/d.css', side: 'new', start: 2, end: 2 }] })
   ]
 };
 

@@ -18,6 +18,8 @@ export type ClaudePromptOptions = {
   prompt: string;
   timeoutMs: number;
   errorLabel: string;
+  // A model alias (`opus`, `sonnet`) follows the newest model of that family; omitted, the CLI's default.
+  model?: string;
 };
 
 /** Runs one tool-less prompt through the Claude Code CLI (`claude -p`) and returns its text answer. */
@@ -29,7 +31,8 @@ export async function runClaudePrompt(options: ClaudePromptOptions): Promise<str
   // no skills or commands, and nothing persisted: the run can only answer with text.
   const child = spawn(executable, [
     '-p', '--output-format', 'text', '--tools', '', '--strict-mcp-config',
-    '--disable-slash-commands', '--no-session-persistence'
+    '--disable-slash-commands', '--no-session-persistence',
+    ...(options.model ? ['--model', options.model] : [])
   ], {
     cwd: options.cwd,
     env,

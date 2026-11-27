@@ -63,7 +63,7 @@ describe('buildPullRequestTourPrompt', () => {
 describe('PullRequestTourManager', () => {
   const locator = { profileId: 'p', owner: 'o', repository: 'r', number: 1 };
   const tour: PullRequestTour = {
-    version: 2, headSha: 'h', sourceFingerprint: 'f', generatedAt: '2026-01-01T00:00:00.000Z',
+    version: 3, headSha: 'h', sourceFingerprint: 'f', generatedAt: '2026-01-01T00:00:00.000Z',
     overview: { risk: null, summary: '', highlights: [], partial: false }, stops: []
   };
   const memoryStore = (tours: Record<string, unknown>) => {
@@ -72,8 +72,8 @@ describe('PullRequestTourManager', () => {
   };
   const key = JSON.stringify(['p', 'o', 'r', 1]);
 
-  it('hides a stored tour in the old format and says so', () => {
-    const store = memoryStore({ [key]: { headSha: 'h', stops: [], savedAt: '' } });
+  it('hides a stored tour in an old format and says so', () => {
+    const store = memoryStore({ [key]: { version: 2, headSha: 'h', stops: [], savedAt: '' } });
     const manager = new PullRequestTourManager(vi.fn(), store as never);
     expect(manager.getState(locator)).toEqual({ tour: null, running: false, outdatedFormat: true });
   });

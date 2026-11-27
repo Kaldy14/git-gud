@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizePullRequestTour, tourStepPaths, unanchorTourPoints, type PullRequestTour } from './pullRequestTour';
+import { clipText, normalizePullRequestTour, pointHeadline, tourStepPaths, unanchorTourPoints, type PullRequestTour } from './pullRequestTour';
 import type { GitReviewChunk, GitReviewPlan } from './types';
 
 const clientPatch = [
@@ -63,10 +63,8 @@ describe('normalizePullRequestTour', () => {
         points: [point('src/server.ts', 90), point('src/server.ts'), point('src/missing.ts', 1), { path: 'src/server.ts', start: 1 }]
       })]
     }, plan);
-    expect(stops[0]!.points).toEqual([
-      { body: 'About src/server.ts', path: 'src/server.ts', side: 'new', start: null, end: null },
-      { body: 'About src/server.ts', path: 'src/server.ts', side: 'new', start: null, end: null }
-    ]);
+    const textOnly = { label: 'About src/server.ts', body: 'About src/server.ts', path: 'src/server.ts', side: 'new', start: null, end: null };
+    expect(stops[0]!.points).toEqual([textOnly, textOnly]);
   });
 
   it('gives every changed file one owning step and lets points show a file in several steps', () => {
@@ -91,26 +89,85 @@ describe('normalizePullRequestTour', () => {
       overview: { risk: 'low', summary: ' One sentence. ', highlights: ['a', '', 'b', 'c', 'd', 'e'] },
       stops: [step('A', { risk: 'medium', kind: 'mechanical' }), step('B', { risk: 'severe' })]
     }, plan);
-    expect(tour.overview).toEqual({ risk: 'medium', summary: 'One sentence.', highlights: ['a', 'b', 'c', 'd'], partial: false });
+    expect(tour.overview).toEqual({ risk: 'medium', summary: 'One sentence.', highlights: ['a', 'b', 'c'], partial: false });
     expect(tour.stops.map((stop) => [stop.kind, stop.risk])).toEqual([['mechanical', 'medium'], ['behavior', null]]);
     expect(normalizePullRequestTour({ overview: { risk: 'unknown' }, stops: [step('A')] }, plan).overview.risk).toBeNull();
   });
 
   it('builds a single step holding every file when the response has none', () => {
     expect(normalizePullRequestTour({ stops: 'nope' }, plan).stops).toEqual([{
-      title: 'The change', summary: '', kind: 'behavior', risk: null, attention: null, points: [], questions: [],
+      title: 'The change', summary: '', kind: 'behavior', risk: null, change: null, attention: null, points: [], flow: null,
       files: ['src/client.ts', 'src/server.ts', 'docs/readme.md'].map((path) => ({ path, note: '' }))
     }]);
+  });
+
+  it('keeps a before/now pair only when both sides are written, and labels every point', () => {
+    const { stops } = normalizePullRequestTour({
+      stops: [
+        step('A', { change: { before: 'Old', after: 'New' }, points: [{ ...point('src/client.ts', 11), label: ' Timeouts reach the socket ' }] }),
+        step('B', { change: { before: 'Old', after: ' ' }, points: [{ ...point('src/server.ts', 1), body: 'The server answers first, so clients stop waiting.' }] })
+      ]
+    }, plan);
+    expect(stops.map((stop) => stop.change)).toEqual([{ before: 'Old', after: 'New' }, null]);
+    expect(stops.map((stop) => stop.points[0]!.label)).toEqual(['Timeouts reach the socket', 'The server answers first']);
+  });
+
+  it('keeps a flow only where it names code, without cycles or loose context', () => {
+    const flow = (nodes: unknown[], edges: unknown[]) => normalizePullRequestTour({
+      stops: [step('A', { points: [point('src/client.ts', 11)], flow: { nodes, edges } })]
+    }, plan).stops[0]!.flow;
+    const nodes = [
+      { id: 'client', label: 'Client', state: 'changed', point: 0 },
+      { id: 'server', label: 'Server', state: 'added', path: 'src/server.ts' },
+      { id: 'db', label: 'Database', state: 'context' },
+      { id: 'cache', label: 'Cache', state: 'context' },
+      { id: 'queue', label: 'Queue', state: 'context' },
+      { id: 'ghost', label: 'Ghost', state: 'changed', path: 'src/missing.ts' },
+      { id: 'far', label: 'Far', state: 'changed', point: 7 }
+    ];
+    const result = flow(nodes, [
+      { from: 'client', to: 'server', label: 'request' },
+      { from: 'server', to: 'db' },
+      { from: 'db', to: 'client' }, // closes a cycle
+      { from: 'db', to: 'cache' }, // context to context only
+      { from: 'server', to: 'ghost' },
+      { from: 'server', to: 'server' }
+    ]);
+    expect(result).toEqual({
+      nodes: [
+        { id: 'client', label: 'Client', state: 'changed', point: 0, path: 'src/client.ts' },
+        { id: 'server', label: 'Server', state: 'added', point: null, path: 'src/server.ts' },
+        { id: 'db', label: 'Database', state: 'context', point: null, path: null }
+      ],
+      edges: [{ from: 'client', to: 'server', label: 'request' }, { from: 'server', to: 'db', label: '' }]
+    });
+    // One node that names code is not enough to draw.
+    expect(flow(nodes.slice(0, 3).map((node, index) => index === 1 ? { ...node, state: 'context' } : node),
+      [{ from: 'client', to: 'server' }, { from: 'server', to: 'db' }])).toBeNull();
+    expect(normalizePullRequestTour({ stops: [step('A', { kind: 'mechanical', flow: { nodes, edges: [] } })] }, plan).stops[0]!.flow).toBeNull();
+  });
+});
+
+describe('clipText and pointHeadline', () => {
+  it('cuts long text at a sentence end or a word, never mid-word', () => {
+    expect(clipText('First sentence here. Second sentence that runs long.', 30)).toBe('First sentence here.');
+    expect(clipText('one two three four five six', 15)).toBe('one two three…');
+    expect(clipText('  short  ', 15)).toBe('short');
+  });
+
+  it('takes the first clause, at most seven words', () => {
+    expect(pointHeadline('`isImportable` checks only names, so archive state no longer matters.')).toBe('`isImportable` checks only names');
+    expect(pointHeadline('A very long clause that keeps going past the seven word budget')).toBe('A very long clause that keeps going…');
   });
 });
 
 describe('unanchorTourPoints', () => {
   it('turns every point into text', () => {
     const tour: PullRequestTour = {
-      version: 2, headSha: 'a', sourceFingerprint: 'f', generatedAt: '',
+      version: 3, headSha: 'a', sourceFingerprint: 'f', generatedAt: '',
       overview: { risk: null, summary: '', highlights: [], partial: false },
-      stops: [{ ...step('A'), kind: 'behavior', risk: null, attention: null, questions: [],
-        points: [{ body: 'b', path: 'src/client.ts', side: 'new', start: 11, end: 12 }] }]
+      stops: [{ ...step('A'), kind: 'behavior', risk: null, change: null, attention: null, flow: null,
+        points: [{ label: 'b', body: 'b', path: 'src/client.ts', side: 'new', start: 11, end: 12 }] }]
     };
     expect(unanchorTourPoints(tour).stops[0]!.points[0]).toMatchObject({ start: null, end: null });
   });
