@@ -107,9 +107,7 @@ export function useTourDiffSurface({
   function go(target: number, point?: number): boolean {
     if (!tour || target < 0 || target >= count || refuse()) return false;
     setFinishCheck(undefined);
-    // The diff re-scopes and jumps for the new step; that scrolling is not the reader choosing a point.
     revealPointRef.current = false;
-    quietUntilRef.current = performance.now() + JUMP_QUIET_MS;
     if (target !== step) focusHeadingRef.current = true;
     dispatch({ type: 'go', step: target, point: point ?? (target === step ? undefined : null) });
     if (point !== undefined) {
@@ -130,7 +128,6 @@ export function useTourDiffSurface({
       setFinishCheck(undefined);
       focusHeadingRef.current = true;
       revealPointRef.current = false;
-      quietUntilRef.current = performance.now() + JUMP_QUIET_MS;
       dispatch({ type: 'review-and-next', step, count });
       return true;
     }
@@ -247,7 +244,11 @@ export function useTourDiffSurface({
 
   // Inline marks: stable callbacks behind a ref so the notes are rebuilt only when the marks change.
   const handlersRef = useRef({ selectPoint, openStep });
-  useLayoutEffect(() => { handlersRef.current = { selectPoint, openStep }; });
+  const walkPointRef = useRef(walk.point);
+  useLayoutEffect(() => {
+    handlersRef.current = { selectPoint, openStep };
+    walkPointRef.current = walk.point;
+  });
   const guideReferences = useMemo<ReviewInlineGuideNote[]>(() => {
     if (!tour) return [];
     return tourInlineNotes(tour, isTour ? { tab: 'tour', step } : { tab: 'code' }).map((note) => ({
@@ -257,7 +258,7 @@ export function useTourDiffSurface({
       body: note.body,
       marker: note.marker,
       ...(isTour
-        ? { onOpen: () => { revealPointRef.current = true; handlersRef.current.selectPoint(note.point); } }
+        ? { onOpen: () => { revealPointRef.current = note.point !== walkPointRef.current; handlersRef.current.selectPoint(note.point); } }
         : { stopLabel: `Step ${note.step + 1} in Tour`, onOpen: () => handlersRef.current.openStep(note.step, note.point) })
     }));
   }, [tour, isTour, step]);

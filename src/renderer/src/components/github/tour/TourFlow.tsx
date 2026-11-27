@@ -96,13 +96,14 @@ export function TourFlow({ flow, points, inDiff, activePoint, onSelectPoint, onO
 }
 
 /**
- * Where each line's tag sits: centred on the line's middle, kept inside the panel, no wider than the space to
- * the next tag in the same gap, and moved down a line when two lines cross at the same point.
+ * Where each line's tag sits: centred on the line's middle and kept inside the panel. Tags in one gap that
+ * would crowd each other (centres under 12% apart) split around the gap's middle, one above and one below,
+ * which keeps both inside the gap; then each tag is no wider than the space to its neighbour on its own line.
  */
 function edgeLabelPlacements(lines: readonly TourFlowLine[]): Map<TourFlowLine, { x: number; y: number; width: number }> {
   const placed = new Map<TourFlowLine, { x: number; y: number; width: number }>();
-  const tagged = lines.filter((line) => line.lane === null && line.label);
-  for (const line of tagged) {
+  for (const line of lines) {
+    if (line.lane !== null || !line.label) continue;
     placed.set(line, {
       x: Math.min(100 - EDGE_LABEL_HALF, Math.max(EDGE_LABEL_HALF, (line.x1 + line.x2) / 2)),
       y: (line.y1 + line.y2) / 2 - 7,
@@ -110,9 +111,14 @@ function edgeLabelPlacements(lines: readonly TourFlowLine[]): Map<TourFlowLine, 
     });
   }
   const tags = [...placed.values()];
-  for (const tag of tags) {
-    const twin = tags.find((other) => other !== tag && other.y === tag.y && Math.abs(other.x - tag.x) < 1 && tags.indexOf(other) < tags.indexOf(tag));
-    if (twin) tag.y += 14;
+  for (const y of new Set(tags.map((tag) => tag.y))) {
+    const row = tags.filter((tag) => tag.y === y).sort((a, b) => a.x - b.x);
+    row.forEach((tag, index) => {
+      if (index > 0 && tag.x - row[index - 1]!.x < 12 && row[index - 1]!.y === y) {
+        row[index - 1]!.y = y - 7;
+        tag.y = y + 7;
+      }
+    });
   }
   for (const tag of tags) {
     const gap = Math.min(...tags.filter((other) => other !== tag && other.y === tag.y).map((other) => Math.abs(other.x - tag.x)));
