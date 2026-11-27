@@ -42,6 +42,7 @@ export function TourStepPanel({
   count,
   reviewed,
   activePoint,
+  takePointReveal,
   files,
   stats,
   banner,
@@ -63,6 +64,8 @@ export function TourStepPanel({
   count: number;
   reviewed: boolean;
   activePoint: number | null;
+  // True once after the diff selected the point, so the list scrolls to it.
+  takePointReveal: () => boolean;
   files: readonly ReviewScopeFileSummary[];
   stats: ReadonlyMap<string, TourFileStat>;
   banner?: ReactNode;
@@ -110,15 +113,16 @@ export function TourStepPanel({
     shown.current = { step, reviewed };
     if (reviewed && !before.reviewed && before.step === step) drawStroke(stepRef.current?.querySelector('.pr-tour-reviewed > svg'));
   }, [step, reviewed]);
-  // Keep the selected point in view when the diff selects it, but not when a new step lands on its first
-  // point: the step is read from the top.
-  const pointStepRef = useRef(step);
+  // Keep the selected point in view when the diff moved the selection from one point to another. The first
+  // selection on a step (landing, or the diff settling after a step change) leaves the step read from the top.
+  const previousPointRef = useRef(activePoint);
   useEffect(() => {
-    const landed = pointStepRef.current !== step;
-    pointStepRef.current = step;
-    if (activePoint === null || landed) return;
+    const previous = previousPointRef.current;
+    previousPointRef.current = activePoint;
+    const reveal = takePointReveal();
+    if (activePoint === null || previous === null || !reveal) return;
     pointsRef.current?.children[activePoint]?.scrollIntoView({ block: 'nearest' });
-  }, [activePoint, step]);
+  }, [activePoint, takePointReveal]);
 
   const action = isLast ? 'Finish review' : reviewed ? 'Mark unreviewed' : 'Reviewed & next';
   const actionButton = (iconOnly: boolean) => (

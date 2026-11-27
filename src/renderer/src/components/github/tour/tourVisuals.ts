@@ -17,7 +17,6 @@ export function tourFileStats(plan: Pick<GitReviewPlan, 'units'>): Map<string, T
   const cached = statsCache.get(plan.units);
   if (cached) return cached;
   const stats = new Map<string, TourFileStat>();
-  statsCache.set(plan.units, stats);
   for (const chunk of plan.units.flatMap((unit) => unit.chunks)) {
     const stat = stats.get(chunk.path) ?? { additions: 0, deletions: 0, spans: { new: null, old: null }, hunks: [] };
     stat.additions += chunk.additions;
@@ -43,6 +42,7 @@ export function tourFileStats(plan: Pick<GitReviewPlan, 'units'>): Map<string, T
       stat.spans.old = widen(stat.spans.old, hunkStat.old?.max);
     }
   }
+  statsCache.set(plan.units, stats);
   return stats;
 }
 

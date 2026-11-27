@@ -4,7 +4,7 @@ import type { PullRequestTourFlow, PullRequestTourFlowState, PullRequestTourPoin
 
 import { isAnchoredPoint } from './pullRequestTourWalk';
 import { plainTourText } from './tourText';
-import { FLOW_NODE_HEIGHT, FLOW_ROW_GAP, layoutTourFlow } from './tourVisuals';
+import { FLOW_NODE_HEIGHT, FLOW_ROW_GAP, layoutTourFlow, type TourFlowLine } from './tourVisuals';
 
 // Half the widest an edge label may be (percent), so a centred label stays inside the panel.
 const EDGE_LABEL_HALF = 18;
@@ -28,6 +28,7 @@ export function TourFlow({ flow, points, inDiff, activePoint, onSelectPoint, onO
   onOpenFile: (path: string) => void;
 }): ReactElement {
   const { boxes, lines, height } = layoutTourFlow(flow);
+  const tags = edgeLabelPlacements(lines);
   const nodes = new Map(flow.nodes.map((node) => [node.id, node]));
   const describe = lines
     .map((line) => `${nodes.get(line.from)!.label} to ${nodes.get(line.to)!.label}${line.label ? ` (${line.label})` : ''}`)
@@ -54,7 +55,7 @@ export function TourFlow({ flow, points, inDiff, activePoint, onSelectPoint, onO
             // label sits beside the lane halfway down it.
             <span className="pr-tour-flow-edge-label" data-lane={line.lane === null ? undefined : ''}
               style={line.lane === null
-                ? { left: `${Math.min(100 - EDGE_LABEL_HALF, Math.max(EDGE_LABEL_HALF, (line.x1 + line.x2) / 2))}%`, top: (line.y1 + line.y2) / 2 - 7 }
+                ? { left: `${tags.get(line)!.x}%`, top: tags.get(line)!.y, maxWidth: `${tags.get(line)!.width}%` }
                 : { left: `${line.lane}%`, top: (line.y1 + line.y2) / 2 - 7, maxWidth: `${100 - line.lane}%` }}>
               {line.label}
             </span>
@@ -92,4 +93,30 @@ export function TourFlow({ flow, points, inDiff, activePoint, onSelectPoint, onO
       })}
     </figure>
   );
+}
+
+/**
+ * Where each line's tag sits: centred on the line's middle, kept inside the panel, no wider than the space to
+ * the next tag in the same gap, and moved down a line when two lines cross at the same point.
+ */
+function edgeLabelPlacements(lines: readonly TourFlowLine[]): Map<TourFlowLine, { x: number; y: number; width: number }> {
+  const placed = new Map<TourFlowLine, { x: number; y: number; width: number }>();
+  const tagged = lines.filter((line) => line.lane === null && line.label);
+  for (const line of tagged) {
+    placed.set(line, {
+      x: Math.min(100 - EDGE_LABEL_HALF, Math.max(EDGE_LABEL_HALF, (line.x1 + line.x2) / 2)),
+      y: (line.y1 + line.y2) / 2 - 7,
+      width: EDGE_LABEL_HALF * 2
+    });
+  }
+  const tags = [...placed.values()];
+  for (const tag of tags) {
+    const twin = tags.find((other) => other !== tag && other.y === tag.y && Math.abs(other.x - tag.x) < 1 && tags.indexOf(other) < tags.indexOf(tag));
+    if (twin) tag.y += 14;
+  }
+  for (const tag of tags) {
+    const gap = Math.min(...tags.filter((other) => other !== tag && other.y === tag.y).map((other) => Math.abs(other.x - tag.x)));
+    if (Number.isFinite(gap)) tag.width = Math.max(10, Math.min(tag.width, gap - 2));
+  }
+  return placed;
 }

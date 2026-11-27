@@ -235,13 +235,12 @@
 }
 .pr-tour-footprint-name:hover { color: var(--text-1); }
 .pr-tour-footprint-name:focus-visible { border-radius: var(--radius-xs); outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.pr-tour-footprint-track { position: relative; height: 18px; }
+.pr-tour-footprint-track { position: relative; height: 18px; margin-inline: 8px; }
 .pr-tour-footprint-bar { position: absolute; top: 7px; left: 0; display: flex; height: 4px; overflow: hidden; border-radius: var(--radius-pill); background: var(--bg-surface-2); }
 .pr-tour-footprint-bar > i { display: block; height: 100%; }
 .pr-tour-footprint-bar > i[data-kind='added'] { background: var(--success-text); }
 .pr-tour-footprint-bar > i[data-kind='deleted'] { background: var(--danger-text); }
 .pr-tour-footprint-track .pr-guide-marker { position: absolute; top: 1px; width: auto; min-width: 16px; height: 16px; padding: 0 3px; font-size: var(--text-2xs); transform: translateX(-50%); }
-.pr-tour-footprint-track { margin-inline: 8px; }
 .pr-tour-file-viewed {
   display: inline-grid;
   width: 14px;

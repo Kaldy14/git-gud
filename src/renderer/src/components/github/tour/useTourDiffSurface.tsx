@@ -82,6 +82,14 @@ export function useTourDiffSurface({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusHeadingRef = useRef(false);
   const quietUntilRef = useRef(0);
+  // Set when the diff picks the point (scrolling, or a click on its mark): only then does the panel scroll its
+  // list to it. A step that lands on its first point is read from the top.
+  const revealPointRef = useRef(false);
+  const takePointReveal = useCallback(() => {
+    const reveal = revealPointRef.current;
+    revealPointRef.current = false;
+    return reveal;
+  }, []);
 
   const refuse = (): boolean => {
     if (composerOpen) onNotice({ tone: 'danger', message: COMPOSER_OPEN_NOTICE });
@@ -99,6 +107,9 @@ export function useTourDiffSurface({
   function go(target: number, point?: number): boolean {
     if (!tour || target < 0 || target >= count || refuse()) return false;
     setFinishCheck(undefined);
+    // The diff re-scopes and jumps for the new step; that scrolling is not the reader choosing a point.
+    revealPointRef.current = false;
+    quietUntilRef.current = performance.now() + JUMP_QUIET_MS;
     if (target !== step) focusHeadingRef.current = true;
     dispatch({ type: 'go', step: target, point: point ?? (target === step ? undefined : null) });
     if (point !== undefined) {
@@ -118,6 +129,8 @@ export function useTourDiffSurface({
     if (step < count - 1) {
       setFinishCheck(undefined);
       focusHeadingRef.current = true;
+      revealPointRef.current = false;
+      quietUntilRef.current = performance.now() + JUMP_QUIET_MS;
       dispatch({ type: 'review-and-next', step, count });
       return true;
     }
@@ -210,7 +223,10 @@ export function useTourDiffSurface({
       }
     }
     const point = Number(chosen?.dataset.guideMarker) - 1;
-    if (chosen && Number.isInteger(point) && point !== walk.point) dispatch({ type: 'point', point });
+    if (chosen && Number.isInteger(point) && point !== walk.point) {
+      revealPointRef.current = true;
+      dispatch({ type: 'point', point });
+    }
   });
   useEffect(() => {
     const pane = paneRef.current;
@@ -241,13 +257,13 @@ export function useTourDiffSurface({
       body: note.body,
       marker: note.marker,
       ...(isTour
-        ? { onOpen: () => handlersRef.current.selectPoint(note.point) }
+        ? { onOpen: () => { revealPointRef.current = true; handlersRef.current.selectPoint(note.point); } }
         : { stopLabel: `Step ${note.step + 1} in Tour`, onOpen: () => handlersRef.current.openStep(note.step, note.point) })
     }));
   }, [tour, isTour, step]);
 
   // Only the Tour draws from these, so a pull request read on another tab never parses its patches for them.
-  const stats = useMemo(() => isTour ? tourFileStats(detail.reviewPlan) : EMPTY_STATS, [isTour, detail.reviewPlan]);
+  const stats = useMemo(() => isTour && visible ? tourFileStats(detail.reviewPlan) : EMPTY_STATS, [isTour, visible, detail.reviewPlan]);
   const stepLines = useMemo(() => tour ? tourStepLines(tour, stats) : [], [tour, stats]);
   const weights = useMemo(() => stepLines.map(tourSegmentWeight), [stepLines]);
 
@@ -305,6 +321,7 @@ export function useTourDiffSurface({
             count={count}
             reviewed={walk.reviewed.includes(step)}
             activePoint={walk.point}
+            takePointReveal={takePointReveal}
             files={scopeFiles}
             stats={stats}
             banner={banner}
