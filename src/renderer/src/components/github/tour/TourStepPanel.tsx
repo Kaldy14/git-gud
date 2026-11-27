@@ -2,23 +2,24 @@ import { useEffect, useLayoutEffect, useRef, type ReactElement, type ReactNode, 
 import { AlertTriangle, Check, ChevronRight, CircleDotDashed, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import type { CodeReference } from '@shared/codeReference';
-import type { PullRequestTourAttentionKind, PullRequestTourStop } from '@shared/pullRequestTour';
+import type { PullRequestTourAttentionKind, PullRequestTourPoint, PullRequestTourStop } from '@shared/pullRequestTour';
 import { ReviewCommentBody } from '@renderer/components/review/ReviewCommentBody';
 import { drawStroke, EASE_OUT, prefersReducedMotion } from '@renderer/lib/motion';
 import type { ReviewScopeFileSummary } from '@renderer/components/review/ReviewView';
 
-import { PullRequestLineStats } from '../PullRequestLineStats';
+import { InlineCodeText } from '../overview/overviewParts';
 import { PullRequestRiskChip } from '../PullRequestRiskChip';
 import { isAnchoredPoint } from './pullRequestTourWalk';
+import { tourPointPosition, type TourFileStat } from './tourVisuals';
 import { listTourSteps, plainTourText } from './tourText';
 
-// The call's run-in head, as the old Guide wrote it.
+// The call's eyebrow above its one sentence.
 const ATTENTION_LABELS: Record<PullRequestTourAttentionKind, string> = {
-  tradeoff: 'Tradeoff to weigh.',
-  contract: 'Contract to check.',
-  product: 'Product call.',
-  risk: 'Risk to judge.',
-  accessibility: 'Accessibility call.'
+  tradeoff: 'Tradeoff to weigh',
+  contract: 'Contract to check',
+  product: 'Product call',
+  risk: 'Risk to judge',
+  accessibility: 'Accessibility call'
 };
 
 export type TourProse = {
@@ -29,9 +30,10 @@ export type TourProse = {
 export type TourFinishCheck = { unreviewed: number[] };
 
 /**
- * The Tour's left panel: the step's narrative (risk, title, summary, attention, numbered points, questions,
- * files) over a pinned foot with the step's terminal action. Collapsed, it is a slim strip that still shows
- * the step and keeps the action in reach.
+ * The Tour's left panel, made to be scanned rather than read: risk, title, before/now, the one call to make,
+ * the step's footprint (its files as bars with its points placed on them) and one headline per point, over a
+ * pinned foot with the step's terminal action. Each point's sentence is beside its lines in the diff.
+ * Collapsed, the panel is a slim strip that still shows the step and keeps the action in reach.
  */
 export function TourStepPanel({
   stop,
@@ -40,6 +42,7 @@ export function TourStepPanel({
   reviewed,
   activePoint,
   files,
+  stats,
   banner,
   riskMuted,
   prose,
@@ -60,6 +63,7 @@ export function TourStepPanel({
   reviewed: boolean;
   activePoint: number | null;
   files: readonly ReviewScopeFileSummary[];
+  stats: ReadonlyMap<string, TourFileStat>;
   banner?: ReactNode;
   // The tour was written before the latest push.
   riskMuted: boolean;
@@ -168,91 +172,62 @@ export function TourStepPanel({
           </h2>
         </header>
 
-        {stop.summary ? <TourText body={stop.summary} prose={prose} className="pr-tour-summary" /> : null}
+        {stop.change ? (
+          <>
+            <dl className="pr-tour-change pr-tour-inline">
+              <dt className="pr-tour-eyebrow" data-side="before">Before</dt>
+              <dd data-side="before"><InlineCodeText text={stop.change.before} /></dd>
+              <dt className="pr-tour-eyebrow" data-side="after">Now</dt>
+              <dd data-side="after"><InlineCodeText text={stop.change.after} /></dd>
+            </dl>
+            {stop.summary ? (
+              <details className="pr-tour-why">
+                <summary>Why it matters<ChevronRight size={12} aria-hidden="true" /></summary>
+                <TourText body={stop.summary} prose={prose} className="pr-tour-summary" />
+              </details>
+            ) : null}
+          </>
+        ) : stop.summary ? <TourText body={stop.summary} prose={prose} className="pr-tour-summary" /> : null}
 
         {stop.attention ? (
-          // The copper run-in head is the first bold run of the note's first paragraph.
-          <TourText body={`**${ATTENTION_LABELS[stop.attention.kind]}** ${stop.attention.note}`} prose={prose} className="pr-tour-attention" />
+          <div className="pr-tour-attention pr-tour-inline">
+            <span className="pr-tour-eyebrow">{ATTENTION_LABELS[stop.attention.kind]}</span>
+            <span><InlineCodeText text={stop.attention.note} /></span>
+          </div>
         ) : null}
+
+        <TourFootprint stop={stop} files={files} stats={stats} activePoint={activePoint} onSelectPoint={onSelectPoint} onOpenFile={onOpenFile} />
 
         {stop.points.length ? (
           <ol ref={pointsRef} className="pr-tour-points" aria-label="Points">
             {stop.points.map((point, index) => {
               const anchored = isAnchoredPoint(point);
-              const lines = anchored ? `:${point.start}${point.end !== null && point.end !== point.start ? `–${point.end}` : ''}` : '';
-              const where = `${point.path}${lines}`;
+              const where = `${point.path}${anchored ? `:${lineRange(point)}` : ''}`;
               return (
-                <li
-                  key={index}
-                  className="pr-tour-point"
-                  data-active={activePoint === index || undefined}
-                  data-anchored={anchored || undefined}
-                  onClick={(event) => {
-                    // Links inside the prose do their own thing; anywhere else on the card selects it.
-                    if (!anchored || (event.target instanceof Element && event.target.closest('a, button:not(.pr-tour-point-key)'))) return;
-                    onSelectPoint(index);
-                  }}
-                >
+                <li key={index} className="pr-tour-point pr-tour-inline" data-active={activePoint === index || undefined}>
                   {anchored ? (
-                    <button type="button" className="pr-guide-marker pr-tour-point-key" aria-pressed={activePoint === index}
-                      aria-label={`Point ${index + 1}: show ${where} in the diff`} title={`Show ${where}`}
-                      onClick={() => onSelectPoint(index)}>
-                      {index + 1}
+                    <button type="button" className="pr-tour-point-button" aria-pressed={activePoint === index}
+                      aria-label={`Point ${index + 1}: ${plainTourText(point.label)}. Show ${where} in the diff`}
+                      title={`${plainTourText(point.body)}\n${where}`} onClick={() => onSelectPoint(index)}>
+                      <span className="pr-guide-marker pr-tour-point-key" aria-hidden="true">{index + 1}</span>
+                      <span><InlineCodeText text={point.label} /></span>
+                      <span className="pr-tour-point-lines" aria-hidden="true">{lineRange(point)}</span>
                     </button>
                   ) : (
-                    <span className="pr-tour-point-key" data-text-only="" title="Not placed on a line">{index + 1}</span>
+                    // Not placed on a line, so the diff has no mark: the sentence stays here.
+                    <div className="pr-tour-point-text">
+                      <span className="pr-tour-point-key" data-text-only="" title="Not placed on a line">{index + 1}</span>
+                      <div>
+                        <strong><InlineCodeText text={point.label} /></strong>
+                        <TourText body={point.body} prose={prose} />
+                      </div>
+                    </div>
                   )}
-                  <div className="pr-tour-point-body">
-                    <TourText body={point.body} prose={prose} />
-                    <span className="pr-tour-point-where" title={where}>{point.path.slice(point.path.lastIndexOf('/') + 1)}{lines}</span>
-                  </div>
                 </li>
               );
             })}
           </ol>
         ) : null}
-
-        {stop.questions.length ? (
-          <section className="pr-tour-section" aria-labelledby="pr-tour-questions">
-            <h3 id="pr-tour-questions" className="pr-tour-eyebrow">Questions to consider</h3>
-            <ul className="pr-tour-questions">
-              {stop.questions.map((question) => <li key={question}><TourText body={question} prose={prose} /></li>)}
-            </ul>
-          </section>
-        ) : null}
-
-        <details className="pr-tour-section pr-tour-files" open>
-          <summary className="pr-tour-eyebrow">
-            Files ({files.length})
-            <ChevronRight size={14} aria-hidden="true" />
-          </summary>
-          {files.length ? (
-            <ul>
-              {files.map((file) => {
-                const note = stop.files.find((owned) => owned.path === file.path)?.note;
-                const slash = file.path.lastIndexOf('/');
-                return (
-                  <li key={file.path}>
-                    <button type="button" className="pr-tour-file" data-hidden={file.hidden || undefined}
-                      title={note ? `${file.path}\n${note}` : file.path} onClick={() => onOpenFile(file.path)}>
-                      <span className="pr-tour-file-viewed" data-viewed={file.viewed || undefined}
-                        aria-label={file.viewed ? 'Viewed' : 'Not viewed'} role="img">
-                        {file.viewed ? <Check size={12} aria-hidden="true" /> : null}
-                      </span>
-                      <span className="pr-tour-file-path">
-                        {/* The directory truncates from its start (CSS direction: rtl); the trailing
-                            left-to-right mark keeps its last slash at the end instead of jumping to the front. */}
-                        {slash >= 0 ? <span className="pr-tour-file-dir">{`${file.path.slice(0, slash + 1)}\u200e`}</span> : null}
-                        <span className="pr-tour-file-name">{file.path.slice(slash + 1)}</span>
-                      </span>
-                      <PullRequestLineStats additions={file.additions} deletions={file.deletions} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : <p className="pr-tour-muted">This step&apos;s files are no longer in the diff.</p>}
-        </details>
         </div>
       </div>
 
@@ -282,6 +257,66 @@ export function TourStepPanel({
         </div>
       </footer>
     </div>
+  );
+}
+
+function lineRange(point: PullRequestTourPoint): string {
+  return point.end !== null && point.end !== point.start ? `${point.start}–${point.end}` : String(point.start);
+}
+
+/**
+ * The step's files as bars: length is the file's changed lines against the step's largest file, split into
+ * added and removed; each placed point is a copper number where its lines fall in the file. The name opens
+ * the file; the numbers are a pointer shortcut (keyboard users have the points list below).
+ */
+function TourFootprint({ stop, files, stats, activePoint, onSelectPoint, onOpenFile }: {
+  stop: PullRequestTourStop;
+  files: readonly ReviewScopeFileSummary[];
+  stats: ReadonlyMap<string, TourFileStat>;
+  activePoint: number | null;
+  onSelectPoint: (point: number) => void;
+  onOpenFile: (path: string) => void;
+}): ReactElement {
+  if (!files.length) return <p className="pr-tour-muted">This step&apos;s files are no longer in the diff.</p>;
+  const largest = Math.max(1, ...files.map((file) => file.additions + file.deletions));
+  return (
+    <ul className="pr-tour-footprint" aria-label={`Files (${files.length})`}>
+      {files.map((file) => {
+        const note = stop.files.find((owned) => owned.path === file.path)?.note;
+        const lines = file.additions + file.deletions;
+        const width = lines ? Math.max(6, (lines / largest) * 100) : 0;
+        const viewed = file.viewed ? 'viewed' : 'not viewed';
+        return (
+          <li key={file.path} className="pr-tour-footprint-row" data-hidden={file.hidden || undefined}>
+            <button type="button" className="pr-tour-footprint-name" onClick={() => onOpenFile(file.path)}
+              title={[file.path, note].filter(Boolean).join('\n')}
+              aria-label={`${file.path}, ${file.additions} added, ${file.deletions} removed, ${viewed}`}>
+              {file.path.slice(file.path.lastIndexOf('/') + 1)}
+            </button>
+            <span className="pr-tour-footprint-track" aria-hidden="true">
+              <span className="pr-tour-footprint-bar" style={{ width: `${width}%` }}>
+                <i data-kind="added" style={{ flexGrow: file.additions }} />
+                <i data-kind="deleted" style={{ flexGrow: file.deletions }} />
+              </span>
+              {stop.points.map((point, index) => {
+                const position = point.path === file.path ? tourPointPosition(point, stats.get(file.path)) : null;
+                return position === null ? null : (
+                  <button key={index} type="button" tabIndex={-1} className="pr-guide-marker"
+                    data-active={activePoint === index || undefined}
+                    style={{ left: `${position * width}%` }} title={plainTourText(point.label)}
+                    onClick={() => onSelectPoint(index)}>
+                    {index + 1}
+                  </button>
+                );
+              })}
+            </span>
+            <span className="pr-tour-file-viewed" data-viewed={file.viewed || undefined} aria-hidden="true">
+              {file.viewed ? <Check size={12} aria-hidden="true" /> : null}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
