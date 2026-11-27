@@ -114,7 +114,7 @@ describe('normalizePullRequestTour', () => {
 
   it('keeps a flow only where it names code, without cycles or loose context', () => {
     const flow = (nodes: unknown[], edges: unknown[]) => normalizePullRequestTour({
-      stops: [step('A', { points: [point('src/client.ts', 11)], flow: { nodes, edges } })]
+      stops: [step('A', { points: [point('src/client.ts', 11)], files: [{ path: 'src/server.ts' }], flow: { nodes, edges } })]
     }, plan).stops[0]!.flow;
     const nodes = [
       { id: 'client', label: 'Client', state: 'changed', point: 0 },
@@ -123,6 +123,7 @@ describe('normalizePullRequestTour', () => {
       { id: 'cache', label: 'Cache', state: 'context' },
       { id: 'queue', label: 'Queue', state: 'context' },
       { id: 'ghost', label: 'Ghost', state: 'changed', path: 'src/missing.ts' },
+      { id: 'elsewhere', label: 'Docs', state: 'changed', path: 'docs/readme.md' }, // changed, but not in this step
       { id: 'far', label: 'Far', state: 'changed', point: 7 }
     ];
     const result = flow(nodes, [
@@ -131,6 +132,7 @@ describe('normalizePullRequestTour', () => {
       { from: 'db', to: 'client' }, // closes a cycle
       { from: 'db', to: 'cache' }, // context to context only
       { from: 'server', to: 'ghost' },
+      { from: 'server', to: 'elsewhere' },
       { from: 'server', to: 'server' }
     ]);
     expect(result).toEqual({
@@ -146,6 +148,21 @@ describe('normalizePullRequestTour', () => {
       [{ from: 'client', to: 'server' }, { from: 'server', to: 'db' }])).toBeNull();
     expect(normalizePullRequestTour({ stops: [step('A', { kind: 'mechanical', flow: { nodes, edges: [] } })] }, plan).stops[0]!.flow).toBeNull();
   });
+
+  it('keeps a flow box on the point the model meant when an earlier point is dropped', () => {
+    const { stops } = normalizePullRequestTour({
+      stops: [step('A', {
+        points: [point('src/missing.ts', 1), point('src/client.ts', 11), point('src/server.ts', 1)],
+        flow: {
+          nodes: [{ id: 'a', label: 'A', state: 'changed', point: 1 }, { id: 'b', label: 'B', state: 'changed', point: 2 }, { id: 'c', label: 'C', state: 'context' }],
+          edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }]
+        }
+      })]
+    }, plan);
+    expect(stops[0]!.flow!.nodes.map((node) => [node.id, node.point, node.path])).toEqual([
+      ['a', 0, 'src/client.ts'], ['b', 1, 'src/server.ts'], ['c', null, null]
+    ]);
+  });
 });
 
 describe('clipText and pointHeadline', () => {
@@ -153,11 +170,13 @@ describe('clipText and pointHeadline', () => {
     expect(clipText('First sentence here. Second sentence that runs long.', 30)).toBe('First sentence here.');
     expect(clipText('one two three four five six', 15)).toBe('one two three…');
     expect(clipText('  short  ', 15)).toBe('short');
+    expect(clipText('Calls `parse(a, b)` twice', 16)).toBe('Calls `parse(a`…');
   });
 
   it('takes the first clause, at most seven words', () => {
     expect(pointHeadline('`isImportable` checks only names, so archive state no longer matters.')).toBe('`isImportable` checks only names');
     expect(pointHeadline('A very long clause that keeps going past the seven word budget')).toBe('A very long clause that keeps going…');
+    expect(pointHeadline('`parse(a, b)` now rejects empty input')).toBe('`parse(a`');
   });
 });
 

@@ -241,6 +241,7 @@
 .pr-tour-footprint-bar > i[data-kind='added'] { background: var(--success-text); }
 .pr-tour-footprint-bar > i[data-kind='deleted'] { background: var(--danger-text); }
 .pr-tour-footprint-track .pr-guide-marker { position: absolute; top: 1px; width: auto; min-width: 16px; height: 16px; padding: 0 3px; font-size: var(--text-2xs); transform: translateX(-50%); }
+.pr-tour-footprint-track { margin-inline: 8px; }
 .pr-tour-file-viewed {
   display: inline-grid;
   width: 14px;
@@ -309,16 +310,18 @@
 }
 .pr-tour-flow-edge-label {
   position: absolute;
-  max-width: 45%;
+  max-width: 36%;
   overflow: hidden;
   padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-app);
   color: var(--text-3);
   font-size: var(--text-xs);
   line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pr-tour-flow-edge-label[data-side='left'] { transform: translateX(-100%); }
+.pr-tour-flow-edge-label:not([data-lane]) { transform: translateX(-50%); }
 .pr-tour-flow-node {
   position: absolute;
   display: flex;

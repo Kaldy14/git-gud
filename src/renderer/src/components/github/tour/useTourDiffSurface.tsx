@@ -21,9 +21,11 @@ import { ActivePointStyle, TourBanner, TourStepPanel, type TourFinishCheck } fro
 import { TourProgress } from './TourProgress';
 import { TourStepMap } from './TourStepMap';
 import { plainTourText } from './tourText';
-import { tourFileStats, tourSegmentWeight, tourStepLines } from './tourVisuals';
+import { tourFileStats, tourSegmentWeight, tourStepLines, type TourFileStat } from './tourVisuals';
 import { pullRequestLocator } from './pullRequestTourQuery';
 import { usePullRequestTourWalk } from './usePullRequestTourWalk';
+
+const EMPTY_STATS: ReadonlyMap<string, TourFileStat> = new Map();
 
 export const TOUR_PANEL_COLLAPSED_KEY = 'git-gud:pr-tour-panel-collapsed:v1';
 // A jump the Tour started scrolls the diff; scroll sync waits this long so it never fights it.
@@ -244,7 +246,8 @@ export function useTourDiffSurface({
     }));
   }, [tour, isTour, step]);
 
-  const stats = useMemo(() => tourFileStats(detail.reviewPlan), [detail.reviewPlan]);
+  // Only the Tour draws from these, so a pull request read on another tab never parses its patches for them.
+  const stats = useMemo(() => isTour ? tourFileStats(detail.reviewPlan) : EMPTY_STATS, [isTour, detail.reviewPlan]);
   const stepLines = useMemo(() => tour ? tourStepLines(tour, stats) : [], [tour, stats]);
   const weights = useMemo(() => stepLines.map(tourSegmentWeight), [stepLines]);
 

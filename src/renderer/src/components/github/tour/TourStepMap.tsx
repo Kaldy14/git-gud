@@ -22,6 +22,8 @@ export function TourStepMap({ stops, step, reviewed, lines, onGo }: {
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
+  // A chosen row moves focus to the new step's heading; only Escape or an outside click returns it to Map.
+  const movedRef = useRef(false);
   const largest = Math.max(1, ...lines.map((count) => count.added + count.removed));
 
   const rows = () => [...(listRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
@@ -53,6 +55,10 @@ export function TourStepMap({ stops, step, reviewed, lines, onGo }: {
             event.preventDefault();
             rows()[step]?.focus();
           }}
+          onCloseAutoFocus={(event) => {
+            if (movedRef.current) event.preventDefault();
+            movedRef.current = false;
+          }}
           onKeyDown={onKeyDown}
         >
           <ol ref={listRef}>
@@ -69,7 +75,11 @@ export function TourStepMap({ stops, step, reviewed, lines, onGo }: {
                     data-kind={stop.kind}
                     aria-current={index === step ? 'step' : undefined}
                     aria-label={`Step ${index + 1}: ${plainTourText(stop.title)}. ${count.added} added, ${count.removed} removed${risk ? `, ${risk} risk` : ''}${stop.attention ? ', a call to make' : ''}${isReviewed ? ', reviewed' : ''}`}
-                    onClick={() => { if (onGo(index)) setOpen(false); }}
+                    onClick={() => {
+                      if (!onGo(index)) return;
+                      movedRef.current = index !== step;
+                      setOpen(false);
+                    }}
                   >
                     <span className="pr-tour-map-number" aria-hidden="true">{index + 1}</span>
                     <span className="pr-tour-map-title pr-tour-inline"><InlineCodeText text={stop.title} /></span>

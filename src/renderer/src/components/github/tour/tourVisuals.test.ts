@@ -18,7 +18,8 @@ function chunk(path: string, patch: string, additions: number, deletions: number
 const plan: Pick<GitReviewPlan, 'units'> = {
   units: [{
     id: 'u', title: '', reason: '', explanation: '', confidence: 'exact',
-    chunks: [chunk('shared.css', sharedPatch, 3, 1), chunk('docs.md', '@@ -1 +1 @@\n-old\n+new', 1, 1)]
+    // The lockfile was too large to send: counts, no patch.
+    chunks: [chunk('shared.css', sharedPatch, 3, 1), chunk('docs.md', '@@ -1 +1 @@\n-old\n+new', 1, 1), chunk('pnpm-lock.yaml', '', 400, 120)]
   }]
 };
 
@@ -42,7 +43,8 @@ describe('tour visuals', () => {
     const tour = { stops: [stop([{ path: 'shared.css', start: 11 }]), stop([{ path: 'shared.css', start: 101 }], ['docs.md'])] };
     expect(tourStepLines(tour, stats)).toEqual([{ added: 2, removed: 1 }, { added: 1 + 1, removed: 1 }]);
     // A step whose points land in no hunk still gets the file it owns.
-    expect(tourStepLines({ stops: [stop([], ['shared.css']), stop([{ path: 'docs.md', start: 1 }])] }, stats)).toEqual([{ added: 3, removed: 1 }, { added: 1, removed: 1 }]);
+    expect(tourStepLines({ stops: [stop([], ['shared.css']), stop([{ path: 'docs.md', start: 1 }], ['pnpm-lock.yaml'])] }, stats))
+      .toEqual([{ added: 3, removed: 1 }, { added: 1 + 400, removed: 1 + 120 }]);
   });
 
   it('widens segments on a log scale between 1 and 4', () => {

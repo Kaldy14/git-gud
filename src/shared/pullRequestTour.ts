@@ -145,9 +145,14 @@ export function clipText(value: string, max: number): string {
   if (trimmed.length <= max) return trimmed;
   const head = trimmed.slice(0, max);
   const sentence = head.search(/[.!?](?=\s)[^.!?]*$/u);
-  if (sentence > max / 2) return head.slice(0, sentence + 1);
+  if (sentence > max / 2) return closeCode(head.slice(0, sentence + 1));
   const space = head.lastIndexOf(' ');
-  return `${(space > 0 ? head.slice(0, space) : head).replace(/[\s,;:]+$/u, '')}…`;
+  return `${closeCode((space > 0 ? head.slice(0, space) : head).replace(/[\s,;:]+$/u, ''))}…`;
+}
+
+// A cut inside `inline code` closes it, so the text never shows a stray backtick.
+function closeCode(value: string): string {
+  return (value.match(/`/gu)?.length ?? 0) % 2 ? `${value}\`` : value;
 }
 const text = (value: unknown, max: number): string => (typeof value === 'string' ? clipText(value, max) : '');
 
@@ -155,7 +160,7 @@ const text = (value: unknown, max: number): string => (typeof value === 'string'
 export function pointHeadline(body: string): string {
   const clause = body.split(/[.;:,](?:\s|$)|\s(?:so|because|which|while)\s|\s[—–]\s/u)[0]!.trim();
   const words = clause.split(' ');
-  return words.length > LABEL_WORDS ? `${words.slice(0, LABEL_WORDS).join(' ')}…` : clause;
+  return words.length > LABEL_WORDS ? `${closeCode(words.slice(0, LABEL_WORDS).join(' '))}…` : closeCode(clause);
 }
 const integer = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
@@ -186,18 +191,22 @@ export function normalizePullRequestTour(
     const attentionRecord = record(stop.attention);
     const attentionKind = PULL_REQUEST_TOUR_ATTENTION_KINDS.find((candidate) => candidate === attentionRecord.kind);
     const attentionNote = text(attentionRecord.note, LIMITS.attention);
-    const points = list(stop.points).flatMap((item): PullRequestTourPoint[] => {
+    // The model's flow names points by its own index; `kept` maps that index to the point's place here.
+    const points: PullRequestTourPoint[] = [];
+    const kept = new Map<number, number>();
+    list(stop.points).forEach((item, index) => {
       const point = record(item);
       const body = text(point.body, LIMITS.body);
       const path = typeof point.path === 'string' ? point.path.trim() : '';
-      if (!body || !hunks.has(path)) return [];
+      if (!body || !hunks.has(path) || points.length >= MAX_POINTS) return;
       const side = point.side === 'old' ? 'old' : 'new';
       const start = integer(point.start);
       const end = Math.max(start ?? 0, integer(point.end) ?? 0);
       const fitted = start === undefined ? undefined : fitRange({ side, start, end }, hunks.get(path)!);
       const label = text(point.label, LIMITS.label) || pointHeadline(body);
-      return [{ label, body, path, side, start: fitted?.start ?? null, end: fitted?.end ?? null }];
-    }).slice(0, MAX_POINTS);
+      kept.set(index, points.length);
+      points.push({ label, body, path, side, start: fitted?.start ?? null, end: fitted?.end ?? null });
+    });
     // A file listed by an earlier step stays there.
     const files = list(stop.files).flatMap((item) => {
       const file = record(item);
@@ -219,7 +228,7 @@ export function normalizePullRequestTour(
       attention: attentionKind && attentionNote ? { kind: attentionKind, note: attentionNote } : null,
       points,
       files,
-      flow: kind === 'behavior' ? normalizeFlow(stop.flow, points, hunks) : null
+      flow: kind === 'behavior' ? normalizeFlow(stop.flow, points, kept, new Set(tourStepPaths({ points, files }))) : null
     }];
   });
 
@@ -247,17 +256,22 @@ export function normalizePullRequestTour(
 
 /**
  * Keep only a flow that rests on the diff: a node that is not `context` must name one of the step's points
- * or a changed file, at most two context nodes each joined to a node that names code, edges between known
+ * or one of the step's files, at most two context nodes each joined to a node that names code, edges between known
  * nodes without cycles, and no node left unconnected. Fewer than three nodes, or fewer than two that name
  * code, is no flow: the step shows its before/now instead.
  */
-function normalizeFlow(raw: unknown, points: readonly PullRequestTourPoint[], hunks: ReadonlyMap<string, Hunk[]>): PullRequestTourFlow | null {
+function normalizeFlow(
+  raw: unknown,
+  points: readonly PullRequestTourPoint[],
+  pointIndexes: ReadonlyMap<number, number>,
+  stepPaths: ReadonlySet<string>
+): PullRequestTourFlow | null {
   const flow = record(raw);
   const nodes = new Map<string, PullRequestTourFlowNode>();
   let contextNodes = 0;
   for (const item of list(flow.nodes)) {
     const node = record(item);
-    const id = typeof node.id === 'string' ? node.id.trim().slice(0, 40) : '';
+    const id = typeof node.id === 'string' ? node.id.trim() : '';
     const label = text(node.label, LIMITS.flowLabel);
     const state = PULL_REQUEST_TOUR_FLOW_STATES.find((candidate) => candidate === node.state);
     if (!id || !label || !state || nodes.has(id) || nodes.size >= MAX_FLOW_NODES) continue;
@@ -267,8 +281,9 @@ function normalizeFlow(raw: unknown, points: readonly PullRequestTourPoint[], hu
       nodes.set(id, { id, label, state, point: null, path: null });
       continue;
     }
-    const pointIndex = typeof node.point === 'number' && Number.isInteger(node.point) && points[node.point] ? node.point : null;
-    const path = pointIndex !== null ? points[pointIndex]!.path : typeof node.path === 'string' && hunks.has(node.path.trim()) ? node.path.trim() : null;
+    const pointIndex = typeof node.point === 'number' ? pointIndexes.get(node.point) ?? null : null;
+    // A file must be one this step shows, so the box can open it here.
+    const path = pointIndex !== null ? points[pointIndex]!.path : typeof node.path === 'string' && stepPaths.has(node.path.trim()) ? node.path.trim() : null;
     if (path === null) continue;
     nodes.set(id, { id, label, state, point: pointIndex, path });
   }

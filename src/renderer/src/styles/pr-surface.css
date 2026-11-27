@@ -47,7 +47,6 @@
 .pr-activity-column .review-line-comment-body { font-size: var(--text-base); }
 /* The tour panel is a narrow column: its prose stays at 13px so the points and the step's files fit. */
 .pr-tour-panel-step { gap: var(--space-3); }
-.pr-tour-point { padding-block: 8px; }
 /* Sections sit on the canvas. The card's own inner padding is kept and pulled back by the same amount,
    so their content starts on the page's left edge under its heading. */
 .pr-overview-card:not(.pr-overview-merge) {

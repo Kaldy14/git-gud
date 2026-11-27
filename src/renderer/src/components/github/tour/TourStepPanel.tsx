@@ -110,11 +110,15 @@ export function TourStepPanel({
     shown.current = { step, reviewed };
     if (reviewed && !before.reviewed && before.step === step) drawStroke(stepRef.current?.querySelector('.pr-tour-reviewed > svg'));
   }, [step, reviewed]);
-  // Keep the selected point in view when the diff selects it.
+  // Keep the selected point in view when the diff selects it, but not when a new step lands on its first
+  // point: the step is read from the top.
+  const pointStepRef = useRef(step);
   useEffect(() => {
-    if (activePoint === null) return;
+    const landed = pointStepRef.current !== step;
+    pointStepRef.current = step;
+    if (activePoint === null || landed) return;
     pointsRef.current?.children[activePoint]?.scrollIntoView({ block: 'nearest' });
-  }, [activePoint]);
+  }, [activePoint, step]);
 
   const action = isLast ? 'Finish review' : reviewed ? 'Mark unreviewed' : 'Reviewed & next';
   const actionButton = (iconOnly: boolean) => (
@@ -198,7 +202,8 @@ export function TourStepPanel({
         ) : null}
 
         {stop.flow ? (
-          <TourFlow flow={stop.flow} points={stop.points} activePoint={activePoint} onSelectPoint={onSelectPoint} onOpenFile={onOpenFile} />
+          <TourFlow flow={stop.flow} points={stop.points} inDiff={(path) => stats.has(path)} activePoint={activePoint}
+            onSelectPoint={onSelectPoint} onOpenFile={onOpenFile} />
         ) : null}
 
         <TourFootprint stop={stop} files={files} stats={stats} activePoint={activePoint} onSelectPoint={onSelectPoint} onOpenFile={onOpenFile} />

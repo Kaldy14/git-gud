@@ -9,9 +9,15 @@ type HunkStat = { new: Span | null; old: Span | null; added: number; removed: nu
 export type TourLineCount = { added: number; removed: number };
 export type TourFileStat = { additions: number; deletions: number; spans: { new: Span | null; old: Span | null }; hunks: HunkStat[] };
 
+// Parsing every patch is not free on a large pull request, so it is done once per loaded plan.
+const statsCache = new WeakMap<object, Map<string, TourFileStat>>();
+
 /** Per changed file: its line counts and the first and last line its hunks show on each side. */
 export function tourFileStats(plan: Pick<GitReviewPlan, 'units'>): Map<string, TourFileStat> {
+  const cached = statsCache.get(plan.units);
+  if (cached) return cached;
   const stats = new Map<string, TourFileStat>();
+  statsCache.set(plan.units, stats);
   for (const chunk of plan.units.flatMap((unit) => unit.chunks)) {
     const stat = stats.get(chunk.path) ?? { additions: 0, deletions: 0, spans: { new: null, old: null }, hunks: [] };
     stat.additions += chunk.additions;
@@ -58,6 +64,12 @@ export function tourStepLines(tour: Pick<PullRequestTour, 'stops'>, stats: Reado
   tour.stops.forEach((stop, step) => { for (const point of stop.points) if (!owner.has(point.path)) owner.set(point.path, step); });
   const lines = tour.stops.map(() => ({ added: 0, removed: 0 }));
   for (const [path, stat] of stats) {
+    // A file too large to send has no hunks; its counts go to its owner whole.
+    const owned = owner.get(path);
+    if (!stat.hunks.length && owned !== undefined) {
+      lines[owned]!.added += stat.additions;
+      lines[owned]!.removed += stat.deletions;
+    }
     for (const hunk of stat.hunks) {
       const step = tour.stops.findIndex((stop) => stop.points.some((point) => {
         const span = hunk[point.side];
