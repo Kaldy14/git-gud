@@ -12,10 +12,14 @@
 /* 1. One canvas */
 .pr-workspace-shell .pr-rail-slot,
 .pr-workspace-shell .review-files-panel,
+.pr-workspace-shell .review-queue,
+.pr-workspace-shell .review-file-tree-panel,
 .pr-inbox-view .pr-inbox-scopes { background: var(--bg-app); }
 .pr-workspace-shell .pr-rail-slot,
 .pr-workspace-shell .review-files-panel,
+.pr-workspace-shell .review-queue,
 .pr-inbox-view .pr-inbox-scopes { border-right-color: var(--border-strong); }
+.pr-workspace-shell .review-file-tree-panel { border-left-color: var(--border-strong); }
 .pr-inbox-results .pr-group-heading-row,
 .pr-inbox-loading-group > div:first-child { background: transparent; }
 
@@ -23,6 +27,8 @@
 .pr-workspace-shell .pr-detail-crumbs { min-height: 44px; padding-left: 20px; }
 .pr-workspace-shell .pr-detail-tabs { padding-left: 14px; }
 .pr-workspace-shell .review-files-progress { padding-inline: 24px; }
+/* The Blocks tab's toolbar is its strip: it starts on the same edge. */
+.pr-workspace-shell .pr-diff-pane[data-diff-tab='blocks'] .review-toolbar { padding-inline: 24px 16px; }
 .pr-workspace-shell .pr-tour-panel-body,
 .pr-workspace-shell .pr-tour-foot,
 .pr-workspace-shell .review-files-panel-header,

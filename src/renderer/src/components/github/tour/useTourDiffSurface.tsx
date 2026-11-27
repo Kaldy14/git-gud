@@ -7,6 +7,7 @@ import type { ReviewInlineGuideNote, ReviewScopeFileSummary } from '@renderer/co
 import { announce } from '@renderer/lib/announce';
 
 import type { PullRequestNotice } from '../overview/PullRequestOverviewTab';
+import type { DiffTab } from '../pullRequestDetailTab';
 import type { PullRequestCodeLocation } from '../pullRequestNavigation';
 import {
   isWithinPullRequestWorkspace,
@@ -54,7 +55,7 @@ export function useTourDiffSurface({
 }: {
   detail: GitHubPullRequestDetail;
   tourState: PullRequestTourQueryState;
-  diffTab: 'tour' | 'code';
+  diffTab: DiffTab;
   // The diff pane is on screen (Tour or Code is the selected tab).
   visible: boolean;
   active: boolean;

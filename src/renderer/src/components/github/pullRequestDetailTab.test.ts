@@ -10,6 +10,7 @@ describe('loadPullRequestDetailTab', () => {
     expect(loadPullRequestDetailTab(storage('activity'))).toBe('conversation');
     expect(loadPullRequestDetailTab(storage('guide'))).toBe('tour');
     expect(loadPullRequestDetailTab(storage('code'))).toBe('code');
+    expect(loadPullRequestDetailTab(storage('blocks'))).toBe('blocks');
   });
 
   it('opens Overview for nothing or an unknown value', () => {
@@ -22,9 +23,11 @@ describe('loadPullRequestDetailTab', () => {
 describe('refusesTabChange', () => {
   const surface = { diffTab: 'code' as const, composerOpen: true, tourUsable: true };
 
-  it('keeps Tour and Code from swapping while a composer is open', () => {
+  it('keeps Tour, Blocks and Code from swapping while a composer is open', () => {
     expect(refusesTabChange('tour', surface)).toBe(true);
+    expect(refusesTabChange('blocks', surface)).toBe(true);
     expect(refusesTabChange('code', { ...surface, diffTab: 'tour' })).toBe(true);
+    expect(refusesTabChange('code', { ...surface, diffTab: 'blocks' })).toBe(true);
   });
 
   it('lets the reader leave for a reading tab or stay on the same diff tab', () => {

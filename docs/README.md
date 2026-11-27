@@ -67,7 +67,7 @@ Opening a pull request shows a review workspace: the queue on the left, the pull
 ```text
 ┌ title bar ────────────────────────────────────────────────────────────────┐
 │ Pull requests (rail)   │ header: repository, #number, title, actions      │
-│  search                │ tabs: Overview · Conversation · Tour · Code      │
+│  search                │ tabs: Overview, Conversation, Tour, Blocks, Code │
 │  ▾ Needs your review   │ ───────────────────────────────────────────────  │
 │  ▾ Ready to merge      │ active tab                                       │
 ├────────────────────────┴──────────────────────────────────────────────────┤
@@ -92,8 +92,8 @@ Opening a pull request shows a review workspace: the queue on the left, the pull
 | Mod+B | show or hide the rail |
 | ← / → | previous / next tour step |
 | R | mark the tour step reviewed and go on |
-| [ / ] | previous / next file |
-| V | mark the current file viewed |
+| [ / ] | previous / next file (Blocks: block) |
+| V | mark the current file viewed (Blocks: block) |
 | ↑ / ↓, Shift, C | line cursor, extend, comment |
 | ? | all shortcuts |
 
@@ -133,6 +133,10 @@ A guided walk through the change on the real diff, made to be scanned rather tha
 ```
 
 The panel holds only headlines; each point's sentence sits beside its lines in the diff. The footprint draws each file as a +/− bar with the step's points placed where their lines fall, and a viewed tick. Flow boxes are outlined by what the change did (copper changed, green new, red removed, dashed unchanged) and select their point or open their file. Selecting a point scrolls the diff to its lines and tints them; the number on the line selects the point; scrolling the diff moves the selection. **Map** lists every step with its change volume, risk, call and reviewed state. ←/→ change step, R marks the step reviewed and moves on, and the last step offers **Finish review**. Comments, the line cursor and Viewed work as in Code, because Tour and Code are the same diff view with a different left panel. A step's Reviewed state is separate from a file's Viewed state. The tour is kept in the `git-gud-pull-request-guides` store, survives restarts, and when the branch moves it says "written before the latest push", drops its line marks and offers Rewrite. A tour stored in an older format asks to be written again. In Code the same points appear inline, labelled `step.point`, each linking back to its step.
+
+### Blocks
+
+The review plan's own grouping, with no AI: related changes are combined into blocks by shared files and symbols, and the tab walks them one at a time, as a local branch review does. A queue of blocks on the left (each with its change count), the selected block's diff with a **Viewed** button, and the file tree on the right. `[`/`]` move between blocks, V marks the block viewed and moves to the next unviewed one, and J/K still switch pull requests. Viewed state, comments, drafts and search are the ones Tour and Code use, because all three are the same diff view.
 
 ### Code
 

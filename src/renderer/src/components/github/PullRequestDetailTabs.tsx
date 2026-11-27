@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
-import { ArrowLeft, CodeXml, ExternalLink, FileDiff, LayoutDashboard, MessagesSquare, PanelLeftClose, PanelLeftOpen, Route, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Blocks, CodeXml, ExternalLink, FileDiff, LayoutDashboard, MessagesSquare, PanelLeftClose, PanelLeftOpen, Route, type LucideIcon } from 'lucide-react';
 
 import { pullRequestLineBreakdown, type FileLineStat } from '@shared/lineBreakdown';
 import { useSlidingIndicator } from '@renderer/components/ui/useSlidingIndicator';
@@ -18,6 +18,7 @@ const TABS: Record<PullRequestDetailTab, { label: string; icon: LucideIcon }> = 
   overview: { label: 'Overview', icon: LayoutDashboard },
   conversation: { label: 'Conversation', icon: MessagesSquare },
   tour: { label: 'Tour', icon: Route },
+  blocks: { label: 'Blocks', icon: Blocks },
   code: { label: 'Code', icon: CodeXml }
 };
 

@@ -20,7 +20,9 @@ export type PullRequestShortcut = {
   modified?: boolean;
 };
 
-const DIFF_TABS: readonly PullRequestDetailTab[] = ['tour', 'code'];
+const DIFF_TABS: readonly PullRequestDetailTab[] = ['tour', 'blocks', 'code'];
+// Blocks walks the plan's blocks with [ ] and V; the line cursor and C belong to the files view.
+const FILE_TABS: readonly PullRequestDetailTab[] = ['tour', 'code'];
 
 export const PULL_REQUEST_SHORTCUTS: readonly PullRequestShortcut[] = [
   { keys: ['J', 'K'], label: 'switch PR', description: 'Next or previous pull request in the list', area: 'Pull requests' },
@@ -30,10 +32,12 @@ export const PULL_REQUEST_SHORTCUTS: readonly PullRequestShortcut[] = [
   { keys: ['↑', '↓', 'Enter'], label: 'move', description: 'Move through the list and open a pull request (list focused)', area: 'Pull requests', dialogOnly: true },
   { keys: ['←', '→'], label: 'steps', description: 'Previous or next tour step', area: 'Tour', tabs: ['tour'] },
   { keys: ['R'], label: 'reviewed', description: 'Mark the step reviewed and go to the next one', area: 'Tour', tabs: ['tour'] },
-  { keys: ['[', ']'], label: 'files', description: 'Previous or next file', area: 'Diff', tabs: DIFF_TABS },
-  { keys: ['V'], label: 'viewed', description: 'Mark the current file viewed', area: 'Diff', tabs: DIFF_TABS },
-  { keys: ['↑', '↓'], label: 'lines', description: 'Move the line cursor (Shift extends the range)', area: 'Diff', tabs: DIFF_TABS },
-  { keys: ['C'], label: 'comment', description: 'Comment on the selected lines', area: 'Diff', tabs: DIFF_TABS },
+  { keys: ['[', ']'], label: 'files', description: 'Previous or next file', area: 'Diff', tabs: FILE_TABS },
+  { keys: ['[', ']'], label: 'blocks', description: 'Previous or next block (Blocks tab)', area: 'Diff', tabs: ['blocks'] },
+  { keys: ['V'], label: 'viewed', description: 'Mark the current file viewed', area: 'Diff', tabs: FILE_TABS },
+  { keys: ['V'], label: 'viewed', description: 'Mark the current block viewed (Blocks tab)', area: 'Diff', tabs: ['blocks'] },
+  { keys: ['↑', '↓'], label: 'lines', description: 'Move the line cursor (Shift extends the range)', area: 'Diff', tabs: FILE_TABS },
+  { keys: ['C'], label: 'comment', description: 'Comment on the selected lines', area: 'Diff', tabs: FILE_TABS },
   { keys: ['Esc'], label: 'cancel', description: 'Clear the line cursor or dismiss an empty comment', area: 'Diff', tabs: DIFF_TABS, dialogOnly: true },
   { keys: ['Mod', 'F'], label: 'find', description: 'Search the diff', area: 'Diff', tabs: DIFF_TABS, dialogOnly: true, modified: true },
   { keys: ['?'], label: 'all shortcuts', description: 'Show this list', area: 'Pull requests', dialogOnly: true }

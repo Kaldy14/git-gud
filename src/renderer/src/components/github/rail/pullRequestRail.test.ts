@@ -94,6 +94,7 @@ describe('rail visibility', () => {
     expect(railTabKind('conversation')).toBe('reading');
     expect(railTabKind('tour')).toBe('code');
     expect(railTabKind('code')).toBe('code');
+    expect(railTabKind('blocks')).toBe('code');
     const open = (width: number, kind: 'reading' | 'code') => isRailOpen({ width, kind, saved: {}, floatingOpen: false });
     expect(open(1240, 'reading')).toBe(true);
     expect(open(1839, 'code')).toBe(false);

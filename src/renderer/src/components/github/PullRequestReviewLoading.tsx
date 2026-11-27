@@ -2,6 +2,7 @@ import type { CSSProperties, ReactElement } from 'react';
 import { ArrowLeft, Loader2, X } from 'lucide-react';
 
 import { reviewPanelSize } from '@renderer/components/review/reviewFileScope';
+import { loadReviewFileTreeOpen } from '@renderer/components/review/reviewFileTree';
 import type { GitHubPullRequestSummary } from '@shared/types';
 import { PullRequestDetailHeader, PullRequestDetailTabs, PullRequestMeta } from './PullRequestDetailTabs';
 import type { PullRequestDetailTab } from './pullRequestDetailTab';
@@ -22,8 +23,9 @@ export function PullRequestReviewLoading({
   onAction: () => void;
   onClose: () => void;
 }): ReactElement {
-  // Code and Tour open with the header folded, the status beside the tabs, as the loaded view does.
-  const condensed = tab === 'code' || tab === 'tour';
+  // Code, Blocks and Tour open with the header folded, the status beside the tabs, as the loaded view does.
+  const condensed = tab === 'code' || tab === 'tour' || tab === 'blocks';
+  const repoPath = `github://${new URL(pullRequest.url).host}/${pullRequest.owner}/${pullRequest.repository}`;
   const isOpen = pullRequest.state !== 'merged' && pullRequest.state !== 'closed';
   return (
     <section
@@ -63,13 +65,15 @@ export function PullRequestReviewLoading({
         value={tab}
         onChange={() => false}
         counts={{ code: pullRequest.changedFiles }}
-        pendingCounts={['conversation']}
+        pendingCounts={['conversation', 'blocks']}
         disabled
         trailing={<span className="pr-detail-status pr-tabs-status"><PullRequestReviewStatus detail={pullRequest} reserveConflictToggle /></span>}
       />
       <div className="pr-review-workspace" aria-hidden="true">
-        {condensed
-          ? <DiffSkeleton tab={tab} repoPath={`github://${new URL(pullRequest.url).host}/${pullRequest.owner}/${pullRequest.repository}`} />
+        {tab === 'blocks'
+          ? <BlocksSkeleton repoPath={repoPath} />
+          : tab === 'code' || tab === 'tour'
+          ? <DiffSkeleton tab={tab} repoPath={repoPath} />
           : <ReadingSkeleton tab={tab === 'conversation' ? 'conversation' : 'overview'} pullRequest={pullRequest} />}
       </div>
     </section>
@@ -104,6 +108,34 @@ function ReadingSkeleton({ tab, pullRequest }: { tab: 'overview' | 'conversation
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Blocks: the toolbar, the block queue, one block's header and code, and the file tree when it was left open. */
+function BlocksSkeleton({ repoPath }: { repoPath: string }): ReactElement {
+  return (
+    <div className="pr-focused-review pr-diff-pane" data-diff-tab="blocks">
+      <div className="review-view">
+        <div className="review-toolbar">
+          <div className="review-toolbar-primary">{bars(3)}</div>
+        </div>
+        <div className="review-layout">
+          <nav className="review-queue">
+            {[0, 1, 2, 3, 4, 5].map((index) => <div className="pr-review-loading-card" key={index}>{bars(2)}</div>)}
+          </nav>
+          <div className="review-content">
+            <div className="review-stack-file-header pr-review-loading-file-header">
+              <span className="pr-review-skeleton" />
+              <span className="pr-review-skeleton" />
+            </div>
+            <div className="pr-review-loading-code">
+              {Array.from({ length: 14 }, (_, line) => <span key={line}><i />{bars(1)}</span>)}
+            </div>
+          </div>
+          {fileTreeOpen(repoPath) ? <aside className="review-file-tree-panel" /> : null}
+        </div>
       </div>
     </div>
   );
@@ -161,6 +193,14 @@ function DiffSkeleton({ tab, repoPath }: { tab: 'tour' | 'code'; repoPath: strin
       </div>
     </div>
   );
+}
+
+function fileTreeOpen(repoPath: string): boolean {
+  try {
+    return loadReviewFileTreeOpen(window.localStorage, repoPath);
+  } catch {
+    return true;
+  }
 }
 
 function stored(key: string): string | null {

@@ -122,6 +122,11 @@ import {
 } from './ReviewDiffParts';
 import { createReviewFileScope } from './reviewFileScope';
 import { ReviewFilesView, type ReviewFilesViewHandle } from './ReviewFilesView';
+import {
+  pullRequestShortcutKey,
+  shortcutUsed,
+  singleKeyShortcutsEnabled
+} from '@renderer/components/github/shortcuts/pullRequestShortcuts';
 import { ReviewTypeDefinitionDialog } from './ReviewTypeDefinitionDialog';
 import {
   createReviewTypeDefinitionInput,
@@ -206,6 +211,9 @@ type ReviewViewProps = {
   closeLabel?: string;
   showCloseButton?: boolean;
   layout?: 'standard' | 'pull-request';
+  // Pull-request layout: every file stacked (`files`, Tour and Code) or the plan's deterministic blocks one at a
+  // time (`blocks`, the Blocks tab). Comments, viewed state and search are the same either way.
+  pullRequestView?: 'files' | 'blocks';
   initialViewState?: ReviewViewState;
   onViewStateChange?: (state: ReviewViewState) => void;
   // Opens a file (optionally a line range) from outside the review, such as a Tour point or an Overview
@@ -324,6 +332,7 @@ export function ReviewView({
   closeLabel = 'Close review',
   showCloseButton = true,
   layout = 'standard',
+  pullRequestView = 'files',
   initialViewState,
   onViewStateChange,
   navigationRequest,
@@ -339,6 +348,8 @@ export function ReviewView({
   onFilesChange
 }: ReviewViewProps): ReactElement {
   const isPullRequest = layout === 'pull-request';
+  // The stacked files view; the Blocks tab and local reviews show one block at a time.
+  const isFilesView = isPullRequest && pullRequestView === 'files';
   const sectionRef = useRef<HTMLElement>(null);
   const viewStateRef = useRef(createReviewViewState(initialViewState));
   const workerPool = useWorkerPool();
@@ -549,14 +560,14 @@ export function ReviewView({
     ]
   );
   const preparedDiffCacheKeyPrefix = `${repoPath}:${reviewPlan?.targetKey ?? targetKey(target)}`;
-  // The pull-request layout prepares each file's diffs when that file mounts (ReviewFilesView).
+  // The files view prepares each file's diffs when that file mounts (ReviewFilesView).
   const selectedPreparedDiffs = useMemo<ReadonlyMap<string, PreparedReviewDiff>>(
-    () => isPullRequest ? NO_PREPARED_DIFFS : prepareReviewUnitDiffs(
+    () => isFilesView ? NO_PREPARED_DIFFS : prepareReviewUnitDiffs(
       selectedUnit,
       fileContexts,
       preparedDiffCacheKeyPrefix
     ),
-    [fileContexts, isPullRequest, preparedDiffCacheKeyPrefix, selectedUnit]
+    [fileContexts, isFilesView, preparedDiffCacheKeyPrefix, selectedUnit]
   );
   const scopePaths = fileScope.paths;
   const scopeFiles = useMemo(() => {
@@ -780,10 +791,10 @@ export function ReviewView({
   ]);
 
   useEffect(() => {
-    if (workerPool && isPullRequest && isReviewSearchSelected) {
+    if (workerPool && isFilesView && isReviewSearchSelected) {
       for (const prepared of reviewSearchPreparedDiffs.values()) workerPool.primeDiffHighlightCache(prepared.fileDiff);
     }
-    if (!workerPool || !selectedUnit || !presentation || isPullRequest) {
+    if (!workerPool || !selectedUnit || !presentation || isFilesView) {
       return;
     }
 
@@ -816,7 +827,7 @@ export function ReviewView({
     return () => window.cancelIdleCallback(idleCallback);
   }, [
     fileContexts,
-    isPullRequest,
+    isFilesView,
     preparedDiffCacheKeyPrefix,
     presentation,
     isReviewSearchSelected,
@@ -1108,6 +1119,10 @@ export function ReviewView({
     const fromRail = inRail && RAIL_FORWARDED_DIFF_KEYS.has(event.key.toLowerCase());
     if (!outsideTarget && !fromRail) return;
     if (selectedCommentTarget !== undefined || commentMutation.isPending || isReviewSearchSelected) return;
+    if (!isFilesView) {
+      handleBlocksKey(event);
+      return;
+    }
     filesViewRef.current?.handleKeyDown({
       key: event.key,
       shiftKey: event.shiftKey,
@@ -1115,6 +1130,33 @@ export function ReviewView({
       nativeEvent: event
     });
   });
+
+  // The Blocks tab: [ ] previous or next block, V marks the block viewed, Page Up/Down scroll it. J/K stay with
+  // the workspace (they switch pull requests) and Escape never closes a pull request.
+  function handleBlocksKey(event: globalThis.KeyboardEvent): void {
+    if (!active || isReviewSearchSelected || selectedCommentTarget !== undefined || commentMutation.isPending) return;
+    if ((event.key === 'PageDown' || event.key === 'PageUp') && !event.defaultPrevented && !isEditableTarget(event.target)) {
+      event.preventDefault();
+      scrollReviewPage(event.key === 'PageDown' ? 1 : -1);
+      return;
+    }
+    const key = pullRequestShortcutKey(event);
+    if (!key || !singleKeyShortcutsEnabled()) return;
+    if (key === ']' || key === '[') {
+      event.preventDefault();
+      const before = selectedUnit?.unit.id;
+      navigateUnits(key === ']' ? 1 : -1);
+      const units = presentation?.units ?? [];
+      const index = units.findIndex((candidate) => candidate.unit.id === before);
+      if (units[index + (key === ']' ? 1 : -1)]) shortcutUsed(key);
+    } else if (key === 'v' && selectedUnit) {
+      event.preventDefault();
+      if (!progressMutation.isPending) {
+        markSelectedUnit(!selectedUnit.isViewed);
+        shortcutUsed('V');
+      }
+    }
+  }
   useEffect(() => {
     if (!isPullRequest || !active) return;
     const listener = (event: globalThis.KeyboardEvent): void => forwardOutsideDiffKey(event);
@@ -1167,7 +1209,9 @@ export function ReviewView({
 
     if (isPullRequest) {
       // A pull request closes from its header, so Escape never discards the reader's place here.
-      if (active) filesViewRef.current?.handleKeyDown(event);
+      if (!active) return;
+      if (isFilesView) filesViewRef.current?.handleKeyDown(event);
+      else handleBlocksKey(event.nativeEvent);
       return;
     }
 
@@ -1651,7 +1695,7 @@ export function ReviewView({
   return (
     <section ref={sectionRef} className="review-view" data-layout={layout} tabIndex={0} onKeyDown={handleKeyDown}>
       <ReviewUnsavedTextContext value={reportUnsavedText}>
-      {isPullRequest ? (
+      {isFilesView ? (
         <ReviewFilesView
           ref={filesViewRef}
           repoPath={repoPath}

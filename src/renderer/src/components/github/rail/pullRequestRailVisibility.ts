@@ -12,7 +12,7 @@ const CODE_DOCKED_FROM = 1840;
 const PREFERENCES_KEY = 'git-gud:pr-rail:v1';
 
 export function railTabKind(tab: PullRequestDetailTab): RailTabKind {
-  return tab === 'tour' || tab === 'code' ? 'code' : 'reading';
+  return tab === 'tour' || tab === 'blocks' || tab === 'code' ? 'code' : 'reading';
 }
 
 export function isRailFloating(width: number): boolean {

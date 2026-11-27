@@ -312,7 +312,7 @@ function PullRequestReviewContent({
   const [lineComposerOpen, setComposerOpen] = useState(false);
   // A typed reply or comment edit is lost just like an open composer when its file leaves the scope.
   const composerOpen = lineComposerOpen || reviewHasUnsavedText;
-  const [diffTab, setDiffTab] = useState<DiffTab>(detailTab === 'tour' ? 'tour' : 'code');
+  const [diffTab, setDiffTab] = useState<DiffTab>(detailTab === 'tour' || detailTab === 'blocks' ? detailTab : 'code');
   const requestedDiffTab = diffTabFor(detailTab, tourUsable);
   if (requestedDiffTab !== undefined && requestedDiffTab !== diffTab) setDiffTab(requestedDiffTab);
   const refuseTabChange = useCallback((next: PullRequestDetailTab): boolean => {
@@ -386,7 +386,7 @@ function PullRequestReviewContent({
   const hasMergeConflicts = hasPullRequestMergeConflicts(detail);
   const isOwnPullRequest = detail.author.toLowerCase() === detail.viewerLogin.toLowerCase();
   // Code and Tour open folded so the diff gets the height; the status then rides beside the tabs.
-  const isHeaderCondensed = !bugFinderOpen && (detailTab === 'code' || detailTab === 'tour' || condensedTabs[detailTab] === true);
+  const isHeaderCondensed = !bugFinderOpen && (detailTab === 'code' || detailTab === 'tour' || detailTab === 'blocks' || condensedTabs[detailTab] === true);
   const timeline = useMemo(
     () => buildPullRequestTimeline({
       commits: detail.commitTimeline,
@@ -568,7 +568,7 @@ function PullRequestReviewContent({
               reviewDraftCount={reviewDrafts.length}
               mergeLabel={mergeMethodLabel(detail.mergeSettings.defaultMethod)}
               // Solid only where the page says the same thing: a ready verdict, on a reading tab.
-              quietMerge={detailTab === 'tour' || detailTab === 'code' || pullRequestMergeVerdict(detail).tone !== 'success'}
+              quietMerge={detailTab === 'tour' || detailTab === 'blocks' || detailTab === 'code' || pullRequestMergeVerdict(detail).tone !== 'success'}
               mergeDisabled={
                 (detail.state !== undefined && detail.state !== 'open') ||
                 hasMergeConflicts ||
@@ -608,7 +608,7 @@ function PullRequestReviewContent({
         value={detailTab}
         onChange={selectDetailTab}
         hidden={bugFinderOpen}
-        counts={{ conversation: discussionCount + detail.commits, code: detail.changedFiles }}
+        counts={{ conversation: discussionCount + detail.commits, blocks: detail.reviewPlan.units.length, code: detail.changedFiles }}
         trailing={
           <>
             {tabStatus}
@@ -668,11 +668,12 @@ function PullRequestReviewContent({
           {visited('tour') ? <PullRequestTourTab tour={tour} /> : null}
         </div>
 
-        {/* One ReviewView for Tour and Code: the tab only changes its file scope, left panel and strip.
+        {/* One ReviewView for Tour, Blocks and Code: the tab only changes its file scope, left panel and strip
+            (Blocks shows the plan's blocks instead of files).
             Without a usable tour the Tour panel is the state pane above, so only Code may claim this one. */}
         <div ref={diffPaneRef} className="pr-focused-review pr-diff-pane" data-diff-tab={diffTab} hidden={!isDiffVisible}
           {...(diffTab === 'tour' && !tourUsable ? {} : pullRequestDetailPanelProps(diffTab))}>
-          {visited('code') || (visited('tour') && tourUsable) ? <ReviewView
+          {visited('code') || visited('blocks') || (visited('tour') && tourUsable) ? <ReviewView
             key={`${continuityIdentity.key}:${detail.headSha}:${detail.baseSha}`}
             continuityIdentity={continuityIdentity}
             repoPath={detail.reviewPlan.repoPath}
@@ -701,6 +702,7 @@ function PullRequestReviewContent({
             onClose={onClose}
             showCloseButton={false}
             layout="pull-request"
+            pullRequestView={diffTab === 'blocks' ? 'blocks' : 'files'}
             navigationRequest={navigation}
             active={isDiffActive}
             onComposerOpenChange={setComposerOpen}

@@ -12,6 +12,8 @@ describe('shortcut bar', () => {
 
   it('adds the diff keys on Code and the step keys on Tour', () => {
     expect(labels(shortcutBarItems('code'))).toEqual(['switch PR', 'switch tabs', 'search', 'sidebar', 'files', 'viewed', 'lines', 'comment']);
+    // Blocks walks blocks; the line cursor and C belong to the files view.
+    expect(labels(shortcutBarItems('blocks'))).toEqual(['switch PR', 'switch tabs', 'search', 'sidebar', 'blocks', 'viewed']);
     expect(labels(shortcutBarItems('tour'))).toEqual(['switch PR', 'switch tabs', 'search', 'sidebar', 'steps', 'reviewed', 'files', 'viewed', 'lines', 'comment']);
   });
 
