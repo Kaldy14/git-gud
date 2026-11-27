@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [2026.11.11] - 2026-11-27
+
+### Added
+
+- A Blocks tab between Tour and Code walks the pull request in its review plan's blocks, one at a time, as pull requests did before 2026.11.10. `[` and `]` move between blocks and V marks a block viewed; viewed state, comments and drafts are the same ones Tour and Code use.
+
+### Changed
+
+- The Tour is made for scanning. Each step shows what changed as a Before / Now pair, the one decision to make in a single line, the step's files as bars with its points placed on them, and a short headline per point. A point's full sentence now sits only beside its lines in the diff.
+- A step that crosses several parts of the system draws a small diagram of how data moves through them. Each box jumps to its point or opens its file, and boxes appear only for code the step really changes.
+- The tour's progress strip is sized by how much each step changes and marks steps with medium or high risk or a decision to make. Map, beside the strip, lists every step with its size, risk and reviewed state.
+- Tours are written by each harness's most capable model, with shorter fields and a worked example in the prompt. "Questions to consider" is gone. Tours written before this version need to be written again.
+
 ## [2026.11.10] - 2026-11-26
 
 ### Changed
